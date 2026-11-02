@@ -16,7 +16,7 @@ import (
 // tagNamed reports f's tag holding name as its canonical name or a synonym, with its video count.
 func tagNamed(t *testing.T, f *guestFixture, name string) (domain.Tag, bool) {
 	t.Helper()
-	page, err := f.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{Sort: domain.TagSortName})
+	page, err := f.env.db.Tags().ListTags(context.Background(), domain.AudienceOwner, domain.TagListQuery{Sort: domain.TagSortName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestRenameToANameOnlyThePeerHoldsChangesNothing(t *testing.T) {
 
 	rec := b.owner(http.MethodPatch, tagPath(cat.ID, ""), `{"name":"犬"}`)
 	assertErrorBody(t, "相手だけにある名前", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬",
+		status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬", peer: "node-a",
 	})
 	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
 		if _, found := tagNamed(t, f, "猫"); !found {
@@ -86,7 +86,7 @@ func TestRenameWithTheStoppedPeerChangesNothing(t *testing.T) {
 
 	rec := b.owner(http.MethodPatch, tagPath(cat.ID, ""), `{"name":"ねこ"}`)
 	assertErrorBody(t, "止まった相手", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPeerUnreachable,
+		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPeerUnreachable, peer: "node-a",
 	})
 	if _, found := tagNamed(t, fb, "猫"); !found {
 		t.Error("b renamed 猫 although the peer was stopped")
@@ -101,7 +101,7 @@ func TestMergeTagsMergesTheSameNamesOnThePeerAndCreatesTheDestination(t *testing
 	// 仔猫 is a's alone, so b lists it with the offset.
 	peerOnly := tagOn(t, fa, "仔猫", "d")
 
-	body := `{"sourceIds":[` + strconv.FormatInt(kitten.ID, 10) + `,` + strconv.FormatInt(domain.ToRemoteID(peerOnly.ID), 10) + `]}`
+	body := `{"sourceIds":[` + strconv.FormatInt(kitten.ID, 10) + `,` + strconv.FormatInt(domain.RemoteID(1, peerOnly.ID), 10) + `]}`
 	rec := b.owner(http.MethodPost, tagPath(cat.ID, "/merge"), body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
@@ -143,7 +143,7 @@ func TestDeleteAPersonAndARemoteOnlyTagOnBothNodes(t *testing.T) {
 		t.Fatalf("delete: status = %d: %s", rec.Code, rec.Body)
 	}
 	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
-		page, err := f.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{})
+		page, err := f.env.db.Credits().List(ctx, domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func TestDeleteAPersonAndARemoteOnlyTagOnBothNodes(t *testing.T) {
 		}
 	}
 	dog := tagOn(t, fa, "犬")
-	if rec := b.owner(http.MethodDelete, tagPath(domain.ToRemoteID(dog.ID), ""), ""); rec.Code != http.StatusNoContent {
+	if rec := b.owner(http.MethodDelete, tagPath(domain.RemoteID(1, dog.ID), ""), ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete the remote tag: status = %d: %s", rec.Code, rec.Body)
 	}
 	if _, found := tagNamed(t, fa, "犬"); found {
@@ -174,7 +174,7 @@ func TestMergeARemoteOnlyPersonCreatesTheDestinationOnThePeer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"sourceIds":[` + strconv.FormatInt(domain.ToRemoteID(suzuki.ID), 10) + `]}`
+	body := `{"sourceIds":[` + strconv.FormatInt(domain.RemoteID(1, suzuki.ID), 10) + `]}`
 	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(sato.ID, 10)+"/merge", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
@@ -182,7 +182,7 @@ func TestMergeARemoteOnlyPersonCreatesTheDestinationOnThePeer(t *testing.T) {
 	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != sato.ID || len(merged.NotFoundIds) != 0 {
 		t.Errorf("merge = %+v, want b's 佐藤 and no missing sources", merged)
 	}
-	page, err := fa.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{})
+	page, err := fa.env.db.Credits().List(ctx, domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func provisionalPersonOn(t *testing.T, f *guestFixture) int64 {
 		t.Fatal(err)
 	}
 	provisional := true
-	page, err := f.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
+	page, err := f.env.db.Credits().List(ctx, domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
 	if err != nil || len(page.Items) != 1 {
 		t.Fatalf("provisional people = %+v, %v; want one", page.Items, err)
 	}
@@ -248,7 +248,7 @@ func provisionalPersonOn(t *testing.T, f *guestFixture) int64 {
 
 func personNamesOn(t *testing.T, f *guestFixture) []string {
 	t.Helper()
-	page, err := f.env.db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{})
+	page, err := f.env.db.Credits().List(context.Background(), domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,15 +271,21 @@ func TestRenameAnEntryThePeerLacksToANameThePeerHoldsChangesNothing(t *testing.T
 			t.Helper()
 			return tagPath(tagOn(t, fb, "猫").ID, "")
 		}, `{"name":"犬"}`,
-			wantError{status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬"}},
+			wantError{
+				status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬", peer: "node-a",
+			}},
 		{"person", func(t *testing.T, fb *guestFixture) string {
 			t.Helper()
 			return "/api/people/" + strconv.FormatInt(fb.createWorkInfoPerson(t, "佐藤"), 10)
-		}, `{"name":"鈴木"}`, wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken}},
+		}, `{"name":"鈴木"}`, wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken, peer: "node-a",
+		}},
 		{"provisional person", func(t *testing.T, fb *guestFixture) string {
 			t.Helper()
 			return "/api/people/" + strconv.FormatInt(provisionalPersonOn(t, fb), 10)
-		}, `{"name":"鈴木"}`, wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken}},
+		}, `{"name":"鈴木"}`, wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken, peer: "node-a",
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -329,12 +335,12 @@ func TestMergeThePeersProvisionalPersonMergesItOnThePeer(t *testing.T) {
 	sato := fa.createWorkInfoPerson(t, "佐藤")
 	provisional := provisionalPersonOn(t, fa)
 
-	body := `{"sourceIds":[` + strconv.FormatInt(domain.ToRemoteID(provisional), 10) + `]}`
-	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(domain.ToRemoteID(sato), 10)+"/merge", body)
+	body := `{"sourceIds":[` + strconv.FormatInt(domain.RemoteID(1, provisional), 10) + `]}`
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(domain.RemoteID(1, sato), 10)+"/merge", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
 	}
-	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != domain.ToRemoteID(sato) || len(merged.NotFoundIds) != 0 {
+	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != domain.RemoteID(1, sato) || len(merged.NotFoundIds) != 0 {
 		t.Errorf("merge = %+v, want a's 佐藤 in the offset form and no missing sources", merged)
 	}
 	if got, want := personNamesOn(t, fa), []string{"佐藤"}; !slices.Equal(got, want) {

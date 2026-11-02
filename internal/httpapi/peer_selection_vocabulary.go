@@ -161,13 +161,23 @@ func otherName(v editVocabulary, kind domain.VocabularyKind, id int64, field str
 	return name, nil
 }
 
-// peerEditVocabulary turns this node's entities into the peer's by name. Failures of the peer are errPeerPart.
-func (s *server) peerEditVocabulary(r *http.Request) editVocabulary {
+// peerEditVocabulary turns this node's entities, and other links', into those of the link in slot by name; that
+// link's own entities keep their ids. Failures of a link are errPeerPart.
+func (s *server) peerEditVocabulary(r *http.Request, slot int64) editVocabulary {
+	return s.linkEditVocabulary(r, slot, s.linkEntryCache(r))
+}
+
+// linkEditVocabulary is peerEditVocabulary reading the links' names through entries.
+func (s *server) linkEditVocabulary(r *http.Request, slot int64, entries linkEntries) editVocabulary {
 	ctx := r.Context()
-	entries := s.peerEntryCache(r)
 	return editVocabulary{
-		own: func(id int64) (int64, bool) { return domain.FromRemoteID(id), domain.IsRemoteID(id) },
+		own: func(id int64) (int64, bool) {
+			return domain.FromRemoteID(id), domain.IsRemoteID(id) && domain.RemoteSlot(id) == slot
+		},
 		name: func(kind domain.VocabularyKind, id int64) (string, bool, error) {
+			if domain.IsRemoteID(id) {
+				return entries.name(domain.RemoteSlot(id), kind, id)
+			}
 			creditKind, credit := kind.CreditKind()
 			if !credit {
 				names, err := s.tags.TagNames(ctx, []int64{id})
@@ -181,14 +191,14 @@ func (s *server) peerEditVocabulary(r *http.Request) editVocabulary {
 			return found.Name, err == nil, err
 		},
 		id: func(kind domain.VocabularyKind, name string) (int64, error) {
-			byName, _, err := entries(kind)
+			byName, _, err := entries(slot, kind)
 			return byName[name], err
 		},
 		create: func(kind domain.CreditKind, name string) (int64, error) {
 			var created struct {
 				ID int64 `json:"id"`
 			}
-			err := s.peerCall(r, http.MethodPost, vocabularyListPaths[vocabularyKindOf(kind)], nil, gen.CreditInput{Name: name}, &created)
+			err := s.peerCall(r, slot, http.MethodPost, vocabularyListPaths[vocabularyKindOf(kind)], nil, gen.CreditInput{Name: name}, &created)
 			if err != nil {
 				return 0, fmt.Errorf("%w: %w", errPeerPart, err)
 			}
@@ -197,22 +207,19 @@ func (s *server) peerEditVocabulary(r *http.Request) editVocabulary {
 	}
 }
 
-// localEditVocabulary turns the peer's entities into this node's by name, creating a missing person or
+// localEditVocabulary turns the links' entities into this node's by name, creating a missing person or
 // organization here.
-func (s *server) localEditVocabulary(r *http.Request) editVocabulary {
+func (s *server) localEditVocabulary(r *http.Request, entries linkEntries) editVocabulary {
 	ctx := r.Context()
-	entries := s.peerEntryCache(r)
 	var join *domain.VocabularyJoin
 	return editVocabulary{
 		own: func(id int64) (int64, bool) { return id, !domain.IsRemoteID(id) },
 		name: func(kind domain.VocabularyKind, id int64) (string, bool, error) {
-			_, byID, err := entries(kind)
-			name, found := byID[domain.FromRemoteID(id)]
-			return name, found, err
+			return entries.name(domain.RemoteSlot(id), kind, id)
 		},
 		id: func(kind domain.VocabularyKind, name string) (int64, error) {
 			if join == nil {
-				loaded, err := s.vocabularyJoin(ctx)
+				loaded, err := s.vocabularyJoin(ctx, 0)
 				if err != nil {
 					return 0, err
 				}
@@ -231,16 +238,32 @@ func (s *server) localEditVocabulary(r *http.Request) editVocabulary {
 	}
 }
 
-// peerEntryCache reads each kind's whole list of the peer once, by name (the lowest id) and by id.
-func (s *server) peerEntryCache(r *http.Request) func(domain.VocabularyKind) (map[string]int64, map[int64]string, error) {
-	byName := map[domain.VocabularyKind]map[string]int64{}
-	byID := map[domain.VocabularyKind]map[int64]string{}
-	return func(kind domain.VocabularyKind) (map[string]int64, map[int64]string, error) {
-		if names, ok := byName[kind]; ok {
-			return names, byID[kind], nil
+// linkEntries gives each kind's entries of the link in slot by name (the lowest id) and by id; a slot without a link
+// has none.
+type linkEntries func(slot int64, kind domain.VocabularyKind) (map[string]int64, map[int64]string, error)
+
+// name is the name of the remote id of the link in slot.
+func (entries linkEntries) name(slot int64, kind domain.VocabularyKind, id int64) (string, bool, error) {
+	_, byID, err := entries(slot, kind)
+	name, found := byID[domain.FromRemoteID(id)]
+	return name, found, err
+}
+
+// linkEntryCache reads each kind's whole list of each link once per request.
+func (s *server) linkEntryCache(r *http.Request) linkEntries {
+	type key struct {
+		slot int64
+		kind domain.VocabularyKind
+	}
+	byName := map[key]map[string]int64{}
+	byID := map[key]map[int64]string{}
+	return func(slot int64, kind domain.VocabularyKind) (map[string]int64, map[int64]string, error) {
+		k := key{slot, kind}
+		if names, ok := byName[k]; ok {
+			return names, byID[k], nil
 		}
-		items, err := s.peerEntries(r, kind)
-		if err != nil {
+		items, err := s.peerEntries(r, slot, kind)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, fmt.Errorf("%w: %w", errPeerPart, err)
 		}
 		names, ids := map[string]int64{}, map[int64]string{}
@@ -250,7 +273,7 @@ func (s *server) peerEntryCache(r *http.Request) func(domain.VocabularyKind) (ma
 				names[item.Name] = item.ID
 			}
 		}
-		byName[kind], byID[kind] = names, ids
+		byName[k], byID[k] = names, ids
 		return names, ids, nil
 	}
 }

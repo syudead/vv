@@ -18,7 +18,7 @@ import (
 // People and organization routes share handlers and owner-only defaults; each operation completes through CreditStore without an app use case.
 
 type Credits interface {
-	List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
+	List(ctx context.Context, audience domain.Audience, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
 	Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
 	Lookup(ctx context.Context, kind domain.CreditKind, source, value string) (domain.Credit, error)
 	Create(ctx context.Context, kind domain.CreditKind, input domain.CreditInput) (domain.Credit, error)
@@ -160,7 +160,7 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 		}
 		return
 	}
-	page, err := s.credits.List(r.Context(), api.kind, query)
+	page, err := s.credits.List(r.Context(), audienceFrom(r.Context()), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
@@ -407,7 +407,7 @@ func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api credit
 	case propagate && slices.Contains(body.SourceIds, id):
 		s.writeCreditError(w, api, domain.ErrMergeSameCredit)
 		return
-	case propagate && onlyRemote(append([]int64{id}, body.SourceIds...)):
+	case propagate && onlyLink(domain.RemoteSlot(id), append([]int64{id}, body.SourceIds...)):
 		s.mergeOnPeer(w, r, api, id, body.SourceIds)
 		return
 	case propagate:

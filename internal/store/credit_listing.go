@@ -14,7 +14,8 @@ import (
 // Credit lists share tag ordering and cursors; detail reads use the same listed relation.
 
 // List includes zero-video entities and reads counts with rows in one snapshot; limit zero ignores cursors and returns all rows.
-func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error) {
+// Video counts follow the audience's folder scope, as the video list does.
+func (s *CreditStore) List(ctx context.Context, audience domain.Audience, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
 		return domain.CreditPage{}, err
@@ -50,7 +51,7 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	if (query.FavoriteOnly || query.Provisional != nil) && t.kind != domain.CreditPerson {
 		return domain.CreditPage{}, fmt.Errorf("the favorite and provisional filters apply to people only, not %s", kind)
 	}
-	listed, listedArgs := listedCreditsCTE(t, creditFilter{
+	listed, listedArgs := listedCreditsCTE(t, audience, creditFilter{
 		search: strings.TrimSpace(domain.FoldForMatch(query.Q)), favoriteOnly: query.FavoriteOnly,
 		provisional: query.Provisional,
 	})
@@ -85,7 +86,7 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 	if id <= 0 {
 		return domain.Credit{}, domain.ErrNotFound
 	}
-	listed, args := listedCreditsCTE(t, creditFilter{onlyID: id})
+	listed, args := listedCreditsCTE(t, domain.AudienceOwner, creditFilter{onlyID: id})
 	items, _, _, err := readListedCredits(ctx, tx, t,
 		listed+` select `+creditListedColumns+`, 1 from listed`, args)
 	if err != nil {
@@ -115,7 +116,7 @@ type creditFilter struct {
 const creditSortKey = `case when n.{id} is null then '1' else '0' || n.sort_key end`
 
 // Count visible representatives by user-data key so each bundle contributes one video.
-func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
+func listedCreditsCTE(t creditTables, audience domain.Audience, filter creditFilter) (string, []any) {
 	var countFilter, where string
 	var countArgs, whereArgs []any
 	var conditions []string
@@ -144,8 +145,8 @@ func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
 			select l.{id} as credit_id, count(distinct l.content_key) as video_count
 			  from videos v
 			  join {links} l on l.content_key = ` + userKeyExpr("v") + `
-			 where v.content_key <> '' and ` + libraryVideoCondition("v") + ` and ` +
-		shownVideoCondition("v", domain.AudienceOwner) + countFilter + `
+			 where v.content_key <> '' and ` + listedVideoCondition("v", audience) + ` and ` +
+		listedShownVideoCondition("v", audience) + countFilter + `
 			 group by l.{id}
 		), listed as (
 			select e.id as id, coalesce(n.name, '') as name, n.{id} is null as provisional,

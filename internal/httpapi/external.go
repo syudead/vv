@@ -64,7 +64,7 @@ func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	page, err := e.s.tags.ListTags(r.Context(), query)
+	page, err := e.s.tags.ListTags(r.Context(), audienceFrom(r.Context()), query)
 	if errors.Is(err, domain.ErrInvalidCursor) {
 		reason := extgen.InvalidCursor
 		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q, tentative, unused, kind and sort.")

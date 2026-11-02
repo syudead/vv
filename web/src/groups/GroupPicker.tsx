@@ -3,7 +3,7 @@ import { Folder } from "lucide-react";
 import { type LibraryGroup } from "../api/client";
 import { addToGroup, createGroup, listAllGroups } from "../api/groups";
 import { t } from "../i18n";
-import { idNodes } from "../lib/remoteId";
+import { idNodes, remoteSlot } from "../lib/remoteId";
 import NamedPicker, { type PickerChoice } from "../library/NamedPicker";
 import { usePeerName } from "../shell/PeerProvider";
 import { useGroupChanged } from "./groupChanges";
@@ -30,7 +30,9 @@ export default function GroupPicker({
 }) {
   const changed = useGroupChanged();
   const peer = idNodes([...videoIds, ...groupIds]) === "remote";
-  const peerName = t.list.card.remote.name(usePeerName());
+  const peerName = t.list.card.remote.name(
+    usePeerName(remoteSlot(videoIds[0] ?? groupIds[0] ?? 0)),
+  );
 
   // Use the current render's videoIds and groupIds for submission.
   async function submit(choice: PickerChoice<LibraryGroup>) {

@@ -9,20 +9,28 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// videoEditParts is an edit in each node's ids; nil skips a node's part, and peerErr is the peer's failure to
-// take its part, which leaves the local part to apply.
+// videoEditParts is an edit in each node's ids; a nil local skips this node's part.
 type videoEditParts struct {
-	local, peer *domain.VideoEdit
-	peerErr     error
+	local *domain.VideoEdit
+	links []linkEdit
+}
+
+// linkEdit is the edit of one link's part in that link's ids; a nil edit changes nothing there, and err is the
+// link's failure to take its part, which leaves the other parts to apply.
+type linkEdit struct {
+	selectionLink
+	edit *domain.VideoEdit
+	err  error
 }
 
 // splitVideoEdit translates edit for each node with targets. It answers w and reports false when the edit
-// names a missing entity, or a provisional person for the other node, or when the local part needs the peer's
-// names and the peer does not answer.
+// names a missing entity, or a provisional person for another node, or when the local part needs a link's
+// names and that link does not answer.
 func (s *server) splitVideoEdit(w http.ResponseWriter, r *http.Request, edit domain.VideoEdit, sel selection) (videoEditParts, bool) {
 	var parts videoEditParts
+	entries := s.linkEntryCache(r)
 	if len(sel.local) > 0 {
-		local, err := translateEdit(edit, s.localEditVocabulary(r))
+		local, err := translateEdit(edit, s.localEditVocabulary(r, entries))
 		if err != nil {
 			s.writeSplitEditError(w, err)
 			return parts, false
@@ -31,17 +39,19 @@ func (s *server) splitVideoEdit(w http.ResponseWriter, r *http.Request, edit dom
 			parts.local = &local
 		}
 	}
-	if sel.hasPeer() {
-		peer, err := translateEdit(edit, s.peerEditVocabulary(r))
+	for _, link := range sel.links {
+		part := linkEdit{selectionLink: link}
+		peer, err := translateEdit(edit, s.linkEditVocabulary(r, link.slot, entries))
 		switch {
 		case errors.Is(err, errPeerPart):
-			parts.peerErr = err
+			part.err = err
 		case err != nil:
 			s.writeSplitEditError(w, err)
 			return parts, false
 		case editChanges(peer):
-			parts.peer = &peer
+			part.edit = &peer
 		}
+		parts.links = append(parts.links, part)
 	}
 	return parts, true
 }
@@ -68,36 +78,40 @@ func editChanges(edit domain.VideoEdit) bool {
 	return len(edit.TagsAdd)+len(edit.TagsRemove)+len(edit.Credits)+len(edit.Dates) > 0 || edit.Public != nil
 }
 
-// editOnPeer applies the peer's part of a bulk edit and adds its result to out; the tags the peer resolved
-// stand in for the local ones when there was no local part.
-func (s *server) editOnPeer(r *http.Request, sel selection, parts videoEditParts, out *gen.VideoEditResponse) {
-	if parts.peerErr != nil || parts.peer == nil {
-		out.Remote = s.remoteSelectionResult(0, sel.peer, parts.peerErr)
-		return
-	}
-	var answer gen.VideoEditResponse
-	err := s.peerCall(r, http.MethodPost, "/api/video-edits", nil, videoEditRequestOf(*parts.peer, sel), &answer)
-	out.Remote = s.remoteSelectionResult(answer.Applied, sel.peer, err)
-	if err != nil {
-		return
-	}
-	out.Applied += answer.Applied
-	if parts.local != nil {
-		return
-	}
-	join, err := s.vocabularyJoin(r.Context())
-	if err != nil {
-		s.logger.Warn("could not join the other VVMDM's tags", slog.Any("error", err))
-		return
-	}
-	for _, ref := range answer.Tags {
-		out.Tags = append(out.Tags, peerTagRef(ref, join))
+// editOnPeer applies each link's part of a bulk edit and adds its result to out; the tags the first answering link
+// resolved stand in for the local ones when there was no local part.
+func (s *server) editOnPeer(r *http.Request, parts videoEditParts, out *gen.VideoEditResponse) {
+	tagsSet := parts.local != nil
+	for _, link := range parts.links {
+		if link.err != nil || link.edit == nil {
+			addRemoteResult(&out.Remote, s.remoteSelectionResult(link.slot, 0, link.peer, link.err))
+			continue
+		}
+		var answer gen.VideoEditResponse
+		err := s.peerCall(r, link.slot, http.MethodPost, "/api/video-edits", nil, videoEditRequestOf(*link.edit, link.selectionLink), &answer)
+		addRemoteResult(&out.Remote, s.remoteSelectionResult(link.slot, answer.Applied, link.peer, err))
+		if err != nil {
+			continue
+		}
+		out.Applied += answer.Applied
+		if tagsSet {
+			continue
+		}
+		tagsSet = true
+		join, err := s.vocabularyJoin(r.Context(), link.slot)
+		if err != nil {
+			s.logger.Warn("could not join a read VVMDM's tags", slog.Any("error", err))
+			continue
+		}
+		for _, ref := range answer.Tags {
+			out.Tags = append(out.Tags, peerTagRef(ref, join))
+		}
 	}
 }
 
-// videoEditRequestOf is edit as the request the peer takes for its part of sel.
-func videoEditRequestOf(edit domain.VideoEdit, sel selection) gen.VideoEditRequest {
-	ids, folders := sel.peerTargets()
+// videoEditRequestOf is edit as the request the link takes for its part.
+func videoEditRequestOf(edit domain.VideoEdit, link selectionLink) gen.VideoEditRequest {
+	ids, folders := link.peerTargets()
 	out := gen.VideoEditRequest{VideoIds: ids, SmartFolderIds: folders, Public: edit.Public}
 	if len(edit.TagsAdd)+len(edit.TagsRemove) > 0 {
 		tags := gen.VideoTagEdit{}

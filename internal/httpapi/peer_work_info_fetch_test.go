@@ -57,7 +57,7 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	pluginID := approvedFetchPlugin(t, fb.env.db)
-	remote := domain.ToRemoteID(fa.ids["a"])
+	remote := domain.RemoteID(1, fa.ids["a"])
 	path := fmt.Sprintf("/api/videos/%d/work-info-fetches", remote)
 
 	rec := b.owner(http.MethodPost, path, fmt.Sprintf(`{"pluginId":%d,"id":"W-1"}`, pluginID))
@@ -66,8 +66,8 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 	}
 	fetched := decode[gen.WorkInfoFetch](t, rec)
 	if match := fetched.People[0].Match; match.State != gen.WorkInfoMatchStateExisting || match.Id == nil ||
-		*match.Id != domain.ToRemoteID(performer.ID) {
-		t.Errorf("performer match = %+v, want the peer's person %d", match, domain.ToRemoteID(performer.ID))
+		*match.Id != domain.RemoteID(1, performer.ID) {
+		t.Errorf("performer match = %+v, want the peer's person %d", match, domain.RemoteID(1, performer.ID))
 	}
 	if rec := b.owner(http.MethodGet, fmt.Sprintf("%s/%s/covers/0", path, fetched.FetchId), ""); rec.Code != http.StatusOK {
 		t.Errorf("cover: status = %d: %s", rec.Code, rec.Body)
@@ -118,7 +118,7 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 // A fill over a selection with the peer's videos lists this node's targets, then the peer's in their remote ids.
 func TestWorkInfoFillTargetsListThePeersVideos(t *testing.T) {
 	fa, fb, b, _ := workInfoNodes(t, coverRuntime{})
-	remote := domain.ToRemoteID(fa.ids["a"])
+	remote := domain.RemoteID(1, fa.ids["a"])
 	rec := b.owner(http.MethodPost, "/api/work-info-fill-targets", fmt.Sprintf(`{"videoIds":[%d,%d]}`, remote, fb.ids["b"]))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("fill targets: status = %d: %s", rec.Code, rec.Body)

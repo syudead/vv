@@ -244,12 +244,8 @@ func (s *server) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Watch history storage is not configured.", nil)
 		return
 	}
-	// The screens show one history, so both nodes' entries go, the peer's first.
-	if s.readsPeer(r.Context()) {
-		if err := s.peerCall(r, http.MethodDelete, watchHistoryPath, nil, nil, nil); err != nil {
-			s.writePeerWriteFailure(w, err)
-			return
-		}
+	if !s.clearLinkWatchHistory(w, r) {
+		return
 	}
 	if err := s.watchHistory.ClearWatchHistory(r.Context()); err != nil {
 		s.internalError(w, "Could not clear the watch history.", err)
@@ -257,4 +253,25 @@ func (s *server) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// clearLinkWatchHistory clears every link's history in slot order, as the screens show one history of all nodes,
+// once every link is connected so a link that is down changes nothing. When a link fails, it answers w and reports
+// false; the links before it stay cleared.
+func (s *server) clearLinkWatchHistory(w http.ResponseWriter, r *http.Request) bool {
+	var slots []int64
+	for _, link := range s.linkReaches(r.Context()) {
+		if !link.Connected {
+			s.peerUnreachable(w)
+			return false
+		}
+		slots = append(slots, link.Slot)
+	}
+	for _, slot := range slots {
+		if err := s.peerCall(r, slot, http.MethodDelete, watchHistoryPath, nil, nil, nil); err != nil {
+			s.writePeerWriteFailure(w, err)
+			return false
+		}
+	}
+	return true
 }

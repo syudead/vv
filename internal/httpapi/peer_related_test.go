@@ -42,7 +42,7 @@ func relatedNodes(t *testing.T) (a, b *guestFixture, onA, onB *peerNode) {
 }
 
 func (f *guestFixture) remoteID(name string) int64 {
-	return domain.ToRemoteID(f.ids[name])
+	return domain.RemoteID(1, f.ids[name])
 }
 
 func relatedIDs(t *testing.T, rec *httptest.ResponseRecorder) (gen.RelatedVideos, []int64) {

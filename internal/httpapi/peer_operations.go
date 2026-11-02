@@ -69,6 +69,7 @@ var peerNonEntityOperations = []string{
 	"POST /api/peer/credit-matches",
 	"POST /api/peer/videos/{id}/fetched-work-info",
 	"POST /api/peer/people/{id}/fetched-person",
+	"GET /api/peer/media-folders",
 }
 
 // peerOperations are the only operations the peer credential reaches: the non-entity ones above and the entity

@@ -82,7 +82,12 @@ func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, 
 	return name, nil
 }
 
+// tagByID counts the tag's videos under this node's switches, as the owner's screens do.
 func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
+	return listedTagByID(ctx, q, domain.AudienceOwner, id)
+}
+
+func listedTagByID(ctx context.Context, q tagTx, audience domain.Audience, id int64) (domain.Tag, error) {
 	ref, err := tagRefByID(ctx, q, id)
 	if err != nil {
 		return domain.Tag{}, err
@@ -91,7 +96,7 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	if err := q.QueryRowContext(ctx, `select created_at from tags where id = ?`, id).Scan(&createdAt); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot read the tag (id=%d): %w", id, err)
 	}
-	count, err := videoCountByTagID(ctx, q, id)
+	count, err := videoCountByTagID(ctx, q, audience, id)
 	if err != nil {
 		return domain.Tag{}, err
 	}
@@ -106,8 +111,8 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 }
 
 // Count both manual and folder-derived attachments on current library videos.
-func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
-	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
+func videoCountByTagID(ctx context.Context, q rowQueryer, audience domain.Audience, id int64) (int, error) {
+	query := `select count(*) from (` + taggedVideosSQL(audience, ` and tag_id = ?`) + `)`
 	var count int
 	if err := q.QueryRowContext(ctx, query, id, id).Scan(&count); err != nil {
 		return 0, fmt.Errorf("cannot count tag uses (id=%d): %w", id, err)

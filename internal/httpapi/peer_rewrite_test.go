@@ -9,7 +9,7 @@ import (
 
 // The two-node tests cover the fields a scanned video carries; this covers the references they lack.
 func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
-	r := domain.ToRemoteID
+	r := func(id int64) int64 { return domain.RemoteID(1, id) }
 	video := gen.Video{
 		Id:          5,
 		Group:       &gen.VideoGroupRef{Id: 6, Folder: &gen.VideoFolder{RootId: 2}},
@@ -26,7 +26,7 @@ func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
 			Organizations: []gen.WorkOrganization{{Organization: gen.CreditRef{Id: 31, Name: "レーベル"}}},
 		},
 	}
-	join := domain.VocabularyJoin{Tags: map[string]int64{"海": 3}, People: map[string]int64{"山田": 4}}
+	join := domain.VocabularyJoin{Slot: 1, Tags: map[string]int64{"海": 3}, People: map[string]int64{"山田": 4}}
 
 	rewriteRemoteVideo(&video, join)
 
@@ -62,9 +62,9 @@ func TestRewriteRemoteFaceAppearancesJoinsPeopleAndKeepsCrops(t *testing.T) {
 		{AppearanceId: 8, Person: gen.CreditRef{Id: 21, Provisional: true}},
 	}}
 
-	rewriteRemoteFaceAppearances(&list, domain.VocabularyJoin{People: map[string]int64{"山田": 4}})
+	rewriteRemoteFaceAppearances(&list, domain.VocabularyJoin{Slot: 1, People: map[string]int64{"山田": 4}})
 
-	r := domain.ToRemoteID
+	r := func(id int64) int64 { return domain.RemoteID(1, id) }
 	for i, want := range []struct {
 		appearance, person int64
 		crop               bool

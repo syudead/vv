@@ -63,6 +63,7 @@ export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type SubtitleTrack = components["schemas"]["SubtitleTrack"];
 export type SubtitleTrackList = components["schemas"]["SubtitleTrackList"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
+export type EmptyReason = components["schemas"]["EmptyReason"];
 export type MediaFolderUsage = components["schemas"]["MediaFolderUsage"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
@@ -155,6 +156,8 @@ export interface RequestFailedDetails {
   links?: readonly string[];
   /** Base64 SHA-256 of a certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
   fingerprint?: string;
+  /** The name of the read VVMDM that is not connected or that refused. */
+  peer?: string;
 }
 
 /** Localize known error codes; use the server's English message only for unknown codes. Preserve status and code, or an empty code for non-JSON bodies. */
@@ -170,6 +173,7 @@ export class RequestFailed extends Error {
   readonly settingKeys: readonly string[] | undefined;
   readonly links: readonly string[] | undefined;
   readonly fingerprint: string | undefined;
+  readonly peer: string | undefined;
 
   constructor(
     status: number,
@@ -190,6 +194,7 @@ export class RequestFailed extends Error {
     this.settingKeys = details.settingKeys;
     this.links = details.links;
     this.fingerprint = details.fingerprint;
+    this.peer = details.peer;
   }
 }
 
@@ -293,6 +298,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       settingKeys: stringArray(body.settingKeys),
       links: stringArray(body.links),
       fingerprint: optionalString(body.fingerprint),
+      peer: optionalString(body.peer),
     },
   );
 }
@@ -1313,6 +1319,22 @@ export async function updateMediaFolder(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, version }),
+    signal,
+  });
+  clearListSnapshot();
+  return updated;
+}
+
+/** Switch a folder's videos into or out of this node's lists; allowed during a scan. */
+export async function setMediaFolderEnabled(
+  id: number,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<MediaFolder> {
+  const updated = await request<MediaFolder>(`/api/media-folders/${String(id)}/enabled`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
     signal,
   });
   clearListSnapshot();

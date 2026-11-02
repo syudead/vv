@@ -19,6 +19,8 @@ type LibraryPage struct {
 	ItemCursors []ItemCursor
 	// Roots shares the items' read snapshot and supplies response VideoFolder values.
 	Roots []MediaFolder
+	// EmptyReason follows VideoPage.EmptyReason.
+	EmptyReason EmptyReason
 }
 
 // LibraryGroup aggregates all visible descendants in playback order regardless of filters.

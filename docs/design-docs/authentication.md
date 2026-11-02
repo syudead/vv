@@ -65,12 +65,16 @@ the bearer token
 boundary hashes the secret and compares it with the stored hash of the peer
 grant, and classifies the request as the owner, or as a guest when
 `X-VV-Peer-Audience: guest` is present, so the read node applies the
-viewer's audience to its own reads.
+viewer's audience to its own reads. `X-VV-Peer-Excluded-Folders` carries the
+reader's switched-off folders as the request's folder scope; the read node's
+own switches never apply to a peer request
+([media-folder-switches.md](media-folder-switches.md#a-links-folders-keep-their-switches-on-the-reading-node)).
 
 | Case | Response |
 | --- | --- |
 | Unknown secret, or no grant: the reading VVMDM was never granted access, or its access was withdrawn | `401` with reason `peer_unknown` |
 | Valid secret on an operation the peer table does not allow | `403` with reason `peer_not_allowed` |
+| `X-VV-Peer-Audience` other than `guest`, or `X-VV-Peer-Excluded-Folders` that is not one comma-separated list of positive ids | `400 invalid_request` |
 | Peer credential on `/api/v1` or `/mcp` | `401`; it is not a bearer token |
 
 A peer request sets no cookie and skips the same-origin check. The secret is

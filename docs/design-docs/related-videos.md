@@ -93,10 +93,10 @@ page fetches that video, and a deleted video or one the guest may not see hides
 it. Going back drops the video from the trail, so ‹ again goes one further
 back. Group members keep the group's order for both arrows.
 
-## Both nodes of a pairing
+## Linked nodes
 
-On a paired node the related list holds the videos of both nodes, ranked by
-the same scorer; the code is `internal/app/catalog_peer_related.go` and
+On a node that reads other VVMDMs the related list holds the videos of this
+node and every connected link, ranked by the same scorer; the code is `internal/app/catalog_peer_related.go` and
 `internal/httpapi/peer_related.go`.
 
 Each node scores and pages its own videos against the clues of the open video,
@@ -107,10 +107,10 @@ A tag name the other node lacks still counts among the tags of the open video.
 
 | Case | Behaviour |
 | --- | --- |
-| Merge | The two score-ordered pages merge by score, date added and id; on a tie the peer's video, whose id carries the remote offset, comes first |
-| Cursor | One position per node, joined by `~`; once the peer's part is over, the cursor takes the single-node form |
-| Peer fails or is not connected | Its part is skipped for the rest of the list, and the list continues with this node's videos |
-| Open video on the peer | Its clues and its group come from the peer; the video itself, the versions of its bundle and its group members are excluded on the peer |
+| Merge | The score-ordered pages of this node and every connected link merge by score, date added and id; on a tie a link's video, whose id carries its remote offset, comes before a video with a smaller id |
+| Cursor | This node's position, then `~slot:position` for each link in slot order; once every link's part is over, the cursor takes the single-node form, and the two-side form without slots is refused |
+| Link fails or is not connected | Its part is skipped for the rest of the list, and the list continues with the other nodes' videos; a link connected mid-list does not join it |
+| Open video on a link | Its clues and its group come from that link; the video itself, the versions of its bundle and its group members are excluded on that link |
 | Next video | The head of the merged list, or the group neighbour as before |
 
 When the open video is remote, the screen's node reads its clues from the peer

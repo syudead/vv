@@ -1178,12 +1178,13 @@ describe("VideoCard のリモートの印", () => {
   afterEach(() => cleanup());
 
   const peer: PeerState = {
-    state: "connected",
-    link: { name: "studio-pc", address: "http://pc:8080", version: "1", pinned: false },
+    links: [
+      { slot: 1, state: "connected", name: "studio-pc", address: "http://pc:8080" },
+      { slot: 2, state: "connected", name: "den-pc", address: "http://den:8080" },
+    ],
   };
-  const remote = video({ id: remoteIdOffset + 1 });
 
-  function renderRemote(row: boolean) {
+  function renderRemote(row: boolean, remote = video({ id: remoteIdOffset + 1 })) {
     return render(
       <MemoryRouter>
         <TooltipProvider>
@@ -1237,5 +1238,11 @@ describe("VideoCard のリモートの印", () => {
     ).toBeNull();
     expect(screen.getByRole("button", { name: 'Add "動画 1" to a group' })).toBeDefined();
     expect(screen.getByText("On studio-pc").parentElement!.textContent).toContain("1:00");
+  });
+
+  it("スロット 2 の id には 2 台目のリンクの名前を出す", () => {
+    renderRemote(false, video({ id: 2 * remoteIdOffset + 1 }));
+    expect(screen.getByText("On den-pc")).toBeDefined();
+    expect(screen.queryByText("On studio-pc")).toBeNull();
   });
 });

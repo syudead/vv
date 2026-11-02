@@ -16,6 +16,20 @@ function renderPage() {
   return renderSettings("/settings/library");
 }
 
+/** The actions menu trigger of the row for path; a substring match also finds it under the pseudo-locale. */
+const actionsOf = (path: string) =>
+  screen.getByRole("button", { name: new RegExp(`Actions for ${path}`) });
+
+/** Opens the row's actions menu and picks the item named by action. */
+async function pickAction(
+  user: ReturnType<typeof userEvent.setup>,
+  path: string,
+  action: "Change folder" | "Force rescan folder" | "Remove folder",
+) {
+  await user.click(actionsOf(path));
+  await user.click(await screen.findByRole("menuitem", { name: new RegExp(action) }));
+}
+
 describe("SettingsPage: media folders", () => {
   const server = installSettingsServer();
 
@@ -154,7 +168,7 @@ describe("SettingsPage: media folders", () => {
     renderPage();
 
     expect(await screen.findByText("/very/long/日本語/動画保管場所")).toBeDefined();
-    await user.click(screen.getAllByRole("button", { name: "Change folder" })[0]!);
+    await pickAction(user, "/media/one", "Change folder");
     let dialog = await screen.findByRole("dialog", { name: "Change media folder" });
     await user.click(await within(dialog).findByRole("button", { name: "replacement" }));
     await user.click(
@@ -178,7 +192,7 @@ describe("SettingsPage: media folders", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    await user.click(screen.getAllByRole("button", { name: "Remove folder" })[1]!);
+    await pickAction(user, "/very/long/日本語/動画保管場所", "Remove folder");
     dialog = await screen.findByRole("alertdialog", { name: "Remove this folder?" });
     expect(
       within(dialog).getByText(/Videos that are also in another media folder stay/),
@@ -236,7 +250,7 @@ describe("SettingsPage: media folders", () => {
     renderPage();
 
     await screen.findByText("/media/two");
-    await user.click(screen.getAllByRole("button", { name: "Remove folder" })[0]!);
+    await pickAction(user, "/media/one", "Remove folder");
     await user.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
@@ -252,7 +266,7 @@ describe("SettingsPage: media folders", () => {
     await waitFor(() =>
       expect(
         (document.activeElement as HTMLElement | null)?.getAttribute("aria-label"),
-      ).toBe("Change folder"),
+      ).toBe("Actions for /media/two"),
     );
   });
 
@@ -276,7 +290,7 @@ describe("SettingsPage: media folders", () => {
     renderPage();
 
     await screen.findByText("/media/original");
-    await user.click(screen.getByRole("button", { name: "Remove folder" }));
+    await pickAction(user, "/media/original", "Remove folder");
     await user.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
@@ -320,7 +334,7 @@ describe("SettingsPage: media folders", () => {
     renderPage();
 
     await screen.findByText("/media/original");
-    await user.click(screen.getByRole("button", { name: "Remove folder" }));
+    await pickAction(user, "/media/original", "Remove folder");
     await user.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
@@ -360,7 +374,7 @@ describe("SettingsPage: media folders", () => {
     renderPage();
 
     await screen.findByText("/media/remaining");
-    await user.click(screen.getAllByRole("button", { name: "Remove folder" })[0]!);
+    await pickAction(user, "/media/stale", "Remove folder");
     await user.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
@@ -372,7 +386,7 @@ describe("SettingsPage: media folders", () => {
     await waitFor(() =>
       expect(
         (document.activeElement as HTMLElement | null)?.getAttribute("aria-label"),
-      ).toBe("Change folder"),
+      ).toBe("Actions for /media/remaining"),
     );
   });
   it("存在しないフォルダを開くと、API エラーの英語の説明を出す", async () => {
@@ -494,9 +508,7 @@ describe("SettingsPage: media folders", () => {
       const user = userEvent.setup();
       renderPage();
       await screen.findByText("/media/two");
-      await user.click(
-        screen.getAllByRole("button", { name: "Force rescan folder" })[1]!,
-      );
+      await pickAction(user, "/media/two", "Force rescan folder");
       const dialog = await screen.findByRole("alertdialog", {
         name: "Force rescan this folder?",
       });
@@ -553,7 +565,9 @@ describe("SettingsPage: media folders", () => {
       });
       renderPage();
 
-      const control = await screen.findByRole("button", { name: "Force rescan folder" });
+      const control = await screen.findByRole("button", {
+        name: "Actions for /media/one",
+      });
       await waitFor(() => expect(control.hasAttribute("disabled")).toBe(true));
       const reason = document.getElementById(control.getAttribute("aria-describedby")!);
       expect(reason?.textContent).toBe(
@@ -633,7 +647,7 @@ describe("SettingsPage: media folders", () => {
       await user.click(within(picker).getByRole("button", { name: /Cancel/ }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-      await user.click(screen.getAllByRole("button", { name: /Change folder/ })[1]!);
+      await pickAction(user, "/very/long/日本語/動画保管場所", "Change folder");
       const change = await screen.findByRole("dialog");
       const submit = await within(change).findByRole("button", {
         name: /Change to this folder/,
@@ -650,7 +664,7 @@ describe("SettingsPage: media folders", () => {
       );
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-      await user.click(screen.getAllByRole("button", { name: /Remove folder/ })[0]!);
+      await pickAction(user, "/srv/media", "Remove folder");
       await screen.findByRole("alertdialog");
       expectCatalogTextOnly(document.body, paths);
     });

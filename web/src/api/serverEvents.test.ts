@@ -7,6 +7,7 @@ import {
   FakeEventSource,
   installFakeEventSource,
 } from "./fakeEventSource";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import { subscribeServerEvents } from "./serverEvents";
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
@@ -109,6 +110,24 @@ describe("subscribeServerEvents の assistant", () => {
     currentEventSource().dispatch("assistant", {});
 
     expect(assistant).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+});
+
+describe("subscribeServerEvents の mediaFolders", () => {
+  beforeEach(() => installFakeEventSource());
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A tab that did not switch the folder would otherwise restore its saved list with the off folder's videos.
+  it("保存済みの一覧を捨ててから購読者へ渡す", () => {
+    saveListSnapshot({ query: "" }, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const mediaFolders = vi.fn();
+    const unsubscribe = subscribeServerEvents({ mediaFolders });
+
+    currentEventSource().dispatch("mediaFolders", {});
+
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    expect(mediaFolders).toHaveBeenCalledOnce();
     unsubscribe();
   });
 });

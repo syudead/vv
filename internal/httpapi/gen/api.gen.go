@@ -933,6 +933,21 @@ func (e CreditSort) Valid() bool {
 	}
 }
 
+// Defines values for EmptyReason.
+const (
+	AllFoldersOff EmptyReason = "all_folders_off"
+)
+
+// Valid indicates whether the value is a known member of the EmptyReason enum.
+func (e EmptyReason) Valid() bool {
+	switch e {
+	case AllFoldersOff:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EncoderAvailabilityState.
 const (
 	EncoderAvailabilityStateAvailable   EncoderAvailabilityState = "available"
@@ -1230,6 +1245,7 @@ const (
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
+	ErrorReasonPeerLimit                     ErrorReason = "peer_limit"
 	ErrorReasonPeerNotAllowed                ErrorReason = "peer_not_allowed"
 	ErrorReasonPeerUnknown                   ErrorReason = "peer_unknown"
 	ErrorReasonPeerUnreachable               ErrorReason = "peer_unreachable"
@@ -1415,6 +1431,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonOutputTooLarge:
 		return true
 	case ErrorReasonPasswordLength:
+		return true
+	case ErrorReasonPeerLimit:
 		return true
 	case ErrorReasonPeerNotAllowed:
 		return true
@@ -1935,42 +1953,78 @@ func (e PeerCreditMatchRequestKind) Valid() bool {
 	}
 }
 
-// Defines values for PeerStateReason.
+// Defines values for PeerLinkMediaFoldersReason.
 const (
-	PeerStateReasonCertificate PeerStateReason = "certificate"
-	PeerStateReasonNetwork     PeerStateReason = "network"
+	PeerLinkMediaFoldersReasonCertificate PeerLinkMediaFoldersReason = "certificate"
+	PeerLinkMediaFoldersReasonNetwork     PeerLinkMediaFoldersReason = "network"
 )
 
-// Valid indicates whether the value is a known member of the PeerStateReason enum.
-func (e PeerStateReason) Valid() bool {
+// Valid indicates whether the value is a known member of the PeerLinkMediaFoldersReason enum.
+func (e PeerLinkMediaFoldersReason) Valid() bool {
 	switch e {
-	case PeerStateReasonCertificate:
+	case PeerLinkMediaFoldersReasonCertificate:
 		return true
-	case PeerStateReasonNetwork:
+	case PeerLinkMediaFoldersReasonNetwork:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PeerStateState.
+// Defines values for PeerLinkMediaFoldersState.
 const (
-	PeerStateStateConnected   PeerStateState = "connected"
-	PeerStateStateRevoked     PeerStateState = "revoked"
-	PeerStateStateUnpaired    PeerStateState = "unpaired"
-	PeerStateStateUnreachable PeerStateState = "unreachable"
+	PeerLinkMediaFoldersStateConnected   PeerLinkMediaFoldersState = "connected"
+	PeerLinkMediaFoldersStateRevoked     PeerLinkMediaFoldersState = "revoked"
+	PeerLinkMediaFoldersStateUnreachable PeerLinkMediaFoldersState = "unreachable"
 )
 
-// Valid indicates whether the value is a known member of the PeerStateState enum.
-func (e PeerStateState) Valid() bool {
+// Valid indicates whether the value is a known member of the PeerLinkMediaFoldersState enum.
+func (e PeerLinkMediaFoldersState) Valid() bool {
 	switch e {
-	case PeerStateStateConnected:
+	case PeerLinkMediaFoldersStateConnected:
 		return true
-	case PeerStateStateRevoked:
+	case PeerLinkMediaFoldersStateRevoked:
 		return true
-	case PeerStateStateUnpaired:
+	case PeerLinkMediaFoldersStateUnreachable:
 		return true
-	case PeerStateStateUnreachable:
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerLinkStateReason.
+const (
+	PeerLinkStateReasonCertificate PeerLinkStateReason = "certificate"
+	PeerLinkStateReasonNetwork     PeerLinkStateReason = "network"
+)
+
+// Valid indicates whether the value is a known member of the PeerLinkStateReason enum.
+func (e PeerLinkStateReason) Valid() bool {
+	switch e {
+	case PeerLinkStateReasonCertificate:
+		return true
+	case PeerLinkStateReasonNetwork:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerLinkStateState.
+const (
+	PeerLinkStateStateConnected   PeerLinkStateState = "connected"
+	PeerLinkStateStateRevoked     PeerLinkStateState = "revoked"
+	PeerLinkStateStateUnreachable PeerLinkStateState = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the PeerLinkStateState enum.
+func (e PeerLinkStateState) Valid() bool {
+	switch e {
+	case PeerLinkStateStateConnected:
+		return true
+	case PeerLinkStateStateRevoked:
+		return true
+	case PeerLinkStateStateUnreachable:
 		return true
 	default:
 		return false
@@ -4627,7 +4681,7 @@ type CollectionsDeleteResponse struct {
 	// DissolvedGroups Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty.
 	DissolvedGroups int `json:"dissolvedGroups"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
@@ -4774,6 +4828,9 @@ type DisplayNameUpdate struct {
 	DisplayName string `json:"displayName"`
 }
 
+// EmptyReason Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+type EmptyReason string
+
 // EncoderAvailability defines model for EncoderAvailability.
 type EncoderAvailability struct {
 	// Encoder Effective live-transcode encoder
@@ -4815,6 +4872,9 @@ type Error struct {
 
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
+
+	// Peer The name of the read VVMDM that caused the error; for peer_unreachable and a read VVMDM's refusal of a rename, merge or deletion of a tag, person or organization.
+	Peer *string `json:"peer,omitempty"`
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
@@ -5402,7 +5462,9 @@ type LibraryItemKind string
 
 // LibraryPage defines model for LibraryPage.
 type LibraryPage struct {
-	Items []LibraryItem `json:"items"`
+	// EmptyReason Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+	EmptyReason *EmptyReason  `json:"emptyReason,omitempty"`
+	Items       []LibraryItem `json:"items"`
 
 	// MissingTagIds Missing IDs from tag; omitted when none.
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
@@ -5474,6 +5536,9 @@ type LoginRequest struct {
 // MediaFolder defines model for MediaFolder.
 type MediaFolder struct {
 	CreatedAt time.Time `json:"createdAt"`
+
+	// Enabled False while the folder is switched off: its videos are left out of this node's lists, searches and counts.
+	Enabled   bool      `json:"enabled"`
 	Id        int64     `json:"id"`
 	Path      string    `json:"path"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -6194,6 +6259,13 @@ type PeerFetchedWorkInfoApplied struct {
 	Skipped      []SkippedWorkInfoValue `json:"skipped"`
 }
 
+// PeerFolder One media folder of the read node as it answers its reader
+type PeerFolder struct {
+	Id      int64  `json:"id"`
+	Path    string `json:"path"`
+	Version int64  `json:"version"`
+}
+
 // PeerGrant The VVMDM that reads this one
 type PeerGrant struct {
 	// Name Its host name at pairing
@@ -6206,20 +6278,59 @@ type PeerHandshake struct {
 	Node PeerNode `json:"node"`
 }
 
-// PeerLink The VVMDM this node reads
-type PeerLink struct {
-	// Address Its base URL
-	Address string `json:"address"`
+// PeerLinkMediaFolders defines model for PeerLinkMediaFolders.
+type PeerLinkMediaFolders struct {
+	// Folders In the link's id order
+	Folders []PeerMediaFolder `json:"folders"`
 
-	// Name Its host name at pairing
-	Name string `json:"name"`
+	// Reason Present with unreachable
+	Reason *PeerLinkMediaFoldersReason `json:"reason,omitempty"`
 
-	// Pinned Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted
-	Pinned bool `json:"pinned"`
+	// State The link's connection, as getPeer answers it
+	State PeerLinkMediaFoldersState `json:"state"`
+}
 
-	// Version Its version last seen, shown for reference
+// PeerLinkMediaFoldersReason Present with unreachable
+type PeerLinkMediaFoldersReason string
+
+// PeerLinkMediaFoldersState The link's connection, as getPeer answers it
+type PeerLinkMediaFoldersState string
+
+// PeerLinkState One VVMDM this node reads, with its connection. Guests receive slot, state and reason only.
+type PeerLinkState struct {
+	// Address Its base URL. Owner only.
+	Address *string `json:"address,omitempty"`
+
+	// Fingerprint With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only.
+	Fingerprint *string `json:"fingerprint,omitempty"`
+
+	// Name Its host name at pairing. Owner only.
+	Name *string `json:"name,omitempty"`
+
+	// NodeId Its node id, the path parameter of the link's operations. Owner only.
+	NodeId *string `json:"nodeId,omitempty"`
+
+	// Pinned Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted. Owner only.
+	Pinned *bool `json:"pinned,omitempty"`
+
+	// Reason Present with unreachable
+	Reason *PeerLinkStateReason `json:"reason,omitempty"`
+
+	// Slot The link's slot, 1 or more and never reused; its entities' ids in the screen API are their own ids plus slot times 2^40
+	Slot int64 `json:"slot"`
+
+	// State The connection to that VVMDM
+	State PeerLinkStateState `json:"state"`
+
+	// Version Its version last seen, shown for reference. Owner only.
 	Version *string `json:"version,omitempty"`
 }
+
+// PeerLinkStateReason Present with unreachable
+type PeerLinkStateReason string
+
+// PeerLinkStateState The connection to that VVMDM
+type PeerLinkStateState string
 
 // PeerListItem One listed item's place for merging lists of two paired VVMDMs.
 type PeerListItem struct {
@@ -6228,6 +6339,21 @@ type PeerListItem struct {
 
 	// SortValue The item's value under the request's sort as the cursor encodes it; null sorts last.
 	SortValue *string `json:"sortValue"`
+}
+
+// PeerMediaFolder One media folder of a link in this node's snapshot, with the owner's switch on this node
+type PeerMediaFolder struct {
+	// Enabled False while switched off on this node: the link leaves its videos out of this node's reads
+	Enabled bool `json:"enabled"`
+
+	// Id The folder's id on the link
+	Id int64 `json:"id"`
+
+	// Path Its path on the link, as last listed
+	Path string `json:"path"`
+
+	// RefreshedAt When the snapshot was last reconciled with the link's listing
+	RefreshedAt time.Time `json:"refreshedAt"`
 }
 
 // PeerNode defines model for PeerNode.
@@ -6309,30 +6435,15 @@ type PeerSmartRule struct {
 	Sort *VideoSort `json:"sort,omitempty"`
 }
 
-// PeerState Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity.
+// PeerState Guests receive links in their guest shape only; owners also receive grant (while one reads this node) and node, this node's identity.
 type PeerState struct {
-	// Fingerprint With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only.
-	Fingerprint *string `json:"fingerprint,omitempty"`
-
 	// Grant The VVMDM that reads this one
 	Grant *PeerGrant `json:"grant,omitempty"`
 
-	// Link The VVMDM this node reads
-	Link *PeerLink `json:"link,omitempty"`
-	Node *PeerNode `json:"node,omitempty"`
-
-	// Reason Present with unreachable
-	Reason *PeerStateReason `json:"reason,omitempty"`
-
-	// State The connection to the VVMDM this node reads; unpaired without link
-	State PeerStateState `json:"state"`
+	// Links The VVMDMs this node reads, in slot order; empty while it reads none
+	Links []PeerLinkState `json:"links"`
+	Node  *PeerNode       `json:"node,omitempty"`
 }
-
-// PeerStateReason Present with unreachable
-type PeerStateReason string
-
-// PeerStateState The connection to the VVMDM this node reads; unpaired without link
-type PeerStateState string
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
 type PeerVocabularyRequest struct {
@@ -6832,12 +6943,12 @@ type RelatedVideos struct {
 	PrevId *int64 `json:"prevId,omitempty"`
 }
 
-// RemoteSelectionResult The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+// RemoteSelectionResult The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 type RemoteSelectionResult struct {
-	// Applied Videos or collections changed on the peer.
+	// Applied Videos or collections changed on the read VVMDMs, summed.
 	Applied int `json:"applied"`
 
-	// FailedVideoIds Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success.
+	// FailedVideoIds Requested ids of the read VVMDMs that were not changed, in their remote ids; for collections, the group and smart-folder ids. Empty on success.
 	FailedVideoIds []int64 `json:"failedVideoIds"`
 
 	// Reason Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
@@ -7035,6 +7146,11 @@ type SeekThumbnailSprite struct {
 
 	// Sheets Versioned sheet URLs in index order.
 	Sheets []string `json:"sheets"`
+}
+
+// SetMediaFolderEnabledRequest defines model for SetMediaFolderEnabledRequest.
+type SetMediaFolderEnabledRequest struct {
+	Enabled bool `json:"enabled"`
 }
 
 // SetWorkInfoPluginSettingsRequest defines model for SetWorkInfoPluginSettingsRequest.
@@ -7935,6 +8051,9 @@ type Video struct {
 	// Folder Containing folder for the displayed location in video lists, representative location in GET /api/videos/{id}, problem location in ScanIssue, or active file in ScanActivity; omitted outside registered folders. For automatic LibraryGroup.folder and Video.group.folder, identifies the group folder itself.
 	Folder *VideoFolder `json:"folder,omitempty"`
 
+	// FolderOff True on a read by id (the video, a playlist's items) while every media folder holding the video is switched off; omitted otherwise. Lists leave such a video out.
+	FolderOff *bool `json:"folderOff,omitempty"`
+
 	// Group Group context from the group query; see docs/design-docs/catalog-organization.md. Included only in GET /api/videos/{id} when the video belongs to the group, never in list items. Position/count follow depth-first playback order with first-occurrence deduplication, counting only public videos for guests.
 	Group *VideoGroupRef `json:"group,omitempty"`
 
@@ -8085,7 +8204,7 @@ type VideoCodeEditResponse struct {
 	// Applied Number of user-data keys whose code changed; a key that already had the item's code is not counted.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
@@ -8200,7 +8319,7 @@ type VideoEditResponse struct {
 	// Applied Number of resolved videos currently in the library that any part changed.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 
 	// Tags The tags of tags.add as resolved, in request order without repeats.
@@ -8293,7 +8412,9 @@ type VideoLocation struct {
 
 // VideoPage defines model for VideoPage.
 type VideoPage struct {
-	Items []Video `json:"items"`
+	// EmptyReason Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+	EmptyReason *EmptyReason `json:"emptyReason,omitempty"`
+	Items       []Video      `json:"items"`
 
 	// MissingTagIds Missing IDs from tag; omitted when none.
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
@@ -8377,7 +8498,7 @@ type VideoTagsResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 
 	// Tag One assigned tag; name is always the original name.
@@ -8447,7 +8568,7 @@ type VideoVisibilityResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
@@ -9004,6 +9125,12 @@ type OrganizationId = int64
 
 // OrganizationNameFilter defines model for OrganizationNameFilter.
 type OrganizationNameFilter = string
+
+// PeerLinkFolderId defines model for PeerLinkFolderId.
+type PeerLinkFolderId = int64
+
+// PeerLinkNodeId defines model for PeerLinkNodeId.
+type PeerLinkNodeId = string
 
 // PersonFilter defines model for PersonFilter.
 type PersonFilter = int64
@@ -9808,6 +9935,9 @@ type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
+// SetMediaFolderEnabledJSONRequestBody defines body for SetMediaFolderEnabled for application/json ContentType.
+type SetMediaFolderEnabledJSONRequestBody = SetMediaFolderEnabledRequest
+
 // UpdateOnboardingJSONRequestBody defines body for UpdateOnboarding for application/json ContentType.
 type UpdateOnboardingJSONRequestBody = Onboarding
 
@@ -9841,14 +9971,17 @@ type OrganizeReorderJSONRequestBody = OrganizeReorder
 // OrganizeUndoJSONRequestBody defines body for OrganizeUndo for application/json ContentType.
 type OrganizeUndoJSONRequestBody = OrganizeUndo
 
+// MatchPeerCreditsJSONRequestBody defines body for MatchPeerCredits for application/json ContentType.
+type MatchPeerCreditsJSONRequestBody = PeerCreditMatchRequest
+
 // UpdatePeerAddressJSONRequestBody defines body for UpdatePeerAddress for application/json ContentType.
 type UpdatePeerAddressJSONRequestBody = UpdatePeerAddressRequest
 
 // ConfirmPeerCertificateJSONRequestBody defines body for ConfirmPeerCertificate for application/json ContentType.
 type ConfirmPeerCertificateJSONRequestBody = PeerCertificateRequest
 
-// MatchPeerCreditsJSONRequestBody defines body for MatchPeerCredits for application/json ContentType.
-type MatchPeerCreditsJSONRequestBody = PeerCreditMatchRequest
+// SetPeerLinkMediaFolderEnabledJSONRequestBody defines body for SetPeerLinkMediaFolderEnabled for application/json ContentType.
+type SetPeerLinkMediaFolderEnabledJSONRequestBody = SetMediaFolderEnabledRequest
 
 // PairPeerJSONRequestBody defines body for PairPeer for application/json ContentType.
 type PairPeerJSONRequestBody = PairPeerRequest
@@ -10227,6 +10360,9 @@ type ServerInterface interface {
 	// UpdateMediaFolder Change a media folder path
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// SetMediaFolderEnabled Switch a media folder on or off
+	// (PUT /api/media-folders/{id}/enabled)
+	SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request, id MediaFolderId)
 	// GetMediaFolderUsage Return a media folder's video size and disk space
 	// (GET /api/media-folders/{id}/usage)
 	GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id MediaFolderId)
@@ -10281,12 +10417,6 @@ type ServerInterface interface {
 	// GetPeer Return the pairing state
 	// (GET /api/peer)
 	GetPeer(w http.ResponseWriter, r *http.Request)
-	// UpdatePeerAddress Change the read node's address
-	// (PUT /api/peer/address)
-	UpdatePeerAddress(w http.ResponseWriter, r *http.Request)
-	// ConfirmPeerCertificate Trust the read node's changed certificate
-	// (POST /api/peer/certificate)
-	ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request)
 	// IssuePairingCode Issue this node's pairing code
 	// (POST /api/peer/code)
 	IssuePairingCode(w http.ResponseWriter, r *http.Request)
@@ -10299,9 +10429,24 @@ type ServerInterface interface {
 	// PeerHandshake Return this node's identity to the reading node
 	// (GET /api/peer/handshake)
 	PeerHandshake(w http.ResponseWriter, r *http.Request)
-	// UnpairPeer Stop reading the other VVMDM
-	// (DELETE /api/peer/link)
-	UnpairPeer(w http.ResponseWriter, r *http.Request)
+	// UnpairPeer Stop reading one VVMDM
+	// (DELETE /api/peer/links/{nodeId})
+	UnpairPeer(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId)
+	// UpdatePeerAddress Change a read node's address
+	// (PUT /api/peer/links/{nodeId}/address)
+	UpdatePeerAddress(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId)
+	// ConfirmPeerCertificate Trust a read node's changed certificate
+	// (POST /api/peer/links/{nodeId}/certificate)
+	ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId)
+	// ListPeerLinkMediaFolders List a read node's media folders with this node's switches
+	// (GET /api/peer/links/{nodeId}/media-folders)
+	ListPeerLinkMediaFolders(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId)
+	// SetPeerLinkMediaFolderEnabled Switch a read node's media folder on or off on this node
+	// (PUT /api/peer/links/{nodeId}/media-folders/{folderId}/enabled)
+	SetPeerLinkMediaFolderEnabled(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId, folderId PeerLinkFolderId)
+	// ListPeerMediaFolders List this node's media folders to the reading node
+	// (GET /api/peer/media-folders)
+	ListPeerMediaFolders(w http.ResponseWriter, r *http.Request)
 	// PairPeer Read the node whose code the owner typed
 	// (POST /api/peer/pair)
 	PairPeer(w http.ResponseWriter, r *http.Request)
@@ -12822,6 +12967,32 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// SetMediaFolderEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id MediaFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMediaFolderEnabled(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMediaFolderUsage operation middleware
 func (siw *ServerInterfaceWrapper) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request) {
 
@@ -13218,34 +13389,6 @@ func (siw *ServerInterfaceWrapper) GetPeer(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
-// UpdatePeerAddress operation middleware
-func (siw *ServerInterfaceWrapper) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdatePeerAddress(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ConfirmPeerCertificate operation middleware
-func (siw *ServerInterfaceWrapper) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ConfirmPeerCertificate(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // IssuePairingCode operation middleware
 func (siw *ServerInterfaceWrapper) IssuePairingCode(w http.ResponseWriter, r *http.Request) {
 
@@ -13305,8 +13448,147 @@ func (siw *ServerInterfaceWrapper) PeerHandshake(w http.ResponseWriter, r *http.
 // UnpairPeer operation middleware
 func (siw *ServerInterfaceWrapper) UnpairPeer(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UnpairPeer(w, r)
+		siw.Handler.UnpairPeer(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePeerAddress operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePeerAddress(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmPeerCertificate operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmPeerCertificate(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPeerLinkMediaFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListPeerLinkMediaFolders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeerLinkMediaFolders(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPeerLinkMediaFolderEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetPeerLinkMediaFolderEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "folderId" -------------
+	var folderId PeerLinkFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "folderId", r.PathValue("folderId"), &folderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "folderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPeerLinkMediaFolderEnabled(w, r, nodeId, folderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPeerMediaFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListPeerMediaFolders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeerMediaFolders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18407,6 +18689,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}/enabled", wrapper.SetMediaFolderEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders/{id}/usage", wrapper.GetMediaFolderUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
@@ -18460,12 +18743,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer", wrapper.GetPeer)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/link", wrapper.UnpairPeer)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/links/{nodeId}", wrapper.UnpairPeer)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/grant", wrapper.RevokePeerGrant)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/code", wrapper.IssuePairingCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pair", wrapper.PairPeer)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/address", wrapper.UpdatePeerAddress)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/certificate", wrapper.ConfirmPeerCertificate)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/links/{nodeId}/address", wrapper.UpdatePeerAddress)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/links/{nodeId}/certificate", wrapper.ConfirmPeerCertificate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/links/{nodeId}/media-folders", wrapper.ListPeerLinkMediaFolders)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/links/{nodeId}/media-folders/{folderId}/enabled", wrapper.SetPeerLinkMediaFolderEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/media-folders", wrapper.ListPeerMediaFolders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pairings", wrapper.AcceptPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/handshake", wrapper.PeerHandshake)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/pairings/{nodeId}", wrapper.ForgetPeer)

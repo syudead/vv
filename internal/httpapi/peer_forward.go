@@ -14,12 +14,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// PeerLink forwards a screen request for one of the peer's entities; internal/peer implements it.
+// PeerLink forwards a screen request for one of a link's entities; internal/peer implements it.
 type PeerLink interface {
-	// Forward sends req, whose URL holds the peer's path and query only, as the guest when guest is set; media
-	// has no response timeout. A peer that is not connected or gives no response answers
-	// domain.ErrPeerUnreachable; any response, whatever its status, is the caller's to close.
-	Forward(req *http.Request, guest, media bool) (*http.Response, error)
+	// Forward sends req, whose URL holds the peer's path and query only, to the node of the link in slot, as the
+	// guest when guest is set; media has no response timeout. A slot without a link answers domain.ErrNotFound;
+	// a node that is not connected or gives no response answers domain.ErrPeerUnreachable; any response,
+	// whatever its status, is the caller's to close.
+	Forward(req *http.Request, slot int64, guest, media bool) (*http.Response, error)
 }
 
 const (
@@ -41,16 +42,19 @@ var forwardedResponseHeaders = []string{
 // the peer.
 var remoteContextParams = []string{"group", "smartFolder"}
 
-// forward sends out, made from r, to the peer as r's viewer and answers with the peer's answer, rewritten by op
-// when it succeeded.
-func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Request, op remoteOperation) {
+// forward sends out, made from r, to the node of the link in slot as r's viewer and answers with that node's
+// answer, rewritten by op when it succeeded. A slot without a link answers 404 not_found.
+func (s *server) forward(w http.ResponseWriter, r *http.Request, slot int64, out *http.Request, op remoteOperation) {
 	if s.peerLink == nil {
 		s.peerUnreachable(w)
 		return
 	}
-	guest := audienceFrom(r.Context()) != domain.AudienceOwner
-	resp, err := s.peerLink.Forward(out, guest, op.media)
+	guest := !audienceFrom(r.Context()).IsOwner()
+	resp, err := s.peerLink.Forward(out, slot, guest, op.media)
 	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFound(w, "This VVMDM does not read the VVMDM that this id names.")
+		return
 	case errors.Is(err, domain.ErrPeerUnreachable):
 		s.peerUnreachable(w)
 		return
@@ -65,13 +69,13 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 	case r.Method == http.MethodHead:
 		writeRewrittenHead(w, resp)
 	default:
-		s.writeRewritten(w, r, resp, op.rewrite)
+		s.writeRewritten(w, r, slot, resp, op.rewrite)
 	}
 }
 
-// remoteRequest is r for the peer at path with query, keeping only the remote context ids.
-func remoteRequest(r *http.Request, path string, query url.Values) (*http.Request, error) {
-	keepRemoteContext(query, query)
+// remoteRequest is r for the node of the link in slot at path with query, keeping only that link's context ids.
+func remoteRequest(r *http.Request, slot int64, path string, query url.Values) (*http.Request, error) {
+	keepRemoteContext(slot, query, query)
 	target, err := url.Parse(path)
 	if err != nil {
 		return nil, err
@@ -94,15 +98,15 @@ func remoteRequest(r *http.Request, path string, query url.Values) (*http.Reques
 	return out, nil
 }
 
-// keepRemoteContext sets in out the context ids of query that name the peer's group or smart folder, as the
-// peer's ids, and deletes the others from out.
-func keepRemoteContext(query, out url.Values) {
+// keepRemoteContext sets in out the context ids of query that name a group or smart folder of the link in slot,
+// as that link's ids, and deletes the others from out.
+func keepRemoteContext(slot int64, query, out url.Values) {
 	for _, name := range remoteContextParams {
 		if !query.Has(name) {
 			continue
 		}
 		id, err := strconv.ParseInt(query.Get(name), 10, 64)
-		if err != nil || !domain.IsRemoteID(id) {
+		if err != nil || !domain.IsRemoteID(id) || domain.RemoteSlot(id) != slot {
 			out.Del(name)
 			continue
 		}
@@ -168,7 +172,7 @@ func writeRewrittenHead(w http.ResponseWriter, resp *http.Response) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *http.Response, rewrite remoteRewrite) {
+func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, slot int64, resp *http.Response, rewrite remoteRewrite) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
 		s.peerUnreachable(w)
@@ -178,7 +182,7 @@ func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *ht
 		s.internalError(w, "The answer of the other VVMDM is too large.", nil)
 		return
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
 		return

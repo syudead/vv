@@ -30,7 +30,7 @@ func (p *peerPeople) ReplacePersonImage(ctx context.Context, id int64, data []by
 // then the peer writes the values without the image and takes the image as the face.
 func TestPeerPersonPluginFetchRunsHereAndWritesOnThePeer(t *testing.T) {
 	e := newPersonFetchEnv()
-	remote := domain.ToRemoteID(fetchPerson)
+	remote := domain.RemoteID(1, fetchPerson)
 	peer := &peerPeople{fakePluginPeople: &fakePluginPeople{people: map[int64]domain.Credit{remote: e.people.people[fetchPerson]}}}
 	e.runtime.result = domain.WorkInfoRunResult{
 		Person:             domain.FetchedPluginPerson{Name: "Hanako", Profile: domain.PersonProfile{Birthplace: "Tokyo"}},

@@ -44,7 +44,6 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
-import { isRemoteId } from "../lib/remoteId";
 import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { useCollectionCriteria } from "../videoList/useCollectionCriteria";
 import { NoMatches } from "../videoList/states";
@@ -587,7 +586,7 @@ function GroupHeader({
           </span>
         }
         count={
-          <RemoteCountLine remote={isRemoteId(id)}>
+          <RemoteCountLine itemId={id}>
             {t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
           </RemoteCountLine>
         }

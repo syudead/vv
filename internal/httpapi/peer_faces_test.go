@@ -16,7 +16,7 @@ import (
 
 // remotePersonPath is the screens' path of the peer's person peerID.
 func remotePersonPath(peerID int64, suffix string) string {
-	return "/api/people/" + strconv.FormatInt(domain.ToRemoteID(peerID), 10) + suffix
+	return "/api/people/" + strconv.FormatInt(domain.RemoteID(1, peerID), 10) + suffix
 }
 
 // faceNodes pairs b with a, whose people store is wrapped by peer, so b reaches a's people by remote id.
@@ -62,7 +62,7 @@ func TestRemotePersonFaceCandidatesJoinPeopleByName(t *testing.T) {
 		t.Fatalf("face-candidates: status = %d: %s", rec.Code, rec.Body)
 	}
 	list := decode[gen.FaceCandidateList](t, rec)
-	if got := []int64{list.Items[0].Person.Id, list.Items[1].Person.Id}; !slices.Equal(got, []int64{mioB, domain.ToRemoteID(31)}) {
+	if got := []int64{list.Items[0].Person.Id, list.Items[1].Person.Id}; !slices.Equal(got, []int64{mioB, domain.RemoteID(1, 31)}) {
 		t.Errorf("candidate ids = %v, want the local Mio %d and the peer's provisional person in the offset form", got, mioB)
 	}
 
@@ -90,7 +90,7 @@ func TestRemotePersonFacesMoveToThePeersPersonOfTheTargetsName(t *testing.T) {
 	// b creates Ken first, so the Mio made on the peer cannot share the local id.
 	createPerson(t, b, "Ken")
 	mioB := createPerson(t, b, "Mio")
-	move := `{"appearanceIds":[` + strconv.FormatInt(domain.ToRemoteID(7), 10) + `],"targetId":` + strconv.FormatInt(mioB, 10) + `}`
+	move := `{"appearanceIds":[` + strconv.FormatInt(domain.RemoteID(1, 7), 10) + `],"targetId":` + strconv.FormatInt(mioB, 10) + `}`
 
 	var targets []int64
 	for range 2 {
@@ -131,8 +131,8 @@ func TestLocalPersonFacesMoveOfThePeersAppearancesGoesToThePeer(t *testing.T) {
 	createPerson(t, b, "Ken")
 	mioA, mioB := createPerson(t, a, "Mio"), createPerson(t, b, "Mio")
 	credits.person = domain.Credit{Kind: domain.CreditPerson, ID: 5, Name: "Ren"}
-	undo := `{"appearanceIds":[` + strconv.FormatInt(domain.ToRemoteID(7), 10) + `],"targetId":` +
-		strconv.FormatInt(domain.ToRemoteID(5), 10) + `,"restoreCredits":[{"workKey":"w","position":1}]}`
+	undo := `{"appearanceIds":[` + strconv.FormatInt(domain.RemoteID(1, 7), 10) + `],"targetId":` +
+		strconv.FormatInt(domain.RemoteID(1, 5), 10) + `,"restoreCredits":[{"workKey":"w","position":1}]}`
 
 	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", undo)
 	if rec.Code != http.StatusOK {
@@ -142,12 +142,12 @@ func TestLocalPersonFacesMoveOfThePeersAppearancesGoesToThePeer(t *testing.T) {
 	if !reflect.DeepEqual(credits.calls, want) {
 		t.Errorf("the peer's move = %+v, want %+v", credits.calls, want)
 	}
-	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != domain.ToRemoteID(5) {
+	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != domain.RemoteID(1, 5) {
 		t.Errorf("moved person = %d, want the peer's Ren in the offset form", got.Person.Id)
 	}
 
 	credits.calls = nil
-	mixed := `{"appearanceIds":[3,` + strconv.FormatInt(domain.ToRemoteID(7), 10) + `],"targetId":` + strconv.FormatInt(domain.ToRemoteID(5), 10) + `}`
+	mixed := `{"appearanceIds":[3,` + strconv.FormatInt(domain.RemoteID(1, 7), 10) + `],"targetId":` + strconv.FormatInt(domain.RemoteID(1, 5), 10) + `}`
 	rec = b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", mixed)
 	assertErrorBody(t, "this node's appearance", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonMixedNodes})
@@ -156,11 +156,49 @@ func TestLocalPersonFacesMoveOfThePeersAppearancesGoesToThePeer(t *testing.T) {
 	}
 }
 
+// The undo of a move to a local person names that person, not a link, so it reaches the link its appearances
+// belong to: the second link's faces go back on the second link, not the first.
+func TestLocalPersonFacesMoveReachesTheLinkOfTheAppearances(t *testing.T) {
+	credits := &faceAppearanceCredits{}
+	_, b := faceNodes(t, func(people Credits) Credits { return people })
+	_, c, _ := mergedNode(t, "node-c", func(_ *store.DB, opts *Options) {
+		credits.Credits = opts.Credits
+		opts.Credits = credits
+	})
+	pairNodes(t, c, b)
+	// Only the second link holds Mio, so a move sent to the first link finds no such person.
+	mioB, mioC := createPerson(t, b, "Mio"), createPerson(t, c, "Mio")
+	credits.person = domain.Credit{Kind: domain.CreditPerson, ID: 5, Name: "Ren"}
+	undo := `{"appearanceIds":[` + strconv.FormatInt(domain.RemoteID(2, 7), 10) + `],"targetId":` +
+		strconv.FormatInt(domain.RemoteID(2, 5), 10) + `}`
+
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", undo)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("move: status = %d: %s", rec.Code, rec.Body)
+	}
+	if want := []appearanceCall{{personID: mioC, appearances: []int64{7}, target: 5}}; !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("the second link's move = %+v, want %+v", credits.calls, want)
+	}
+	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != domain.RemoteID(2, 5) {
+		t.Errorf("moved person = %d, want the second link's Ren %d", got.Person.Id, domain.RemoteID(2, 5))
+	}
+
+	credits.calls = nil
+	mixed := `{"appearanceIds":[` + strconv.FormatInt(domain.RemoteID(1, 3), 10) + `,` + strconv.FormatInt(domain.RemoteID(2, 7), 10) +
+		`],"targetId":` + strconv.FormatInt(domain.RemoteID(2, 5), 10) + `}`
+	rec = b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", mixed)
+	assertErrorBody(t, "appearances of two links", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonMixedNodes})
+	if len(credits.calls) != 0 {
+		t.Errorf("the second link's calls = %+v, want none for a move across links", credits.calls)
+	}
+}
+
 func TestRemoteFaceAppearanceCropStreamsThePeersJPEG(t *testing.T) {
 	credits := &faceAppearanceCredits{crop: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	_, b := faceNodes(t, func(people Credits) Credits { credits.Credits = people; return credits })
 
-	rec := b.owner(http.MethodGet, "/api/face-appearances/"+strconv.FormatInt(domain.ToRemoteID(7), 10)+"/crop", "")
+	rec := b.owner(http.MethodGet, "/api/face-appearances/"+strconv.FormatInt(domain.RemoteID(1, 7), 10)+"/crop", "")
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/jpeg" || !slices.Equal(rec.Body.Bytes(), credits.crop) {
 		t.Errorf("crop: status = %d, Content-Type = %q, body = %x; want the peer's JPEG", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
 	}
@@ -172,17 +210,19 @@ func TestRemoteFaceAppearanceCropStreamsThePeersJPEG(t *testing.T) {
 // A similar-people read of the peer's person compares the peer's appearances only; with none of them it is empty
 // rather than a comparison of every appearance.
 func TestPeerPersonQueryKeepsThePeersAppearances(t *testing.T) {
-	r := strconv.FormatInt(domain.ToRemoteID(7), 10)
+	r := strconv.FormatInt(domain.RemoteID(1, 7), 10)
 	for _, tc := range []struct {
 		in, want []string
 		empty    bool
 	}{
 		{in: []string{r, "3"}, want: []string{"7"}},
 		{in: []string{"3"}, want: nil, empty: true},
+		// Another link's appearance is not the person's on this link either.
+		{in: []string{strconv.FormatInt(domain.RemoteID(2, 7), 10)}, want: nil, empty: true},
 	} {
 		query := url.Values{"appearanceId": tc.in}
 		var op remoteOperation
-		peerPersonQuery(similarPeoplePattern, query, &op)
+		peerPersonQuery(1, similarPeoplePattern, query, &op)
 		if !slices.Equal(query["appearanceId"], tc.want) || (op.rewrite != nil) != tc.empty {
 			t.Errorf("%v: appearanceId = %v, rewrite set %t; want %v and %t", tc.in, query["appearanceId"], op.rewrite != nil, tc.want, tc.empty)
 		}

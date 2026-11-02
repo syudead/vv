@@ -41,7 +41,7 @@ func videoTagsOf(t *testing.T, db *DB, key string) []domain.VideoTag {
 
 func tagVideoCount(t *testing.T, db *DB, id int64) int {
 	t.Helper()
-	tagsPage, err := db.Tags().ListTags(context.Background(), domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(context.Background(), owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 		t.Errorf("videoCount = %d, want 1", got)
 	}
 
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

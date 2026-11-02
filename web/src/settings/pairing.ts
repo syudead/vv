@@ -18,6 +18,9 @@ export function formatCountdown(remainingMs: number): string {
   return `${String(Math.floor(total / 60))}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** The links one VVMDM reads at most; the server refuses another with peer_limit. */
+export const PEER_LINK_LIMIT = 8;
+
 export type PairField = "address" | "code";
 
 export type PairFailure =
@@ -38,6 +41,8 @@ export function pairFailure(failure: unknown): PairFailure {
       return { kind: "field", field: "code", text: text.form.invalidCode };
     case "already_paired":
       return { kind: "alert", text: text.form.alreadyPaired };
+    case "peer_limit":
+      return { kind: "alert", text: text.form.peerLimit };
     case "peer_unreachable":
       // The server's message says what failed; the Words table shows it as given.
       if (failure.message !== "")

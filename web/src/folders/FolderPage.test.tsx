@@ -405,7 +405,7 @@ describe("FolderPage", () => {
     );
     renderFolders("/folders");
     expect(
-      await screen.findByRole("heading", { name: "No media folders yet" }),
+      await screen.findByRole("heading", { name: "No folders to show" }),
     ).toBeDefined();
     expect(screen.getByRole("link", { name: "Open Settings" }).getAttribute("href")).toBe(
       "/settings/library",
@@ -2114,7 +2114,7 @@ describe("FolderPage の英語の画面", () => {
     route = (url, method) =>
       url === "/api/folders" ? Promise.resolve(json({ folders: [] })) : base(url, method);
     view = renderPage("/folders");
-    await screen.findByRole("heading", { name: /No media folders yet/ });
+    await screen.findByRole("heading", { name: /No folders to show/ });
     expectCatalogTextOnly(document.body);
     view.unmount();
 
