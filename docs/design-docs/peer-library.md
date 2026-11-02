@@ -218,25 +218,40 @@ headers passed through, since the browser has no session on the peer.
 
 ## Merged lists
 
-The video, library and folder lists merge the local page and the page of the
-first link in slot order in the request's order, and one composite cursor holds
-a cursor for each side. The other links' entities open by their remote ids; a
-list filter by another link's entity matches nothing. The vocabulary lists and
-writes, rule counts, the watch history and the group picker reach the first
-link too, and an operation over a selection reaches the one link its remote ids
-name, or the first link when they name none.
+The video, library, folder-root and smart-folder lists, the watch history and
+the related videos merge the local part and one part per link, in slot order.
+The parts of one page are requested concurrently, so a page waits for its
+slowest link within the 10 s response timeout instead of the sum of the links.
+One composite cursor (prefix `m2.`) holds a cursor, a done flag and a skipped
+flag for each side by slot; a cursor of the one-peer form (`m1.`) is refused as
+`invalid_cursor` like any cursor of another list, which restarts the list. A
+cursor with more sides than this node and the link limit is refused the same
+way, and a side whose slot no link holds now is dropped before any link is
+asked, so a forged cursor cannot fan a page out past the links. A
+list filter by a link's entity matches no local video and nothing on the other
+links. The vocabulary lists and writes, the group picker and the history clear
+reach the first link, and an operation over a selection reaches the one link
+its remote ids name, or the first link when they name none.
 
 A list answered to a peer carries `peerItems`, the cursor after each item and
-its sort value, so the merge never decodes the peer's opaque cursor and a
-video added between pages shifts nothing. Items compare by the sort value
-both nodes compute with the same rule, then by id. `total` is the sum of both
-totals.
+its sort value, so the merge never decodes a link's opaque cursor and a video
+added between pages shifts nothing. Items compare by the sort value every node
+computes with the same rule; on equal values the local item comes first, then
+the links in slot order. `total` is the sum of every part's total.
 
 | Case | Behaviour |
 | --- | --- |
-| Filter by a local tag, kind, person or organization | Sent to the peer by name; a name the peer lacks makes its part empty |
-| Peer skipped while unreachable | That listing keeps skipping it to the end; a reload shows the peer again |
-| The same file on both nodes | Two items |
+| Filter by a local tag, kind, person or organization | Sent to each link by name; a name a link lacks makes its part empty |
+| Link not `connected` when a listing starts | Not asked; that listing leaves it out to the end, so the page does not wait for it |
+| Link fails during a listing | That listing skips it to the end; a reload shows it again |
+| Link paired or connected during a listing | The listing does not hold it and leaves it out; a reload shows it |
+| The same file on two nodes | Two items |
+
+| Rejected | Why |
+| --- | --- |
+| A pairwise merge repeated per link | It needs each intermediate result's full page and loses the per-side cursors |
+| Requesting the links one after another | A page would wait up to the response timeout per link |
+| Extending `m1.` with optional fields | An `m1.` cursor names a peer without saying which link it was |
 
 ## Progress, history and favorites
 
@@ -249,14 +264,14 @@ reading node forwards and merges them, and keeps no row of its own for them.
 | --- | --- |
 | `PUT /api/videos/{remoteId}/progress` | Forwarded; the position and history entry are saved on the peer, whose `Progress` is answered as it is |
 | `PUT /api/favorites` | Ids split by node; the peer's part is sent first as one request in the peer's ids, then this node's part is applied in one transaction, and the `applied*` counts are summed |
-| `GET /api/watch-history` | Both nodes' pages merged by `playedAt`, newest first and this node's entry first on equal times, with one composite cursor; the peer's entry ids carry the offset |
-| `GET /api/watch-history/dates` | The union of both nodes' days |
+| `GET /api/watch-history` | The pages of this node and every link merged by `playedAt`, newest first, this node's entry first on equal times and then the links in slot order, with one composite cursor; a link's entry ids carry its offset |
+| `GET /api/watch-history/dates` | The union of the days of this node and every connected link |
 | `DELETE /api/watch-history` | The peer's history is cleared first, then this node's, since the screens show one history |
 | `DELETE /api/watch-history/{remoteId}` | Deleted on the peer |
 
 A peer answer to the history list carries `peerItems`, the cursor after each
 entry and its `playedAt` in Unix milliseconds, so the merge reuses the
-[Merged lists](#merged-lists) rule and never decodes the peer's cursor. A peer
+[Merged lists](#merged-lists) rule and never decodes the peer's cursor. A link
 that does not answer the list or the dates is left out, as in a merged list.
 
 Writing the peer first repeats the vocabulary rule: while the peer is not
@@ -298,19 +313,20 @@ stay per node.
 
 Groups belong to one node: a remote group is listed and opened with the
 offset, and a group, `organize` operation or bundle with videos of both nodes
-answers `400` with reason `mixed_nodes`. A smart folder of either node lists
-its own node's matches plus the other node's videos matching its rule, sent as
-name filters and merged by the folder's sort; its card adds the other node's
-counts from one `POST /api/peer/rule-counts`. `POST /api/collections/delete` runs one transaction per
+answers `400` with reason `mixed_nodes`. A smart folder of any node lists its
+own node's matches plus the videos of this node and every other link matching
+its rule, sent as name filters and merged by the folder's sort; its card adds
+the other nodes' counts, one `POST /api/peer/rule-counts` per connected link
+sent concurrently. `POST /api/collections/delete` runs one transaction per
 node and reports the peer's ids it could not delete.
 
 ## Related videos
 
-The related list of any video ranks both nodes' videos with the scorer of
-[related-videos.md](related-videos.md): the node holding the open video
-supplies its clues, each node scores its own candidates
-(`POST /api/peer/related`), and the two score-ordered pages merge by score,
-`addedAt` and id. The same-directory clue is 0 across nodes, since two disks
+The related list of any video ranks the videos of this node and every
+connected link with the scorer of [related-videos.md](related-videos.md): the
+node holding the open video supplies its clues, each node scores its own
+candidates (`POST /api/peer/related`, sent to the links concurrently), and the
+score-ordered pages merge by score, `addedAt` and id. The same-directory clue is 0 across nodes, since two disks
 share no directory. When the peer holds the open video, the ranking request
 names it by the peer's id (`openVideoId`), and the peer gives its videos in
 that video's directory the folder points, as its own related list does.

@@ -4951,7 +4951,7 @@
       "method": "GET",
       "path": "/api/videos/{id}/related",
       "summary": "Return related videos",
-      "description": "Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a paired node the list holds the visible videos of both nodes, a remote id also opens one, and the directory clue is 0 between nodes; while the peer cannot be reached its videos are left out.",
+      "description": "Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a node that reads other VVMDMs the list holds the visible videos of this node and every connected link, a remote id also opens one, and the directory clue is 0 between nodes; a link that cannot be reached is left out for the rest of the list.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -7788,7 +7788,7 @@
       "method": "GET",
       "path": "/api/watch-history",
       "summary": "List watch history, newest first",
-      "description": "Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While paired, both nodes' entries are merged newest first by playedAt, this node's first on equal times, and nextCursor holds each node's cursor; the peer's entry ids and video ids carry 2^40, and its videos keep the peer's progress and favorite. A peer that does not answer is left out for the rest of the listing.",
+      "description": "Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While this node reads other VVMDMs, the entries of this node and every link are merged newest first by playedAt, this node's first on equal times and then the links in slot order, and nextCursor holds each node's cursor; a link's entry ids and video ids carry its offset, and its videos keep that link's progress and favorite. A link that is not connected when the list starts, or fails, is left out for the rest of the list. A peer that does not answer is left out for the rest of the listing.",
       "owner": true,
       "response": "json",
       "query": [
@@ -7862,7 +7862,7 @@
       "method": "GET",
       "path": "/api/watch-history/dates",
       "summary": "List days with watch history, newest first",
-      "description": "Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While paired, returns the union of both nodes' dates, leaving out a peer that does not answer.",
+      "description": "Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While this node reads other VVMDMs, returns the union of the dates of this node and every connected link, leaving out a link that does not answer.",
       "owner": true,
       "response": "json",
       "query": [

@@ -1,8 +1,11 @@
 package domain
 
 import (
+	"cmp"
 	"context"
+	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -72,33 +75,52 @@ func (c RelatedClues) Candidate(ids map[string]int64) RelatedCandidate {
 }
 
 // RelatedSide is how far the merged related list has read one node's list. Done means that node has no more
-// videos, or its part was skipped because the peer could not be reached.
+// videos, or its part was skipped because the link could not be reached.
 type RelatedSide struct {
 	After *RelatedCursor
 	Done  bool
 }
 
-// MergedRelatedCursor continues the related list of both nodes with one position per node.
+// MergedRelatedCursor continues the related list of this node and its links with one position per node. Once the
+// list has started, a link Links does not hold is done, so a link connected mid-list never joins it.
 type MergedRelatedCursor struct {
-	Local, Peer RelatedSide
+	Local RelatedSide
+	Links map[int64]RelatedSide
 }
 
 // Start reports the first page.
 func (c MergedRelatedCursor) Start() bool {
-	return c == MergedRelatedCursor{}
+	return c.Local == RelatedSide{} && len(c.Links) == 0
+}
+
+// Link is the position of the link in slot.
+func (c MergedRelatedCursor) Link(slot int64) RelatedSide {
+	if side, ok := c.Links[slot]; ok || c.Start() {
+		return side
+	}
+	return RelatedSide{Done: true}
 }
 
 const (
 	mergedRelatedSeparator = "~"
+	relatedSlotSeparator   = ":"
 	relatedSideDone        = "-"
 )
 
-// String keeps the single-node form while the peer's part is over, so an unpaired node pages as before.
+// String keeps the single-node form once every link's part is over, so a node without links pages as before;
+// otherwise it writes the local side and then each link's as slot:side, in slot order.
 func (c MergedRelatedCursor) String() string {
-	if c.Peer.Done && c.Local.After != nil && !c.Local.Done {
+	slots := slices.Sorted(maps.Keys(c.Links))
+	linksDone := !slices.ContainsFunc(slots, func(slot int64) bool { return !c.Links[slot].Done })
+	if linksDone && c.Local.After != nil && !c.Local.Done {
 		return c.Local.After.String()
 	}
-	return c.Local.text() + mergedRelatedSeparator + c.Peer.text()
+	var text strings.Builder
+	text.WriteString(c.Local.text())
+	for _, slot := range slots {
+		text.WriteString(mergedRelatedSeparator + strconv.FormatInt(slot, 10) + relatedSlotSeparator + c.Links[slot].text())
+	}
+	return text.String()
 }
 
 func (s RelatedSide) text() string {
@@ -112,25 +134,36 @@ func (s RelatedSide) text() string {
 	}
 }
 
-// ParseMergedRelatedCursor reads String's forms; a single-node cursor skips the peer.
+// ParseMergedRelatedCursor reads String's forms; a single-node cursor leaves every link done. The two-side
+// local~peer form names no slot and is refused.
 func ParseMergedRelatedCursor(text string) (MergedRelatedCursor, error) {
-	local, peer, merged := strings.Cut(text, mergedRelatedSeparator)
-	if !merged {
+	parts := strings.Split(text, mergedRelatedSeparator)
+	if len(parts) == 1 {
 		after, err := ParseRelatedCursor(text)
 		if err != nil {
 			return MergedRelatedCursor{}, err
 		}
-		return MergedRelatedCursor{Local: RelatedSide{After: &after}, Peer: RelatedSide{Done: true}}, nil
+		return MergedRelatedCursor{Local: RelatedSide{After: &after}}, nil
 	}
-	var cursor MergedRelatedCursor
-	var err error
-	if cursor.Local, err = parseRelatedSide(local); err != nil {
+	local, err := parseRelatedSide(parts[0])
+	if err != nil {
 		return MergedRelatedCursor{}, err
 	}
-	if cursor.Peer, err = parseRelatedSide(peer); err != nil {
-		return MergedRelatedCursor{}, err
+	cursor := MergedRelatedCursor{Local: local, Links: make(map[int64]RelatedSide, len(parts)-1)}
+	done := local.Done
+	for _, part := range parts[1:] {
+		slotText, sideText, ok := strings.Cut(part, relatedSlotSeparator)
+		slot, err := strconv.ParseInt(slotText, 10, 64)
+		if _, seen := cursor.Links[slot]; !ok || err != nil || slot < 1 || seen {
+			return MergedRelatedCursor{}, ErrInvalidRelatedCursor
+		}
+		side, err := parseRelatedSide(sideText)
+		if err != nil {
+			return MergedRelatedCursor{}, err
+		}
+		cursor.Links[slot], done = side, done && side.Done
 	}
-	if cursor.Local.Done && cursor.Peer.Done {
+	if done {
 		return MergedRelatedCursor{}, ErrInvalidRelatedCursor
 	}
 	return cursor, nil
@@ -151,35 +184,57 @@ func parseRelatedSide(text string) (RelatedSide, error) {
 }
 
 // RelatedSidePage is one node's next videos after its side of the cursor, in the related order and in that
-// node's own ids; More reports videos after them.
+// node's own ids; Slot is the node's slot, 0 for this node, and More reports videos after them.
 type RelatedSidePage struct {
+	Slot  int64
 	Items []RankedRelated
 	More  bool
 }
 
-// MergeRelated takes up to limit videos of both pages in the related order, a video of the link in slot by its
-// remote id on a tie, and returns their ids as the screens address them with the cursor after them, nil at the end.
-func MergeRelated(local, peer RelatedSidePage, slot int64, at MergedRelatedCursor, limit int) ([]int64, *MergedRelatedCursor) {
-	ids := make([]int64, 0, min(limit, len(local.Items)+len(peer.Items)))
-	i, j := 0, 0
-	for len(ids) < limit && (i < len(local.Items) || j < len(peer.Items)) {
-		if j == len(peer.Items) || i < len(local.Items) && compareRanked(local.Items[i], asRemote(slot, peer.Items[j])) <= 0 {
-			ids = append(ids, local.Items[i].VideoID)
-			i++
+// MergeRelated takes up to limit videos of the pages in the related order, a link's video by its remote id on a
+// tie, and returns their ids as the screens address them with the cursor after them, nil at the end. Every side
+// the list still holds is passed, a done one empty; a link left out is done from then on.
+func MergeRelated(sides []RelatedSidePage, at MergedRelatedCursor, limit int) ([]int64, *MergedRelatedCursor) {
+	sides = slices.Clone(sides)
+	slices.SortStableFunc(sides, func(a, b RelatedSidePage) int { return cmp.Compare(a.Slot, b.Slot) })
+	taken := make([]int, len(sides))
+	ids := make([]int64, 0, limit)
+	for len(ids) < limit {
+		best := -1
+		for k, side := range sides {
+			if taken[k] < len(side.Items) &&
+				(best < 0 || compareRanked(sideItem(side, taken[k]), sideItem(sides[best], taken[best])) < 0) {
+				best = k
+			}
+		}
+		if best < 0 {
+			break
+		}
+		ids, taken[best] = append(ids, sideItem(sides[best], taken[best]).VideoID), taken[best]+1
+	}
+	next := MergedRelatedCursor{Links: map[int64]RelatedSide{}}
+	done := true
+	for k, side := range sides {
+		if side.Slot == 0 {
+			next.Local = at.Local.advance(side, taken[k])
+			done = done && next.Local.Done
 			continue
 		}
-		ids = append(ids, RemoteID(slot, peer.Items[j].VideoID))
-		j++
+		next.Links[side.Slot] = at.Link(side.Slot).advance(side, taken[k])
+		done = done && next.Links[side.Slot].Done
 	}
-	next := MergedRelatedCursor{Local: at.Local.advance(local, i), Peer: at.Peer.advance(peer, j)}
-	if next.Local.Done && next.Peer.Done {
+	if done {
 		return ids, nil
 	}
 	return ids, &next
 }
 
-func asRemote(slot int64, item RankedRelated) RankedRelated {
-	item.VideoID = RemoteID(slot, item.VideoID)
+// sideItem is the side's item at index with its id as the screens address it.
+func sideItem(side RelatedSidePage, index int) RankedRelated {
+	item := side.Items[index]
+	if side.Slot != 0 {
+		item.VideoID = RemoteID(side.Slot, item.VideoID)
+	}
 	return item
 }
 
@@ -230,9 +285,10 @@ type ScoredRelated struct {
 	NextCursor *RelatedCursor
 }
 
-// RelatedPeer scores the peer's videos against the clues of the open video, in the peer's own ids.
+// RelatedPeer scores one link's videos against the clues of the open video, in the link's own ids. The link
+// holding the open video leaves out that video, its bundle and its group itself.
 type RelatedPeer interface {
 	// Slot is the slot of the link whose videos Related answers.
 	Slot() int64
-	Related(ctx context.Context, clues RelatedClues, exclude []int64, after *RelatedCursor, limit int) (RelatedSidePage, error)
+	Related(ctx context.Context, clues RelatedClues, after *RelatedCursor, limit int) (RelatedSidePage, error)
 }
