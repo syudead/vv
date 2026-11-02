@@ -156,6 +156,44 @@ func TestLocalPersonFacesMoveOfThePeersAppearancesGoesToThePeer(t *testing.T) {
 	}
 }
 
+// The undo of a move to a local person names that person, not a link, so it reaches the link its appearances
+// belong to: the second link's faces go back on the second link, not the first.
+func TestLocalPersonFacesMoveReachesTheLinkOfTheAppearances(t *testing.T) {
+	credits := &faceAppearanceCredits{}
+	_, b := faceNodes(t, func(people Credits) Credits { return people })
+	_, c, _ := mergedNode(t, "node-c", func(_ *store.DB, opts *Options) {
+		credits.Credits = opts.Credits
+		opts.Credits = credits
+	})
+	pairNodes(t, c, b)
+	// Only the second link holds Mio, so a move sent to the first link finds no such person.
+	mioB, mioC := createPerson(t, b, "Mio"), createPerson(t, c, "Mio")
+	credits.person = domain.Credit{Kind: domain.CreditPerson, ID: 5, Name: "Ren"}
+	undo := `{"appearanceIds":[` + strconv.FormatInt(domain.RemoteID(2, 7), 10) + `],"targetId":` +
+		strconv.FormatInt(domain.RemoteID(2, 5), 10) + `}`
+
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", undo)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("move: status = %d: %s", rec.Code, rec.Body)
+	}
+	if want := []appearanceCall{{personID: mioC, appearances: []int64{7}, target: 5}}; !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("the second link's move = %+v, want %+v", credits.calls, want)
+	}
+	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != domain.RemoteID(2, 5) {
+		t.Errorf("moved person = %d, want the second link's Ren %d", got.Person.Id, domain.RemoteID(2, 5))
+	}
+
+	credits.calls = nil
+	mixed := `{"appearanceIds":[` + strconv.FormatInt(domain.RemoteID(1, 3), 10) + `,` + strconv.FormatInt(domain.RemoteID(2, 7), 10) +
+		`],"targetId":` + strconv.FormatInt(domain.RemoteID(2, 5), 10) + `}`
+	rec = b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", mixed)
+	assertErrorBody(t, "appearances of two links", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonMixedNodes})
+	if len(credits.calls) != 0 {
+		t.Errorf("the second link's calls = %+v, want none for a move across links", credits.calls)
+	}
+}
+
 func TestRemoteFaceAppearanceCropStreamsThePeersJPEG(t *testing.T) {
 	credits := &faceAppearanceCredits{crop: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	_, b := faceNodes(t, func(people Credits) Credits { credits.Credits = people; return credits })

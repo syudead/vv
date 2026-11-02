@@ -42,6 +42,15 @@ func TestRemoteIDRoundTripsThroughTheSlot(t *testing.T) {
 	}
 }
 
+// An id a link answers outside its own range stays in that link's slot instead of naming another link's entity.
+func TestRemoteIDKeepsAnOutOfRangeIDInItsSlot(t *testing.T) {
+	for _, id := range []int64{1<<40 + 42, -1} {
+		if got, want := RemoteID(1, id), RemoteID(1, 0); got != want {
+			t.Errorf("RemoteID(1, %d) = %d (slot %d), want %d in slot 1", id, got, RemoteSlot(got), want)
+		}
+	}
+}
+
 func TestRemoteVideoURLRewritesThePeersVideoID(t *testing.T) {
 	remote7 := "/api/videos/1099511627783"
 	for _, tc := range []struct{ in, want string }{

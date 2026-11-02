@@ -140,10 +140,18 @@ func (s *server) peerFaceCandidateSegment(w http.ResponseWriter, r *http.Request
 	return strconv.FormatInt(peerID, 10), true
 }
 
-// moveFacesOnPeer moves the peer's appearances away from the peer's person of local person id's name, as the undo
-// of a move to a local person sends them; a name the peer lacks holds none of them.
-func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int64) {
-	peerID, err := translateID(s.peerEditVocabulary(r, s.requestSlot(r)), domain.VocabularyPerson, id, "id", false)
+// moveFacesOnPeer moves the appearances away from the person of local person id's name on the one link they
+// belong to, as the undo of a move to a local person sends them; a name the link lacks holds none of them.
+func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int64, appearanceIDs []int64) {
+	slot, ok := domain.IDSlot(appearanceIDs...)
+	if !ok {
+		s.mixedFaces(w)
+		return
+	}
+	// The local person's path names no link, so the appearances' slot is the one the body check and the
+	// forwarding read.
+	r = r.WithContext(withLinkSlot(r.Context(), slot))
+	peerID, err := translateID(s.peerEditVocabulary(r, slot), domain.VocabularyPerson, id, "id", false)
 	var missing *domain.CreditNotFoundError
 	switch {
 	case errors.As(err, &missing) || (err == nil && peerID == 0):
@@ -153,7 +161,7 @@ func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int6
 		s.writeSplitEditError(w, err)
 		return
 	}
-	remote := domain.RemoteID(s.requestSlot(r), peerID)
+	remote := domain.RemoteID(slot, peerID)
 	s.forwardRemoteEntity(w, r, peopleCollection, faceMovePattern, *remoteRoutes.routes[faceMovePattern].op, remote,
 		"/api/people/"+strconv.FormatInt(remote, 10)+"/appearances/move")
 }

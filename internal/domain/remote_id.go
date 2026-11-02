@@ -14,8 +14,15 @@ const slotSize int64 = 1 << slotBits
 // MaxRemoteSlot keeps every remote id below 2^53, JavaScript's largest safe integer.
 const MaxRemoteSlot int64 = 1<<(53-slotBits) - 1
 
-// RemoteID is the id under which this node addresses the entity with id on the link of slot.
-func RemoteID(slot, id int64) int64 { return id + slot<<slotBits }
+// RemoteID is the id under which this node addresses the entity with id on the link of slot. A link's id outside
+// 0 to 2^40-1, which only a faulty or hostile link answers, becomes its id 0, which names nothing; added to the
+// offset as it is, it would name another link's entity.
+func RemoteID(slot, id int64) int64 {
+	if id < 0 || id >= slotSize {
+		id = 0
+	}
+	return id + slot<<slotBits
+}
 
 // RemoteSlot is the slot of the link whose entity id names, or 0 for this node's own entity.
 func RemoteSlot(id int64) int64 { return id >> slotBits }

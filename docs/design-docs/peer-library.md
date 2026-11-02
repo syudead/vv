@@ -173,6 +173,8 @@ flowchart LR
 | The Forwarder and every call to a link take that link's slot; the slot of a request's path id goes with the request to the translators and the kept handlers | Every call reaches the one link the ids name |
 | A body or query naming ids of two links, or of this node and a link, answers `400 mixed_nodes`; ids of another link in a forwarded query are dropped | A write must never send one link's ids to another, where they name other entities |
 | The undo token of a link's organize carries its slot (`peer.{slot}.{token}`) | The undo is forwarded to the link that issued it |
+| An id a link answers outside `0` to `2^40 - 1` becomes that link's id `0`, which names nothing | A faulty or hostile link cannot answer an id that carries into another slot and address another link's entity |
+| A face move from a local person, the undo of a move to it, goes to the link of its appearance ids | The local person's path names no link |
 
 Every operation whose path starts with an entity collection
 (`/api/videos/{id}`, `/api/groups/{id}`, `/api/tags/{id}`,
