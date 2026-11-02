@@ -1,12 +1,4 @@
-import {
-  CircleAlert,
-  Folder,
-  FolderPlus,
-  LoaderCircle,
-  Pencil,
-  RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { CircleAlert, Folder, FolderPlus, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -41,6 +33,7 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
 import { FolderSwitch } from "./FolderSwitch";
+import { MediaFolderActions } from "./MediaFolderActions";
 import MediaFolderUsage from "./MediaFolderUsage";
 import { PeerFolderSections } from "./PeerFolderSections";
 import RescanDialog from "./RescanDialog";
@@ -110,7 +103,7 @@ function DeleteDialog({
 }
 
 /**
- * The switch stays usable while a scan locks the three buttons, since a switch changes no registered folder.
+ * The switch stays usable while a scan locks the actions menu, since a switch changes no registered folder.
  * Its failure takes the row's failure line, where a change made elsewhere is reported.
  */
 function LocalFolderRow({
@@ -148,7 +141,7 @@ function LocalFolderRow({
   return (
     <div
       ref={rowRef}
-      className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center"
+      className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0 sm:items-center"
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <Folder
@@ -166,55 +159,29 @@ function LocalFolderRow({
             {folder.path}
           </code>
           <MediaFolderUsage folder={folder} />
+          {pending !== null && (
+            <span role="status" className="text-xs text-muted-foreground">
+              {pending === "delete" ? text.removing : text.changing}
+            </span>
+          )}
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        {pending !== null && (
-          <span role="status" className="text-xs text-muted-foreground">
-            {pending === "delete" ? text.removing : text.changing}
-          </span>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          aria-label={text.change}
-          onClick={onChange}
-          disabled={disabled}
-        >
-          <Pencil />
-          {text.changeShort}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={text.forceRescan}
-          aria-describedby={locked ? "media-folders-locked" : undefined}
-          onClick={onRescan}
-          disabled={disabled}
-        >
-          <RotateCcw />
-          {text.forceRescanShort}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={text.remove}
-          onClick={onRemove}
-          disabled={disabled}
-          className="text-destructive"
-        >
-          <Trash2 />
-          {text.removeShort}
-        </Button>
-        <FolderSwitch
-          enabled={enabled}
-          saving={saving !== null}
-          label={text.switchLabel(folder.path)}
-          onToggle={() => void toggle()}
-        />
-      </div>
+      <MediaFolderActions
+        path={folder.path}
+        disabled={disabled}
+        describedBy={locked ? "media-folders-locked" : undefined}
+        onChange={onChange}
+        onRescan={onRescan}
+        onRemove={onRemove}
+      />
+      <FolderSwitch
+        enabled={enabled}
+        saving={saving !== null}
+        label={text.switchLabel(folder.path)}
+        onToggle={() => void toggle()}
+      />
       {failure !== null && (
-        <p role="alert" className="text-destructive sm:basis-full">
+        <p role="alert" className="basis-full text-destructive">
           {failure}
         </p>
       )}

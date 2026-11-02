@@ -5162,10 +5162,9 @@ export const en = {
       removing: "Removing…",
       changing: "Changing…",
       current: "Current location",
+      actions: (path: string) => `Actions for ${path}`,
       change: "Change folder",
-      changeShort: "Change",
       remove: "Remove folder",
-      removeShort: "Remove",
       add: "Add folder",
       addBlocked: "You can add a folder once the current folders have loaded",
       changedElsewhere:
@@ -5197,7 +5196,6 @@ export const en = {
         unavailable: "Disk space unavailable",
       },
       forceRescan: "Force rescan folder",
-      forceRescanShort: "Force rescan",
       rescanDialog: {
         title: "Force rescan this folder?",
         description:
@@ -5337,8 +5335,7 @@ export const en = {
         trust: "Trust and pair",
       },
       link: {
-        description:
-          "Its videos, groups and smart folders show in this library while it is connected.",
+        description: "Its videos, groups and smart folders show in this library.",
         version: "Version",
         address: "Address",
         addressDescription:

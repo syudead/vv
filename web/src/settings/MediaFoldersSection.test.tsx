@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { installFakeEventSource } from "../api/fakeEventSource";
 import { json, renderWithScan } from "../testing/autoImportServer";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ToastProvider } from "../ui/Toast";
 import MediaFoldersSection from "./MediaFoldersSection";
 
@@ -69,7 +70,9 @@ describe("MediaFoldersSection", () => {
   it("lists every folder while each row's usage arrives on its own", async () => {
     renderWithScan(
       <ToastProvider>
-        <MediaFoldersSection />
+        <TooltipProvider>
+          <MediaFoldersSection />
+        </TooltipProvider>
       </ToastProvider>,
     );
 
@@ -78,8 +81,8 @@ describe("MediaFoldersSection", () => {
     expect(
       within(slow).getByRole("status", { name: "Checking disk space" }),
     ).toBeDefined();
-    const changes = screen.getAllByRole("button", { name: "Change folder" });
-    expect(changes.map((button) => (button as HTMLButtonElement).disabled)).toEqual([
+    const menus = screen.getAllByRole("button", { name: /^Actions for / });
+    expect(menus.map((button) => (button as HTMLButtonElement).disabled)).toEqual([
       false,
       false,
     ]);
@@ -88,7 +91,9 @@ describe("MediaFoldersSection", () => {
   it("a row's switch saves that folder off and dims its path", async () => {
     renderWithScan(
       <ToastProvider>
-        <MediaFoldersSection />
+        <TooltipProvider>
+          <MediaFoldersSection />
+        </TooltipProvider>
       </ToastProvider>,
     );
     const toggle = await screen.findByRole("switch", {

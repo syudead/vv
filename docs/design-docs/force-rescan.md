@@ -69,7 +69,7 @@ rereads one and starts at once.
 | Scope | Control | Confirmation |
 | --- | --- | --- |
 | `library` | `Force rescan` beside `Scan library` in Settings, `Scan status` ([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)) | Dialog saying every video is read again and it takes long |
-| `folder` | `Force rescan` on the folder's row in Settings, `Media folders` ([`MediaFoldersSection.tsx`](../../web/src/settings/MediaFoldersSection.tsx)) | The same dialog, naming the folder |
+| `folder` | `Force rescan folder` in the actions menu of the folder's row in Settings, `Media folders` ([`MediaFoldersSection.tsx`](../../web/src/settings/MediaFoldersSection.tsx)) | The same dialog, naming the folder |
 | `video` | The `Rescan` button after `Open file` and `Copy path` in the `Location` section of the video page's File & media tab ([`RescanVideoButton.tsx`](../../web/src/player/RescanVideoButton.tsx)) | None |
 
 Every control is unavailable, with the reason, while a manual scan or force
