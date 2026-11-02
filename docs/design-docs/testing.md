@@ -63,6 +63,11 @@ Shared prebuilt fixtures reduce repeated build and runtime compilation costs.
 | Size validation | Below, at and above the limit using numbers or a small configurable limit, with a focused production caller check |
 | SQL parameter or batch limit | Enough input to cross the actual implementation boundary |
 | Constant query count | Two small input sizes that expose per-item queries |
+| Store schema at a migration version | `migrateTo`, which copies a cached image of that version, then runs only the migrations the test checks |
+
+The pure-Go SQLite driver serializes memory allocation behind one process-wide
+lock, so `t.Parallel` does not shorten store or HTTP tests that open databases;
+reduce the work each case repeats instead.
 
 ## Load and waiting
 

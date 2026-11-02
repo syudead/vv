@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io/fs"
 	"maps"
+	"os"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/pressly/goose/v3"
@@ -147,13 +149,50 @@ func TestSuccessionMovesWatchHistory(t *testing.T) {
 	}
 }
 
+// versionImages caches one database image per migration version so each test pays only for the steps it checks.
+var versionImages struct {
+	mu     sync.Mutex
+	images map[int64][]byte
+}
+
+// migrateTo opens a fresh database at version from a cached image, with a provider for the migrations after it.
 func migrateTo(t *testing.T, version int64) (*DB, *goose.Provider) {
 	t.Helper()
-	db, err := Open(t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(DatabasePath(dir), versionImage(t, version), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	return db, migrationProvider(t, db)
+}
+
+func versionImage(t *testing.T, version int64) []byte {
+	t.Helper()
+	versionImages.mu.Lock()
+	defer versionImages.mu.Unlock()
+	if image, ok := versionImages.images[version]; ok {
+		return image
+	}
+	image, err := snapshotImage(func(db *DB) error {
+		_, err := migrationProvider(t, db).UpTo(context.Background(), version)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if versionImages.images == nil {
+		versionImages.images = map[int64][]byte{}
+	}
+	versionImages.images[version] = image
+	return image
+}
+
+func migrationProvider(t *testing.T, db *DB) *goose.Provider {
+	t.Helper()
 	fsy, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
 		t.Fatal(err)
@@ -162,10 +201,7 @@ func migrateTo(t *testing.T, version int64) (*DB, *goose.Provider) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.UpTo(context.Background(), version); err != nil {
-		t.Fatal(err)
-	}
-	return db, provider
+	return provider
 }
 
 func execSQL(t *testing.T, db *DB, query string, args ...any) {

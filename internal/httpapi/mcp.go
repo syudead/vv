@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,13 +21,25 @@ import (
 // MCP uses stateless Streamable HTTP and authenticated external handlers; REST responses become structured content, with non-2xx marked isError to share validation and error mapping.
 
 func newMCPHandler(srv *server) http.Handler {
+	// Registering the tools resolves every input schema, so build them on the first /mcp request rather than for every server.
+	handler := sync.OnceValue(func() http.Handler { return newMCPStreamHandler(srv) })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCtx := r.Context()
+		watch := mcpRequestWatch(func(cancel func(error)) func() bool {
+			return context.AfterFunc(requestCtx, func() { cancel(context.Cause(requestCtx)) })
+		})
+		handler().ServeHTTP(w, r.WithContext(context.WithValue(requestCtx, mcpRequestWatchKey{}, watch)))
+	})
+}
+
+func newMCPStreamHandler(srv *server) http.Handler {
 	api := http.NewServeMux()
 	registerExternalAPI(api, srv)
 	tools := &mcpTools{api: api}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "vv", Version: srv.build.Version}, nil)
 	tools.register(server)
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
 		// Disable SDK Host rebinding rejection for local reverse proxies; mandatory explicit Bearer authentication prevents browsers from acquiring owner authority through rebinding.
@@ -34,13 +47,6 @@ func newMCPHandler(srv *server) http.Handler {
 		// Add JSON-RPC envelope overhead to the REST body cap so both accept the same batch size.
 		MaxRequestBodyBytes: externalBodyLimit + 64<<10,
 		Logger:              srv.logger,
-	})
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCtx := r.Context()
-		watch := mcpRequestWatch(func(cancel func(error)) func() bool {
-			return context.AfterFunc(requestCtx, func() { cancel(context.Cause(requestCtx)) })
-		})
-		handler.ServeHTTP(w, r.WithContext(context.WithValue(requestCtx, mcpRequestWatchKey{}, watch)))
 	})
 }
 

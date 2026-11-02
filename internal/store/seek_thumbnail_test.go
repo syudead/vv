@@ -4,11 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"reflect"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -279,22 +276,7 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 }
 
 func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(context.Background(), 13); err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 13)
 	ids := map[string]int64{}
 	for _, item := range []struct {
 		key, probe, thumbnail string
@@ -374,23 +356,8 @@ func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
 }
 
 func TestSeekThumbnailSpriteMigrationRequeuesDone(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 14)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 14); err != nil {
-		t.Fatal(err)
-	}
 	ids := map[string]int64{}
 	for _, item := range []struct {
 		key, probe, seek string

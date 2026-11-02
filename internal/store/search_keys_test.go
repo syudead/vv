@@ -3,15 +3,12 @@ package store
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -27,23 +24,8 @@ func locationKeys(t *testing.T, db *DB, path string) (searchKey, titleKey string
 }
 
 func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 6)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 6); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}

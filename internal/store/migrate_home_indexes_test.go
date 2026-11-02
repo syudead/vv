@@ -2,30 +2,12 @@ package store
 
 import (
 	"context"
-	"io/fs"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 )
 
 func TestRemoveHomeShelvesPreservesLibrary(t *testing.T) {
 	ctx := context.Background()
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	files, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(ctx, 61); err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 61)
 	execSQL(t, db, `insert into videos(id, content_key) values (1, 'kept')`)
 	execSQL(t, db, `insert into playback_progress(content_key, position_ms, completed, updated_at)
 		values ('kept', 12345, 0, 100)`)

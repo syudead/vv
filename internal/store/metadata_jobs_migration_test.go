@@ -2,33 +2,15 @@ package store
 
 import (
 	"context"
-	"io/fs"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
 // Remove obsolete metadata work so startup can settle scans that would otherwise wait for a nonexistent worker.
 func TestDropMetadataJobsMigrationSettlesLatestScan(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsys, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 51)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 51); err != nil {
-		t.Fatal(err)
-	}
 	execAll(t, db,
 		`insert into media_folders(path, version, created_at, updated_at) values ('`+fixturePath("/media")+`', 1, 1, 1)`,
 		`insert into videos(id, content_key, probe_state, added_at, indexed_at) values (1, 'key-a', 'done', 1, 1)`,
