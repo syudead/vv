@@ -120,6 +120,22 @@ func TestWatchHistoryMergesEveryLinkByPlayedAt(t *testing.T) {
 	}
 }
 
+// A filter by a local tag reaches every link by name, so the videos of all three nodes holding it are listed.
+func TestLocalTagFilterListsEveryLinksVideos(t *testing.T) {
+	n := threeNodesWith(t, nil)
+	cat := tagOn(t, n.fb, "猫", "c")
+	tagOn(t, n.fa, "猫", "b", "d")
+	tagOn(t, n.fc, "猫", "a")
+
+	got, totals := n.pageVideos(t, "/api/videos", url.Values{"sort": {"addedDesc"}, "tag": {fmt.Sprint(cat.ID)}})
+	if want := []string{"a:d", "b:c", "a:b", "c:a"}; !slices.Equal(got, want) {
+		t.Errorf("videos tagged 猫 = %v, want %v", got, want)
+	}
+	if slices.ContainsFunc(totals, func(total int) bool { return total != 4 }) {
+		t.Errorf("totals = %v, want 4 on every page", totals)
+	}
+}
+
 func TestSmartFolderCardsSumEveryLinksCounts(t *testing.T) {
 	n := threeNodesWith(t, func(db *store.DB, opts *Options) {
 		opts.SmartFolders = db.SmartFolders()

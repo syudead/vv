@@ -156,6 +156,8 @@ export interface RequestFailedDetails {
   links?: readonly string[];
   /** Base64 SHA-256 of a certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
   fingerprint?: string;
+  /** The name of the read VVMDM that is not connected or that refused. */
+  peer?: string;
 }
 
 /** Localize known error codes; use the server's English message only for unknown codes. Preserve status and code, or an empty code for non-JSON bodies. */
@@ -171,6 +173,7 @@ export class RequestFailed extends Error {
   readonly settingKeys: readonly string[] | undefined;
   readonly links: readonly string[] | undefined;
   readonly fingerprint: string | undefined;
+  readonly peer: string | undefined;
 
   constructor(
     status: number,
@@ -191,6 +194,7 @@ export class RequestFailed extends Error {
     this.settingKeys = details.settingKeys;
     this.links = details.links;
     this.fingerprint = details.fingerprint;
+    this.peer = details.peer;
   }
 }
 
@@ -294,6 +298,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       settingKeys: stringArray(body.settingKeys),
       links: stringArray(body.links),
       fingerprint: optionalString(body.fingerprint),
+      peer: optionalString(body.peer),
     },
   );
 }

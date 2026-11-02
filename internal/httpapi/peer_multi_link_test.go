@@ -11,6 +11,7 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/store"
 )
 
 // threeNodes makes b read a in slot 1 and c in slot 2, each node holding the guest fixture. stopC stops c's server.
@@ -201,4 +202,33 @@ func TestGroupOfTwoLinksIsRefused(t *testing.T) {
 	assertErrorBody(t, "2 本のリンクにまたがるグループ", rec.Code, rec.Body.Bytes(), wantError{
 		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonMixedNodes,
 	})
+}
+
+// A clear reaches every link before this node; while one link is down no node changes.
+func TestWatchHistoryClearReachesEveryLink(t *testing.T) {
+	histories := []*fakeWatchHistory{{}, {}, {}}
+	withHistory := func(h *fakeWatchHistory) func(*store.DB, *Options) {
+		return func(_ *store.DB, opts *Options) { opts.WatchHistory = h }
+	}
+	_, a, _ := mergedNode(t, "node-a", withHistory(histories[0]))
+	_, c, stopC := mergedNode(t, "node-c", withHistory(histories[2]))
+	_, b, _ := mergedNode(t, "node-b", withHistory(histories[1]))
+	pairNodes(t, a, b)
+	pairNodes(t, c, b)
+
+	assertStatus(t, "clear", b.owner(http.MethodDelete, "/api/watch-history", ""), http.StatusNoContent)
+	for i, h := range histories {
+		if h.clears != 1 {
+			t.Errorf("node %d cleared %d times, want 1", i, h.clears)
+		}
+	}
+
+	downLink(t, b, stopC)
+	down := b.owner(http.MethodDelete, "/api/watch-history", "")
+	assertErrorBody(t, "clear with node-c down", down.Code, down.Body.Bytes(), wantError{
+		status: http.StatusServiceUnavailable, code: gen.ErrorCodeServiceUnavailable, reason: gen.ErrorReasonPeerUnreachable,
+	})
+	if histories[0].clears != 1 || histories[1].clears != 1 {
+		t.Errorf("with node-c down, a cleared %d times and b %d, want 1 and 1", histories[0].clears, histories[1].clears)
+	}
 }

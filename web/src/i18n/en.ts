@@ -5450,6 +5450,8 @@ export const en = {
     code: errorCodes,
     reason: errorReasons,
     requestFailed: (status: number) => `Request failed (HTTP ${String(status)})`,
+    peerUnreachable: (name: string) => `Couldn't reach ${name}`,
+    onPeer: (name: string, message: string) => `On ${name}: ${message}`,
     unreachable: "Couldn't reach the server. Check that VVMDM is running and try again.",
     unexpected: "Something went wrong.",
     probe: probeErrors,

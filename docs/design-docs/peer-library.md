@@ -238,8 +238,8 @@ list filter by a link's entity matches no local video and nothing on the other
 links. The vocabulary lists and writes reach every link
 ([Vocabulary by name](#vocabulary-by-name)), and an operation over a selection
 reaches every link it has a part on
-([Edits of remote videos](#edits-of-remote-videos)). The group picker and the
-history clear reach the first link.
+([Edits of remote videos](#edits-of-remote-videos)). The group picker reaches
+the first link.
 
 A list answered to a peer carries `peerItems`, the cursor after each item and
 its sort value, so the merge never decodes a link's opaque cursor and a video
@@ -274,7 +274,7 @@ reading node forwards and merges them, and keeps no row of its own for them.
 | `PUT /api/favorites` | Ids split by slot; once every link named is `connected`, each link's part is sent as one request in its ids in slot order, then this node's part is applied in one transaction, and the `applied*` counts are summed |
 | `GET /api/watch-history` | The pages of this node and every link merged by `playedAt`, newest first, this node's entry first on equal times and then the links in slot order, with one composite cursor; a link's entry ids carry its offset |
 | `GET /api/watch-history/dates` | The union of the days of this node and every connected link |
-| `DELETE /api/watch-history` | The peer's history is cleared first, then this node's, since the screens show one history |
+| `DELETE /api/watch-history` | Every link's history is cleared in slot order, then this node's, since the screens show one history; while a link is not connected nothing is cleared |
 | `DELETE /api/watch-history/{remoteId}` | Deleted on the peer |
 
 A peer answer to the history list carries `peerItems`, the cursor after each
@@ -311,7 +311,9 @@ changes and the same rename succeeds once the name is free. It then writes
 every link by name (`POST /api/peer/vocabulary`) in slot order, and writes the
 local node last. A link that still refuses stops the write with that link's
 status and its name in `Error.peer`; the links before it stay written, since a
-deletion or merge has no inverse. A rename addressed by a remote
+deletion or merge has no inverse. The screens show that name where the error
+shows: `Couldn't reach {name}` for `peer_unreachable`, and `On {name}:` before
+the link's own refusal. A rename addressed by a remote
 id renames the same name on the other links first and is then forwarded to the
 id's own link. A merge whose destination and sources are all in one link's
 offset form names no entry of the reader, so it goes to that link's merge by
