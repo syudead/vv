@@ -2229,7 +2229,7 @@ export interface paths {
         put?: never;
         /**
          * List the videos a selection fill searches for
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With read VVMDMs' videos or smart folders in the selection, this node's targets come first, then each link's in slot order in their remote ids; a link that does not answer returns 503 with peer_unreachable.
          */
         post: operations["listWorkInfoFillTargets"];
         delete?: never;
@@ -3043,7 +3043,7 @@ export interface paths {
         put?: never;
         /**
          * Add or remove a video tag
-         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags go to the peer by name, created there when missing; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
+         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name read VVMDMs' videos and smart folders by their slot: the request splits by node, applies the local part first in one transaction and then each link's part in one forwarded request in slot order; a local smart folder adds every connected link's videos matching its rule, and a link's smart folder adds this node's. The limit counts every node's resolved videos together. Tags go to each link by name, created there when missing; applied counts every node and remote sums the links' parts, with the video ids of the links that failed.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -3202,7 +3202,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name the peer's entities: the peer's part is sent first as one request in the peer's ids, then this node's part is applied, and the applied counts are the sums. While the peer is not connected, or when it refuses, nothing changes on either node and 503 service_unavailable with peer_unreachable, or the peer's error, is returned; when the peer gives no answer, this node is unchanged, 503 peer_unreachable is returned, and the peer's write committed or did not.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -6000,11 +6000,11 @@ export interface components {
             deletedSmartFolders: number;
             remote?: components["schemas"]["RemoteSelectionResult"];
         };
-        /** @description The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails. */
+        /** @description The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails. */
         RemoteSelectionResult: {
-            /** @description Videos or collections changed on the peer. */
+            /** @description Videos or collections changed on the read VVMDMs, summed. */
             applied: number;
-            /** @description Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success. */
+            /** @description Requested ids of the read VVMDMs that were not changed, in their remote ids; for collections, the group and smart-folder ids. Empty on success. */
             failedVideoIds: number[];
             reason?: components["schemas"]["ErrorReason"];
         };
@@ -8372,6 +8372,8 @@ export interface components {
             settingKeys?: string[];
             /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
             fingerprint?: string;
+            /** @description The name of the read VVMDM that caused the error; for peer_unreachable and a read VVMDM's refusal of a rename, merge or deletion of a tag, person or organization. */
+            peer?: string;
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
             proposal?: components["schemas"]["AssistantProposal"];

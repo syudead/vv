@@ -44,41 +44,26 @@ func (s *server) requestSlot(r *http.Request) int64 {
 // listSlot is the slot of the link that the vocabulary and the operations naming no remote id reach: the first
 // link in slot order, or 0 when the request reaches no link. They reach one link until they fan out to every link.
 func (s *server) listSlot(ctx context.Context) int64 {
-	links := s.readLinks(ctx)
+	links := s.linkReaches(ctx)
 	if len(links) == 0 {
 		return 0
 	}
 	return links[0].Slot
 }
 
-// readLinks are the links a merged read reaches, in slot order, with whether each is connected now; the peer's own
-// request reaches none, since it names this node's entities only.
-func (s *server) readLinks(ctx context.Context) []domain.LinkReach {
-	if s.pairing == nil || isPeerRequest(ctx) {
-		return nil
-	}
-	state, err := s.pairing.State(ctx)
+// linkReaches are the links a merged read reaches, in slot order, with whether each is connected now; a pairing
+// that cannot be read reaches none.
+func (s *server) linkReaches(ctx context.Context) []domain.LinkReach {
+	state, err := s.readLinks(ctx)
 	if err != nil {
 		s.logger.Warn("could not read the pairing state", slog.Any("error", err))
 		return nil
 	}
-	links := make([]domain.LinkReach, len(state.Links))
-	for i, link := range state.Links {
+	links := make([]domain.LinkReach, len(state))
+	for i, link := range state {
 		links[i] = domain.LinkReach{Slot: link.Link.Slot, Connected: link.State == domain.PeerConnected}
 	}
 	return links
-}
-
-// connectedSlots are the slots of the connected links a read without a cursor merges; a link that is not
-// connected is left out without a request, so the read does not wait for it.
-func (s *server) connectedSlots(ctx context.Context) []int64 {
-	var slots []int64
-	for _, link := range s.readLinks(ctx) {
-		if link.Connected {
-			slots = append(slots, link.Slot)
-		}
-	}
-	return slots
 }
 
 // eachLink calls read for every slot concurrently, so the slowest link bounds the wait instead of their sum, and
@@ -359,7 +344,7 @@ func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mer
 	if err != nil {
 		return mergedPage[T]{}, err
 	}
-	cursor = cursor.Begin(s.readLinks(r.Context()))
+	cursor = cursor.Begin(s.linkReaches(r.Context()))
 	filters, err := s.splitPeerFilters(r.Context(), q)
 	if err != nil {
 		return mergedPage[T]{}, err

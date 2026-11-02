@@ -27,16 +27,6 @@ func (s *server) writePeerWriteFailure(w http.ResponseWriter, err error) {
 	s.peerUnreachable(w)
 }
 
-// splitFavoriteChange separates change into this node's part and the peer's part in the peer's own ids.
-func splitFavoriteChange(change domain.FavoriteChange) (local, peer domain.FavoriteChange) {
-	local, peer = domain.FavoriteChange{Favorite: change.Favorite}, domain.FavoriteChange{Favorite: change.Favorite}
-	local.VideoIDs, peer.VideoIDs = domain.SplitRemoteIDs(change.VideoIDs)
-	local.GroupIDs, peer.GroupIDs = domain.SplitRemoteIDs(change.GroupIDs)
-	local.SmartFolderIDs, peer.SmartFolderIDs = domain.SplitRemoteIDs(change.SmartFolderIDs)
-	local.PersonIDs, peer.PersonIDs = domain.SplitRemoteIDs(change.PersonIDs)
-	return local, peer
-}
-
 // favoriteChangeNames reports whether change names any entity.
 func favoriteChangeNames(change domain.FavoriteChange) bool {
 	return len(change.VideoIDs)+len(change.GroupIDs)+len(change.SmartFolderIDs)+len(change.PersonIDs) > 0
@@ -80,7 +70,7 @@ func (s *server) listMergedWatchHistory(
 	if !s.checkWatchHistoryRead(w, err) {
 		return
 	}
-	cursor = cursor.Begin(s.readLinks(ctx))
+	cursor = cursor.Begin(s.linkReaches(ctx))
 	join, err := s.vocabularyJoin(ctx, 0)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)

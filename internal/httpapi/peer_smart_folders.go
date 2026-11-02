@@ -32,7 +32,7 @@ func (s *server) readsBothNodes(w http.ResponseWriter, r *http.Request, id int64
 		return false
 	}
 	read, ok := s.parseSmartFolderRead(w, id, cursor, limit, query)
-	read.cursor = read.cursor.Begin(s.readLinks(ctx))
+	read.cursor = read.cursor.Begin(s.linkReaches(ctx))
 	if remote {
 		read.slot = domain.RemoteSlot(id)
 	}

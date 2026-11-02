@@ -35,21 +35,26 @@ func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var peer gen.VideoEditSummary
-	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-edits/summary", sel, &peer) {
-		join, err := s.vocabularyJoin(r.Context(), sel.slot)
-		if err != nil {
-			s.internalError(w, "Could not load the edit summary.", err)
-			return
+	join, err := s.selectionJoin(r.Context(), sel)
+	if err != nil {
+		s.internalError(w, "Could not load the edit summary.", err)
+		return
+	}
+	for _, link := range sel.links {
+		var peer gen.VideoEditSummary
+		if !s.peerSelectionRead(r, "/api/video-edits/summary", link, &peer) {
+			continue
 		}
-		summary = domain.MergeVideoEditSummaries(summary, peerEditSummary(peer, join))
+		part := peerEditSummary(peer, join.InSlot(link.slot))
+		join.Hold(part)
+		summary = domain.MergeVideoEditSummaries(summary, part)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, toAPIVideoEditSummary(summary), s.logger)
 }
 
 // ApplyVideoEdits validates the whole edit before resolving smart folders, and ends guest streams of videos it makes
-// private. The local part is applied before the peer's, and stays when the peer's fails.
+// private. The local part is applied before the links' parts, and stays when one fails.
 func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoEditRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -87,9 +92,7 @@ func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 			out.Tags = append(out.Tags, toAPITagRef(ref))
 		}
 	}
-	if sel.hasPeer() {
-		s.editOnPeer(r, sel, parts, &out)
-	}
+	s.editOnPeer(r, parts, &out)
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
