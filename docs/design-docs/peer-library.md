@@ -478,10 +478,13 @@ video page and the selection bar show the name of the item's own link, and no
 schema gains a `remote` field. The shell shows a notice from `GET /api/peer`
 and the `peer` event while a link is not connected: it names that link, or
 counts the links when several are down; guests see the state without the
-names. The Pairing page has two sections that follow the same state: "Read
-another VVMDM" holds the pairing form until a link exists, then each link's
-state, address, certificate and removal; "VVMDMs that read this one" shows the pairing code until a grant
-exists, then the reader's name, pairing time and "Remove access". The video
+names. The Pairing page's sections follow the same state: "Read another
+VVMDM" holds the pairing form until 8 links exist, then a line saying the
+limit is reached; one section per link, in slot order and titled with its
+name, shows its state as a badge, the state's detail while it is not
+connected, its version, address, certificate and removal; "VVMDMs that read
+this one" shows the pairing code until a grant exists, then the reader's
+name, pairing time and "Remove access". The video
 page and a list row offer a remote video's favorite, and the video page saves
 its progress, with the same controls and failure line as a local video's,
 since the peer stores both

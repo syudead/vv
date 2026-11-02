@@ -8,7 +8,8 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Skeleton } from "../ui/shadcn/skeleton";
 
 import { PairForm } from "./PairingSectionForm";
-import { LinkDetails } from "./PairingSectionLink";
+import { PEER_LINK_LIMIT } from "./pairing";
+import { LinkSection } from "./PairingSectionLink";
 import { ReadersSection } from "./PairingSectionReaders";
 
 type PeerView =
@@ -79,40 +80,29 @@ function withDetails(links: PeerLinkState[], answer: PeerLinkState[]): PeerLinkS
   });
 }
 
-/** The VVMDMs this one reads: the pairing form until a link exists, then each link's face. */
+/** The pairing form while fewer than PEER_LINK_LIMIT links exist, then the limit line in its place. */
 function ReadSection({
-  state,
+  links,
   onPaired,
-  onLinkAnswer,
-  onUnpaired,
 }: {
-  state: PeerState;
+  links: number;
   onPaired: (state: PeerState) => void;
-  onLinkAnswer: (state: PeerState) => void;
-  onUnpaired: (nodeId: string | undefined) => void;
 }) {
   const text = t.settings.pairing.read;
   return (
     <PageSection title={text.heading} description={text.description}>
-      {state.links.length === 0 ? (
+      {links < PEER_LINK_LIMIT ? (
         <PairForm onPaired={onPaired} />
       ) : (
-        state.links.map((link) => (
-          <LinkDetails
-            key={link.slot}
-            link={link}
-            onLinkAnswer={onLinkAnswer}
-            onUnpaired={() => onUnpaired(link.nodeId)}
-          />
-        ))
+        <p className="text-muted-foreground">{text.limit}</p>
       )}
     </PageSection>
   );
 }
 
 /**
- * Two independent sections: the VVMDM this one reads, and the VVMDM that reads this one. Both follow
- * GET /api/peer and the peer event.
+ * The VVMDMs this one reads, one section per link in slot order, then the VVMDM that reads this one.
+ * Every section follows GET /api/peer and the peer event.
  */
 export default function PairingSection() {
   const text = t.settings.pairing;
@@ -122,17 +112,20 @@ export default function PairingSection() {
     const { state } = view;
     return (
       <>
-        <ReadSection
-          state={state}
-          onPaired={apply}
-          onLinkAnswer={updateLink}
-          onUnpaired={(nodeId) =>
-            apply({
-              ...state,
-              links: state.links.filter((link) => link.nodeId !== nodeId),
-            })
-          }
-        />
+        <ReadSection links={state.links.length} onPaired={apply} />
+        {state.links.map((link) => (
+          <LinkSection
+            key={link.slot}
+            link={link}
+            onLinkAnswer={updateLink}
+            onUnpaired={() =>
+              apply({
+                ...state,
+                links: state.links.filter((other) => other.nodeId !== link.nodeId),
+              })
+            }
+          />
+        ))}
         <ReadersSection
           grant={state.grant}
           onRevoked={() => apply({ ...state, grant: undefined })}

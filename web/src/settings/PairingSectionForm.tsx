@@ -94,7 +94,7 @@ function ProblemAlert({
 }
 
 /**
- * The form that makes this VVMDM read another. A refusal keeps every value; a field error clears when
+ * The form that makes this VVMDM read another. A pairing clears it, a refusal keeps every value; a field error clears when
  * that field changes. Trusting the other VVMDM's certificate sends the same form again with the
  * fingerprint shown; it is dropped when the address changes.
  */
@@ -125,7 +125,9 @@ export function PairForm({ onPaired }: { onPaired: (state: PeerState) => void })
     setProblem(null);
     try {
       onPaired(await pairPeer(body));
-      return;
+      // The form stays for the next link, so a pairing clears it.
+      setValues({ address: "", code: "" });
+      setConfirmed(undefined);
     } catch (error) {
       const failure = pairFailure(error);
       if (failure.kind === "field") setErrors({ [failure.field]: failure.text });

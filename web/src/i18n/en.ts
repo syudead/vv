@@ -5273,6 +5273,7 @@ export const en = {
         heading: "Read another VVMDM",
         description:
           "Enter the pairing code another VVMDM on your local network shows to browse, play and organize its library from this one. Only this VVMDM connects to it, so it needs no address of this one.",
+        limit: "This VVMDM reads 8 VVMDMs, the most it can. Unpair one to read another.",
       },
       readers: {
         heading: "VVMDMs that read this one",
@@ -5326,7 +5327,6 @@ export const en = {
       link: {
         description:
           "Its videos, groups and smart folders show in this library while it is connected.",
-        name: "Name",
         version: "Version",
         address: "Address",
         addressDescription:
@@ -5343,17 +5343,17 @@ export const en = {
         remove: "Remove pairing",
         removeFailed: (reason: string) => `Couldn't remove the pairing: ${reason}`,
       },
-      state: {
+      badge: {
         connected: "Connected",
-        network: "Can't reach it",
+        unreachable: "Not connected",
+        revoked: "Access removed",
+      },
+      state: {
         networkDetail:
           "Its videos, groups and smart folders are hidden until it answers. Check that it is running and that the address below is right.",
-        certificate: "Certificate changed",
         certificateDetail:
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
-        untrusted: "Can't verify its certificate",
         untrustedDetail: "Confirm its certificate below to connect.",
-        revoked: "Access removed by the other side",
         revokedDetail:
           "It no longer shares its library with this VVMDM. Remove the pairing, then enter a new code from it to read it again.",
       },
