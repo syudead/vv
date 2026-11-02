@@ -47,6 +47,10 @@ An open video or a playlist entry is not an error when its folder is switched
 off, and the store sites that re-read a video after a write go through
 `getVideo`, so edits to such a video still succeed.
 
+The root folder list, `GET /api/folders`, leaves out a root outside the scope
+for the owner as well, through `Audience.ListsFolder`, so a switched-off root
+is not shown as an empty card.
+
 | Rejected | Why |
 | --- | --- |
 | Scoping `visibleLocationCondition` | An open video would answer `404` and writes to its videos would fail |

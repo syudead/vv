@@ -70,9 +70,9 @@ func folderFixture() *fakeFolders {
 	}
 	return &fakeFolders{
 		roots: []domain.MediaFolder{
-			{ID: 7, Path: "/b/movies"},
-			{ID: 3, Path: "/a/movies"},
-			{ID: 9, Path: "/empty"},
+			{ID: 7, Path: "/b/movies", Enabled: true},
+			{ID: 3, Path: "/a/movies", Enabled: true},
+			{ID: 9, Path: "/empty", Enabled: true},
 		},
 		locations: []domain.FolderLocation{
 			loc("/a/movies/A/x.mp4", 1, domain.ThumbnailStateDone),
@@ -118,6 +118,27 @@ func TestListRootFoldersIncludesEveryRegisteredFolder(t *testing.T) {
 	}
 	if empty := listing.Folders[0]; empty.VideoCount != 0 || empty.Previews == nil {
 		t.Errorf("/empty = %+v, want zero counts and an empty previews array", empty)
+	}
+}
+
+func TestListRootFoldersLeavesOutASwitchedOffRoot(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	folders := folderFixture()
+	folders.roots[0].Enabled = false
+	handler := newTestServer(t, Options{Folders: folders})
+
+	rec := do(t, handler, http.MethodGet, "/api/folders")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	var got []int64
+	for _, folder := range decode[gen.RootFolderListing](t, rec).Folders {
+		got = append(got, folder.RootId)
+	}
+	if want := []int64{9, 3}; !slices.Equal(got, want) {
+		t.Errorf("root ids = %v, want %v without the switched-off /b/movies (7)", got, want)
 	}
 }
 

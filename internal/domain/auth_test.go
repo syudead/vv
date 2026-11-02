@@ -154,6 +154,19 @@ func TestAudienceExcludedFoldersReplaceTheSwitches(t *testing.T) {
 	}
 }
 
+func TestAudienceListsFolderFollowsItsScope(t *testing.T) {
+	on, off := MediaFolder{ID: 3, Enabled: true}, MediaFolder{ID: 5, Enabled: false}
+	if !AudienceOwner.ListsFolder(on) || AudienceGuest.ListsFolder(off) {
+		t.Errorf("スイッチの Audience: オン %v, オフ %v, want オンだけを並べる",
+			AudienceOwner.ListsFolder(on), AudienceGuest.ListsFolder(off))
+	}
+	scoped := AudienceOwner.WithExcludedFolders([]int64{3})
+	if scoped.ListsFolder(on) || !scoped.ListsFolder(off) {
+		t.Errorf("除外リスト [3] の Audience: 3 %v, 5 %v, want スイッチではなくリストで 3 だけを外す",
+			scoped.ListsFolder(on), scoped.ListsFolder(off))
+	}
+}
+
 func TestCheckVideoQuery(t *testing.T) {
 	defaults := VideoQuery{Sort: SortAddedDesc}
 	allowed := []VideoQuery{
