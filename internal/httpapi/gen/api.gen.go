@@ -933,6 +933,21 @@ func (e CreditSort) Valid() bool {
 	}
 }
 
+// Defines values for EmptyReason.
+const (
+	AllFoldersOff EmptyReason = "all_folders_off"
+)
+
+// Valid indicates whether the value is a known member of the EmptyReason enum.
+func (e EmptyReason) Valid() bool {
+	switch e {
+	case AllFoldersOff:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EncoderAvailabilityState.
 const (
 	EncoderAvailabilityStateAvailable   EncoderAvailabilityState = "available"
@@ -4774,6 +4789,9 @@ type DisplayNameUpdate struct {
 	DisplayName string `json:"displayName"`
 }
 
+// EmptyReason Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+type EmptyReason string
+
 // EncoderAvailability defines model for EncoderAvailability.
 type EncoderAvailability struct {
 	// Encoder Effective live-transcode encoder
@@ -5402,7 +5420,9 @@ type LibraryItemKind string
 
 // LibraryPage defines model for LibraryPage.
 type LibraryPage struct {
-	Items []LibraryItem `json:"items"`
+	// EmptyReason Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+	EmptyReason *EmptyReason  `json:"emptyReason,omitempty"`
+	Items       []LibraryItem `json:"items"`
 
 	// MissingTagIds Missing IDs from tag; omitted when none.
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
@@ -5474,6 +5494,9 @@ type LoginRequest struct {
 // MediaFolder defines model for MediaFolder.
 type MediaFolder struct {
 	CreatedAt time.Time `json:"createdAt"`
+
+	// Enabled False while the folder is switched off: its videos are left out of this node's lists, searches and counts.
+	Enabled   bool      `json:"enabled"`
 	Id        int64     `json:"id"`
 	Path      string    `json:"path"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -7043,6 +7066,11 @@ type SeekThumbnailSprite struct {
 	Sheets []string `json:"sheets"`
 }
 
+// SetMediaFolderEnabledRequest defines model for SetMediaFolderEnabledRequest.
+type SetMediaFolderEnabledRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // SetWorkInfoPluginSettingsRequest defines model for SetWorkInfoPluginSettingsRequest.
 type SetWorkInfoPluginSettingsRequest struct {
 	// Values Map of keys to new values; null deletes a value, omitted keys remain unchanged.
@@ -7941,6 +7969,9 @@ type Video struct {
 	// Folder Containing folder for the displayed location in video lists, representative location in GET /api/videos/{id}, problem location in ScanIssue, or active file in ScanActivity; omitted outside registered folders. For automatic LibraryGroup.folder and Video.group.folder, identifies the group folder itself.
 	Folder *VideoFolder `json:"folder,omitempty"`
 
+	// FolderOff True on a read by id (the video, a playlist's items) while every media folder holding the video is switched off; omitted otherwise. Lists leave such a video out.
+	FolderOff *bool `json:"folderOff,omitempty"`
+
 	// Group Group context from the group query; see docs/design-docs/catalog-organization.md. Included only in GET /api/videos/{id} when the video belongs to the group, never in list items. Position/count follow depth-first playback order with first-occurrence deduplication, counting only public videos for guests.
 	Group *VideoGroupRef `json:"group,omitempty"`
 
@@ -8299,7 +8330,9 @@ type VideoLocation struct {
 
 // VideoPage defines model for VideoPage.
 type VideoPage struct {
-	Items []Video `json:"items"`
+	// EmptyReason Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+	EmptyReason *EmptyReason `json:"emptyReason,omitempty"`
+	Items       []Video      `json:"items"`
 
 	// MissingTagIds Missing IDs from tag; omitted when none.
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
@@ -9817,6 +9850,9 @@ type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
+// SetMediaFolderEnabledJSONRequestBody defines body for SetMediaFolderEnabled for application/json ContentType.
+type SetMediaFolderEnabledJSONRequestBody = SetMediaFolderEnabledRequest
+
 // UpdateOnboardingJSONRequestBody defines body for UpdateOnboarding for application/json ContentType.
 type UpdateOnboardingJSONRequestBody = Onboarding
 
@@ -10236,6 +10272,9 @@ type ServerInterface interface {
 	// UpdateMediaFolder Change a media folder path
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// SetMediaFolderEnabled Switch a media folder on or off
+	// (PUT /api/media-folders/{id}/enabled)
+	SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request, id MediaFolderId)
 	// GetMediaFolderUsage Return a media folder's video size and disk space
 	// (GET /api/media-folders/{id}/usage)
 	GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id MediaFolderId)
@@ -12822,6 +12861,32 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMediaFolderEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id MediaFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMediaFolderEnabled(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18452,6 +18517,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}/enabled", wrapper.SetMediaFolderEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders/{id}/usage", wrapper.GetMediaFolderUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)

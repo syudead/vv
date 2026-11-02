@@ -98,19 +98,36 @@ func contentKeysForUserKeys(ctx context.Context, q queryExecer, userKeys []strin
 	return keys, nil
 }
 
-// Lists use one audience-visible effective representative per bundle, falling back to the lowest video ID; details and streaming still allow other versions.
+// Lists use one effective representative per bundle, falling back to the lowest video ID, chosen among the members
+// under the folder scope so a bundle stays listed through any member whose folder is on; details and streaming still
+// allow other versions.
+func listedRepresentativeExpr(bundleID string, audience domain.Audience) string {
+	return representativeWith(bundleID, audience, listedVideoCondition)
+}
 
-func effectiveRepresentativeExpr(bundleID string, audience domain.Audience) string {
+// videoCondition builds a visibility predicate on a videos alias.
+type videoCondition func(alias string, audience domain.Audience) string
+
+func representativeWith(bundleID string, audience domain.Audience, condition videoCondition) string {
 	return `(select rv.id from video_bundle_members rm
 		join video_bundles rb on rb.id = rm.bundle_id
 		join videos rv on rv.content_key = rm.content_key and rv.content_key <> ''
-		where rm.bundle_id = ` + bundleID + ` and ` + visibleVideoCondition("rv", audience) + `
+		where rm.bundle_id = ` + bundleID + ` and ` + condition("rv", audience) + `
 		order by rv.content_key = rb.representative_key desc, rv.id limit 1)`
 }
 
 // This predicate checks bundle representation only; callers must add location or video visibility.
 func shownVideoCondition(alias string, audience domain.Audience) string {
+	return shownConditionWith(alias, audience, visibleVideoCondition)
+}
+
+// listedShownVideoCondition is shownVideoCondition for lists, choosing the representative under the folder scope.
+func listedShownVideoCondition(alias string, audience domain.Audience) string {
+	return shownConditionWith(alias, audience, listedVideoCondition)
+}
+
+func shownConditionWith(alias string, audience domain.Audience, condition videoCondition) string {
 	return `(not exists (select 1 from video_bundle_members sm where sm.content_key = ` + alias + `.content_key and ` +
 		alias + `.content_key <> '') or ` + alias + `.id = ` +
-		effectiveRepresentativeExpr(`(select sm.bundle_id from video_bundle_members sm where sm.content_key = `+alias+`.content_key)`, audience) + `)`
+		representativeWith(`(select sm.bundle_id from video_bundle_members sm where sm.content_key = `+alias+`.content_key)`, audience, condition) + `)`
 }

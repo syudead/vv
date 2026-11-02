@@ -35,7 +35,7 @@ func (s *ScanIndexStore) HasLocationsUnder(ctx context.Context, folderID int64) 
 }
 
 func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder, error) {
-	rows, err := q.QueryContext(ctx, `select id, path, version, created_at, updated_at from media_folders order by id`)
+	rows, err := q.QueryContext(ctx, `select id, path, version, enabled, created_at, updated_at from media_folders order by id`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read media folders: %w", err)
 	}
@@ -44,7 +44,7 @@ func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder,
 	for rows.Next() {
 		var folder domain.MediaFolder
 		var createdAt, updatedAt int64
-		if err := rows.Scan(&folder.ID, &folder.Path, &folder.Version, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&folder.ID, &folder.Path, &folder.Version, &folder.Enabled, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("cannot read media folders: %w", err)
 		}
 		folder.CreatedAt = time.Unix(createdAt, 0)
@@ -96,10 +96,11 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	c.jobsQueued(domain.JobKinds...)
 	c.issuesChanged()
 	c.matchesChanged()
+	c.mediaFoldersChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
+	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, Enabled: true, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
 func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error) {
@@ -115,9 +116,10 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	}
 	defer func() { _ = tx.Rollback() }()
 	var oldPath string
+	var enabled bool
 	var createdAt, previousUpdatedAt int64
 	var version int64
-	if err := tx.QueryRowContext(ctx, `select path, version, created_at, updated_at from media_folders where id = ?`, id).Scan(&oldPath, &version, &createdAt, &previousUpdatedAt); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `select path, version, enabled, created_at, updated_at from media_folders where id = ?`, id).Scan(&oldPath, &version, &enabled, &createdAt, &previousUpdatedAt); errors.Is(err, sql.ErrNoRows) {
 		return domain.MediaFolder{}, domain.ErrNotFound
 	} else if err != nil {
 		return domain.MediaFolder{}, err
@@ -129,7 +131,7 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 		if err := tx.Commit(); err != nil {
 			return domain.MediaFolder{}, err
 		}
-		return domain.MediaFolder{ID: id, Path: oldPath, Version: version, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(previousUpdatedAt, 0)}, nil
+		return domain.MediaFolder{ID: id, Path: oldPath, Version: version, Enabled: enabled, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(previousUpdatedAt, 0)}, nil
 	}
 	if err := ensureFolderPlacementAllowed(ctx, tx, id, cleaned); err != nil {
 		return domain.MediaFolder{}, err
@@ -162,10 +164,43 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	c.jobsQueued(domain.JobKinds...)
 	c.issuesChanged()
 	c.matchesChanged()
+	c.mediaFoldersChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
+	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, Enabled: enabled, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
+}
+
+// SetMediaFolderEnabled writes only the folder's switch: path and version stay, so no rescan, ingest or sweep
+// follows, and it is allowed during a scan. A change publishes MediaFoldersChanged after commit.
+func (s *SettingsStore) SetMediaFolderEnabled(ctx context.Context, id int64, enabled bool) (domain.MediaFolder, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.MediaFolder{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	folder := domain.MediaFolder{ID: id}
+	var createdAt, updatedAt int64
+	if err := tx.QueryRowContext(ctx, `select path, version, enabled, created_at, updated_at from media_folders where id = ?`, id).
+		Scan(&folder.Path, &folder.Version, &folder.Enabled, &createdAt, &updatedAt); errors.Is(err, sql.ErrNoRows) {
+		return domain.MediaFolder{}, domain.ErrNotFound
+	} else if err != nil {
+		return domain.MediaFolder{}, fmt.Errorf("cannot read the media folder: %w", err)
+	}
+	folder.CreatedAt, folder.UpdatedAt = time.Unix(createdAt, 0), time.Unix(updatedAt, 0)
+	if folder.Enabled == enabled {
+		return folder, tx.Commit()
+	}
+	// The media_folders update trigger marks every group's stored values for refresh.
+	if _, err := tx.ExecContext(ctx, `update media_folders set enabled = ? where id = ?`, boolToInt(enabled), id); err != nil {
+		return domain.MediaFolder{}, fmt.Errorf("cannot switch the media folder: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.MediaFolder{}, fmt.Errorf("cannot switch the media folder: %w", err)
+	}
+	s.db.publishEvents(domain.MediaFoldersChanged{Switch: true})
+	folder.Enabled = enabled
+	return folder, nil
 }
 
 func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error {
@@ -220,6 +255,7 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	c.processingChanged()
 	c.issuesChanged()
 	c.matchesChanged()
+	c.mediaFoldersChanged()
 	// Removing thumbnail work can unblock seek jobs; surviving videos emit no ingest event, so wake workers explicitly.
 	c.jobsQueued(domain.JobSeekThumbnail)
 	if err := recordMediaFolderRemoval(ctx, tx, &c, path, removed, time.Now()); err != nil {

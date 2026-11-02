@@ -1,9 +1,10 @@
-import { SquareDashed, X } from "lucide-react";
+import { FolderMinus, SquareDashed, X } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router";
 
 import type { VideoFolder } from "../api/client";
 import AssistantTrigger from "../assistant/AssistantTrigger";
+import { useAudience } from "../auth/audience";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
@@ -47,6 +48,7 @@ export default function VideoHeader({
   folder,
   virtual = false,
   videoId,
+  folderOff = false,
   onClose,
 }: {
   folder: VideoFolder | undefined;
@@ -54,6 +56,8 @@ export default function VideoHeader({
   virtual?: boolean;
   /** The video's id; a link's video gets a band naming the link before the breadcrumb. */
   videoId?: number;
+  /** Every folder holding the video is switched off; the crumbs turn to plain text, since the Folders page leaves it out. */
+  folderOff?: boolean;
   onClose: () => void;
 }) {
   const crumbs = folderCrumbs(folder);
@@ -72,6 +76,8 @@ export default function VideoHeader({
 
       {videoId !== undefined && isRemoteId(videoId) && <RemoteBand videoId={videoId} />}
 
+      {folderOff && <FolderOffBand />}
+
       {crumbs.length > 0 && (
         <Breadcrumb
           aria-label={t.player.header.folder}
@@ -80,6 +86,9 @@ export default function VideoHeader({
           <BreadcrumbList className="flex-nowrap whitespace-nowrap">
             {crumbs.map((crumb, index) => {
               const last = index === lastIndex;
+              const crumbClass = last
+                ? "font-medium text-foreground"
+                : "max-w-chip-label";
               return (
                 <Fragment key={crumb.to}>
                   {lastIndex > 0 && last && (
@@ -92,15 +101,15 @@ export default function VideoHeader({
                   )}
                   <BreadcrumbSeparator className={cn(!last && "hidden md:block")} />
                   <BreadcrumbItem className={cn(!last && "hidden md:inline-flex")}>
-                    <BreadcrumbLink
-                      asChild
-                      title={crumb.label}
-                      className={cn(
-                        last ? "font-medium text-foreground" : "max-w-chip-label",
-                      )}
-                    >
-                      <Link to={crumb.to}>{crumb.label}</Link>
-                    </BreadcrumbLink>
+                    {folderOff ? (
+                      <span title={crumb.label} className={cn("truncate", crumbClass)}>
+                        {crumb.label}
+                      </span>
+                    ) : (
+                      <BreadcrumbLink asChild title={crumb.label} className={crumbClass}>
+                        <Link to={crumb.to}>{crumb.label}</Link>
+                      </BreadcrumbLink>
+                    )}
                   </BreadcrumbItem>
                 </Fragment>
               );
@@ -127,6 +136,36 @@ export default function VideoHeader({
         <TooltipContent>{t.common.close}</TooltipContent>
       </Tooltip>
     </header>
+  );
+}
+
+/** The owner reaches the switch from the band; a guest reads it only. */
+function FolderOffBand() {
+  const owner = useAudience() === "owner";
+  const text = t.player.folderOff;
+  const content = (
+    <>
+      <FolderMinus className="size-4 shrink-0" aria-hidden="true" />
+      <span className="truncate" aria-hidden="true">
+        {text.band}
+      </span>
+      <span className="sr-only">{text.detail}</span>
+    </>
+  );
+  const className =
+    "flex min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground";
+  return owner ? (
+    <Link
+      to="/settings/library"
+      title={text.detail}
+      className={cn(className, "rounded-sm hover:text-foreground")}
+    >
+      {content}
+    </Link>
+  ) : (
+    <p title={text.detail} className={className}>
+      {content}
+    </p>
   );
 }
 

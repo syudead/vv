@@ -129,7 +129,7 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 		where = ` where ` + strings.Join(conditions, ` and `)
 	}
 	return `with tag_counts as (
-			select tag_id, count(*) as video_count from (` + taggedVideosSQL("") + `) group by tag_id
+			select tag_id, count(*) as video_count from (` + taggedVideosSQL(domain.AudienceOwner, "") + `) group by tag_id
 		), listed as (
 			select t.id as id, tn.name as name, t.tentative as tentative, t.created_at as created_at,
 			       tn.sort_key as sort_key, coalesce(c.video_count, 0) as video_count,

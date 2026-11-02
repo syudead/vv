@@ -124,7 +124,7 @@ func (s *server) peerBoundary(
 			"The paired VVMDM cannot use this operation.")
 		return
 	}
-	if audience == domain.AudienceGuest && class == accessOwner {
+	if !audience.IsOwner() && class == accessOwner {
 		s.unauthenticated(w)
 		return
 	}
@@ -161,7 +161,7 @@ func (s *server) GetPeer(w http.ResponseWriter, r *http.Request) {
 
 // peerStateBody gives guests each link's slot, state and reason only.
 func peerStateBody(state domain.PeerState, audience domain.Audience) gen.PeerState {
-	owner := audience == domain.AudienceOwner
+	owner := audience.IsOwner()
 	body := gen.PeerState{Links: make([]gen.PeerLinkState, len(state.Links))}
 	for i, link := range state.Links {
 		body.Links[i] = peerLinkBody(link, owner)

@@ -63,6 +63,7 @@ export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type SubtitleTrack = components["schemas"]["SubtitleTrack"];
 export type SubtitleTrackList = components["schemas"]["SubtitleTrackList"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
+export type EmptyReason = components["schemas"]["EmptyReason"];
 export type MediaFolderUsage = components["schemas"]["MediaFolderUsage"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
@@ -1313,6 +1314,22 @@ export async function updateMediaFolder(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, version }),
+    signal,
+  });
+  clearListSnapshot();
+  return updated;
+}
+
+/** Switch a folder's videos into or out of this node's lists; allowed during a scan. */
+export async function setMediaFolderEnabled(
+  id: number,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<MediaFolder> {
+  const updated = await request<MediaFolder>(`/api/media-folders/${String(id)}/enabled`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
     signal,
   });
   clearListSnapshot();

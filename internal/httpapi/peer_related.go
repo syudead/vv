@@ -296,7 +296,7 @@ func (s *server) relatedPeer(w http.ResponseWriter, r *http.Request, slot int64)
 		return nil, false
 	}
 	return &relatedPeer{
-		link: s.peerLink, slot: slot, guest: audienceFrom(r.Context()) != domain.AudienceOwner, join: join,
+		link: s.peerLink, slot: slot, guest: !audienceFrom(r.Context()).IsOwner(), join: join,
 		videos: map[int64]gen.Video{},
 	}, true
 }

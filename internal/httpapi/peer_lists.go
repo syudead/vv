@@ -194,7 +194,7 @@ func (s *server) peerCall(r *http.Request, slot int64, method, path string, quer
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	answer, err := s.peerSend(req, slot, audienceFrom(r.Context()) != domain.AudienceOwner, false)
+	answer, err := s.peerSend(req, slot, !audienceFrom(r.Context()).IsOwner(), false)
 	if err != nil || out == nil || answer == nil {
 		return err
 	}

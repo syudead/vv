@@ -45,6 +45,10 @@ func (f *fakeMediaFolderStore) DeleteMediaFolder(_ context.Context, id, _ int64)
 	return nil
 }
 
+func (f *fakeMediaFolderStore) SetMediaFolderEnabled(context.Context, int64, bool) (domain.MediaFolder, error) {
+	return domain.MediaFolder{}, nil
+}
+
 func TestMediaFoldersSaveTheCheckedPath(t *testing.T) {
 	store := &fakeMediaFolderStore{}
 	checker := &fakeFolderChecker{cleaned: "/media/movies"}

@@ -49,15 +49,18 @@ export function useVideos(
   folderRef.current = folder;
   const libraryRef = useRef(library);
   libraryRef.current = library;
-  const [{ items, total, cursor, hasMore, inconsistent, missingTagIds }, dispatch] =
-    useReducer(videosDataReducer, seed, (initial): VideosData => ({
-      items: initial?.items ?? [],
-      total: initial?.total ?? 0,
-      cursor: initial?.cursor,
-      hasMore: initial?.hasMore ?? true,
-      inconsistent: false,
-      missingTagIds: [],
-    }));
+  const [
+    { items, total, cursor, hasMore, inconsistent, missingTagIds, emptyReason },
+    dispatch,
+  ] = useReducer(videosDataReducer, seed, (initial): VideosData => ({
+    items: initial?.items ?? [],
+    total: initial?.total ?? 0,
+    cursor: initial?.cursor,
+    hasMore: initial?.hasMore ?? true,
+    inconsistent: false,
+    missingTagIds: [],
+    emptyReason: undefined,
+  }));
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
@@ -250,11 +253,12 @@ export function useVideos(
       if (libraryRef.current) refreshInPlaceRef.current();
       else refreshGroups(shownGroupIds(itemsRef.current));
     };
-    // The peer's items enter or leave every list when it connects or drops.
+    // The peer's items enter or leave every list when it connects or drops, and a folder's when it is switched.
     const peerItems = () => refreshInPlaceRef.current();
     const unsubscribe = owner
       ? subscribeServerEvents({
           peerItems,
+          mediaFolders: peerItems,
           video: (id) => {
             // Retain events even for visible videos during page loading, or a later stale page could undo their refresh.
             if (pageLoading.current) changedWhileLoading.current.add(id);
@@ -274,6 +278,7 @@ export function useVideos(
         })
       : subscribeServerEvents({
           peerItems,
+          mediaFolders: peerItems,
           group,
           smartFolder,
           open: (reconnected) => {
@@ -347,6 +352,7 @@ export function useVideos(
     error,
     notFound,
     missingTagIds,
+    emptyReason,
     loadMore,
     retryLoadMore,
     reload,

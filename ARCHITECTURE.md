@@ -165,7 +165,11 @@ work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations
-or folders takes a `domain.Audience`, whose zero value is the guest. The HTTP
+or folders takes a `domain.Audience`: a role and a folder scope, whose zero
+value is the guest with this node's media-folder switches. Lists, searches,
+counts and folder reads leave a switched-off folder's videos out; reads by id,
+scans and jobs do not
+([media-folder-switches.md](docs/design-docs/media-folder-switches.md)). The HTTP
 layer classifies every request at its outermost layer, before routing, by path
 into bearer, anyone, guests too or owner only, matching each operation's
 `security` in `api/openapi.yaml` (a Go test checks that). Hidden videos answer

@@ -77,7 +77,7 @@ func TestAssistantEventsAreOwnerOnly(t *testing.T) {
 		events.Handle(domain.AssistantChanged{})
 		events.Handle(domain.AssistantChanged{})
 		response := httptest.NewRecorder()
-		if err := server.writePendingEvents(context.Background(), response, sub, guest); err != nil {
+		if err := server.writePendingEvents(context.Background(), response, sub, guest, false); err != nil {
 			t.Fatal(err)
 		}
 		want := "event: assistant\ndata: {}\n\n"

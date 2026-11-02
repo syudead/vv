@@ -75,6 +75,7 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "POST", Path: "/api/media-folders", Response: "MediaFolder", Request: "CreateMediaFolderRequest"},
 	{Method: "PUT", Path: "/api/media-folders/{id}", Response: "MediaFolder", Request: "UpdateMediaFolderRequest"},
 	{Method: "DELETE", Path: "/api/media-folders/{id}"},
+	{Method: "PUT", Path: "/api/media-folders/{id}/enabled", Response: "MediaFolder", Request: "SetMediaFolderEnabledRequest"},
 	{Method: "GET", Path: "/api/media-folders/{id}/usage", Response: "MediaFolderUsage"},
 	{Method: "GET", Path: "/api/onboarding", Response: "Onboarding"},
 	{Method: "PUT", Path: "/api/onboarding", Response: "Onboarding", Request: "Onboarding"},

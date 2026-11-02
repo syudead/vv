@@ -107,7 +107,7 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 
 // Count both manual and folder-derived attachments on current library videos.
 func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
-	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
+	query := `select count(*) from (` + taggedVideosSQL(domain.AudienceOwner, ` and tag_id = ?`) + `)`
 	var count int
 	if err := q.QueryRowContext(ctx, query, id, id).Scan(&count); err != nil {
 		return 0, fmt.Errorf("cannot count tag uses (id=%d): %w", id, err)

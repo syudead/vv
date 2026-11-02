@@ -128,7 +128,7 @@ var assistantExclusions = slices.Concat(
 		"Its url may hold the proxy's user and password, which would reach the model", pageSettingsNetwork, false,
 		"getPluginProxySettings"),
 	excluded("Media folders", outOfScope, pageSettingsLibrary, true,
-		"createMediaFolder", "updateMediaFolder", "deleteMediaFolder"),
+		"createMediaFolder", "updateMediaFolder", "deleteMediaFolder", "setMediaFolderEnabled"),
 	excluded("Watch history deletion", outOfScope, pageHistory, true, "clearWatchHistory", "deleteWatchHistoryEntry"),
 	excluded("Face runtime download", outOfScope, pageSettingsFaces, true, "downloadFaceRuntime"),
 	excluded("Onboarding", outOfScope, pageOnboarding, true, "updateOnboarding", "pickOnboardingInterests"),

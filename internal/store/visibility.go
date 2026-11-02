@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -26,10 +28,59 @@ func visibleLocationCondition(alias string, audience domain.Audience) string {
 	return registered + ` and ` + publicVideoCondition(alias)
 }
 
+// Lists, searches, counts and folder reads add the audience's folder scope to visibleLocationCondition; reads by id
+// keep visibleLocationCondition so an open video and writes to it still find it
+// (docs/design-docs/media-folder-switches.md).
+func listedLocationCondition(alias string, audience domain.Audience) string {
+	listed := scopedLocationCondition(alias, audience)
+	if audience.IsOwner() {
+		return listed
+	}
+	return listed + ` and ` + publicVideoCondition(alias)
+}
+
+// scopedLocationCondition is registeredLocationCondition under the audience's folder scope, without the role's
+// public rule; folders never overlap, so the scoped folder replaces the registered one.
+func scopedLocationCondition(alias string, audience domain.Audience) string {
+	scope := `mf.enabled = 1`
+	if ids, explicit := audience.ExcludedFolders(); explicit {
+		scope = `mf.id not in (` + joinInt64s(ids) + `)`
+	}
+	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + ` and ` + scope + `)`
+}
+
+func joinInt64s(ids []int64) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(parts, ", ")
+}
+
 // A file video needs a visible location; a projected virtual video has none and follows visibleVirtualCondition.
 func visibleVideoCondition(alias string, audience domain.Audience) string {
+	return videoConditionWith(alias, audience, visibleLocationCondition)
+}
+
+// listedVideoCondition is visibleVideoCondition under the folder scope; a virtual video has no folder.
+func listedVideoCondition(alias string, audience domain.Audience) string {
+	return videoConditionWith(alias, audience, listedLocationCondition)
+}
+
+// listedFileVideoCondition requires a listed location, leaving virtual videos out as registeredVideoCondition does.
+func listedFileVideoCondition(alias string, audience domain.Audience) string {
+	return `exists (select 1 from video_locations l where l.video_id = ` + alias + `.id and ` +
+		listedLocationCondition("l", audience) + `)`
+}
+
+func videoConditionWith(alias string, audience domain.Audience, location func(string, domain.Audience) string) string {
 	return `(exists (select 1 from video_locations l where l.video_id = ` + alias + `.id and ` +
-		visibleLocationCondition("l", audience) + `) or ` + visibleVirtualCondition(alias+`.content_key`, audience) + `)`
+		location("l", audience) + `) or ` + visibleVirtualCondition(alias+`.content_key`, audience) + `)`
+}
+
+// folderOffExpr is true for a file video visible to the audience with no location under its folder scope.
+func folderOffExpr(alias string, audience domain.Audience) string {
+	return `(not ` + listedVideoCondition(alias, audience) + `)`
 }
 
 // The owner sees every virtual video; a guest sees one only while its user key is public.
