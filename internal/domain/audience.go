@@ -73,3 +73,12 @@ func (a Audience) ExcludedFolders() ([]int64, bool) {
 	}
 	return ids, true
 }
+
+// ListsFolder reports whether the folder is under the scope: on by this node's switches, or not in the explicit list.
+func (a Audience) ListsFolder(folder MediaFolder) bool {
+	ids, explicit := a.ExcludedFolders()
+	if !explicit {
+		return folder.Enabled
+	}
+	return !slices.Contains(ids, folder.ID)
+}
