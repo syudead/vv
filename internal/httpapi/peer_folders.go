@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -12,20 +11,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// withPeerRoots adds the peer's media-folder roots to local in name order, local first on equal names; a peer
-// that does not answer leaves the local roots alone.
+// withPeerRoots adds every connected link's media-folder roots to local in name order, local first on equal
+// names and then the links in slot order; a link that does not answer is left out.
 func (s *server) withPeerRoots(r *http.Request, local []gen.FolderSummary) []gen.FolderSummary {
-	var answer gen.RootFolderListing
-	slot := s.listSlot(r.Context())
-	if err := s.peerGet(r, slot, "/api/folders", url.Values{}, &answer); err != nil {
-		s.logger.Info("the folder list leaves out the other VVMDM", slog.Any("error", err))
-		return local
+	folders := local
+	for _, answer := range linkAnswers[gen.RootFolderListing](s, r, "/api/folders", url.Values{}) {
+		join := domain.VocabularyJoin{Slot: answer.slot}
+		for i := range answer.value.Folders {
+			rewriteRemoteFolderSummary(&answer.value.Folders[i], join)
+		}
+		folders = append(folders, answer.value.Folders...)
 	}
-	join := domain.VocabularyJoin{Slot: slot}
-	for i := range answer.Folders {
-		rewriteRemoteFolderSummary(&answer.Folders[i], join)
-	}
-	folders := append(local, answer.Folders...)
 	slices.SortStableFunc(folders, func(a, b gen.FolderSummary) int {
 		if order := domain.CompareNatural(a.Name, b.Name); order != 0 {
 			return order
@@ -61,12 +57,12 @@ func (s *server) listRemoteFolderVideos(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	filters, err := s.splitPeerFilters(r.Context(), domain.RemoteSlot(rootID), query)
+	filters, err := s.splitPeerFilters(r.Context(), query)
 	if err != nil {
 		s.internalError(w, "Could not load the folder's videos.", err)
 		return
 	}
-	if filters.peerEmpty && !isPeerRequest(r.Context()) {
+	if filters.linkEmpty(domain.RemoteSlot(rootID)) && !isPeerRequest(r.Context()) {
 		w.Header().Set("Cache-Control", cacheNoStore)
 		writeJSON(w, http.StatusOK, gen.VideoPage{Items: []gen.Video{}}, s.logger)
 		return

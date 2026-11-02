@@ -18,6 +18,9 @@ export function formatCountdown(remainingMs: number): string {
   return `${String(Math.floor(total / 60))}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** The links one VVMDM reads at most; the server refuses another with peer_limit. */
+export const PEER_LINK_LIMIT = 8;
+
 export type PairField = "address" | "code";
 
 export type PairFailure =

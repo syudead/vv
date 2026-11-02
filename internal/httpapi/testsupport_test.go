@@ -388,11 +388,11 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 // The related list over both nodes is tested with the real catalog (peer_related_test.go).
 var errFakeCatalogMerged = errors.New("the fake catalog has no related list over both nodes")
 
-func (f *fakeCatalog) MergedRelatedVideos(context.Context, domain.Audience, domain.Video, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+func (f *fakeCatalog) MergedRelatedVideos(context.Context, domain.Audience, domain.Video, domain.MergedRelatedPage, []domain.RelatedPeer) (domain.MergedRelated, error) {
 	return domain.MergedRelated{}, errFakeCatalogMerged
 }
 
-func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, domain.RelatedClues, []int64, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, domain.RelatedClues, domain.MergedRelatedPage, []domain.RelatedPeer) (domain.MergedRelated, error) {
 	return domain.MergedRelated{}, errFakeCatalogMerged
 }
 

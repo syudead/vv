@@ -2,6 +2,7 @@ package domain
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -121,4 +122,43 @@ func mergeDateCounts(local, peer []VideoEditDateCount) []VideoEditDateCount {
 		}
 	}
 	return out
+}
+
+// Detached is j with maps of its own, for Hold to add to without changing the join it was made from.
+func (j VocabularyJoin) Detached() VocabularyJoin {
+	clone := func(names map[string]int64) map[string]int64 {
+		out := make(map[string]int64, len(names))
+		maps.Copy(out, names)
+		return out
+	}
+	return VocabularyJoin{
+		Slot: j.Slot, Tags: clone(j.Tags), TagKinds: clone(j.TagKinds), People: clone(j.People),
+		Organizations: clone(j.Organizations),
+	}
+}
+
+// Hold adds the names of a link's summary entries that carry a remote id, so the summary of a later link, joined
+// with j in its slot, gives an entry of the same name that id, as the vocabulary lists join the links in slot
+// order. j must be Detached; a provisional person has no name and stays apart.
+func (j VocabularyJoin) Hold(summary VideoEditSummary) {
+	j.HoldTags(summary.Tags)
+	for _, p := range summary.People {
+		holdName(j.People, p.Person.Name, p.Person.ID)
+	}
+	for _, o := range summary.Organizations {
+		holdName(j.Organizations, o.Organization.Name, o.Organization.ID)
+	}
+}
+
+// HoldTags is Hold for a tag summary.
+func (j VocabularyJoin) HoldTags(items []TagSummaryItem) {
+	for _, item := range items {
+		holdName(j.Tags, item.Tag.Name, item.Tag.ID)
+	}
+}
+
+func holdName(names map[string]int64, name string, id int64) {
+	if _, held := names[name]; !held && name != "" && IsRemoteID(id) {
+		names[name] = id
+	}
 }

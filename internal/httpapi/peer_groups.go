@@ -164,16 +164,6 @@ func peerID(id int64) int64 {
 	return id
 }
 
-// oneLinkSlot is the slot of the one link that the remote ids among ids name, 0 without one; ids of two links
-// answer w with mixed_nodes and false, since an operation reaches one link.
-func (s *server) oneLinkSlot(w http.ResponseWriter, ids ...int64) (int64, bool) {
-	slot, ok := domain.IDSlot(ids...)
-	if !ok {
-		s.mixedNodes(w)
-	}
-	return slot, ok
-}
-
 func (s *server) mixedNodes(w http.ResponseWriter) {
 	s.invalidRequestReason(w, gen.ErrorReasonMixedNodes,
 		"Videos and groups of both VVMDMs cannot be organized together. Select those of one VVMDM.")

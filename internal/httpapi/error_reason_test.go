@@ -7,13 +7,14 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// Empty reason/tagName and zero limit mean those response fields must be absent.
+// Empty reason/tagName/peer and zero limit mean those response fields must be absent.
 type wantError struct {
 	status  int
 	code    gen.ErrorCode
 	reason  gen.ErrorReason
 	limit   int
 	tagName string
+	peer    string
 }
 
 func assertErrorBody(t *testing.T, label string, status int, body []byte, want wantError) {
@@ -50,5 +51,11 @@ func assertErrorBody(t *testing.T, label string, status int, body []byte, want w
 		t.Errorf("%s: tagName = %q, want なし", label, *got.TagName)
 	case want.tagName != "" && (got.TagName == nil || *got.TagName != want.tagName):
 		t.Errorf("%s: tagName = %v, want %q", label, got.TagName, want.tagName)
+	}
+	switch {
+	case want.peer == "" && got.Peer != nil:
+		t.Errorf("%s: peer = %q, want なし", label, *got.Peer)
+	case want.peer != "" && (got.Peer == nil || *got.Peer != want.peer):
+		t.Errorf("%s: peer = %v, want %q", label, got.Peer, want.peer)
 	}
 }

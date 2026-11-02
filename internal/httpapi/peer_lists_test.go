@@ -53,10 +53,17 @@ func mergedNode(t *testing.T, name string, extend func(db *store.DB, opts *Optio
 // listLabel names a listed video by node and title, such as "a:e" for a's video e seen from b.
 func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 	t.Helper()
-	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
-		for name, own := range f.ids {
-			if (node == "b" && id == own) || (node == "a" && id == domain.RemoteID(1, own)) {
-				return node + ":" + name
+	return nodeLabel(t, []string{"b", "a"}, []*guestFixture{fb, fa}, id)
+}
+
+// nodeLabel names a listed video by node and title; nodes[0], named names[0], is the reading node and nodes[k] the
+// link in slot k.
+func nodeLabel(t *testing.T, names []string, nodes []*guestFixture, id int64) string {
+	t.Helper()
+	if slot := domain.RemoteSlot(id); slot < int64(len(nodes)) {
+		for name, own := range nodes[slot].ids {
+			if own == domain.FromRemoteID(id) {
+				return names[slot] + ":" + name
 			}
 		}
 	}
@@ -66,6 +73,12 @@ func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 
 // pageVideos follows nextCursor from path with limit 2 and returns every listed video's label with the totals.
 func pageVideos(t *testing.T, fa, fb *guestFixture, get func(string) *httptest.ResponseRecorder, path string, query url.Values) ([]string, []int) {
+	t.Helper()
+	return pageVideosBy(t, func(id int64) string { return listLabel(t, fa, fb, id) }, get, path, query)
+}
+
+// pageVideosBy is pageVideos naming each video by label.
+func pageVideosBy(t *testing.T, label func(int64) string, get func(string) *httptest.ResponseRecorder, path string, query url.Values) ([]string, []int) {
 	t.Helper()
 	query.Set("limit", "2")
 	var labels []string
@@ -80,7 +93,7 @@ func pageVideos(t *testing.T, fa, fb *guestFixture, get func(string) *httptest.R
 			t.Fatalf("%s: %d items, peerItems %v", path, len(page.Items), page.PeerItems)
 		}
 		for _, video := range page.Items {
-			labels = append(labels, listLabel(t, fa, fb, video.Id))
+			labels = append(labels, label(video.Id))
 		}
 		totals = append(totals, page.Total)
 		if page.NextCursor == nil {

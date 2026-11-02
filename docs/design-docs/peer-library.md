@@ -224,25 +224,42 @@ headers passed through, since the browser has no session on the peer.
 
 ## Merged lists
 
-The video, library and folder lists merge the local page and the page of the
-first link in slot order in the request's order, and one composite cursor holds
-a cursor for each side. The other links' entities open by their remote ids; a
-list filter by another link's entity matches nothing. The vocabulary lists and
-writes, rule counts, the watch history and the group picker reach the first
-link too, and an operation over a selection reaches the one link its remote ids
-name, or the first link when they name none.
+The video, library, folder-root and smart-folder lists, the watch history and
+the related videos merge the local part and one part per link, in slot order.
+The parts of one page are requested concurrently, so a page waits for its
+slowest link within the 10 s response timeout instead of the sum of the links.
+One composite cursor (prefix `m2.`) holds a cursor, a done flag and a skipped
+flag for each side by slot; a cursor of the one-peer form (`m1.`) is refused as
+`invalid_cursor` like any cursor of another list, which restarts the list. A
+cursor with more sides than this node and the link limit is refused the same
+way, and a side whose slot no link holds now is dropped before any link is
+asked, so a forged cursor cannot fan a page out past the links. A
+list filter by a link's entity matches no local video and nothing on the other
+links. The vocabulary lists and writes reach every link
+([Vocabulary by name](#vocabulary-by-name)), and an operation over a selection
+reaches every link it has a part on
+([Edits of remote videos](#edits-of-remote-videos)). The group picker and the
+history clear reach the first link.
 
 A list answered to a peer carries `peerItems`, the cursor after each item and
-its sort value, so the merge never decodes the peer's opaque cursor and a
-video added between pages shifts nothing. Items compare by the sort value
-both nodes compute with the same rule, then by id. `total` is the sum of both
-totals.
+its sort value, so the merge never decodes a link's opaque cursor and a video
+added between pages shifts nothing. Items compare by the sort value every node
+computes with the same rule; on equal values the local item comes first, then
+the links in slot order. `total` is the sum of every part's total.
 
 | Case | Behaviour |
 | --- | --- |
-| Filter by a local tag, kind, person or organization | Sent to the peer by name; a name the peer lacks makes its part empty |
-| Peer skipped while unreachable | That listing keeps skipping it to the end; a reload shows the peer again |
-| The same file on both nodes | Two items |
+| Filter by a local tag, kind, person or organization | Sent to each link by name; a name a link lacks makes its part empty |
+| Link not `connected` when a listing starts | Not asked; that listing leaves it out to the end, so the page does not wait for it |
+| Link fails during a listing | That listing skips it to the end; a reload shows it again |
+| Link paired or connected during a listing | The listing does not hold it and leaves it out; a reload shows it |
+| The same file on two nodes | Two items |
+
+| Rejected | Why |
+| --- | --- |
+| A pairwise merge repeated per link | It needs each intermediate result's full page and loses the per-side cursors |
+| Requesting the links one after another | A page would wait up to the response timeout per link |
+| Extending `m1.` with optional fields | An `m1.` cursor names a peer without saying which link it was |
 
 ## Progress, history and favorites
 
@@ -254,23 +271,24 @@ reading node forwards and merges them, and keeps no row of its own for them.
 | Operation | Behaviour |
 | --- | --- |
 | `PUT /api/videos/{remoteId}/progress` | Forwarded; the position and history entry are saved on the peer, whose `Progress` is answered as it is |
-| `PUT /api/favorites` | Ids split by node; the peer's part is sent first as one request in the peer's ids, then this node's part is applied in one transaction, and the `applied*` counts are summed |
-| `GET /api/watch-history` | Both nodes' pages merged by `playedAt`, newest first and this node's entry first on equal times, with one composite cursor; the peer's entry ids carry the offset |
-| `GET /api/watch-history/dates` | The union of both nodes' days |
+| `PUT /api/favorites` | Ids split by slot; once every link named is `connected`, each link's part is sent as one request in its ids in slot order, then this node's part is applied in one transaction, and the `applied*` counts are summed |
+| `GET /api/watch-history` | The pages of this node and every link merged by `playedAt`, newest first, this node's entry first on equal times and then the links in slot order, with one composite cursor; a link's entry ids carry its offset |
+| `GET /api/watch-history/dates` | The union of the days of this node and every connected link |
 | `DELETE /api/watch-history` | The peer's history is cleared first, then this node's, since the screens show one history |
 | `DELETE /api/watch-history/{remoteId}` | Deleted on the peer |
 
 A peer answer to the history list carries `peerItems`, the cursor after each
 entry and its `playedAt` in Unix milliseconds, so the merge reuses the
-[Merged lists](#merged-lists) rule and never decodes the peer's cursor. A peer
+[Merged lists](#merged-lists) rule and never decodes the peer's cursor. A link
 that does not answer the list or the dates is left out, as in a merged list.
 
 Writing the peer first repeats the vocabulary rule: while the peer is not
 connected, or when it refuses, the write answers `503` with reason
 `peer_unreachable` or the peer's error, and neither node changes. When the
 peer gives no answer, this node is unchanged and the peer's write committed or
-did not. A change of a remote item never stays on this node alone, so the two
-nodes never need reconciling.
+did not. A favorites change that a later link refuses leaves the earlier links
+written, as a vocabulary write does. A change of a remote item never stays on
+this node alone, so the two nodes never need reconciling.
 
 | Rejected | Why |
 | --- | --- |
@@ -280,18 +298,27 @@ nodes never need reconciling.
 ## Vocabulary by name
 
 Tags, tag kinds, people and organizations with the same name are one entity
-on the screens; their lists merge both nodes' entries in memory with summed
-counts, and a remote-only entry carries the offset.
+on the screens; their lists merge every node's entries in memory with summed
+counts. The connected links are read at once and joined in slot order, so a
+remote-only entry carries the offset of the first link that holds it.
 
 A rename, merge or deletion of a tag, person or organization on the reader
-checks the conflict on both nodes, then writes the peer by name
-(`POST /api/peer/vocabulary`), then the local node; while the peer is not
-`connected` it answers `409` with reason `peer_unreachable`. Writing the peer
-first leaves nothing changed in the common failure. A merge whose destination
-and sources are all in the offset form names no entry of the reader, so it
-goes to the peer's merge by id; that is how the undo of a face split merges
-back the peer's provisional person, which has no name to send. The read node never
-writes the reader: the same change made there changes that node alone.
+first checks that every link is `connected`, and otherwise answers `409` with
+reason `peer_unreachable` and the first such link's name in `Error.peer`. It
+then checks the conflict here and, for a rename, in every link's list, so a
+new name a link holds is refused with that link's name before any node
+changes and the same rename succeeds once the name is free. It then writes
+every link by name (`POST /api/peer/vocabulary`) in slot order, and writes the
+local node last. A link that still refuses stops the write with that link's
+status and its name in `Error.peer`; the links before it stay written, since a
+deletion or merge has no inverse. A rename addressed by a remote
+id renames the same name on the other links first and is then forwarded to the
+id's own link. A merge whose destination and sources are all in one link's
+offset form names no entry of the reader, so it goes to that link's merge by
+id after the other links merged the same names; that is how the undo of a face
+split merges back a link's provisional person, which has no name to send. The
+read node never writes the reader: the same change made there changes that
+node alone.
 Synonyms, kinds of a tag, tentative state, rejected names, images and links
 stay per node.
 
@@ -299,37 +326,46 @@ stay per node.
 | --- | --- |
 | A node column or a cache of the peer's vocabulary | Pairing would change local data, and a cache goes stale |
 | Applying locally and replaying later | A replay queue needs its own conflict handling |
+| Writing the connected links and skipping the rest | A link that is down would keep the old name, and the screens would show two entries |
+| Undoing the earlier links after a refusal | A deletion or merge has no inverse write |
 
 ## Collections
 
 Groups belong to one node: a remote group is listed and opened with the
 offset, and a group, `organize` operation or bundle with videos of both nodes
-answers `400` with reason `mixed_nodes`. A smart folder of either node lists
-its own node's matches plus the other node's videos matching its rule, sent as
-name filters and merged by the folder's sort; its card adds the other node's
-counts from one `POST /api/peer/rule-counts`. `POST /api/collections/delete` runs one transaction per
-node and reports the peer's ids it could not delete.
+answers `400` with reason `mixed_nodes`. A smart folder of any node lists its
+own node's matches plus the videos of this node and every other link matching
+its rule, sent as name filters and merged by the folder's sort; its card adds
+the other nodes' counts, one `POST /api/peer/rule-counts` per connected link
+sent concurrently. `POST /api/collections/delete` runs one transaction per
+node, this node's first and then each link's in slot order, and reports the
+links' ids it could not delete.
 
 ## Related videos
 
-The related list of any video ranks both nodes' videos with the scorer of
-[related-videos.md](related-videos.md): the node holding the open video
-supplies its clues, each node scores its own candidates
-(`POST /api/peer/related`), and the two score-ordered pages merge by score,
-`addedAt` and id. The same-directory clue is 0 across nodes, since two disks
+The related list of any video ranks the videos of this node and every
+connected link with the scorer of [related-videos.md](related-videos.md): the
+node holding the open video supplies its clues, each node scores its own
+candidates (`POST /api/peer/related`, sent to the links concurrently), and the
+score-ordered pages merge by score, `addedAt` and id. The same-directory clue is 0 across nodes, since two disks
 share no directory. When the peer holds the open video, the ranking request
 names it by the peer's id (`openVideoId`), and the peer gives its videos in
 that video's directory the folder points, as its own related list does.
 
 ## Edits of remote videos
 
-An operation over a selection splits its targets by node, applies the local
-part in one transaction, then the remote part in one request, and answers
-`remote` with the applied count and the ids the peer did not change. Tags,
-people and organizations go to the peer by name and are created there when
-missing; a provisional person with a remote target answers `400` with reason
-`provisional_person_remote`. Two databases have no shared transaction, so
-the local part stays applied when the peer fails.
+An operation over a selection splits its targets by slot, applies the local
+part in one transaction, then each link's part in one request in slot order,
+and answers one `remote` with the applied counts summed and the ids no link
+changed, with the reason of the first link that failed. Its summaries join
+the links' tags, people and organizations by name in slot order, as the
+vocabulary lists do, so one name is one row. A local smart folder
+also reaches every connected link with its rule by name. Tags, people and
+organizations go to each link by name, another link's included, and are
+created there when missing; a provisional person with a remote target answers
+`400` with reason `provisional_person_remote`. Databases have no shared
+transaction, so the local part and the other links' parts stay applied when a
+link fails.
 
 A single edit of a remote video is forwarded by its id. Its details editor
 sends a person or organization new to the screen as `{"name": ...}` instead
@@ -448,10 +484,13 @@ video page and the selection bar show the name of the item's own link, and no
 schema gains a `remote` field. The shell shows a notice from `GET /api/peer`
 and the `peer` event while a link is not connected: it names that link, or
 counts the links when several are down; guests see the state without the
-names. The Pairing page has two sections that follow the same state: "Read
-another VVMDM" holds the pairing form until a link exists, then each link's
-state, address, certificate and removal; "VVMDMs that read this one" shows the pairing code until a grant
-exists, then the reader's name, pairing time and "Remove access". The video
+names. The Pairing page's sections follow the same state: "Read another
+VVMDM" holds the pairing form until 8 links exist, then a line saying the
+limit is reached; one section per link, in slot order and titled with its
+name, shows its state as a badge, the state's detail while it is not
+connected, its version, address, certificate and removal; "VVMDMs that read
+this one" shows the pairing code until a grant exists, then the reader's
+name, pairing time and "Remove access". The video
 page and a list row offer a remote video's favorite, and the video page saves
 its progress, with the same controls and failure line as a local video's,
 since the peer stores both

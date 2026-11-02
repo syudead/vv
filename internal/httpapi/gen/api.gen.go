@@ -4681,7 +4681,7 @@ type CollectionsDeleteResponse struct {
 	// DissolvedGroups Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty.
 	DissolvedGroups int `json:"dissolvedGroups"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
@@ -4872,6 +4872,9 @@ type Error struct {
 
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
+
+	// Peer The name of the read VVMDM that caused the error; for peer_unreachable and a read VVMDM's refusal of a rename, merge or deletion of a tag, person or organization.
+	Peer *string `json:"peer,omitempty"`
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
@@ -6940,12 +6943,12 @@ type RelatedVideos struct {
 	PrevId *int64 `json:"prevId,omitempty"`
 }
 
-// RemoteSelectionResult The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+// RemoteSelectionResult The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 type RemoteSelectionResult struct {
-	// Applied Videos or collections changed on the peer.
+	// Applied Videos or collections changed on the read VVMDMs, summed.
 	Applied int `json:"applied"`
 
-	// FailedVideoIds Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success.
+	// FailedVideoIds Requested ids of the read VVMDMs that were not changed, in their remote ids; for collections, the group and smart-folder ids. Empty on success.
 	FailedVideoIds []int64 `json:"failedVideoIds"`
 
 	// Reason Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
@@ -8201,7 +8204,7 @@ type VideoCodeEditResponse struct {
 	// Applied Number of user-data keys whose code changed; a key that already had the item's code is not counted.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
@@ -8316,7 +8319,7 @@ type VideoEditResponse struct {
 	// Applied Number of resolved videos currently in the library that any part changed.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 
 	// Tags The tags of tags.add as resolved, in request order without repeats.
@@ -8495,7 +8498,7 @@ type VideoTagsResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 
 	// Tag One assigned tag; name is always the original name.
@@ -8565,7 +8568,7 @@ type VideoVisibilityResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state.
 	Applied int `json:"applied"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 

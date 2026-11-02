@@ -66,7 +66,7 @@ func TestRenameToANameOnlyThePeerHoldsChangesNothing(t *testing.T) {
 
 	rec := b.owner(http.MethodPatch, tagPath(cat.ID, ""), `{"name":"犬"}`)
 	assertErrorBody(t, "相手だけにある名前", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬",
+		status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬", peer: "node-a",
 	})
 	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
 		if _, found := tagNamed(t, f, "猫"); !found {
@@ -86,7 +86,7 @@ func TestRenameWithTheStoppedPeerChangesNothing(t *testing.T) {
 
 	rec := b.owner(http.MethodPatch, tagPath(cat.ID, ""), `{"name":"ねこ"}`)
 	assertErrorBody(t, "止まった相手", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPeerUnreachable,
+		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPeerUnreachable, peer: "node-a",
 	})
 	if _, found := tagNamed(t, fb, "猫"); !found {
 		t.Error("b renamed 猫 although the peer was stopped")
@@ -271,15 +271,21 @@ func TestRenameAnEntryThePeerLacksToANameThePeerHoldsChangesNothing(t *testing.T
 			t.Helper()
 			return tagPath(tagOn(t, fb, "猫").ID, "")
 		}, `{"name":"犬"}`,
-			wantError{status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬"}},
+			wantError{
+				status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬", peer: "node-a",
+			}},
 		{"person", func(t *testing.T, fb *guestFixture) string {
 			t.Helper()
 			return "/api/people/" + strconv.FormatInt(fb.createWorkInfoPerson(t, "佐藤"), 10)
-		}, `{"name":"鈴木"}`, wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken}},
+		}, `{"name":"鈴木"}`, wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken, peer: "node-a",
+		}},
 		{"provisional person", func(t *testing.T, fb *guestFixture) string {
 			t.Helper()
 			return "/api/people/" + strconv.FormatInt(provisionalPersonOn(t, fb), 10)
-		}, `{"name":"鈴木"}`, wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken}},
+		}, `{"name":"鈴木"}`, wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken, peer: "node-a",
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

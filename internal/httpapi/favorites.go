@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -61,16 +60,11 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 		Favorite: *body.Favorite,
 	}
 	// The peer's own request names this node's entities only; a remote id there is missing and ignored.
-	local, peer := change, domain.FavoriteChange{}
-	slot, ok := s.oneLinkSlot(w, slices.Concat(videoIDs, groupIDs, smartFolderIDs, personIDs)...)
-	if !ok {
-		return
-	}
+	local, links := change, map[int64]domain.FavoriteChange{}
 	if !isPeerRequest(r.Context()) {
-		local, peer = splitFavoriteChange(change)
+		local, links = splitFavoriteChange(change)
 	}
-	// The peer is written first, so the common failure, an unreachable peer, changes nothing here.
-	peerApplied, ok := s.setPeerFavorites(w, r, slot, peer)
+	peerApplied, ok := s.setLinkFavorites(w, r, links)
 	if !ok {
 		return
 	}
@@ -101,4 +95,58 @@ func uniqueInt64s(values []int64) []int64 {
 		out = append(out, value)
 	}
 	return out
+}
+
+// splitFavoriteChange separates change into this node's part and each link's part in that link's own ids.
+func splitFavoriteChange(change domain.FavoriteChange) (domain.FavoriteChange, map[int64]domain.FavoriteChange) {
+	local := domain.FavoriteChange{Favorite: change.Favorite}
+	links := map[int64]domain.FavoriteChange{}
+	for _, field := range []struct {
+		ids  []int64
+		pick func(*domain.FavoriteChange) *[]int64
+	}{
+		{change.VideoIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.VideoIDs }},
+		{change.GroupIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.GroupIDs }},
+		{change.SmartFolderIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.SmartFolderIDs }},
+		{change.PersonIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.PersonIDs }},
+	} {
+		own, bySlot := domain.SlotIDs(field.ids)
+		*field.pick(&local) = own
+		for slot, ids := range bySlot {
+			part := links[slot]
+			part.Favorite = change.Favorite
+			*field.pick(&part) = ids
+			links[slot] = part
+		}
+	}
+	return local, links
+}
+
+// setLinkFavorites applies each link's part in slot order before this node's part, once every link it names is
+// connected, so the common failure, a link that is down, changes nothing on any node; the answer sums the links'
+// counts. When a link fails, it answers w and reports false.
+func (s *server) setLinkFavorites(
+	w http.ResponseWriter, r *http.Request, links map[int64]domain.FavoriteChange,
+) (gen.FavoritesResponse, bool) {
+	var sum gen.FavoritesResponse
+	slots := sortedSlots(links)
+	connected, err := s.linksConnected(r.Context(), slots)
+	switch {
+	case err != nil:
+		s.internalError(w, "Could not read the pairing.", err)
+		return sum, false
+	case !connected:
+		s.peerUnreachable(w)
+		return sum, false
+	}
+	for _, slot := range slots {
+		applied, ok := s.setPeerFavorites(w, r, slot, links[slot])
+		if !ok {
+			return gen.FavoritesResponse{}, false
+		}
+		sum.AppliedVideos += applied.AppliedVideos
+		sum.AppliedGroups += applied.AppliedGroups
+		sum.AppliedSmartFolders += applied.AppliedSmartFolders
+	}
+	return sum, true
 }

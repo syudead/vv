@@ -540,6 +540,10 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 
 // Canonical-name equality selects name_is_tag, otherwise name_is_synonym; tagName always preserves the owner's canonical spelling.
 func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, owner domain.TagRef) {
+	s.writeErrorBody(w, http.StatusConflict, tagNameTakenBody(submittedName, owner))
+}
+
+func tagNameTakenBody(submittedName string, owner domain.TagRef) gen.Error {
 	tagName := owner.Name
 	body := gen.Error{Code: codeTagNameTaken, TagName: &tagName}
 	var reason gen.ErrorReason
@@ -551,7 +555,7 @@ func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, 
 		body.Message = fmt.Sprintf("%q is already a synonym of %q.", submittedName, owner.Name)
 	}
 	body.Reason = &reason
-	s.writeErrorBody(w, http.StatusConflict, body)
+	return body
 }
 
 func (s *server) invalidTagName(w http.ResponseWriter, err error, prefix string) {
