@@ -5177,6 +5177,18 @@ export const en = {
       on: "On",
       off: "Off",
       switchFailed: (reason: string) => `Couldn't switch the folder: ${reason}`,
+      link: {
+        description: (name: string) =>
+          `Its media folders, as it lists them. A switch here changes only what this VVMDM shows; ${name} is unchanged.`,
+        list: (name: string) => `Media folders on ${name}`,
+        loading: (name: string) => `Loading the folders on ${name}`,
+        loadFailed: (name: string, reason: string) =>
+          `Couldn't load the folders on ${name}: ${reason}`,
+        empty: (name: string) => `No media folders on ${name}`,
+        emptyHint: "Folders it adds show here while it is connected.",
+        switchLabel: (path: string, name: string) =>
+          `Show videos from ${path} on ${name}`,
+      },
       usage: {
         loading: "Checking disk space",
         free: (size: string) => `${size} free`,
