@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"sync"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -40,22 +41,115 @@ func (s *server) requestSlot(r *http.Request) int64 {
 	return s.listSlot(r.Context())
 }
 
-// listSlot is the slot of the link that the merged lists, the vocabulary and the operations naming no remote id
-// reach: the first link in slot order, or 0 when the request reaches no link. Lists merge one link until they
-// fan out to every link.
+// listSlot is the slot of the link that the vocabulary and the operations naming no remote id reach: the first
+// link in slot order, or 0 when the request reaches no link. They reach one link until they fan out to every link.
 func (s *server) listSlot(ctx context.Context) int64 {
-	if s.pairing == nil || isPeerRequest(ctx) {
+	links := s.readLinks(ctx)
+	if len(links) == 0 {
 		return 0
+	}
+	return links[0].Slot
+}
+
+// readLinks are the links a merged read reaches, in slot order, with whether each is connected now; the peer's own
+// request reaches none, since it names this node's entities only.
+func (s *server) readLinks(ctx context.Context) []domain.LinkReach {
+	if s.pairing == nil || isPeerRequest(ctx) {
+		return nil
 	}
 	state, err := s.pairing.State(ctx)
 	if err != nil {
 		s.logger.Warn("could not read the pairing state", slog.Any("error", err))
-		return 0
+		return nil
 	}
-	if len(state.Links) == 0 {
-		return 0
+	links := make([]domain.LinkReach, len(state.Links))
+	for i, link := range state.Links {
+		links[i] = domain.LinkReach{Slot: link.Link.Slot, Connected: link.State == domain.PeerConnected}
 	}
-	return state.Links[0].Link.Slot
+	return links
+}
+
+// connectedSlots are the slots of the connected links a read without a cursor merges; a link that is not
+// connected is left out without a request, so the read does not wait for it.
+func (s *server) connectedSlots(ctx context.Context) []int64 {
+	var slots []int64
+	for _, link := range s.readLinks(ctx) {
+		if link.Connected {
+			slots = append(slots, link.Slot)
+		}
+	}
+	return slots
+}
+
+// eachLink calls read for every slot concurrently, so the slowest link bounds the wait instead of their sum, and
+// returns the values and errors in the order of slots.
+func eachLink[T any](slots []int64, read func(slot int64) (T, error)) ([]T, []error) {
+	values := make([]T, len(slots))
+	errs := make([]error, len(slots))
+	var wg sync.WaitGroup
+	for i, slot := range slots {
+		wg.Go(func() { values[i], errs[i] = read(slot) })
+	}
+	wg.Wait()
+	return values, errs
+}
+
+// linkAnswer is one link's answer, in that link's own ids.
+type linkAnswer[T any] struct {
+	slot  int64
+	value T
+}
+
+// linkAnswers reads path from every connected link concurrently and returns the answers in slot order; a link that
+// does not answer is left out.
+func linkAnswers[T any](s *server, r *http.Request, path string, query url.Values) []linkAnswer[T] {
+	slots := s.connectedSlots(r.Context())
+	values, errs := eachLink(slots, func(slot int64) (T, error) {
+		var answer T
+		err := s.peerGet(r, slot, path, query, &answer)
+		return answer, err
+	})
+	answers := make([]linkAnswer[T], 0, len(slots))
+	for i, slot := range slots {
+		if errs[i] != nil {
+			s.logger.Info("the list leaves out a linked VVMDM", slog.String("path", path), slog.Int64("slot", slot),
+				slog.Any("error", errs[i]))
+			continue
+		}
+		answers = append(answers, linkAnswer[T]{slot: slot, value: values[i]})
+	}
+	return answers
+}
+
+// readLinkParts reads the part of every link a merged listing holds, concurrently, after that link's side of
+// cursor. A skipped link is not asked, a link that fails is skipped for the rest of the listing, and a done link's
+// items are left out after read gave its total. Each part's side carries its slot.
+func readLinkParts[T any](s *server, what string, cursor domain.MergedCursor,
+	read func(slot int64, side domain.SideCursor) (listPart[T], error),
+) ([]listPart[T], domain.MergedCursor) {
+	var asked []int64
+	for _, slot := range cursor.Links() {
+		if !cursor.Side(slot).Skipped {
+			asked = append(asked, slot)
+		}
+	}
+	answers, errs := eachLink(asked, func(slot int64) (listPart[T], error) { return read(slot, cursor.Side(slot)) })
+	// A skipped link keeps its place in the cursor and is done, so the merge needs no side of it.
+	parts := make([]listPart[T], 0, len(asked))
+	for i, slot := range asked {
+		part := answers[i]
+		if errs[i] != nil {
+			s.logger.Info("the merged list leaves out a linked VVMDM", slog.String("path", what), slog.Int64("slot", slot),
+				slog.Any("error", errs[i]))
+			part, cursor = listPart[T]{}, cursor.Skip(slot)
+		}
+		if cursor.Side(slot).Done {
+			part.side = domain.MergeSide[T]{}
+		}
+		part.side.Slot = slot
+		parts = append(parts, part)
+	}
+	return parts, cursor
 }
 
 // peerItemsFor gives the peer's own list request each item's cursor; no other caller receives them.
@@ -77,16 +171,24 @@ type listPart[T any] struct {
 	missing []int64
 }
 
-// peerListFilters are a query's filters split between the nodes. A filter by a remote-only entity matches no
-// local video; one by a local entity goes to the peer by name, and one by an entity no peer name matches
-// leaves the peer's part empty.
+// peerListFilters are a query's filters split between the nodes. A filter by a link's entity matches no local
+// video and no other link's; one by a local entity goes to each link by name, and one by an entity without a
+// name leaves every link's part empty.
 type peerListFilters struct {
 	localEmpty bool
-	peerEmpty  bool
+	// unnamed is set when a local filter's entity has no name to send.
+	unnamed bool
+	// remoteSlots are the slots of the links whose entities the filters name.
+	remoteSlots []int64
 	// local is the query with the local IDs only.
 	local domain.VideoQuery
-	// values are the peer's filter parameters.
+	// values are a link's filter parameters.
 	values url.Values
+}
+
+// linkEmpty reports whether the link in slot can match no video of the filters.
+func (f peerListFilters) linkEmpty(slot int64) bool {
+	return f.unnamed || slices.ContainsFunc(f.remoteSlots, func(other int64) bool { return other != slot })
 }
 
 // peerFilterParams are the filter parameters a request to the peer carries in its own terms.
@@ -94,17 +196,20 @@ var peerFilterParams = []string{
 	"tag", "tagKind", "person", "organization", "personRole", "tagName", "tagKindName", "personName", "organizationName",
 }
 
-// splitPeerFilters splits q's filters for the link in slot; a filter by another link's entity matches nothing on
-// either side.
-func (s *server) splitPeerFilters(ctx context.Context, slot int64, q domain.VideoQuery) (peerListFilters, error) {
+// splitPeerFilters splits q's filters between this node and the links.
+func (s *server) splitPeerFilters(ctx context.Context, q domain.VideoQuery) (peerListFilters, error) {
 	out := peerListFilters{local: q, values: url.Values{}}
 	out.local.TagIDs = nil
-	otherLink := false
+	remote := func(id int64) {
+		out.localEmpty = true
+		if slot := domain.RemoteSlot(id); !slices.Contains(out.remoteSlots, slot) {
+			out.remoteSlots = append(out.remoteSlots, slot)
+		}
+	}
 	for _, id := range q.TagIDs {
 		if domain.IsRemoteID(id) {
 			out.values.Add("tag", strconv.FormatInt(domain.FromRemoteID(id), 10))
-			out.localEmpty = true
-			otherLink = otherLink || domain.RemoteSlot(id) != slot
+			remote(id)
 			continue
 		}
 		out.local.TagIDs = append(out.local.TagIDs, id)
@@ -117,8 +222,7 @@ func (s *server) splitPeerFilters(ctx context.Context, slot int64, q domain.Vide
 	} {
 		if domain.IsRemoteID(*filter.id) {
 			out.values.Set(filter.param, strconv.FormatInt(domain.FromRemoteID(*filter.id), 10))
-			out.localEmpty = true
-			otherLink = otherLink || domain.RemoteSlot(*filter.id) != slot
+			remote(*filter.id)
 			*filter.id = 0
 		}
 	}
@@ -126,7 +230,7 @@ func (s *server) splitPeerFilters(ctx context.Context, slot int64, q domain.Vide
 	if err != nil {
 		return peerListFilters{}, err
 	}
-	out.peerEmpty = !found || otherLink
+	out.unnamed = !found
 	for _, name := range named.TagNames {
 		out.values.Add("tagName", name)
 	}
@@ -231,14 +335,12 @@ func (s *server) peerSend(req *http.Request, slot int64, guest, media bool) ([]b
 	return answer, nil
 }
 
-// mergedRead is one merged list: how each node reads its part, and the request's filters split between them.
+// mergedRead is one merged list: how this node and each link read their parts.
 type mergedRead[T any] struct {
-	path string
-	// slot is the link the list merges.
-	slot  int64
+	path  string
 	local func(q domain.VideoQuery) (listPart[T], error)
-	// peer decodes and rewrites the link's answer into this node's id space.
-	peer func(r *http.Request, query url.Values) (listPart[T], error)
+	// peer decodes and rewrites the answer of the link in slot into this node's id space.
+	peer func(r *http.Request, slot int64, query url.Values) (listPart[T], error)
 }
 
 // mergedPage is one page of a merged list with the cursor that continues it, empty at the end.
@@ -249,53 +351,57 @@ type mergedPage[T any] struct {
 	missing []int64
 }
 
-// readMerged reads both nodes' parts after the composite cursor and merges them. A side that is done is still
-// read for its total; a peer that fails is left out for the rest of the listing.
+// readMerged reads this node's part and every link's after the composite cursor and merges them. A side that is
+// done is still read for its total; a link that is not connected on the first page, or fails, is left out for the
+// rest of the listing.
 func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mergedRead[T]) (mergedPage[T], error) {
 	cursor, err := domain.ParseMergedCursor(q.Cursor)
 	if err != nil {
 		return mergedPage[T]{}, err
 	}
-	filters, err := s.splitPeerFilters(r.Context(), read.slot, q)
+	cursor = cursor.Begin(s.readLinks(r.Context()))
+	filters, err := s.splitPeerFilters(r.Context(), q)
 	if err != nil {
 		return mergedPage[T]{}, err
 	}
 	limit := q.Limit
 	var local listPart[T]
 	if !filters.localEmpty {
+		side := cursor.Side(0)
 		query := filters.local
-		query.Cursor, query.Limit = cursor.Local, sideLimit(limit, cursor.LocalDone)
+		query.Cursor, query.Limit = side.Cursor, sideLimit(limit, side.Done)
 		if local, err = read.local(query); err != nil {
 			return mergedPage[T]{}, err
 		}
-		if cursor.LocalDone {
+		if side.Done {
 			local.side = domain.MergeSide[T]{}
 		}
 	}
-	var peer listPart[T]
-	if !cursor.PeerSkipped && !filters.peerEmpty {
+	parts, cursor := readLinkParts(s, read.path, cursor, func(slot int64, side domain.SideCursor) (listPart[T], error) {
+		if filters.linkEmpty(slot) {
+			return listPart[T]{}, nil
+		}
 		query := peerQuery(r.URL.Query(), q.Sort, filters.values)
-		query.Set("limit", strconv.Itoa(sideLimit(limit, cursor.PeerDone)))
+		query.Set("limit", strconv.Itoa(sideLimit(limit, side.Done)))
 		query.Del("cursor")
-		if cursor.Peer != "" {
-			query.Set("cursor", cursor.Peer)
+		if side.Cursor != "" {
+			query.Set("cursor", side.Cursor)
 		}
-		peer, err = read.peer(r, query)
-		if err != nil {
-			s.logger.Info("the merged list leaves out the other VVMDM", slog.String("path", read.path), slog.Any("error", err))
-			peer, cursor.PeerSkipped, cursor.PeerDone = listPart[T]{}, true, true
-		}
-		if cursor.PeerDone {
-			peer.side = domain.MergeSide[T]{}
-		}
-	}
-	items, next, more := domain.MergePages(q.Sort, cursor, local.side, peer.side, limit)
-	page := mergedPage[T]{items: items, total: local.total + peer.total, missing: local.missing}
-	for _, id := range peer.missing {
-		if remote := domain.RemoteID(read.slot, id); !slices.Contains(page.missing, remote) {
-			page.missing = append(page.missing, remote)
+		return read.peer(r, slot, query)
+	})
+	page := mergedPage[T]{total: local.total, missing: local.missing}
+	sides := []domain.MergeSide[T]{local.side}
+	for _, part := range parts {
+		sides = append(sides, part.side)
+		page.total += part.total
+		for _, id := range part.missing {
+			if remote := domain.RemoteID(part.side.Slot, id); !slices.Contains(page.missing, remote) {
+				page.missing = append(page.missing, remote)
+			}
 		}
 	}
+	items, next, more := domain.MergePages(q.Sort, cursor, sides, limit)
+	page.items = items
 	if more {
 		page.next = next.Encode()
 	}
@@ -333,12 +439,12 @@ func optionalIDs(ids *[]int64) []int64 {
 
 func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q domain.VideoQuery) {
 	ctx := r.Context()
-	join, err := s.vocabularyJoin(ctx, s.listSlot(ctx))
+	join, err := s.vocabularyJoin(ctx, 0)
 	if !s.checkListRead(w, err) {
 		return
 	}
 	page, err := readMerged(s, r, q, mergedRead[gen.Video]{
-		path: "/api/videos", slot: join.Slot,
+		path: "/api/videos",
 		local: func(q domain.VideoQuery) (listPart[gen.Video], error) {
 			page, err := s.videos.ListVideos(ctx, audienceFrom(ctx), q)
 			if err != nil {
@@ -350,12 +456,12 @@ func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q doma
 				total: page.Total, missing: page.MissingTagIDs,
 			}, nil
 		},
-		peer: func(r *http.Request, query url.Values) (listPart[gen.Video], error) {
+		peer: func(r *http.Request, slot int64, query url.Values) (listPart[gen.Video], error) {
 			var answer gen.VideoPage
-			if err := s.peerGet(r, join.Slot, "/api/videos", query, &answer); err != nil {
+			if err := s.peerGet(r, slot, "/api/videos", query, &answer); err != nil {
 				return listPart[gen.Video]{}, err
 			}
-			rewriteRemoteVideos(answer.Items, join)
+			rewriteRemoteVideos(answer.Items, join.InSlot(slot))
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.Video]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err
 		},
@@ -371,12 +477,12 @@ func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q doma
 
 func (s *server) listMergedLibrary(w http.ResponseWriter, r *http.Request, q domain.VideoQuery) {
 	ctx := r.Context()
-	join, err := s.vocabularyJoin(ctx, s.listSlot(ctx))
+	join, err := s.vocabularyJoin(ctx, 0)
 	if !s.checkListRead(w, err) {
 		return
 	}
 	page, err := readMerged(s, r, q, mergedRead[gen.LibraryItem]{
-		path: "/api/library", slot: join.Slot,
+		path: "/api/library",
 		local: func(q domain.VideoQuery) (listPart[gen.LibraryItem], error) {
 			page, err := s.library.ListLibrary(ctx, audienceFrom(ctx), q)
 			if err != nil {
@@ -391,13 +497,13 @@ func (s *server) listMergedLibrary(w http.ResponseWriter, r *http.Request, q dom
 				total: page.Total, missing: page.MissingTagIDs,
 			}, nil
 		},
-		peer: func(r *http.Request, query url.Values) (listPart[gen.LibraryItem], error) {
+		peer: func(r *http.Request, slot int64, query url.Values) (listPart[gen.LibraryItem], error) {
 			var answer gen.LibraryPage
-			if err := s.peerGet(r, join.Slot, "/api/library", query, &answer); err != nil {
+			if err := s.peerGet(r, slot, "/api/library", query, &answer); err != nil {
 				return listPart[gen.LibraryItem]{}, err
 			}
 			for i := range answer.Items {
-				rewriteRemoteLibraryItem(&answer.Items[i], join)
+				rewriteRemoteLibraryItem(&answer.Items[i], join.InSlot(slot))
 			}
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.LibraryItem]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err

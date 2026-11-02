@@ -21,7 +21,7 @@ type fakeRelatedPeer struct {
 // Slot is the slot the tests address the peer with.
 func (p *fakeRelatedPeer) Slot() int64 { return 1 }
 
-func (p *fakeRelatedPeer) Related(_ context.Context, clues domain.RelatedClues, _ []int64, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
+func (p *fakeRelatedPeer) Related(_ context.Context, clues domain.RelatedClues, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
 	p.clues = append(p.clues, clues)
 	if p.err != nil {
 		return domain.RelatedSidePage{}, p.err
@@ -64,7 +64,7 @@ func TestMergedRelatedVideosPagesBothNodesInOrder(t *testing.T) {
 		if pages == 5 {
 			t.Fatalf("終わらない: %v", got)
 		}
-		related, err := catalog.MergedRelatedVideos(ctx, domain.AudienceOwner, store.videos[1], page, peer)
+		related, err := catalog.MergedRelatedVideos(ctx, domain.AudienceOwner, store.videos[1], page, []domain.RelatedPeer{peer})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,7 +97,7 @@ func TestMergedRelatedVideosSkipsAFailingPeer(t *testing.T) {
 	catalog, store, peer := mergedRelatedFixture(&domain.PeerUnreachableError{Message: "down"})
 
 	related, err := catalog.MergedRelatedVideos(context.Background(), domain.AudienceOwner, store.videos[1],
-		domain.MergedRelatedPage{Limit: 10}, peer)
+		domain.MergedRelatedPage{Limit: 10}, []domain.RelatedPeer{peer})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +114,8 @@ func TestRemoteRelatedVideosScoresLocalVideosByClues(t *testing.T) {
 	peer.ranked = nil
 	clues := domain.RelatedClues{TagNames: []string{"旅行", "海"}, Words: []string{}, AddedAt: relatedBase}
 
-	related, err := catalog.RemoteRelatedVideos(context.Background(), domain.AudienceOwner, clues, []int64{20},
-		domain.MergedRelatedPage{Limit: 10}, peer)
+	related, err := catalog.RemoteRelatedVideos(context.Background(), domain.AudienceOwner, clues,
+		domain.MergedRelatedPage{Limit: 10}, []domain.RelatedPeer{peer})
 	if err != nil {
 		t.Fatal(err)
 	}
