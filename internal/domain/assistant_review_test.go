@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"maps"
 	"slices"
 	"testing"
 )
@@ -82,12 +83,18 @@ func TestAssistantReviewPlanGroupsWorksByTheCommonTitle(t *testing.T) {
 	}
 }
 
-func TestAssistantTagNameRequestListsTheNamesAsJSON(t *testing.T) {
-	req := AssistantTagNameRequest([]string{"猫", `say "hi"`})
+func TestUselessTagsQuestionReadsTheTagsShareOfTheLibrary(t *testing.T) {
+	set := AssistantReviewSet{Library: 1000, Members: []AssistantReviewMember{{
+		Kind: AssistantLabelTag, ID: 3, Name: "動画", Count: 951, Aliases: []string{"video"}, Titles: []string{"猫", "京都"},
+	}}}
 
-	if len(req.Messages) != 2 || req.Messages[0].Role != ChatRoleSystem ||
-		req.Messages[1].Content != `Tag names: ["猫","say \"hi\""]` {
-		t.Errorf("request = %+v, want the rule and the names as a JSON list", req)
+	req := set.ClassifierRequest(AssistantReviewUselessTags)
+
+	want := map[string]string{
+		"tag_x": "動画", "videos_x": "on 951 of 1000 videos (95%)", "synonyms_x": "video", "titles_x": "猫; 京都",
+	}
+	if !maps.Equal(req.Input.Facts, want) || len(req.Questions) != 1 || req.Questions[0].Key != AssistantReviewQuestionKey {
+		t.Errorf("request = %+v, want the one tag's facts and the one question", req)
 	}
 }
 

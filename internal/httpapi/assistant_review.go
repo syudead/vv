@@ -143,9 +143,6 @@ func toAPIAssistantReviewCandidate(c domain.AssistantReviewCandidate) gen.Assist
 		out.Members[i] = gen.AssistantReviewMember{
 			Kind: gen.AssistantLabelKind(m.Kind), Id: m.ID, Name: m.Name, Count: m.Count,
 		}
-		if m.Reason != "" {
-			out.Members[i].Reason = &m.Reason
-		}
 	}
 	return out
 }

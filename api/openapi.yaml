@@ -7558,9 +7558,6 @@ components:
         count:
           type: integer
           description: "Videos the tag is on or the person is credited on; 0 for a video."
-        reason:
-          type: string
-          description: "Why the generation model judged the tag name invalid, in a uselessTags run, as untranslated model text."
 
     AssistantReviewCandidateIds:
       type: object

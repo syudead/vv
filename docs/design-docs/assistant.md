@@ -325,7 +325,7 @@ pending proposal of the turn it follows.
 | `rejectTag`, `confirmTag` and `deleteTag` given several names point the model to `batchTags.reject`, `.confirm` and `.delete`; a `batchTags` row whose target is not `named` says it takes the tags by name | Models call the single-tag row for a list, and name the screen for a tag list |
 | `batchTags.confirm` and `.reject` refuse a confirmed tag, and `.delete` a tentative one, naming them and the row that fits | The endpoint skips them, so the card would list a tag the step leaves unchanged |
 | A row name the model writes with one underscore (`batchTags_reject`) is the row when no tool has that name | Models shorten the `__` that stands for the dot |
-| `start_review` names what each kind finds: `uselessTags` for tags whose names are not valid tags (placeholders, file names, garbled text, opinions, words too generic to name anything), which auto-tagging spreads, and `tags` for near-duplicates; tags on no videos are listed with `listTags` and proposed as `batchTags.reject` or `.delete` | A request to drop meaningless tags otherwise starts the duplicate review, which never finds them |
+| `start_review` names what each kind finds: `uselessTags` for tags too generic to tell videos apart, which auto-tagging spreads, and `tags` for near-duplicates; tags on no videos are listed with `listTags` and proposed as `batchTags.reject` or `.delete` | A request to drop meaningless tags otherwise starts the duplicate review, which never finds them |
 | A missing or unusable target or argument, an id that names nothing, and invalid schema arguments come back to the model as an error result | The model can fix the call itself |
 | A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
 | A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |
@@ -448,13 +448,12 @@ for the owner to adopt or reject together
 | `tags` | Two of the 2,000 most used tags whose folded names or synonyms are equal or near: distance 1 when the longer has 4 or 5 characters, 2 when it has 6 or more, none when the shorter has under 4 | `mergeTag` into the tag on more videos |
 | `people` | Two people with an equal folded name or alias, or the same link URL | `mergePeople` into the person with more credits |
 | `works` | Ungrouped videos sharing a work code, or titles that differ only in a trailing number or part marker | `createGroup` named by the common title |
-| `uselessTags` | Each tag on its own, up to 10,000 oldest first, judged by its name alone: the generation model reads 100 names per request and answers the invalid ones with a reason, which the list shows | `deleteTag`, or `rejectTag` for a tentative tag so an import does not create its name again |
+| `uselessTags` | Each of the 2,000 most used tags on its own, with its synonyms, three titles of videos carrying it and its share of the library (`on 951 of 1000 videos (95%)`); the question asks whether it is too generic, vague or broad to tell videos apart | `deleteTag`, or `rejectTag` for a tentative tag so an import does not create its name again |
 
 | Rule | Why |
 | --- | --- |
 | Judging uses the classifier port, not the generation model | A yes/no with a probability is what that port answers, and the threshold is shown in the list |
-| A `uselessTags` run asks the generation model, not the classifier, and reads the name alone | Whether a name names anything takes reasoning about its meaning: on a list of 30 names, qwen3 found all 16 invalid ones (`IMG_2031`, `test`, `未分類`, `新しいタグ`, `これはいい感じ`) and none of the 14 valid ones, while Clef's yes/no missed `動画`, `その他` and `新しいタグ`. How often a tag is used says nothing about its name |
-| A `uselessTags` answer that holds no JSON object fails the run | A list built from a guess would offer tags the model never named |
+| A `uselessTags` question reads the tag's share of the library, not its name alone | A tag on almost every video tells none apart whatever it names; on Clef, generic tags (`動画`, `映像`, `その他`) answered 0.87 or more, specific ones (`猫`, `京都`) under 0.4, and `猫` on 95% of the videos 0.84 |
 | A set below 0.5 is dropped, and nothing is adopted without the owner | The owner decides every merge |
 | A rejected set is remembered by kind and member ids, and later runs skip it | The next `タグを整理して` would list the same pair |
 | One running run per kind; a second request answers the running one | Its candidates would repeat the first's |

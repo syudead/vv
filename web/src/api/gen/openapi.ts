@@ -4606,8 +4606,6 @@ export interface components {
             name: string;
             /** @description Videos the tag is on or the person is credited on; 0 for a video. */
             count: number;
-            /** @description Why the generation model judged the tag name invalid, in a uselessTags run, as untranslated model text. */
-            reason?: string;
         };
         AssistantReviewCandidateIds: {
             ids: number[];

@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"slices"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +17,6 @@ type fakeAssistantReviews struct {
 	sets       []domain.AssistantReviewSet
 	total      int
 	judgements []bool
-	judged     []domain.AssistantReviewSet
 	finished   domain.AssistantReviewStatus
 	candidates map[int64]domain.AssistantReviewCandidate
 	adopted    []domain.AssistantPlan
@@ -47,10 +44,9 @@ func (f *fakeAssistantReviews) SetReviewTotal(_ context.Context, _ int64, total 
 }
 
 func (f *fakeAssistantReviews) RecordReviewJudgement(
-	_ context.Context, _ int64, set domain.AssistantReviewSet, _ float64, listed bool,
+	_ context.Context, _ int64, _ domain.AssistantReviewSet, _ float64, listed bool,
 ) error {
 	f.judgements = append(f.judgements, listed)
-	f.judged = append(f.judged, set)
 	return nil
 }
 
@@ -167,60 +163,5 @@ func TestAdoptingTwoTagPairsStoresTwoMerges(t *testing.T) {
 	}
 	if !slices.Equal(store.impactIDs, []int64{21}) {
 		t.Errorf("last impact read the sources %v, want [21]", store.impactIDs)
-	}
-}
-
-// nameChat answers every request with its text and keeps the requests.
-type nameChat struct {
-	answer string
-	got    []domain.ChatRequest
-}
-
-func (c *nameChat) Chat(_ context.Context, req domain.ChatRequest) (domain.ChatReply, error) {
-	c.got = append(c.got, req)
-	return domain.ChatReply{Text: c.answer}, nil
-}
-
-func tagNames(names ...string) []domain.AssistantReviewSet {
-	sets := make([]domain.AssistantReviewSet, len(names))
-	for i, name := range names {
-		sets[i] = domain.AssistantReviewSet{Members: []domain.AssistantReviewMember{
-			{Kind: domain.AssistantLabelTag, ID: int64(i + 1), Name: name},
-		}}
-	}
-	return sets
-}
-
-func TestUselessTagsRunListsTheNamesTheModelCallsInvalid(t *testing.T) {
-	names := []string{"猫", "ｔｅｓｔ"}
-	for len(names) <= domain.AssistantTagNameBatch {
-		names = append(names, "tag"+strconv.Itoa(len(names)))
-	}
-	reviews := &fakeAssistantReviews{sets: tagNames(names...)}
-	chat := &nameChat{answer: "```json\n" + `{"invalid":[{"name":"test","reason":"test entry"}]}` + "\n```"}
-	a := NewAssistant(AssistantOptions{Store: &fakeAssistantStore{}, Reviews: reviews, Chat: chat})
-
-	a.review(context.Background(), domain.AssistantReviewRun{ID: 5, Kind: domain.AssistantReviewUselessTags})
-
-	if len(chat.got) != 2 || !strings.Contains(chat.got[1].Messages[1].Content, `"tag100"`) {
-		t.Fatalf("requests = %d, want the names in batches of %d", len(chat.got), domain.AssistantTagNameBatch)
-	}
-	if !slices.Equal(reviews.judgements[:3], []bool{false, true, false}) || reviews.judged[1].Members[0].Reason != "test entry" {
-		t.Errorf("judgements = %v, member = %+v; want only ｔｅｓｔ listed with its reason", reviews.judgements[:3],
-			reviews.judged[1].Members[0])
-	}
-	if reviews.finished != domain.AssistantReviewDone {
-		t.Errorf("finished = %q, want done", reviews.finished)
-	}
-}
-
-func TestUselessTagsRunFailsOnAnAnswerWithoutJSON(t *testing.T) {
-	reviews := &fakeAssistantReviews{sets: tagNames("猫")}
-	a := NewAssistant(AssistantOptions{Store: &fakeAssistantStore{}, Reviews: reviews, Chat: &nameChat{answer: "猫 is fine"}})
-
-	a.review(context.Background(), domain.AssistantReviewRun{ID: 5, Kind: domain.AssistantReviewUselessTags})
-
-	if reviews.finished != domain.AssistantReviewFailed || len(reviews.judgements) != 0 {
-		t.Errorf("finished = %q, judgements = %v; want failed with nothing listed", reviews.finished, reviews.judgements)
 	}
 }

@@ -106,18 +106,15 @@ func (a *Assistant) review(ctx context.Context, run domain.AssistantReviewRun) {
 }
 
 func (a *Assistant) judge(ctx context.Context, run domain.AssistantReviewRun) error {
+	if a.classifier == nil {
+		return errors.New("the assistant cannot judge review sets: no classifier is configured")
+	}
 	sets, err := a.reviews.FindReviewSets(ctx, run.Kind)
 	if err != nil {
 		return err
 	}
 	if err := a.reviews.SetReviewTotal(ctx, run.ID, len(sets)); err != nil {
 		return err
-	}
-	if run.Kind == domain.AssistantReviewUselessTags {
-		return a.judgeTagNames(ctx, run, sets)
-	}
-	if a.classifier == nil {
-		return errors.New("the assistant cannot judge review sets: no classifier is configured")
 	}
 	for _, set := range sets {
 		answers, err := a.classifier.Classify(ctx, set.ClassifierRequest(run.Kind))
@@ -129,40 +126,6 @@ func (a *Assistant) judge(ctx context.Context, run domain.AssistantReviewRun) er
 		listed := answered && probability >= domain.AssistantReviewThreshold
 		if err := a.reviews.RecordReviewJudgement(ctx, run.ID, set, probability, listed); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-// judgeTagNames asks the generation model which names of each batch are invalid tag names, since judging a name
-// takes reasoning about its meaning; a listed tag carries the model's reason.
-func (a *Assistant) judgeTagNames(ctx context.Context, run domain.AssistantReviewRun, sets []domain.AssistantReviewSet) error {
-	if a.chat == nil {
-		return errors.New("the assistant cannot judge tag names: no generation model is configured")
-	}
-	for start := 0; start < len(sets); start += domain.AssistantTagNameBatch {
-		batch := sets[start:min(start+domain.AssistantTagNameBatch, len(sets))]
-		names := make([]string, len(batch))
-		for i, set := range batch {
-			names[i] = set.Members[0].Name
-		}
-		reply, err := a.chat.Chat(ctx, domain.AssistantTagNameRequest(names))
-		if err != nil {
-			return fmt.Errorf("cannot judge the tag names: %w", err)
-		}
-		invalid, err := domain.AssistantInvalidTagNames(reply.Text)
-		if err != nil {
-			return err
-		}
-		for _, set := range batch {
-			reason, listed := invalid[domain.FoldForMatch(set.Members[0].Name)]
-			probability := 0.0
-			if listed {
-				probability, set.Members[0].Reason = 1, reason
-			}
-			if err := a.reviews.RecordReviewJudgement(ctx, run.ID, set, probability, listed); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
