@@ -101,6 +101,7 @@ func newWriteFixture(t *testing.T, replies ...domain.ChatReply) *writeFixture {
 				"ライブ": {liveTag}, "コンサート": {concertTag}, "猫": catTags,
 			}},
 			entities: map[domain.AssistantLabelKind]map[int64]string{
+				domain.AssistantLabelTag:            {liveTag.ID: liveTag.Name, concertTag.ID: concertTag.Name},
 				domain.AssistantLabelPerson:         {11: "Aさん", 12: "Bさん"},
 				domain.AssistantLabelFaceAppearance: {101: "Clip 7", 102: "Clip 8"},
 			},
@@ -241,26 +242,61 @@ func TestUnmatchedNamesWithoutAKindNamesAnEntity(t *testing.T) {
 	}
 }
 
-func TestEntityTargetNamesWithoutKindAndSeveralNames(t *testing.T) {
+// Each case is one call a model makes and the step it proposes, or the error that tells it how to call again.
+func TestTagCallsTheModelGetsWrong(t *testing.T) {
 	for _, c := range []struct {
-		name, target, wantError string
-		wantPlans               int
+		name, tool, args, wantError string
+		wantPlans                   int
 	}{
-		{"names without a kind are named", `{"names":["コンサート"]}`, "", 1},
-		{"several names ask for one call each", `{"kind":"named","names":["コンサート","猫"]}`,
+		{"names without a kind are named", "mergeTag", `{"target":{"names":["コンサート"]},"names":["ライブ"]}`, "", 1},
+		{"several names ask for one call each", "mergeTag",
+			`{"target":{"kind":"named","names":["コンサート","猫"]},"names":["ライブ"]}`,
 			"mergeTag acts on one tag per call", 0},
+		{"several names for a single-tag row name its batch row", "rejectTag",
+			`{"target":{"kind":"named","names":["ライブ","コンサート"]}}`, "call batchTags__reject once", 0},
+		{"a garbled name with its id names the entity", "mergeTag",
+			`{"target":{"kind":"named","names":[{"name":"ライフ","id":3}]},"names":["コンサート"]}`,
+			"no tag is named ライフ; id 3 is ライブ", 0},
+		{"a batch row takes its tags by name", "batchTags.reject", `{"target":{"kind":"selection"}}`,
+			`takes its items by name`, 0},
+		{"reject refuses a confirmed tag", "batchTags.reject",
+			`{"target":{"kind":"named","names":["ライブ","コンサート"]}}`,
+			"takes only tentative tags; コンサート are confirmed", 0},
+		{"reject takes tentative tags", "batchTags.reject", `{"target":{"kind":"named","names":["ライブ"]}}`, "", 1},
+		{"delete refuses a tentative tag", "batchTags.delete", `{"target":{"kind":"named","names":["ライブ"]}}`,
+			"takes only confirmed tags; ライブ are tentative", 0},
+		{"a row name with one underscore is the row", "batchTags_reject",
+			`{"target":{"kind":"named","names":["ライブ"]}}`, "", 1},
+		{"ids outside the target say where they go", "batchTags.reject", `{"tagIds":[3]}`,
+			`give the entities as target {"kind":"named"`, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := newWriteFixture(t,
-				calls(toolCall("mergeTag", `{"target":`+c.target+`,"names":["ライブ"]}`)), text("done"))
+			f := newWriteFixture(t, calls(toolCall(c.tool, c.args)), text("done"))
+			f.runner.tools = append(f.runner.tools,
+				writeTool("rejectTag"), writeTool("batchTags.reject"), writeTool("batchTags.delete"))
+			f.runner.bodies["listTags"] = `{"items":[{"id":3}]}` // ライブ is tentative.
 
 			turn := f.run(t, 0)
 
-			if len(f.store.plans) != c.wantPlans || !strings.Contains(turn.Progress[1].Error, c.wantError) {
+			if turn.Clarify != nil || len(f.store.plans) != c.wantPlans ||
+				!strings.Contains(turn.Progress[1].Error, c.wantError) {
 				t.Fatalf("plans = %d, error = %q; want %d plans and %q", len(f.store.plans), turn.Progress[1].Error,
 					c.wantPlans, c.wantError)
 			}
 		})
+	}
+}
+
+// A model that repeats the call it already proposed stops at step_limit with that step still proposed.
+func TestRepeatedProposedCallKeepsTheProposal(t *testing.T) {
+	merge := toolCall("mergeTag", `{"target":{"kind":"named","names":["コンサート"]},"names":["ライブ"]}`)
+	f := newWriteFixture(t, calls(merge), calls(merge))
+
+	turn := f.run(t, 0)
+
+	if turn.Stop == nil || turn.Stop.Reason != domain.AssistantStopStepLimit || turn.ProposalID != 1 ||
+		len(f.store.plans) != 1 {
+		t.Fatalf("turn = %+v, plans = %+v; want step_limit with the proposal", turn, f.store.plans)
 	}
 }
 

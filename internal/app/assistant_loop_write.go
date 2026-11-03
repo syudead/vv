@@ -254,8 +254,7 @@ func rowRequest(row domain.AssistantAction, raw json.RawMessage) (*domain.Assist
 			continue
 		}
 		if !slices.Contains(allowed, key) {
-			return nil, nil, fmt.Sprintf("%s takes no argument %s; it takes %s", domain.AssistantModelToolName(row.ID), key,
-				strings.Join(allowed, ", "))
+			return nil, nil, unknownArgument(row.ID, key, allowed)
 		}
 		value = unquoted(key, value)
 		if slices.Contains(nameArguments, key) {
@@ -275,6 +274,16 @@ func rowRequest(row domain.AssistantAction, raw json.RawMessage) (*domain.Assist
 		return nil, nil, "the arguments do not match the tool's schema: " + err.Error()
 	}
 	return &domain.AssistantActionRequest{Operation: row.ID, Target: parsed.Target, Arguments: &parsed.AssistantArguments}, pins, ""
+}
+
+// unknownArgument names the arguments a row takes; ids belong in the target, which names the entities.
+func unknownArgument(rowID, key string, allowed []string) string {
+	message := fmt.Sprintf("%s takes no argument %s; it takes %s", domain.AssistantModelToolName(rowID), key,
+		strings.Join(allowed, ", "))
+	if slices.Contains(allowed, "target") {
+		message += `; give the entities as target {"kind":"named","names":[{"name":"...","id":1}]}`
+	}
+	return message
 }
 
 // unquoted reads a target or list argument that a model wrote as text: JSON encoded in a string, a target kind
@@ -402,9 +411,10 @@ func hasPlaceholder(value any) bool {
 // propose stores the turn's steps as one proposal when the turn answered, or stopped only because its answer was
 // ungrounded, and discards the pending proposal of the request it follows up.
 func (l *turnLoop) propose(ctx context.Context) error {
-	ungrounded := l.turn.Status == domain.AssistantTurnStopped && l.turn.Stop != nil &&
-		l.turn.Stop.Reason == domain.AssistantStopUngrounded
-	if len(l.writes.plans) == 0 || (l.turn.Status != domain.AssistantTurnDone && !ungrounded) {
+	// A model that repeats a call it already proposed stops at step_limit with its steps complete.
+	kept := l.turn.Status == domain.AssistantTurnStopped && l.turn.Stop != nil &&
+		(l.turn.Stop.Reason == domain.AssistantStopUngrounded || l.turn.Stop.Reason == domain.AssistantStopStepLimit)
+	if len(l.writes.plans) == 0 || (l.turn.Status != domain.AssistantTurnDone && !kept) {
 		return nil
 	}
 	proposal, err := l.a.Propose(ctx, l.turn.ID, l.turn.Request, l.writes.plans)

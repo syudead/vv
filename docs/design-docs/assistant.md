@@ -121,7 +121,7 @@ images with `view_images` skips the check: what it saw is in no text result.
 | Ending | Turn | Kept |
 | --- | --- | --- |
 | Text that passes the grounding check | `done` with the answer | The progress and the proposal |
-| A reply repeats the previous reply's calls exactly | `stopped`, `step_limit` | The progress |
+| A reply repeats the previous reply's calls exactly | `stopped`, `step_limit` | The progress, and the proposal of the steps already proposed |
 | The owner pressed `Stop` | `stopped`, `cancelled` | The progress; no proposal |
 | The model's request timed out | `stopped`, `timeout` | The progress |
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
@@ -321,6 +321,11 @@ pending proposal of the turn it follows.
 | A name that matches nothing and offers no candidate comes back to the model as an error result naming the kind it searched; for a video target it says the target takes videos and other names go in their own arguments | Models put a tag name in a video operation's target or invent a name; ending the turn there showed the owner `Couldn't find` a tag that exists, with nothing to choose |
 | An entity row whose target names several entities answers the model to call it once for each | The row's endpoint acts on one entity |
 | A target with names and no `kind` is read as `named` | Models drop the kind when they give names |
+| A name that matches nothing but comes with the id of an entity answers the model that entity's name | Models garble the characters of a name while copying its id intact; the id still wins only among the entities the name finds |
+| `rejectTag`, `confirmTag` and `deleteTag` given several names point the model to `batchTags.reject`, `.confirm` and `.delete`; a `batchTags` row whose target is not `named` says it takes the tags by name | Models call the single-tag row for a list, and name the screen for a tag list |
+| `batchTags.confirm` and `.reject` refuse a confirmed tag, and `.delete` a tentative one, naming them and the row that fits | The endpoint skips them, so the card would list a tag the step leaves unchanged |
+| A row name the model writes with one underscore (`batchTags_reject`) is the row when no tool has that name | Models shorten the `__` that stands for the dot |
+| `start_review` says that it merges near-duplicate tags and that unused or rarely used tags are listed with `countAsc` and proposed as `batchTags.reject` or `.delete` | Models read every tidy-up request as a review run, which never finds those tags |
 | A missing or unusable target or argument, an id that names nothing, and invalid schema arguments come back to the model as an error result | The model can fix the call itself |
 | A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
 | A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |

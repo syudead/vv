@@ -165,6 +165,20 @@ func (t *turnTools) find(query string, loadBytes int) ([]foundTool, bool) {
 	return found, len(matches) == 1 || (len(matches) > 1 && matches[0].score > matches[1].score)
 }
 
+// canonicalName reads a row name a model wrote with one underscore, such as batchTags_reject, as the row
+// batchTags.reject when no tool has the name as written.
+func (t *turnTools) canonicalName(name string) string {
+	if _, ok := t.byName[name]; ok {
+		return name
+	}
+	if i := strings.LastIndex(name, "_"); i > 0 {
+		if dotted := name[:i] + "." + name[i+1:]; t.byName[dotted].Name != "" {
+			return dotted
+		}
+	}
+	return name
+}
+
 // toolError is the result the model receives for a call that did not run or failed.
 func toolError(message string) string {
 	encoded, _ := json.Marshal(map[string]string{"error": message}) // A string map always encodes.
@@ -174,7 +188,7 @@ func toolError(message string) string {
 // call runs one tool call, records its progress item, and answers the tool message's content. It returns an error
 // only for a storage failure.
 func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, error) {
-	call.Name = domain.AssistantToolNameFromModel(call.Name)
+	call.Name = l.tools.canonicalName(domain.AssistantToolNameFromModel(call.Name))
 	item := domain.AssistantProgressItem{Tool: call.Name, Kind: domain.AssistantProgressBuiltin, At: l.a.now()}
 	tool, known := l.tools.byName[call.Name]
 	if known {

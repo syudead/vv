@@ -48,11 +48,12 @@ func chatModelNames() []string {
 }
 
 // loadedModels answers /api/ps as Ollama does with every chat model loaded on the GPU. Without it the product
-// assumes Ollama's default context of 4096 tokens and stops every assistant turn.
+// assumes Ollama's default context of 4096 tokens and stops every assistant turn. Workers AI counts the requested
+// answer tokens in the window, so the reported context leaves room for them.
 func loadedModels() map[string]any {
 	models := []map[string]any{}
 	for _, name := range chatModelNames() {
-		models = append(models, map[string]any{"name": name, "model": name, "context_length": chatModels[name].context})
+		models = append(models, map[string]any{"name": name, "model": name, "context_length": chatModels[name].context - chatMaxTokens})
 	}
 	return map[string]any{"models": models}
 }

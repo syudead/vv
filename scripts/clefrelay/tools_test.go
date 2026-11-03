@@ -158,7 +158,7 @@ func TestRelayReportsTheGenerationModelsContext(t *testing.T) {
 	chat := chatThrough(t, "llama3.3:70b", func(http.ResponseWriter, *http.Request) {
 		t.Error("/api/ps reached Workers AI")
 	})
-	if got := chat.LoadedContext(context.Background()); got != chatModels["llama3.3:70b"].context || got <= 4096 {
+	if got := chat.LoadedContext(context.Background()); got != chatModels["llama3.3:70b"].context-chatMaxTokens || got <= 4096 {
 		t.Fatalf("context = %d, want the model's Workers AI context", got)
 	}
 }
