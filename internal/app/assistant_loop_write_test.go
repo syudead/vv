@@ -234,6 +234,13 @@ func TestWriteCallWithANameThatMatchesNothingIsAnErrorForTheModel(t *testing.T) 
 	}
 }
 
+// A group or smart folder name that matches nothing carries no kind.
+func TestUnmatchedNamesWithoutAKindNamesAnEntity(t *testing.T) {
+	if got := unmatchedNames("", []string{"旅行"}); !strings.HasPrefix(got, "no entity is named 旅行;") {
+		t.Fatalf("failure = %q", got)
+	}
+}
+
 func TestEntityTargetNamesWithoutKindAndSeveralNames(t *testing.T) {
 	for _, c := range []struct {
 		name, target, wantError string
