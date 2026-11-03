@@ -170,6 +170,10 @@ func TestShortlistAutoTags(t *testing.T) {
 	probabilities[AutoTagQuestionKey(3)] = AutoTagShortlistFloor - 0.001
 	candidates = append(candidates, AutoTagCandidate{ID: 99})
 
+	few := ShortlistAutoTags(candidates[:4], probabilities)
+	if len(few) != 3 || few[0].ID != 1 || few[1].ID != 2 || few[2].ID != 4 {
+		t.Fatalf("shortlist of few = %v", few)
+	}
 	got := ShortlistAutoTags(candidates, probabilities)
 	if len(got) != AutoTagShortlistSize {
 		t.Fatalf("shortlist = %d candidates", len(got))

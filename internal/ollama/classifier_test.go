@@ -225,3 +225,22 @@ func TestChooseSplitsOptionsIntoChoiceQuestions(t *testing.T) {
 		t.Fatalf("criteria sizes = %d, %d", len(sent[0].Criteria), len(sent[1].Criteria))
 	}
 }
+
+func TestChooseReportsFailures(t *testing.T) {
+	broken := New(fixedSettings{err: errors.New("disk")})
+	if got, err := broken.Choose(context.Background(), domain.ClassifierChoiceRequest{}); err != nil || len(got) != 0 {
+		t.Fatalf("選択肢の無い要求 = %v, %v", got, err)
+	}
+	one := domain.ClassifierChoiceRequest{Options: []domain.ClassifierQuestion{{Key: "a", Text: "a"}}}
+	if _, err := broken.Choose(context.Background(), one); err == nil || !strings.Contains(err.Error(), "Ollama settings") {
+		t.Fatalf("err = %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"unknown question type"}`))
+	}))
+	defer server.Close()
+	if _, err := New(at(server.URL)).Choose(context.Background(), one); err == nil || !strings.Contains(err.Error(), "unknown question type") {
+		t.Fatalf("err = %v", err)
+	}
+}
