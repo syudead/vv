@@ -332,6 +332,27 @@ test.describe.serial("drag organize", () => {
     await expect.poll(() => cardTitles(page)).toEqual([third, first, second]);
   });
 
+  test("グループのページでカードの外から枠を描くと、ライブラリと同じく重なったカードを選ぶ", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openGroupPage(page, "並べ確認", reorderGroup);
+    await expect.poll(() => cardTitles(page)).toHaveLength(reorderVideos.length);
+
+    // Start below the last row's cards, inside the grid, and draw up past the first card.
+    const grid = dragCard(videoCard(page, reorderVideos[0])).locator("xpath=..");
+    const box = await grid.boundingBox();
+    if (box === null) throw new Error("the grid has no box");
+    await page.mouse.move(box.x + box.width - 4, box.y + box.height - 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 2, box.y + 2, { steps: 12 });
+    await page.mouse.up();
+
+    await expect(
+      page.getByText(`${String(reorderVideos.length)} videos selected`),
+    ).toBeVisible();
+  });
+
   test("ライブラリで A を B に落として「Make a group」を選ぶと、B の題名のグループのカードが 1 枚できる", async ({
     page,
     request,
