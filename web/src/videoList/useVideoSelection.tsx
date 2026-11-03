@@ -1,26 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 
 import type { LibraryItem } from "../api/client";
 import { itemVideos, videoKey } from "../api/libraryItems";
-import {
-  emptySelection,
-  retainVideos,
-  keepMembers,
-  type LibrarySelection,
-  setVideo,
-} from "../library/selection";
-import { MarqueeBox } from "../library/MarqueeBox";
+import { keepMembers } from "../library/selection";
 import SelectionBar from "../library/SelectionBar";
-import { useEscapeClearsSelection } from "../library/useEscapeClearsSelection";
-import { useMarqueeSelection } from "../library/useMarqueeSelection";
-import { useRangeSelection } from "../library/useRangeSelection";
+import { useListSelection } from "../library/useListSelection";
 import { useSelectionTargets } from "./pageHooks";
 
 /**
@@ -36,46 +20,17 @@ export function useVideoSelection(
   /** Boxes select grid cards only, so a list view turns them off. */
   drawsBoxes = true,
 ) {
-  const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
+  const list = useListSelection({ boxes: owner && drawsBoxes });
+  const { selection, setSelection, show, clear, retain, changeVideo } = list;
   const loaded = useMemo(
     () => new Set(itemVideos(items).map((video) => video.id)),
     [items],
   );
   useEffect(() => {
     setSelection((current) => keepMembers(current, loaded));
-  }, [loaded]);
-
-  const displayed = useRef(items);
-  useLayoutEffect(() => {
-    displayed.current = items;
-  });
-  const { select: selectRange, point } = useRangeSelection(displayed, setSelection);
-  const clear = useCallback(() => {
-    point(null);
-    setSelection(emptySelection);
-  }, [point]);
-  const retain = useCallback(
-    (kept: ReadonlySet<number>) => setSelection((current) => retainVideos(current, kept)),
-    [],
-  );
+  }, [loaded, setSelection]);
+  useLayoutEffect(() => show(items));
   const selectionMode = selection.ids.size > 0;
-  useEscapeClearsSelection(selectionMode, clear);
-  const select = useCallback(
-    (id: number, selected: boolean) =>
-      selectRange(videoKey(id), selected, (current) => setVideo(current, id, selected)),
-    [selectRange],
-  );
-
-  const container = useRef<HTMLDivElement | null>(null);
-  const box = useRef<HTMLDivElement | null>(null);
-  useMarqueeSelection({
-    container,
-    box,
-    enabled: owner && drawsBoxes,
-    items,
-    selection,
-    setSelection,
-  });
 
   const { favorites, selectedIds, editTargets } = useSelectionTargets(selection, items);
   const selectedKeys = useMemo(() => selectedIds.map(videoKey), [selectedIds]);
@@ -88,9 +43,9 @@ export function useVideoSelection(
     (id: number) => ({
       selected: selection.ids.has(id),
       selectionMode,
-      onSelect: owner ? select : undefined,
+      onSelect: owner ? changeVideo : undefined,
     }),
-    [owner, select, selection.ids, selectionMode],
+    [changeVideo, owner, selection.ids, selectionMode],
   );
 
   const bar = owner ? (
@@ -108,9 +63,14 @@ export function useVideoSelection(
     />
   ) : null;
 
-  const marqueeBox = <MarqueeBox ref={box} />;
-
-  return { cardProps, selectedKeys, clear, bar, container, marqueeBox };
+  return {
+    cardProps,
+    selectedKeys,
+    clear,
+    bar,
+    container: list.container,
+    marqueeBox: list.marqueeBox,
+  };
 }
 
 export type VideoSelection = ReturnType<typeof useVideoSelection>;
