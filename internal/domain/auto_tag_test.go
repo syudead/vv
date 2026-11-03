@@ -146,3 +146,36 @@ func TestSpreadFrameIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoTagChoiceForNamesSynonyms(t *testing.T) {
+	req := AutoTagChoiceFor(ClassifierInput{}, []AutoTagCandidate{{ID: 7, Name: "cat", Synonyms: []string{"kitten", "neko"}}})
+	if len(req.Options) != 1 || req.Options[0].Key != "tag_7" || req.Options[0].Text != "cat (also known as kitten, neko)" {
+		t.Fatalf("options = %+v", req.Options)
+	}
+	if req.None == "" {
+		t.Fatal("no none option")
+	}
+}
+
+// The shortlist keeps candidates at or above the floor, the most probable AutoTagShortlistSize of them, in
+// candidate order.
+func TestShortlistAutoTags(t *testing.T) {
+	var candidates []AutoTagCandidate
+	probabilities := map[string]float64{}
+	for id := int64(1); id <= AutoTagShortlistSize+2; id++ {
+		candidates = append(candidates, AutoTagCandidate{ID: id})
+		probabilities[AutoTagQuestionKey(id)] = 0.03 + float64(id)/1000
+	}
+	probabilities[AutoTagQuestionKey(1)] = 0.5
+	probabilities[AutoTagQuestionKey(3)] = AutoTagShortlistFloor - 0.001
+	candidates = append(candidates, AutoTagCandidate{ID: 99})
+
+	got := ShortlistAutoTags(candidates, probabilities)
+	if len(got) != AutoTagShortlistSize {
+		t.Fatalf("shortlist = %d candidates", len(got))
+	}
+	// 3 is below the floor, 99 has no answer, and 2 is the least probable of the rest.
+	if got[0].ID != 1 || got[1].ID != 4 || got[len(got)-1].ID != AutoTagShortlistSize+2 {
+		t.Fatalf("shortlist = %v", got)
+	}
+}

@@ -195,6 +195,7 @@ func run(opts runOptions) error {
 		Settings:   settingsStore,
 		Undo:       db.Activity(),
 		Classifier: classifier,
+		Chooser:    classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
 		Wake:       func() { scheduler.Wake() },
 		Logger:     logger,

@@ -143,6 +143,17 @@ func (c *fakeClassifier) Classify(_ context.Context, req domain.ClassifierReques
 	return out, nil
 }
 
+type fakeChooser struct {
+	answers  map[string]float64
+	err      error
+	requests []domain.ClassifierChoiceRequest
+}
+
+func (c *fakeChooser) Choose(_ context.Context, req domain.ClassifierChoiceRequest) (map[string]float64, error) {
+	c.requests = append(c.requests, req)
+	return c.answers, c.err
+}
+
 type fakeImages struct {
 	thumbnails map[string][]byte
 	frames     map[string][][]byte
@@ -453,5 +464,68 @@ func TestAutoTaggerRetriesAndUndoesActivity(t *testing.T) {
 	}
 	if _, err := activity.UndoActivity(ctx, 3, domain.ActivityUndoTarget{TagID: 8}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("付けていないタグの取り消し = %v", err)
+	}
+}
+
+// More candidates than AutoTagShortlistAbove are shortlisted with one choice request over the same input, and only
+// the shortlist gets yes/no questions; fewer are asked directly.
+func TestAutoTaggerShortlistsManyCandidates(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		candidates int
+		chooseErr  error
+		wantChoose int
+		wantAsked  []string
+	}{
+		{name: "many", candidates: domain.AutoTagShortlistAbove + 1, wantChoose: 1, wantAsked: []string{"tag_2", "tag_65"}},
+		{name: "few", candidates: domain.AutoTagShortlistAbove, wantAsked: nil},
+		{name: "choice fails", candidates: domain.AutoTagShortlistAbove + 1, chooseErr: errors.New("down"), wantChoose: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			queue := newFakeAutoTagQueue()
+			queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
+			for id := int64(1); id <= int64(tc.candidates); id++ {
+				queue.candidates = append(queue.candidates, domain.AutoTagCandidate{ID: id, Name: "t"})
+			}
+			chooser := &fakeChooser{err: tc.chooseErr, answers: map[string]float64{"tag_2": 0.3, "tag_65": 0.1, "tag_9": 0.001}}
+			classifier := &fakeClassifier{answers: map[string]float64{"tag_2": 0.9}}
+			tagger := NewAutoTagger(AutoTaggerOptions{
+				Queue: queue, Settings: enabledAutoTagSettings(), Classifier: classifier, Chooser: chooser,
+			})
+
+			err := handleAutoTag(t, tagger, "k1")
+			if !errors.Is(err, tc.chooseErr) {
+				t.Fatalf("err = %v", err)
+			}
+			if len(chooser.requests) != tc.wantChoose {
+				t.Fatalf("choice requests = %d", len(chooser.requests))
+			}
+			if tc.chooseErr != nil {
+				if len(classifier.requests) != 0 {
+					t.Fatal("asked yes/no questions after the choice failed")
+				}
+				return
+			}
+			if tc.wantChoose == 1 {
+				if len(chooser.requests[0].Options) != tc.candidates ||
+					!reflect.DeepEqual(chooser.requests[0].Input, classifier.requests[0].Input) {
+					t.Fatalf("choice request = %d options, input %+v", len(chooser.requests[0].Options), chooser.requests[0].Input)
+				}
+				var asked []string
+				for _, q := range classifier.requests[0].Questions {
+					asked = append(asked, q.Key)
+				}
+				if !slices.Equal(asked, tc.wantAsked) {
+					t.Fatalf("asked = %v", asked)
+				}
+				if got := queue.finished["k1"].Confirmed; !slices.Equal(got, []int64{2}) {
+					t.Fatalf("confirmed = %v", got)
+				}
+				return
+			}
+			if len(classifier.requests[0].Questions) != tc.candidates {
+				t.Fatalf("asked = %d questions", len(classifier.requests[0].Questions))
+			}
+		})
 	}
 }

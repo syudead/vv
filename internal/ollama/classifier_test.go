@@ -173,3 +173,55 @@ func TestClassifyReportsUnreachableEndpoint(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// More options than Clef takes are dealt round-robin into choice questions, each with the none option, and the
+// none option's probability is not returned.
+func TestChooseSplitsOptionsIntoChoiceQuestions(t *testing.T) {
+	var mu sync.Mutex
+	var sent []question
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body requestBody
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		q := body.Questions["choice"]
+		mu.Lock()
+		sent = append(sent, q)
+		mu.Unlock()
+		probabilities := map[string]float64{}
+		for key := range q.Criteria {
+			probabilities[key] = 0.01
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"answers": map[string]any{
+			"choice": map[string]any{"type": "choice", "probabilities": probabilities},
+		}})
+	}))
+	defer server.Close()
+
+	req := domain.ClassifierChoiceRequest{Instructions: "Which?", None: "None of these"}
+	for i := range maxChoiceOptions + 1 {
+		req.Options = append(req.Options, domain.ClassifierQuestion{Key: fmt.Sprintf("o%d", i), Text: fmt.Sprintf("t%d", i)})
+	}
+	probabilities, err := New(at(server.URL)).Choose(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(probabilities) != maxChoiceOptions+1 || probabilities["o0"] != 0.01 {
+		t.Fatalf("probabilities = %d options, o0 = %v", len(probabilities), probabilities["o0"])
+	}
+	if _, ok := probabilities[noneKey]; ok {
+		t.Fatal("the none option was returned")
+	}
+	if len(sent) != 2 {
+		t.Fatalf("questions = %d, want 2", len(sent))
+	}
+	for _, q := range sent {
+		if q.Type != "choice" || q.Instructions != "Which?" || q.Criteria[noneKey] != "None of these" {
+			t.Fatalf("question = %+v", q)
+		}
+	}
+	// Round-robin dealing puts neighbouring options into different questions.
+	_, firstHasO1 := sent[0].Criteria["o1"]
+	_, firstHasO0 := sent[0].Criteria["o0"]
+	if firstHasO0 == firstHasO1 || len(sent[0].Criteria)+len(sent[1].Criteria) != maxChoiceOptions+3 {
+		t.Fatalf("criteria sizes = %d, %d", len(sent[0].Criteria), len(sent[1].Criteria))
+	}
+}

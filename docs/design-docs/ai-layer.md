@@ -1,7 +1,8 @@
 # AI layer: classifier port and providers
 
 VVMDM's features reach a model only through task-agnostic ports:
-`app.Classifier` for yes/no decisions, `app.ClefWire` for Clef's own request
+`app.Classifier` for yes/no decisions, `app.ChoiceClassifier` for ranking
+options, `app.ClefWire` for Clef's own request
 and answer, and `app.ToolChat` for a conversation in which the model calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
 how many questions it accepts per call; a provider does not know which feature
 asks or what the questions mean.
@@ -9,6 +10,8 @@ asks or what the questions mean.
 ```mermaid
 flowchart LR
   feature[Feature: AutoTagger] -->|domain.ClassifierRequest| port[app.Classifier]
+  feature -->|domain.ClassifierChoiceRequest| cport[app.ChoiceClassifier]
+  cport -.->|implemented by| ollama
   judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
   assistant[Feature: Assistant] -->|domain.ClassifierRequest| port
   assistant -->|domain.ChatRequest| tport[app.ToolChat]
@@ -41,9 +44,16 @@ probability per question. It is defined in
 A request has no limit on the number of questions. The feature builds the
 facts and the question wording, and turns probabilities into decisions.
 
+`app.ChoiceClassifier` takes the same input with one English question, its
+options as keyed texts and a text for none of them, and answers a probability
+per option key. A provider may split the options into several questions, so
+the probabilities rank options but are not independent answers and need not
+sum to 1. A feature leaves it unset for a provider without it and asks yes/no
+questions instead.
+
 | Feature | Request | Document |
 | --- | --- | --- |
-| Auto-tagging | One question per candidate tag; the thumbnail, 8 frames and the facts `title`, `file_name`, `folder` | [auto-tagging.md](auto-tagging.md) |
+| Auto-tagging | One question per candidate tag, after one choice over the candidates when there are more than 64; the thumbnail, 7 frames and the facts `title`, `file_name`, `folder` | [auto-tagging.md](auto-tagging.md) |
 | Duplicate judging | One question; up to 4 images of frame A beside frame B and no facts; sent only once the Ollama connection is saved | [duplicate-judging.md](duplicate-judging.md) |
 | Assistant review runs | One question per candidate set; as facts, the two names with their synonyms or aliases and 3 titles each, or up to 10 titles and their folders of a work; no images | [assistant.md](assistant.md#review-runs-judge-candidate-sets-for-the-owner) |
 
@@ -106,12 +116,12 @@ and a chat model the owner chooses. It owns everything specific to that provider
 | Concern | Rule |
 | --- | --- |
 | Connection | Reads the saved URL and models (`ollama.endpoint`, `ollama.model`, `ollama.generation_model`) on every call, so a change takes effect without a restart |
-| Wire format, decisions | Facts become the `state` object, images are base64 `images`, every question is a `noul` question |
+| Wire format, decisions | Facts become the `state` object, images are base64 `images`; a yes/no question is a `noul` question, and a choice is one `choice` question whose `criteria` are the options and a `_none` option for none of them, left out of the answer |
 | Wire format, Clef wire | The request's `state`, `images` and `questions` as given, with the decision model and `keep_alive` added |
 | Images | Ollama takes at most 8 images on one request; the Clef wire and each chat message tile more into one near-square grid of cells sized from the first image, at most 640 px wide, as a JPEG. The classifier port's features send no more than 8. `scripts/clefrelay` uses the same tiling for Workers AI's limit of 4 |
 | Wire format, tool chat | The messages with base64 `images`, `tool_calls` and `tool_name`, the tools as `function` entries, `stream: false` and no `options.num_ctx`: Ollama sizes the context for its host (`OLLAMA_CONTEXT_LENGTH` or its default), and after each call the `context_length` that `/api/ps` reports for the loaded model, or Ollama's documented default of 4,096, is the context the assistant fits its prompt to; before a turn's first call, `/api/ps` gives the context when the model is already loaded, and `size_vram` below `size` marks a model partly on the CPU. Sending the model's trained length made Ollama allocate a context past the GPU's memory, which runs on the CPU many times slower |
 | Capabilities | `POST /api/show` lists them; `tools` and `vision` are read, and an Ollama that reports none has neither |
-| Batches | 16 questions per decision call, all with the same input; answers are merged. A chat call is never split or retried |
+| Batches | 16 yes/no questions per decision call, all with the same input; answers are merged. A choice takes one call per 254 options, dealt round-robin so options next to each other in the caller's order land in different calls, since one choice of 254 options costs about 6,100 input tokens with one image. A chat call is never split or retried |
 | Time | Each call times out after 10 minutes; the model stays loaded for 10 minutes after it (`keep_alive`) |
 | Errors | Only the `error` text of an Ollama JSON reply is passed on; any other body is dropped |
 

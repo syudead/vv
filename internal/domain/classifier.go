@@ -22,6 +22,19 @@ type ClassifierRequest struct {
 	Questions []ClassifierQuestion
 }
 
+// ClassifierChoiceRequest asks which one of Options fits the input best. The probabilities of the options in one
+// provider question sum to one, so they rank options; they are not independent yes/no answers.
+type ClassifierChoiceRequest struct {
+	Input ClassifierInput
+	// Instructions is the English question the options answer.
+	Instructions string
+	// Options use Key as the answer key and Text as the option's description; keys must be unique.
+	Options []ClassifierQuestion
+	// None describes the answer that no option fits. Adapters add it to every provider question they send and
+	// leave it out of the probabilities they return.
+	None string
+}
+
 // ClefRequest is Clef's own decision request without the model and keep-alive, which the adapter adds; the
 // assistant's clef tool sends it as the model wrote it, with each image reference replaced by the image's bytes.
 type ClefRequest struct {
