@@ -146,25 +146,42 @@ func (l *turnLoop) nameStep(ctx context.Context, tool domain.AssistantTool, raw 
 	return bindCreated(plan)
 }
 
-// unresolved ends the turn as clarify when a name needs the owner's choice; any other reason is the failure the
-// model receives to fix its call.
+// unresolved ends the turn as clarify when a name matches several entities the owner chooses among; any other
+// reason, a name that matches nothing included, is the failure the model receives to fix its call.
 func (l *turnLoop) unresolved(t *assistantTurn) string {
 	c := t.clarification
 	switch {
 	case t.failure != "":
 		return t.failure
-	case c != nil && t.clarifyName != "" && (len(c.Candidates) > 0 || len(c.Names) > 0):
+	case c != nil && t.clarifyName != "" && len(c.Candidates) > 0:
 		l.turn.Status = domain.AssistantTurnClarify
 		l.turn.Clarify = &domain.AssistantTurnClarification{
 			Name: t.clarifyName, Kind: t.clarifyKind, Candidates: append([]domain.AssistantCandidate{}, c.Candidates...),
 		}
 		l.writes.plans = nil
 		return ""
+	case c != nil && len(c.Names) > 0:
+		return unmatchedNames(t.clarifyKind, c.Names)
 	case c != nil && c.About == "target":
 		return "the target names nothing this operation can act on: nothing is selected, or it holds another " +
 			"number of items than the operation takes"
 	}
 	return "an argument the operation needs is missing or has a value it does not take"
+}
+
+// unmatchedNames tells the model which names matched nothing. A model often puts a tag or person name in the
+// target of a video operation, so the video case says what the target takes.
+func unmatchedNames(kind domain.AssistantLabelKind, names []string) string {
+	quoted := strings.Join(names, ", ")
+	if kind == domain.AssistantLabelVideo {
+		return "no video title matches " + quoted + "; the target is the videos to change (selection, current, " +
+			"a filter or video titles), and tag, person and other names go in their own arguments"
+	}
+	if kind == "" {
+		kind = "entity"
+	}
+	return fmt.Sprintf("no %s is named %s; look the name up with a read tool and call again with a name it lists",
+		kind, quoted)
 }
 
 // noteClarify records the name and kind the first clarification asks about. A blank name asks nothing the owner

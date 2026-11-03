@@ -14,6 +14,8 @@ import (
 
 type chatModelInfo struct {
 	id string
+	// context is the context window of the model's Workers AI catalog entry, which /api/ps reports.
+	context int
 	// tools and vision repeat the function calling and vision properties of the model's Workers AI catalog entry.
 	tools  bool
 	vision bool
@@ -25,12 +27,12 @@ type chatModelInfo struct {
 // chatModels maps the names /api/tags lists to Workers AI chat models with function calling, so the assistant's
 // generation model can be chosen as on a local Ollama. A name starting with @cf/ is sent to Workers AI as it is.
 var chatModels = map[string]chatModelInfo{
-	"granite4:micro":       {id: "@cf/ibm-granite/granite-4.0-h-micro", tools: true, userAfterTool: true},
-	"gemma4:26b":           {id: "@cf/google/gemma-4-26b-a4b-it", tools: true, vision: true, userAfterTool: true},
-	"qwen3:30b":            {id: "@cf/qwen/qwen3-30b-a3b-fp8", tools: true, userAfterTool: true},
-	"mistral-small3.1:24b": {id: "@cf/mistralai/mistral-small-3.1-24b-instruct", tools: true, vision: true},
-	"llama3.3:70b":         {id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", tools: true, userAfterTool: true},
-	"llama4:scout":         {id: "@cf/meta/llama-4-scout-17b-16e-instruct", tools: true, vision: true, userAfterTool: true},
+	"granite4:micro":       {id: "@cf/ibm-granite/granite-4.0-h-micro", context: 131000, tools: true, userAfterTool: true},
+	"gemma4:26b":           {id: "@cf/google/gemma-4-26b-a4b-it", context: 128000, tools: true, vision: true, userAfterTool: true},
+	"qwen3:30b":            {id: "@cf/qwen/qwen3-30b-a3b-fp8", context: 32768, tools: true, userAfterTool: true},
+	"mistral-small3.1:24b": {id: "@cf/mistralai/mistral-small-3.1-24b-instruct", context: 128000, tools: true, vision: true},
+	"llama3.3:70b":         {id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", context: 24000, tools: true, userAfterTool: true},
+	"llama4:scout":         {id: "@cf/meta/llama-4-scout-17b-16e-instruct", context: 131000, tools: true, vision: true, userAfterTool: true},
 }
 
 // Workers AI answers at most 256 tokens unless told otherwise, which cuts a thinking model's answer off.
@@ -43,6 +45,16 @@ func chatModelNames() []string {
 	}
 	slices.Sort(names)
 	return names
+}
+
+// loadedModels answers /api/ps as Ollama does with every chat model loaded on the GPU. Without it the product
+// assumes Ollama's default context of 4096 tokens and stops every assistant turn.
+func loadedModels() map[string]any {
+	models := []map[string]any{}
+	for _, name := range chatModelNames() {
+		models = append(models, map[string]any{"name": name, "model": name, "context_length": chatModels[name].context})
+	}
+	return map[string]any{"models": models}
 }
 
 // chatModel resolves a listed name; a raw @cf/ name is relayed with no known capabilities.

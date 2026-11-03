@@ -166,8 +166,9 @@ Every name a request resolves is resolved by the server with the stored search k
 (width, case and kana folded), tag synonyms and person and organization
 aliases (`AssistantVocabulary`); one match is used, several answer `clarify`
 with the candidates, and none answers `clarify` with the entities whose names
-contain the name (`コスプレ` offers `コスプレ衣装` and `コスプレ衣裳`), with two
-exceptions. A tag to attach is marked created on the card. A tag, person or
+contain the name (`コスプレ` offers `コスプレ衣装` and `コスプレ衣裳`). A name
+that neither matches nor is contained in any name comes back to the model as an
+error result that names the kind it searched, with two exceptions. A tag to attach is marked created on the card. A tag, person or
 organization in a filter that only reads joins the filter's free text `q` as a literal search term, quoted when
 the search grammar would otherwise read it as an operator or several words, so
 one loose name does not fail a read. The name is dropped when it is a field
@@ -194,7 +195,9 @@ flowchart LR
   attach -->|yes| create[Card marks it created]
   attach -->|no| read{Read-only filter?}
   read -->|yes| text[Search it in q, or drop a field word]
-  read -->|no| ask
+  read -->|no| similar{Names contain it?}
+  similar -->|yes| ask
+  similar -->|no| fail[Error result to the model]
 ```
 
 | No match for a name in | Answer | Why |
@@ -314,7 +317,10 @@ pending proposal of the turn it follows.
 
 | Rule | Why |
 | --- | --- |
-| A name that matches several entities, or none for a row that does not create it, ends the turn as `clarify` with the name and its candidates and drops every step; the owner's choice comes back as a follow-up with the id pinned | The owner chooses, not the model |
+| A name that matches several entities, or none for a row that does not create it while other names contain it, ends the turn as `clarify` with the name and its candidates and drops every step; the owner's choice comes back as a follow-up with the id pinned | The owner chooses, not the model |
+| A name that matches nothing and offers no candidate comes back to the model as an error result naming the kind it searched; for a video target it says the target takes videos and other names go in their own arguments | Models put a tag name in a video operation's target or invent a name; ending the turn there showed the owner `Couldn't find` a tag that exists, with nothing to choose |
+| An entity row whose target names several entities answers the model to call it once for each | The row's endpoint acts on one entity |
+| A target with names and no `kind` is read as `named` | Models drop the kind when they give names |
 | A missing or unusable target or argument, an id that names nothing, and invalid schema arguments come back to the model as an error result | The model can fix the call itself |
 | A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
 | A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |

@@ -153,6 +153,16 @@ func TestRelayShowsToolsOnlyForFunctionCallingModels(t *testing.T) {
 	}
 }
 
+// Without /api/ps the product assumes a 4096-token context and stops every assistant turn.
+func TestRelayReportsTheGenerationModelsContext(t *testing.T) {
+	chat := chatThrough(t, "llama3.3:70b", func(http.ResponseWriter, *http.Request) {
+		t.Error("/api/ps reached Workers AI")
+	})
+	if got := chat.LoadedContext(context.Background()); got != chatModels["llama3.3:70b"].context || got <= 4096 {
+		t.Fatalf("context = %d, want the model's Workers AI context", got)
+	}
+}
+
 func TestRelayChatSendsMessageImagesToAVisionModel(t *testing.T) {
 	frame := solidJPEG(t, 32, 18, color.White)
 	var got workersChatRequest

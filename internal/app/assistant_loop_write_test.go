@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,6 +198,62 @@ func TestWriteCallWithANameOfTwoTagsEndsTheTurnAsClarify(t *testing.T) {
 	}
 	if turn.ProposalID != 0 || f.store.plans != nil {
 		t.Fatalf("a clarified turn proposed %+v", f.store.plans)
+	}
+}
+
+// A tag name in a video operation's target matches no title; the model hears why and calls again, so the owner
+// is not asked about a tag that exists.
+func TestWriteCallWithATagNameAsTheVideoTargetIsAnErrorForTheModel(t *testing.T) {
+	f := newWriteFixture(t,
+		calls(toolCall("updateVideoTags.add", `{"target":{"kind":"named","names":["ライブ"]},"tagNames":["ライブ"]}`)),
+		calls(toolCall("updateVideoTags.add", `{"target":{"kind":"selection"},"tagNames":["ライブ"]}`)),
+		text("提案しました。"))
+
+	turn := f.run(t, 0)
+
+	if turn.Status != domain.AssistantTurnDone || turn.Clarify != nil || len(f.store.plans) != 1 {
+		t.Fatalf("turn = %+v, plans = %+v; want the second call proposed", turn, f.store.plans)
+	}
+	if failed := turn.Progress[1].Error; !strings.Contains(failed, "no video title matches ライブ") {
+		t.Fatalf("first call error = %q, want the unmatched title", failed)
+	}
+}
+
+func TestWriteCallWithANameThatMatchesNothingIsAnErrorForTheModel(t *testing.T) {
+	f := newWriteFixture(t,
+		calls(toolCall("mergeTag", `{"target":{"kind":"named","names":["ホラー"]},"names":["ライブ"]}`)),
+		text("見つかりませんでした。"))
+
+	turn := f.run(t, 0)
+
+	if turn.Status != domain.AssistantTurnDone || turn.Clarify != nil || len(f.store.plans) != 0 {
+		t.Fatalf("turn = %+v; want an answer without a clarification", turn)
+	}
+	if failed := turn.Progress[1].Error; !strings.Contains(failed, "no tag is named ホラー") {
+		t.Fatalf("error = %q, want the unmatched tag", failed)
+	}
+}
+
+func TestEntityTargetNamesWithoutKindAndSeveralNames(t *testing.T) {
+	for _, c := range []struct {
+		name, target, wantError string
+		wantPlans               int
+	}{
+		{"names without a kind are named", `{"names":["コンサート"]}`, "", 1},
+		{"several names ask for one call each", `{"kind":"named","names":["コンサート","猫"]}`,
+			"mergeTag acts on one tag per call", 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newWriteFixture(t,
+				calls(toolCall("mergeTag", `{"target":`+c.target+`,"names":["ライブ"]}`)), text("done"))
+
+			turn := f.run(t, 0)
+
+			if len(f.store.plans) != c.wantPlans || !strings.Contains(turn.Progress[1].Error, c.wantError) {
+				t.Fatalf("plans = %d, error = %q; want %d plans and %q", len(f.store.plans), turn.Progress[1].Error,
+					c.wantPlans, c.wantError)
+			}
+		})
 	}
 }
 

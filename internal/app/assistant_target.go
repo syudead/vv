@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -82,6 +83,9 @@ func (d *planDraft) resolveTarget(ctx context.Context) (bool, error) {
 	if target == nil {
 		target = &domain.AssistantTargetRequest{Kind: "selection"}
 	}
+	if target.Kind == "" && len(target.Names) > 0 {
+		target = &domain.AssistantTargetRequest{Kind: "named", Names: target.Names}
+	}
 	switch row := d.row.Target; {
 	case row == domain.AssistantTargetNone:
 		return true, nil
@@ -104,6 +108,9 @@ func (d *planDraft) entityTarget(
 	switch {
 	case target.Kind == "named" && len(target.Names) == 1:
 		name = target.Names[0]
+	case target.Kind == "named" && len(target.Names) > 1:
+		return d.t.refuse("%s acts on one %s per call; call it once for each of %s",
+			domain.AssistantModelToolName(d.row.ID), kind, strings.Join(target.Names, ", ")), nil
 	case target.Kind != "current" && target.Kind != "selection":
 		d.t.clarify("target", nil)
 		return false, nil
