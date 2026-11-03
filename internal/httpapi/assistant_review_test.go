@@ -30,7 +30,7 @@ func (f *fakeReviews) ReviewPage(_ context.Context, runID int64, _ string, limit
 		Items: []domain.AssistantReviewCandidate{{ID: 9, Probability: 0.8, State: domain.AssistantCandidateListed,
 			Members: []domain.AssistantReviewMember{
 				{Kind: domain.AssistantLabelTag, ID: 1, Name: "selfie", Count: 4},
-				{Kind: domain.AssistantLabelTag, ID: 2, Name: "selfy", Count: 1},
+				{Kind: domain.AssistantLabelTag, ID: 2, Name: "selfy", Count: 1, Reason: "garbled"},
 			}}},
 		NextCursor: "next",
 	}, nil
@@ -57,7 +57,9 @@ func TestAssistantReviewRunPageAndAdoption(t *testing.T) {
 	}
 	page := decode[gen.AssistantReviewRunPage](t, res)
 	if reviews.limit != assistantReviewDefaultLimit || page.Run.Judged != 1 || len(page.Items) != 1 ||
-		page.Items[0].Members[0].Count != 4 || page.NextCursor == nil || *page.NextCursor != "next" {
+		page.Items[0].Members[0].Count != 4 || page.Items[0].Members[0].Reason != nil ||
+		page.Items[0].Members[1].Reason == nil || *page.Items[0].Members[1].Reason != "garbled" ||
+		page.NextCursor == nil || *page.NextCursor != "next" {
 		t.Errorf("page = %+v (limit %d)", page, reviews.limit)
 	}
 	if code, _ := serve(http.MethodGet, "/api/assistant/review-runs/6", ""); code != http.StatusNotFound {

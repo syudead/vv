@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"maps"
 	"slices"
 	"testing"
 )
@@ -102,5 +103,26 @@ func TestAssistantReviewPlanRemovesAUselessTagByItsState(t *testing.T) {
 		if err != nil || plan.ActionID != c.action || plan.Call.Path["id"] != "3" || plan.Targets.Labels[0].Name != "動画" {
 			t.Errorf("tentative %v: plan = %+v, %v; want %s of tag 3", c.tentative, plan, err, c.action)
 		}
+	}
+}
+
+func TestAssistantInvalidTagNamesReadsTheJSONInTheAnswer(t *testing.T) {
+	for _, c := range []struct {
+		name, text string
+		want       map[string]string
+		wantErr    bool
+	}{
+		{"a fenced object, folded names", "```json\n" + `{"invalid":[{"name":"ＴＥＳＴ","reason":"test entry"},{"name":"","reason":"x"}]}` + "\n```",
+			map[string]string{"test": "test entry"}, false},
+		{"every name valid", `{"invalid":[]}`, map[string]string{}, false},
+		{"no object", "all fine", nil, true},
+		{"broken object", `{"invalid":[{"name":}]}`, nil, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := AssistantInvalidTagNames(c.text)
+			if (err != nil) != c.wantErr || !maps.Equal(got, c.want) {
+				t.Errorf("got %v, %v; want %v (error %v)", got, err, c.want, c.wantErr)
+			}
+		})
 	}
 }
