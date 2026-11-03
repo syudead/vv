@@ -325,7 +325,8 @@ pending proposal of the turn it follows.
 | `rejectTag`, `confirmTag` and `deleteTag` given several names point the model to `batchTags.reject`, `.confirm` and `.delete`; a `batchTags` row whose target is not `named` says it takes the tags by name | Models call the single-tag row for a list, and name the screen for a tag list |
 | `batchTags.confirm` and `.reject` refuse a confirmed tag, and `.delete` a tentative one, naming them and the row that fits | The endpoint skips them, so the card would list a tag the step leaves unchanged |
 | A row name the model writes with one underscore (`batchTags_reject`) is the row when no tool has that name | Models shorten the `__` that stands for the dot |
-| `start_review` says that it merges near-duplicate tags and that unused or rarely used tags are listed with `countAsc` and proposed as `batchTags.reject` or `.delete` | Models read every tidy-up request as a review run, which never finds those tags |
+| `start_review` says that it only merges or groups, and that tags a request asks to remove are read with `listTags`, judged by the model and proposed as `batchTags.reject` or `.delete` | Models read every tidy-up request as a review run, which never removes a tag |
+| The rules say `start_review` only merges or groups, and that a request leaving the choice to the model (tags that are meaningless or badly named) is read, judged by reasoning and proposed, without asking the owner to confirm in text | The rules sent every tidy-up request to a review run, and models asked "reject these?" in the answer instead of proposing, so nothing reached the card |
 | A missing or unusable target or argument, an id that names nothing, and invalid schema arguments come back to the model as an error result | The model can fix the call itself |
 | A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
 | A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |
@@ -436,7 +437,8 @@ the status of that step.
 
 ## Review runs judge candidate sets for the owner
 
-A request to tidy up tags, people or works starts a review run of one kind; a finder lists
+A request to merge duplicate tags or people, or to group the parts of works, starts a review run of one kind;
+removing or changing items the request describes is the model's own judgement, made as write calls. A finder lists
 candidate sets from the store, the run asks `app.Classifier` one yes/no
 question per set with facts only, and the review list
 (`/assistant/reviews/:id`) shows the sets at 0.5 or more, most probable first,

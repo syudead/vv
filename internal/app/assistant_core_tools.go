@@ -120,9 +120,9 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 		{definition: domain.ToolDefinition{Name: toolStartReview, Description: "Start a background review of the " +
 			"whole library: tags finds pairs of duplicate or similar tags to merge, people the same person under " +
 			"several entries, works videos of the same work. The owner adopts or rejects its candidates on the " +
-			"review list. Use it for library-wide merging, not for a few named items. It does not find unused or " +
-			"rarely used tags: for those, list tags sorted by countAsc and propose batchTags.reject for tentative " +
-			"tags and batchTags.delete for confirmed ones, which find_tools loads."},
+			"review list. It only merges or groups. To remove tags the request describes (unused, meaningless, " +
+			"invalid or badly named), read them with listTags, judge them yourself, and propose batchTags.reject " +
+			"for tentative tags and batchTags.delete for confirmed ones, which find_tools loads."},
 			run: (*turnLoop).startReview},
 		{definition: domain.ToolDefinition{Name: toolVideoStats, Description: "Count and measure videos in one " +
 			"call: every call answers how many, how many favorites, the total length, the longest and the shortest, " +
