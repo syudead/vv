@@ -14,6 +14,13 @@ type Classifier interface {
 	Classify(ctx context.Context, req domain.ClassifierRequest) (map[string]float64, error)
 }
 
+// ChoiceClassifier ranks options for one input; a provider that cannot is left unset and its callers ask every
+// option as a yes/no question.
+type ChoiceClassifier interface {
+	// Choose returns each option's probability from zero to one and omits unanswered options.
+	Choose(ctx context.Context, req domain.ClassifierChoiceRequest) (map[string]float64, error)
+}
+
 // ClefWire sends Clef's own request and answers the endpoint's JSON as it is, for a caller that reads Clef's answers
 // itself: the assistant's clef tool.
 type ClefWire interface {

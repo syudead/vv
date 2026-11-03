@@ -43,9 +43,16 @@ func NewWithHTTPClient(settings SettingsSource, client *http.Client) *Classifier
 	return &Classifier{settings: settings, http: client}
 }
 
+// Clef takes at most 255 options in a choice question; one is the none option.
+const maxChoiceOptions = 254
+
+// noneKey is the option Choose adds for "none of these"; callers' option keys must differ from it.
+const noneKey = "_none"
+
 type question struct {
-	Type         string `json:"type"`
-	Instructions string `json:"instructions"`
+	Type         string            `json:"type"`
+	Instructions string            `json:"instructions"`
+	Criteria     map[string]string `json:"criteria,omitempty"`
 }
 
 type requestBody struct {
@@ -57,8 +64,9 @@ type requestBody struct {
 }
 
 type answer struct {
-	Type string   `json:"type"`
-	Noul *float64 `json:"noul"`
+	Type          string             `json:"type"`
+	Noul          *float64           `json:"noul"`
+	Probabilities map[string]float64 `json:"probabilities"`
 }
 
 type responseBody struct {
@@ -77,26 +85,70 @@ func (c *Classifier) Classify(ctx context.Context, req domain.ClassifierRequest)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
 	}
-	var images []string
-	for _, image := range req.Input.Images {
-		images = append(images, base64.StdEncoding.EncodeToString(image))
-	}
+	images := encodeBase64(req.Input.Images)
 	for start := 0; start < len(req.Questions); start += BatchSize {
 		batch := req.Questions[start:min(start+BatchSize, len(req.Questions))]
-		answers, err := c.post(ctx, settings, req.Input.Facts, images, batch)
+		questions := make(map[string]question, len(batch))
+		for _, q := range batch {
+			questions[q.Key] = question{Type: "noul", Instructions: q.Text}
+		}
+		answers, err := c.post(ctx, settings, req.Input.Facts, images, questions)
 		if err != nil {
 			return nil, err
 		}
-		for key, p := range answers {
-			probabilities[key] = p
+		for key, a := range answers {
+			if a.Noul != nil {
+				probabilities[key] = *a.Noul
+			}
 		}
 	}
 	return probabilities, nil
 }
 
+// Choose asks one choice question per request, since a question with all its options costs about as many input
+// tokens as a batch of yes/no questions. More options than Clef takes are dealt round-robin into equal questions, so
+// options next to each other in the caller's order do not compete in the same question.
+func (c *Classifier) Choose(ctx context.Context, req domain.ClassifierChoiceRequest) (map[string]float64, error) {
+	probabilities := map[string]float64{}
+	if len(req.Options) == 0 {
+		return probabilities, nil
+	}
+	settings, err := c.settings.OllamaSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
+	}
+	images := encodeBase64(req.Input.Images)
+	groups := (len(req.Options) + maxChoiceOptions - 1) / maxChoiceOptions
+	for g := range groups {
+		criteria := map[string]string{noneKey: req.None}
+		for i := g; i < len(req.Options); i += groups {
+			criteria[req.Options[i].Key] = req.Options[i].Text
+		}
+		questions := map[string]question{"choice": {Type: "choice", Instructions: req.Instructions, Criteria: criteria}}
+		answers, err := c.post(ctx, settings, req.Input.Facts, images, questions)
+		if err != nil {
+			return nil, err
+		}
+		for key, p := range answers["choice"].Probabilities {
+			if key != noneKey {
+				probabilities[key] = p
+			}
+		}
+	}
+	return probabilities, nil
+}
+
+func encodeBase64(images [][]byte) []string {
+	var encoded []string
+	for _, image := range images {
+		encoded = append(encoded, base64.StdEncoding.EncodeToString(image))
+	}
+	return encoded
+}
+
 func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, facts map[string]string,
-	images []string, questions []domain.ClassifierQuestion,
-) (map[string]float64, error) {
+	images []string, questions map[string]question,
+) (map[string]answer, error) {
 	if facts == nil {
 		facts = map[string]string{}
 	}
@@ -104,11 +156,8 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 		Model:     settings.Model,
 		State:     facts,
 		Images:    images,
-		Questions: make(map[string]question, len(questions)),
+		Questions: questions,
 		KeepAlive: keepAlive,
-	}
-	for _, q := range questions {
-		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Text}
 	}
 	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
 	if err != nil {
@@ -124,13 +173,7 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 	if decoded.Answers == nil {
 		return nil, errors.New("the classifier response has no answers")
 	}
-	probabilities := make(map[string]float64, len(decoded.Answers))
-	for key, a := range decoded.Answers {
-		if a.Noul != nil {
-			probabilities[key] = *a.Noul
-		}
-	}
-	return probabilities, nil
+	return decoded.Answers, nil
 }
 
 // answerError passes on only the error text of an Ollama JSON answer.
@@ -161,7 +204,7 @@ func (c *Classifier) SystemOne(ctx context.Context, req domain.ClefRequest) (jso
 		body.State = map[string]string{}
 	}
 	for key, q := range req.Questions {
-		body.Questions[key] = question(q)
+		body.Questions[key] = question{Type: q.Type, Instructions: q.Instructions}
 	}
 	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
 	if err != nil {
