@@ -118,9 +118,9 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 			"the video watched last that is still in progress."},
 			run: (*turnLoop).openPage},
 		{definition: domain.ToolDefinition{Name: toolStartReview, Description: "Start a background review of the " +
-			"whole library: tags finds pairs of duplicate or similar tags to merge, uselessTags tags too generic, " +
-			"vague or broad to tell videos apart (the meaningless tags auto-tagging spreads) to remove, people the " +
-			"same person under several entries, works videos of the same work. The owner adopts or rejects its " +
+			"whole library: tags finds pairs of duplicate or similar tags to merge, uselessTags tags whose names " +
+			"are not valid tags (placeholders, file names, garbled text, opinions, words too generic to name " +
+			"anything; the meaningless tags auto-tagging spreads) to remove, people the same person under several entries, works videos of the same work. The owner adopts or rejects its " +
 			"candidates on the review list. Use it for library-wide tidying, not for a few named items. Tags with " +
 			"no videos are listed with listTags unused and proposed as batchTags.reject or batchTags.delete."},
 			run: (*turnLoop).startReview},

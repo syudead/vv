@@ -4413,6 +4413,9 @@ type AssistantReviewMember struct {
 
 	// Name The current name, or the video's title when the set was judged, as untranslated user data.
 	Name string `json:"name"`
+
+	// Reason Why the generation model judged the tag name invalid, in a uselessTags run, as untranslated model text.
+	Reason *string `json:"reason,omitempty"`
 }
 
 // AssistantReviewRejection defines model for AssistantReviewRejection.

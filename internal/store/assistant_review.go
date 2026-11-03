@@ -508,37 +508,20 @@ func findTagReviewSets(ctx context.Context, tx *sql.Tx) ([]domain.AssistantRevie
 		`select content_key from video_tags where tag_id = ?`)
 }
 
-// findUselessTagReviewSets makes one set of each of the most used tags, with its share of the library the
-// question reads. A tag a folder name gives counts like one on the video.
+// findUselessTagReviewSets makes one set of each tag, oldest first, with its names: the judgement reads the name
+// alone, so a rarely used tag is judged like any other.
 func findUselessTagReviewSets(ctx context.Context, tx *sql.Tx) ([]domain.AssistantReviewSet, error) {
-	entities, err := readReviewEntities(ctx, tx, `with top as (
-			select t.id, (select count(*) from video_tags vt where vt.tag_id = t.id) as uses from tags t
-			order by uses desc, t.id limit ?)
-		select top.id, n.name from top join tag_names n on n.tag_id = top.id
-		order by top.uses desc, top.id, n.canonical desc, n.name`, domain.AssistantReviewTagLimit)
+	entities, err := readReviewEntities(ctx, tx, `with listed as (select id from tags order by id limit ?)
+		select listed.id, n.name from listed join tag_names n on n.tag_id = listed.id
+		order by listed.id, n.canonical desc, n.name`, domain.AssistantReviewTagNameLimit)
 	if err != nil {
 		return nil, err
 	}
-	var library int
-	if err := tx.QueryRowContext(ctx, `select count(*) from videos v where v.content_key <> '' and `+
-		listedFileVideoCondition("v", domain.AudienceOwner)+` and `+
-		listedShownVideoCondition("v", domain.AudienceOwner)).Scan(&library); err != nil {
-		return nil, fmt.Errorf("cannot count the library videos: %w", err)
-	}
-	singles := make([][]reviewEntity, len(entities))
+	sets := make([]domain.AssistantReviewSet, len(entities))
 	for i, e := range entities {
-		singles[i] = []reviewEntity{e}
-	}
-	sets, err := reviewMemberSets(ctx, tx, domain.AssistantLabelTag, singles, `select content_key from video_tags where tag_id = ?`)
-	if err != nil {
-		return nil, err
-	}
-	for i := range sets {
-		sets[i].Library = library
-		m := &sets[i].Members[0]
-		if m.Count, err = videoCountByTagID(ctx, tx, domain.AudienceOwner, m.ID); err != nil {
-			return nil, err
-		}
+		sets[i] = domain.AssistantReviewSet{Members: []domain.AssistantReviewMember{{
+			Kind: domain.AssistantLabelTag, ID: e.id, Name: e.names[0], Aliases: e.names[1:],
+		}}}
 	}
 	return sets, nil
 }
@@ -601,30 +584,18 @@ func samePersonPairs(ctx context.Context, tx *sql.Tx) ([][2]int64, error) {
 	return pairs, nil
 }
 
-// reviewPairSets builds the sets of entity pairs with the titles of each member's videos.
+// reviewPairSets builds the sets of entity pairs with the titles of each member's videos. keysQuery selects the user
+// keys labelled with the entity bound to its one argument; a bundle's user key reaches every version's titles.
 func reviewPairSets(
 	ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, pairs [][2]reviewEntity, keysQuery string,
-) ([]domain.AssistantReviewSet, error) {
-	groups := make([][]reviewEntity, len(pairs))
-	for i, pair := range pairs {
-		groups[i] = pair[:]
-	}
-	return reviewMemberSets(ctx, tx, kind, groups, keysQuery)
-}
-
-// reviewMemberSets builds one set per group of entities with the titles of each member's videos. keysQuery selects
-// the user keys labelled with the entity bound to its one argument; a bundle's user key reaches every version's
-// titles.
-func reviewMemberSets(
-	ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, groups [][]reviewEntity, keysQuery string,
 ) ([]domain.AssistantReviewSet, error) {
 	titlesQuery := `select distinct l.title from video_locations l where l.video_id in (` + userKeyVideosSQL(keysQuery) +
 		`) order by l.title limit ?`
 	titles := map[int64][]string{}
-	sets := make([]domain.AssistantReviewSet, 0, len(groups))
-	for _, group := range groups {
+	sets := make([]domain.AssistantReviewSet, 0, len(pairs))
+	for _, pair := range pairs {
 		set := domain.AssistantReviewSet{}
-		for _, e := range group {
+		for _, e := range pair {
 			if _, ok := titles[e.id]; !ok {
 				read, err := queryStrings(ctx, tx, titlesQuery, e.id, e.id, domain.AssistantReviewFactTitles)
 				if err != nil {

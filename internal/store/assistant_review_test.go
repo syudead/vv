@@ -233,25 +233,21 @@ func TestAdoptReviewCandidateStoresOneApprovedProposal(t *testing.T) {
 	}
 }
 
-func TestFindUselessTagReviewSetsJudgesEachTagAgainstTheLibrary(t *testing.T) {
+func TestFindUselessTagReviewSetsListsEveryTagWithItsNames(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	for _, key := range []string{"k1", "k2"} {
-		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/"+key+".mp4"), key, key, 10, 0)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ids := createTags(t, db, "video", "cat")
-	execSQL(t, db, `insert into video_tags (content_key, tag_id, created_at) values ('k1', ?, 1), ('k2', ?, 1)`, ids[0], ids[0])
+	ids := createTags(t, db, "test", "cat")
+	execSQL(t, db, `insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
+		values ('neko', ?, 0, 'neko', 'neko', 1)`, ids[1])
 
 	sets, err := db.Assistant().FindReviewSets(ctx, domain.AssistantReviewUselessTags)
 
 	if err != nil || len(sets) != 2 {
-		t.Fatalf("sets = %+v, %v; want one per tag", sets, err)
+		t.Fatalf("sets = %+v, %v; want one per tag, used or not", sets, err)
 	}
-	video := sets[0]
-	if video.Library != 2 || len(video.Members) != 1 || video.Members[0].ID != ids[0] || video.Members[0].Count != 2 {
-		t.Errorf("first set = %+v, want the tag on both of 2 videos", video)
+	if m := sets[1].Members[0]; len(sets[1].Members) != 1 || m.ID != ids[1] || m.Name != "cat" ||
+		!slices.Equal(m.Aliases, []string{"neko"}) {
+		t.Errorf("second set = %+v, want cat with its synonym", sets[1])
 	}
 	if _, started, err := db.Assistant().StartReviewRun(ctx, domain.AssistantReviewUselessTags, "意味のないタグ", assistantNow); err != nil || !started {
 		t.Errorf("start = %v, %v; want the kind stored", started, err)

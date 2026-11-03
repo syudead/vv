@@ -21,7 +21,8 @@ const (
 	AssistantReviewTags   AssistantReviewKind = "tags"
 	AssistantReviewPeople AssistantReviewKind = "people"
 	AssistantReviewWorks  AssistantReviewKind = "works"
-	// AssistantReviewUselessTags judges each tag on its own: one so generic or broad that it tells no videos apart.
+	// AssistantReviewUselessTags judges each tag's name on its own: whether it names anything a viewer could search
+	// by. The generation model reasons over the names in batches; see AssistantTagNameRequest.
 	AssistantReviewUselessTags AssistantReviewKind = "uselessTags"
 )
 
@@ -61,6 +62,9 @@ const AssistantReviewThreshold = 0.5
 // AssistantReviewTagLimit bounds the tags searched to the most used ones.
 const AssistantReviewTagLimit = 2000
 
+// AssistantReviewTagNameLimit bounds the tags a uselessTags run judges.
+const AssistantReviewTagNameLimit = 10000
+
 // AssistantReviewFactTitles is how many titles of each member the classifier reads.
 const AssistantReviewFactTitles = 3
 
@@ -89,18 +93,18 @@ type AssistantReviewMember struct {
 	// Count is the videos a tag is on or a person is credited on.
 	Count int `json:"-"`
 	// Tentative is a tag's state, read when a uselessTags set is adopted.
-	Tentative bool     `json:"-"`
-	Aliases   []string `json:"-"`
-	Titles    []string `json:"-"`
-	Folder    string   `json:"-"`
+	Tentative bool `json:"-"`
+	// Reason is why the generation model judged a uselessTags member's name invalid.
+	Reason  string   `json:"reason,omitempty"`
+	Aliases []string `json:"-"`
+	Titles  []string `json:"-"`
+	Folder  string   `json:"-"`
 }
 
-// AssistantReviewSet is a group of members a finder proposes as one entity or one work, or one tag a uselessTags
-// finder proposes to remove.
+// AssistantReviewSet is a group of members a finder proposes as one entity or one work, or one tag whose name a
+// uselessTags run judges.
 type AssistantReviewSet struct {
 	Members []AssistantReviewMember
-	// Library is the videos in the library, which a uselessTags question reads the tag's share against.
-	Library int
 }
 
 // SetKey is the members' ids, or user keys for videos, sorted and joined: the dismissal key.
@@ -125,18 +129,12 @@ var assistantReviewQuestions = map[AssistantReviewKind]string{
 	AssistantReviewPeople: "Are person_a and person_b, read with their aliases and the titles of their works, " +
 		"the same person?",
 	AssistantReviewWorks: "Are these videos, read from their titles and folders, parts of one work?",
-	// Measured on Clef: generic tags (動画, 映像, その他) 0.87 or more, specific ones (猫, 京都) under 0.4, and a
-	// specific tag on 95% of the videos 0.84.
-	AssistantReviewUselessTags: "Is tag_x useless as a tag in this video library: so generic, vague or broad " +
-		"that it does not tell the videos apart or help find any of them?",
 }
 
 // ClassifierRequest asks the one yes/no question of the kind from the members' facts only.
 func (s AssistantReviewSet) ClassifierRequest(kind AssistantReviewKind) ClassifierRequest {
 	facts := map[string]string{}
 	switch kind {
-	case AssistantReviewUselessTags:
-		facts = s.uselessTagFacts()
 	case AssistantReviewWorks:
 		for i, m := range s.Members[:min(len(s.Members), assistantReviewWorkFacts)] {
 			n := strconv.Itoa(i + 1)
@@ -167,26 +165,53 @@ func (s AssistantReviewSet) ClassifierRequest(kind AssistantReviewKind) Classifi
 	}
 }
 
-// uselessTagFacts are the one tag's names, its share of the library and titles of videos carrying it.
-func (s AssistantReviewSet) uselessTagFacts() map[string]string {
-	m := s.Members[0]
-	facts := map[string]string{"tag_x": m.Name, "videos_x": assistantShare(m.Count, s.Library)}
-	if len(m.Aliases) > 0 {
-		facts["synonyms_x"] = strings.Join(m.Aliases, "; ")
-	}
-	if len(m.Titles) > 0 {
-		facts["titles_x"] = strings.Join(m.Titles, "; ")
-	}
-	return facts
+// AssistantTagNameBatch is how many tag names one generation request judges.
+const AssistantTagNameBatch = 100
+
+// assistantTagNamePrompt is the rule a tag name is judged by; it reads the name alone, not how the tag is used.
+// Measured on a mixed list: qwen3 found all 16 invalid names and none of the 14 valid ones, and Clef's yes/no
+// missed 動画, その他 and 新しいタグ, which need the meaning of the name in a video library.
+const assistantTagNamePrompt = "You check the tag names of a personal video library. A valid tag names something " +
+	"a viewer could search videos by: a subject, topic, genre, person, character, place, event, year, format or " +
+	"quality. An invalid tag is a placeholder or default label, a test entry, a file name, random or garbled " +
+	"characters, a sentence or opinion, or a word so generic in a video library that it names nothing (such as " +
+	"video or other). Judge each name as written; do not judge how often it is used. Answer only JSON: " +
+	`{"invalid":[{"name":"...","reason":"..."}]} with the invalid names copied exactly, and an empty list when ` +
+	"every name is valid."
+
+// AssistantTagNameRequest asks the generation model which of the names are invalid tag names.
+func AssistantTagNameRequest(names []string) ChatRequest {
+	// A string slice always encodes.
+	list, _ := json.Marshal(names)
+	return ChatRequest{Messages: []ChatMessage{
+		{Role: ChatRoleSystem, Content: assistantTagNamePrompt},
+		{Role: ChatRoleUser, Content: "Tag names: " + string(list)},
+	}}
 }
 
-// assistantShare reads "on 951 of 1000 videos (95%)".
-func assistantShare(count, library int) string {
-	percent := 0
-	if library > 0 {
-		percent = count * 100 / library
+// AssistantInvalidTagNames reads the model's answer as the invalid names, folded, with their reasons; text around
+// the JSON object, such as a code fence, is ignored.
+func AssistantInvalidTagNames(text string) (map[string]string, error) {
+	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
+	if start < 0 || end < start {
+		return nil, fmt.Errorf("the tag name answer has no JSON object: %.200q", text)
 	}
-	return fmt.Sprintf("on %d of %d videos (%d%%)", count, library, percent)
+	var answer struct {
+		Invalid []struct {
+			Name   string `json:"name"`
+			Reason string `json:"reason"`
+		} `json:"invalid"`
+	}
+	if err := json.Unmarshal([]byte(text[start:end+1]), &answer); err != nil {
+		return nil, fmt.Errorf("cannot read the tag name answer %.200q: %w", text, err)
+	}
+	invalid := make(map[string]string, len(answer.Invalid))
+	for _, item := range answer.Invalid {
+		if key := FoldForMatch(item.Name); key != "" {
+			invalid[key] = item.Reason
+		}
+	}
+	return invalid, nil
 }
 
 // AssistantNamesNear reports whether two tag names fold to the same key, or are one or two edits apart: one for

@@ -257,7 +257,15 @@ describe("ReviewPage", () => {
         id: 5,
         probability: 0.93,
         state: "listed",
-        members: [{ kind: "tag", id: 50, name: "動画", count: 951 }],
+        members: [
+          {
+            kind: "tag",
+            id: 50,
+            name: "動画",
+            count: 951,
+            reason: "too generic in a video library",
+          },
+        ],
       },
     ];
     server.adopt = () =>
@@ -268,6 +276,7 @@ describe("ReviewPage", () => {
     expect(
       await screen.findByRole("heading", { name: "Review: meaningless tags" }),
     ).toBeDefined();
+    expect(screen.getByText("too generic in a video library")).toBeDefined();
     await user.click(screen.getByRole("checkbox", { name: "Select 動画" }));
     await user.click(screen.getByRole("button", { name: "Adopt selected" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Remove 1 tag?" });

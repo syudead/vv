@@ -110,6 +110,9 @@ function CandidateRow({ run, candidate, proposal, selected, onSelect }: RowProps
           ) : (
             <PairCell candidate={candidate} />
           )}
+          {candidate.members[0]?.reason !== undefined && (
+            <p className="text-xs text-muted-foreground">{candidate.members[0].reason}</p>
+          )}
           {/* Below sm the state and the result fold under the names, so the names keep the width. */}
           <div className="sm:hidden">
             <Outcome candidate={candidate} proposal={proposal} withResult />
