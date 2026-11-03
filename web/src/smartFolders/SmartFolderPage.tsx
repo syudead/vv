@@ -236,10 +236,11 @@ function SmartFolderScreen({ id }: { id: number | null }) {
           />
         )}
         {data !== null && id !== null && (
-          <div ref={listRef} className="flex flex-col gap-6">
-            {selection.marqueeBox}
-            {data.items.length > 0 && (
-              <div ref={selection.container} className="contents">
+          // Mounted with the data, empty or not, so boxes work once items arrive in place.
+          <div ref={selection.container} className="contents">
+            <div ref={listRef} className="flex flex-col gap-6">
+              {selection.marqueeBox}
+              {data.items.length > 0 && (
                 <FolderItems
                   id={id}
                   items={data.items}
@@ -251,13 +252,13 @@ function SmartFolderScreen({ id }: { id: number | null }) {
                   preview={preview.cardProps}
                   onPressTag={pressTag}
                 />
-              </div>
-            )}
-            {controls.filtered && data.items.length === 0 ? (
-              <NoMatches onSearch={() => controls.toolbar.searchRef.current?.focus()} />
-            ) : (
-              <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
-            )}
+              )}
+              {controls.filtered && data.items.length === 0 ? (
+                <NoMatches onSearch={() => controls.toolbar.searchRef.current?.focus()} />
+              ) : (
+                <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
+              )}
+            </div>
           </div>
         )}
         {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
