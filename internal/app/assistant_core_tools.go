@@ -118,11 +118,11 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 			"the video watched last that is still in progress."},
 			run: (*turnLoop).openPage},
 		{definition: domain.ToolDefinition{Name: toolStartReview, Description: "Start a background review of the " +
-			"whole library: tags finds pairs of duplicate or similar tags to merge, uselessTags tags too generic, " +
-			"vague or broad to tell videos apart (the meaningless tags auto-tagging spreads) to remove, people the " +
-			"same person under several entries, works videos of the same work. The owner adopts or rejects its " +
-			"candidates on the review list. Use it for library-wide tidying, not for a few named items. Tags with " +
-			"no videos are listed with listTags unused and proposed as batchTags.reject or batchTags.delete."},
+			"whole library: tags finds pairs of duplicate or similar tags to merge, people the same person under " +
+			"several entries, works videos of the same work. The owner adopts or rejects its candidates on the " +
+			"review list. Use it for library-wide merging, not for a few named items. It does not find unused or " +
+			"rarely used tags: for those, list tags sorted by countAsc and propose batchTags.reject for tentative " +
+			"tags and batchTags.delete for confirmed ones, which find_tools loads."},
 			run: (*turnLoop).startReview},
 		{definition: domain.ToolDefinition{Name: toolVideoStats, Description: "Count and measure videos in one " +
 			"call: every call answers how many, how many favorites, the total length, the longest and the shortest, " +
@@ -143,7 +143,8 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 		}),
 		toolVideoStats: statsSchema(),
 		toolStartReview: object([]string{"kind"}, map[string]*jsonschema.Schema{
-			"kind": oneOf("What to review.", enumOf(domain.AssistantReviewKinds...)),
+			"kind": oneOf("What to review.", enumOf(domain.AssistantReviewTags, domain.AssistantReviewPeople,
+				domain.AssistantReviewWorks)),
 		}),
 	}
 	out := make(map[string]*builtinTool, len(tools))

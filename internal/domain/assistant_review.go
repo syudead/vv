@@ -21,17 +21,12 @@ const (
 	AssistantReviewTags   AssistantReviewKind = "tags"
 	AssistantReviewPeople AssistantReviewKind = "people"
 	AssistantReviewWorks  AssistantReviewKind = "works"
-	// AssistantReviewUselessTags judges each tag on its own: one so generic or broad that it tells no videos apart.
-	AssistantReviewUselessTags AssistantReviewKind = "uselessTags"
 )
 
-// AssistantReviewKinds are the kinds an organize outcome names.
-var AssistantReviewKinds = []AssistantReviewKind{
-	AssistantReviewTags, AssistantReviewPeople, AssistantReviewWorks, AssistantReviewUselessTags,
+// Valid is true for the three kinds an organize outcome names.
+func (k AssistantReviewKind) Valid() bool {
+	return k == AssistantReviewTags || k == AssistantReviewPeople || k == AssistantReviewWorks
 }
-
-// Valid is true for the kinds an organize outcome names.
-func (k AssistantReviewKind) Valid() bool { return slices.Contains(AssistantReviewKinds, k) }
 
 // AssistantReviewStatus is a run's state; a run moves from running to one of the others once.
 type AssistantReviewStatus string
@@ -87,20 +82,15 @@ type AssistantReviewMember struct {
 	Key  string             `json:"key,omitempty"`
 	Name string             `json:"name"`
 	// Count is the videos a tag is on or a person is credited on.
-	Count int `json:"-"`
-	// Tentative is a tag's state, read when a uselessTags set is adopted.
-	Tentative bool     `json:"-"`
-	Aliases   []string `json:"-"`
-	Titles    []string `json:"-"`
-	Folder    string   `json:"-"`
+	Count   int      `json:"-"`
+	Aliases []string `json:"-"`
+	Titles  []string `json:"-"`
+	Folder  string   `json:"-"`
 }
 
-// AssistantReviewSet is a group of members a finder proposes as one entity or one work, or one tag a uselessTags
-// finder proposes to remove.
+// AssistantReviewSet is a group of members a finder proposes as one entity or one work.
 type AssistantReviewSet struct {
 	Members []AssistantReviewMember
-	// Library is the videos in the library, which a uselessTags question reads the tag's share against.
-	Library int
 }
 
 // SetKey is the members' ids, or user keys for videos, sorted and joined: the dismissal key.
@@ -125,19 +115,12 @@ var assistantReviewQuestions = map[AssistantReviewKind]string{
 	AssistantReviewPeople: "Are person_a and person_b, read with their aliases and the titles of their works, " +
 		"the same person?",
 	AssistantReviewWorks: "Are these videos, read from their titles and folders, parts of one work?",
-	// Measured on Clef: generic tags (動画, 映像, その他) 0.87 or more, specific ones (猫, 京都) under 0.4, and a
-	// specific tag on 95% of the videos 0.84.
-	AssistantReviewUselessTags: "Is tag_x useless as a tag in this video library: so generic, vague or broad " +
-		"that it does not tell the videos apart or help find any of them?",
 }
 
 // ClassifierRequest asks the one yes/no question of the kind from the members' facts only.
 func (s AssistantReviewSet) ClassifierRequest(kind AssistantReviewKind) ClassifierRequest {
 	facts := map[string]string{}
-	switch kind {
-	case AssistantReviewUselessTags:
-		facts = s.uselessTagFacts()
-	case AssistantReviewWorks:
+	if kind == AssistantReviewWorks {
 		for i, m := range s.Members[:min(len(s.Members), assistantReviewWorkFacts)] {
 			n := strconv.Itoa(i + 1)
 			facts["title_"+n] = m.Name
@@ -145,7 +128,7 @@ func (s AssistantReviewSet) ClassifierRequest(kind AssistantReviewKind) Classifi
 				facts["folder_"+n] = m.Folder
 			}
 		}
-	default:
+	} else {
 		prefix, other := "tag", "synonyms"
 		if kind == AssistantReviewPeople {
 			prefix, other = "person", "aliases"
@@ -165,28 +148,6 @@ func (s AssistantReviewSet) ClassifierRequest(kind AssistantReviewKind) Classifi
 		Input:     ClassifierInput{Facts: facts},
 		Questions: []ClassifierQuestion{{Key: AssistantReviewQuestionKey, Text: assistantReviewQuestions[kind]}},
 	}
-}
-
-// uselessTagFacts are the one tag's names, its share of the library and titles of videos carrying it.
-func (s AssistantReviewSet) uselessTagFacts() map[string]string {
-	m := s.Members[0]
-	facts := map[string]string{"tag_x": m.Name, "videos_x": assistantShare(m.Count, s.Library)}
-	if len(m.Aliases) > 0 {
-		facts["synonyms_x"] = strings.Join(m.Aliases, "; ")
-	}
-	if len(m.Titles) > 0 {
-		facts["titles_x"] = strings.Join(m.Titles, "; ")
-	}
-	return facts
-}
-
-// assistantShare reads "on 951 of 1000 videos (95%)".
-func assistantShare(count, library int) string {
-	percent := 0
-	if library > 0 {
-		percent = count * 100 / library
-	}
-	return fmt.Sprintf("on %d of %d videos (%d%%)", count, library, percent)
 }
 
 // AssistantNamesNear reports whether two tag names fold to the same key, or are one or two edits apart: one for
@@ -401,8 +362,6 @@ func AssistantReviewPlan(kind AssistantReviewKind, members []AssistantReviewMemb
 		return assistantMergePlan(kind, members), nil
 	case AssistantReviewWorks:
 		return assistantGroupPlan(members), nil
-	case AssistantReviewUselessTags:
-		return assistantRemoveTagPlan(members[0]), nil
 	default:
 		return AssistantPlan{}, fmt.Errorf("unknown review kind %q", kind)
 	}
@@ -433,21 +392,6 @@ func assistantMergePlan(kind AssistantReviewKind, members []AssistantReviewMembe
 			Body: map[string]any{"sourceIds": sourceIDs},
 		},
 	}
-}
-
-// assistantRemoveTagPlan rejects a tentative tag, so an import does not create its name again, and deletes a
-// confirmed one.
-func assistantRemoveTagPlan(m AssistantReviewMember) AssistantPlan {
-	label := AssistantLabel{Kind: AssistantLabelTag, ID: m.ID, Name: m.Name}
-	plan := AssistantPlan{
-		ActionID: "deleteTag",
-		Targets:  AssistantPlanTargets{Kind: AssistantTargetTag, Labels: []AssistantLabel{label}},
-		Call:     AssistantPlanCall{Path: map[string]string{"id": strconv.FormatInt(m.ID, 10)}},
-	}
-	if m.Tentative {
-		plan.ActionID = "rejectTag"
-	}
-	return plan
 }
 
 func assistantGroupPlan(members []AssistantReviewMember) AssistantPlan {

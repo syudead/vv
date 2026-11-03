@@ -4459,21 +4459,17 @@ export const en = {
         tags: "duplicate tags",
         people: "duplicate people",
         works: "parts of one work",
-        uselessTags: "meaningless tags",
       } satisfies Record<components["schemas"]["AssistantReviewRun"]["kind"], string>,
       titles: {
         tags: "Review: duplicate tags",
         people: "Review: duplicate people",
         works: "Review: parts of one work",
-        uselessTags: "Review: meaningless tags",
       } satisfies Record<components["schemas"]["AssistantReviewRun"]["kind"], string>,
       looking: (kind: string, judged: number, total: number) =>
         `Looking for ${kind}… Judged ${formatNumber(judged)} of ${formatNumber(total)}`,
-      toReview: (listed: number, uselessTags: boolean) =>
+      toReview: (listed: number) =>
         listed === 0
-          ? uselessTags
-            ? "No tag looked meaningless"
-            : "Nothing looked like a duplicate"
+          ? "Nothing looked like a duplicate"
           : selectPlural(listed, {
               one: `${formatNumber(listed)} candidate to review`,
               other: `${formatNumber(listed)} candidates to review`,
@@ -4527,19 +4523,6 @@ export const en = {
       mergePeopleDescription:
         "Each pair’s person with fewer credits is merged into the other. This can’t be undone.",
       merge: "Merge",
-      removeTagsTitle: (count: number) =>
-        selectPlural(count, {
-          one: `Remove ${formatNumber(count)} tag?`,
-          other: `Remove ${formatNumber(count)} tags?`,
-        }),
-      removeTagsDescription:
-        "Each tag comes off every video. A confirmed tag is deleted; a tentative tag is rejected, so it isn’t created again. This can’t be undone.",
-      remove: "Remove",
-      removing: (count: number) =>
-        selectPlural(count, {
-          one: `Removing ${formatNumber(count)} tag`,
-          other: `Removing ${formatNumber(count)} tags`,
-        }),
       creatingGroups: (count: number) =>
         selectPlural(count, {
           one: `Creating ${formatNumber(count)} group`,

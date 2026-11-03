@@ -611,10 +611,9 @@ func (e AssistantReviewCandidateState) Valid() bool {
 
 // Defines values for AssistantReviewRunKind.
 const (
-	AssistantReviewRunKindPeople      AssistantReviewRunKind = "people"
-	AssistantReviewRunKindTags        AssistantReviewRunKind = "tags"
-	AssistantReviewRunKindUselessTags AssistantReviewRunKind = "uselessTags"
-	AssistantReviewRunKindWorks       AssistantReviewRunKind = "works"
+	AssistantReviewRunKindPeople AssistantReviewRunKind = "people"
+	AssistantReviewRunKindTags   AssistantReviewRunKind = "tags"
+	AssistantReviewRunKindWorks  AssistantReviewRunKind = "works"
 )
 
 // Valid indicates whether the value is a known member of the AssistantReviewRunKind enum.
@@ -623,8 +622,6 @@ func (e AssistantReviewRunKind) Valid() bool {
 	case AssistantReviewRunKindPeople:
 		return true
 	case AssistantReviewRunKindTags:
-		return true
-	case AssistantReviewRunKindUselessTags:
 		return true
 	case AssistantReviewRunKindWorks:
 		return true

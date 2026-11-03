@@ -250,35 +250,6 @@ describe("ReviewPage", () => {
     expect(screen.getByText("3 of 3 candidates listed · 2 adopted")).toBeDefined();
   });
 
-  it("意味のないタグの採用は削除を確かめてから送り、削除中のトーストを出す", async () => {
-    server.run = run({ kind: "uselessTags" });
-    server.items = [
-      {
-        id: 5,
-        probability: 0.93,
-        state: "listed",
-        members: [{ kind: "tag", id: 50, name: "動画", count: 951 }],
-      },
-    ];
-    server.adopt = () =>
-      json({ proposals: [mergeProposal(13, "approved")], skippedIds: [] }, 202);
-    const user = userEvent.setup();
-    renderPage();
-
-    expect(
-      await screen.findByRole("heading", { name: "Review: meaningless tags" }),
-    ).toBeDefined();
-    await user.click(screen.getByRole("checkbox", { name: "Select 動画" }));
-    await user.click(screen.getByRole("button", { name: "Adopt selected" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "Remove 1 tag?" });
-    await user.click(within(dialog).getByRole("button", { name: "Remove" }));
-
-    expect(server.posted).toEqual([
-      { url: "/api/assistant/review-runs/7/candidates/adopt", ids: [5] },
-    ]);
-    expect(await screen.findByText("Removing 1 tag")).toBeDefined();
-  });
-
   it("works の採用はダイアログを開かずにすぐ送る", async () => {
     server.run = run({ kind: "works" });
     server.items = [
