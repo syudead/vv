@@ -136,6 +136,25 @@ describe("スマートフォルダのページ", () => {
     expect(screen.getByRole("link", { name: 'Play "タグ: 猫"' })).toBeTruthy();
   });
 
+  it("Shift でチェックすると、ライブラリと同じく子フォルダから間の動画まで選ぶ", async () => {
+    const user = userEvent.setup();
+    seed();
+    renderPage("/smart-folders/1");
+    await screen.findByRole("heading", { level: 1, name: "タグ: 猫" });
+    await user.click(
+      screen.getByRole("checkbox", { name: 'Select the smart folder "未視聴"' }),
+    );
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Cat 2"' }));
+    await user.keyboard("{/Shift}");
+
+    expect(
+      screen
+        .getByRole("checkbox", { name: 'Select "Cat 1"' })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("無いフォルダは無くなった状態で、帯はホームだけ", async () => {
     renderPage("/smart-folders/40");
 

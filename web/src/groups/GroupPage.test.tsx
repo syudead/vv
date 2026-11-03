@@ -141,6 +141,24 @@ describe("GroupPage", () => {
     expect(await screen.findByText("1 video selected")).toBeDefined();
   });
 
+  it("Shift でチェックすると、ライブラリと同じく間の子グループも選ぶ", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 1"' }));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 2"' }));
+    await user.keyboard("{/Shift}");
+
+    expect(screen.getByText("3 videos selected")).toBeDefined();
+    expect(
+      screen
+        .getByRole("checkbox", { name: 'Select the group "Extras"' })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("404 ならグループがもう無いと示し、名前を出さない", async () => {
     renderPage("/groups/404?trail=1");
     expect(await screen.findByText("This group no longer exists")).toBeDefined();
