@@ -7484,7 +7484,7 @@ components:
           format: int64
         kind:
           type: string
-          enum: [tags, people, works]
+          enum: [tags, people, works, uselessTags]
         status:
           type: string
           enum: [running, done, failed, interrupted]

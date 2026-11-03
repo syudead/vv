@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"maps"
 	"slices"
 	"testing"
 )
@@ -79,5 +80,34 @@ func TestAssistantReviewPlanGroupsWorksByTheCommonTitle(t *testing.T) {
 	if plan.ActionID != "createGroup" || plan.Call.Body["name"] != "Trip" || plan.Call.VideoField != "videoIds" ||
 		!slices.Equal(plan.Targets.VideoKeys, []string{"a1", "a2"}) {
 		t.Errorf("plan = %+v", plan)
+	}
+}
+
+func TestUselessTagsQuestionReadsTheTagsShareOfTheLibrary(t *testing.T) {
+	set := AssistantReviewSet{Library: 1000, Members: []AssistantReviewMember{{
+		Kind: AssistantLabelTag, ID: 3, Name: "動画", Count: 951, Aliases: []string{"video"}, Titles: []string{"猫", "京都"},
+	}}}
+
+	req := set.ClassifierRequest(AssistantReviewUselessTags)
+
+	want := map[string]string{
+		"tag_x": "動画", "videos_x": "on 951 of 1000 videos (95%)", "synonyms_x": "video", "titles_x": "猫; 京都",
+	}
+	if !maps.Equal(req.Input.Facts, want) || len(req.Questions) != 1 || req.Questions[0].Key != AssistantReviewQuestionKey {
+		t.Errorf("request = %+v, want the one tag's facts and the one question", req)
+	}
+}
+
+func TestAssistantReviewPlanRemovesAUselessTagByItsState(t *testing.T) {
+	for _, c := range []struct {
+		tentative bool
+		action    string
+	}{{false, "deleteTag"}, {true, "rejectTag"}} {
+		plan, err := AssistantReviewPlan(AssistantReviewUselessTags, []AssistantReviewMember{
+			{Kind: AssistantLabelTag, ID: 3, Name: "動画", Tentative: c.tentative},
+		})
+		if err != nil || plan.ActionID != c.action || plan.Call.Path["id"] != "3" || plan.Targets.Labels[0].Name != "動画" {
+			t.Errorf("tentative %v: plan = %+v, %v; want %s of tag 3", c.tentative, plan, err, c.action)
+		}
 	}
 }

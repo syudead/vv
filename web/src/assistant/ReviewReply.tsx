@@ -38,7 +38,9 @@ function ReviewState({ run }: { run: AssistantReviewRun }) {
     );
   }
   if (run.status === "done")
-    return <p className="text-sm">{words.toReview(run.listed)}</p>;
+    return (
+      <p className="text-sm">{words.toReview(run.listed, run.kind === "uselessTags")}</p>
+    );
   return (
     <p className="flex items-start gap-2 text-sm text-warning">
       <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />

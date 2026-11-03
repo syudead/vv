@@ -4560,7 +4560,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             /** @enum {string} */
-            kind: "tags" | "people" | "works";
+            kind: "tags" | "people" | "works" | "uselessTags";
             /**
              * @description interrupted was stopped by a restart.
              * @enum {string}

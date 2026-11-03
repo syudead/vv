@@ -114,7 +114,8 @@ function NotFound() {
 }
 
 /** Adoption and rejection of the selected rows, with the merge dialog for tags and people. */
-function useActions(id: number, page: Page, clear: () => void) {
+function useActions(run: AssistantReviewRun, page: Page, clear: () => void) {
+  const { id } = run;
   const toast = useToast();
   const [confirming, setConfirming] = useState<readonly number[] | null>(null);
   const [pending, setPending] = useState(false);
@@ -142,7 +143,7 @@ function useActions(id: number, page: Page, clear: () => void) {
         page.markAdopted(adopted);
         setConfirming(null);
         if (adopted.size > 0) {
-          toast(merge ? words.merging(adopted.size) : words.creatingGroups(adopted.size));
+          toast(adoptedToast(run.kind, adopted.size));
         }
         settle(answer.skippedIds);
       } catch (error) {
@@ -153,7 +154,7 @@ function useActions(id: number, page: Page, clear: () => void) {
         setPending(false);
       }
     },
-    [id, page, settle, toast, words],
+    [id, run.kind, page, settle, toast, words],
   );
 
   const reject = useCallback(
@@ -195,20 +196,42 @@ function useActions(id: number, page: Page, clear: () => void) {
 
 type Actions = ReturnType<typeof useActions>;
 
-function MergeDialog({ run, actions }: { run: AssistantReviewRun; actions: Actions }) {
+function adoptedToast(kind: AssistantReviewRun["kind"], count: number) {
   const words = t.assistant.review;
+  if (kind === "works") return words.creatingGroups(count);
+  return kind === "uselessTags" ? words.removing(count) : words.merging(count);
+}
+
+/** The confirmation of the kinds that change tags or people, which can't be undone. */
+function confirmWords(kind: AssistantReviewRun["kind"], count: number) {
+  const words = t.assistant.review;
+  if (kind === "uselessTags") {
+    return {
+      title: words.removeTagsTitle(count),
+      description: words.removeTagsDescription,
+      action: words.remove,
+    };
+  }
+  const people = kind === "people";
+  return {
+    title: people ? words.mergePeopleTitle(count) : words.mergeTagsTitle(count),
+    description: people ? words.mergePeopleDescription : words.mergeTagsDescription,
+    action: words.merge,
+  };
+}
+
+function MergeDialog({ run, actions }: { run: AssistantReviewRun; actions: Actions }) {
   const ids = actions.confirming;
-  const count = ids?.length ?? 0;
-  const people = run.kind === "people";
+  const confirm = confirmWords(run.kind, ids?.length ?? 0);
   return (
     <ConfirmDialog
       open={ids !== null}
       onOpenChange={(open) => {
         if (!open) actions.cancel();
       }}
-      title={people ? words.mergePeopleTitle(count) : words.mergeTagsTitle(count)}
-      description={people ? words.mergePeopleDescription : words.mergeTagsDescription}
-      actionLabel={words.merge}
+      title={confirm.title}
+      description={confirm.description}
+      actionLabel={confirm.action}
       cancelLabel={t.common.cancel}
       pending={actions.pending}
       onConfirm={() => {
@@ -367,17 +390,9 @@ function Body({
   );
 }
 
-function ReadyPage({
-  id,
-  page,
-  run,
-}: {
-  id: number;
-  page: Page;
-  run: AssistantReviewRun;
-}) {
+function ReadyPage({ page, run }: { page: Page; run: AssistantReviewRun }) {
   const selection = useSelection(page);
-  const actions = useActions(id, page, selection.clear);
+  const actions = useActions(run, page, selection.clear);
   const end = useRef<HTMLDivElement>(null);
   const load = page.load;
   const canLoadMore =
@@ -438,7 +453,7 @@ function RunReviewPage({ id }: { id: number }) {
     load.kind === "ready" ? t.assistant.review.titles[load.run.kind] : t.assistant.title;
   useDocumentTitle(String(title));
   if (load.kind === "loading") return <LoadingPage />;
-  if (load.kind === "ready") return <ReadyPage id={id} page={page} run={load.run} />;
+  if (load.kind === "ready") return <ReadyPage page={page} run={load.run} />;
   return (
     <AdminTablePage header={<PageHeader title={t.assistant.title} />} band={null}>
       {load.kind === "notFound" ? (
