@@ -7,11 +7,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { assistantPanelId } from "./AssistantPanel";
 import { useAssistant } from "./AssistantProvider";
 
-/** The panel's toggle in the top bar and the video header band; guests never see it. */
+/**
+ * The panel's toggle in the top bar and the video header band; guests never see it, nor the owner
+ * until an Ollama connection is saved, unless the panel is open or still has work to show.
+ */
 export default function AssistantTrigger() {
   const store = useAssistant();
   const owner = useAudience() === "owner";
   if (store === null || !owner) return null;
+  if (store.ollamaSaved !== true && !store.open && !store.working && !store.awaiting)
+    return null;
   const working = store.working && !store.open;
   const awaiting = store.awaiting && !store.open;
   const label = working
