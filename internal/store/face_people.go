@@ -41,7 +41,8 @@ func mergePersonFaceData(ctx context.Context, tx *sql.Tx, targetID int64, encode
 		// Two sources may bring one pair in opposite orientations.
 		{"drop the face candidates", `delete from face_candidates where provisional_id = ?1 and exists (
 			select 1 from face_candidates r where r.provisional_id = face_candidates.person_id and r.person_id = ?1)`},
-		{"drop the face candidates", `delete from face_candidates where provisional_id = person_id`},
+		// The moves above can only pair the target with itself; naming it keeps this off a full-table scan.
+		{"drop the face candidates", `delete from face_candidates where provisional_id = ?1 and person_id = ?1`},
 	}
 	for _, s := range statements {
 		if _, err := tx.ExecContext(ctx, s.statement, targetID, encodedSources); err != nil {
