@@ -48,7 +48,7 @@ export interface AssistantStore {
   /** A turn ended on a card or a question while the panel was closed, and the panel has not opened since. */
   awaiting: boolean;
   readiness: Readiness;
-  /** An Ollama connection is saved, or readiness could not be read; null until the first read answers. */
+  /** An Ollama connection is saved, or the last readiness read failed; null until the first read answers. */
   ollamaSaved: boolean | null;
   draft: string;
   screen: AssistantScreen;
@@ -113,7 +113,7 @@ function useReadiness() {
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;
-        setOllamaSaved((saved) => saved ?? true);
+        setOllamaSaved(true);
         setReadiness({ state: "failed", error });
       },
     );

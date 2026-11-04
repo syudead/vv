@@ -267,7 +267,7 @@ describe("AssistantPanel", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
   });
 
-  it("Ollama の接続が保存されるまでトリガーを出さず、保存したら出す", async () => {
+  async function saveOllamaAfterNotSaved(afterSave: () => Response) {
     let reads = 0;
     server.readiness = () => {
       reads += 1;
@@ -295,9 +295,19 @@ describe("AssistantPanel", () => {
     await act(async () => undefined);
     expect(screen.queryByRole("button", { name: /^Assistant/ })).toBeNull();
 
-    server.readiness = () => json({ ready: true, vision: false });
+    server.readiness = afterSave;
     await user.type(screen.getByLabelText("Ollama URL"), "http://gpu:11434");
     await user.click(save);
+  }
+
+  it("Ollama の接続が保存されるまでトリガーを出さず、保存したら出す", async () => {
+    await saveOllamaAfterNotSaved(() => json({ ready: true, vision: false }));
+
+    expect(await trigger()).toBeDefined();
+  });
+
+  it("保存後の readiness が読めなくても、パネルで失敗を示せるようトリガーを出す", async () => {
+    await saveOllamaAfterNotSaved(() => json({ code: "internal", message: "boom" }, 500));
 
     expect(await trigger()).toBeDefined();
   });
