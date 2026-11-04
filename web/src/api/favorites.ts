@@ -148,6 +148,8 @@ export interface UpdateFavoritesOptions {
   smartFolderIds?: readonly number[];
   /** No list overlays people; the caller applies the response to the person it shows. */
   personIds?: readonly number[];
+  /** As personIds, for organizations. */
+  organizationIds?: readonly number[];
   signal?: AbortSignal;
 }
 
@@ -156,7 +158,12 @@ export function updateFavorites(
   videoIds: readonly number[],
   groupIds: readonly number[],
   favorite: boolean,
-  { smartFolderIds = [], personIds = [], signal }: UpdateFavoritesOptions = {},
+  {
+    smartFolderIds = [],
+    personIds = [],
+    organizationIds = [],
+    signal,
+  }: UpdateFavoritesOptions = {},
 ): Promise<FavoritesResponse> {
   sent += 1;
   const sequence = sent;
@@ -176,6 +183,9 @@ export function updateFavorites(
         groupIds: Array.from(groupIds),
         ...smartFolderField(smartFolderIds),
         ...(personIds.length === 0 ? {} : { personIds: Array.from(personIds) }),
+        ...(organizationIds.length === 0
+          ? {}
+          : { organizationIds: Array.from(organizationIds) }),
         favorite,
       }),
       signal,

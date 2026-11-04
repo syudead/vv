@@ -14,9 +14,9 @@ func TestAssistantCatalogRowIDsAreUnique(t *testing.T) {
 			operations[operation] = true
 		}
 	}
-	// 80 shipped rows on 74 operations, plus 8 schema rows, 2 fetch-apply rows and the thumbnail edit on 5.
-	if len(seen) != 91 || len(operations) != 89 {
-		t.Errorf("行 %d / 操作 %d, want 91 / 89", len(seen), len(operations))
+	// 81 shipped rows on 75 operations, plus 8 schema rows, 2 fetch-apply rows and the thumbnail edit on 5.
+	if len(seen) != 92 || len(operations) != 90 {
+		t.Errorf("行 %d / 操作 %d, want 92 / 90", len(seen), len(operations))
 	}
 }
 

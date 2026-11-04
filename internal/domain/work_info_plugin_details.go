@@ -20,10 +20,12 @@ type FetchedPerson struct {
 	Image       *WorkInfoCover
 }
 
+// Profile keeps the plugin's values without the apply's validation.
 type FetchedOrganization struct {
 	Role        OrganizationRole
 	Name        string
 	ExternalIDs []ExternalID
+	Profile     OrganizationProfile
 }
 
 // Keep raw JSON so malformed fields can be discarded independently.
@@ -69,10 +71,10 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 				ImageURL: fetchedImageURL(lenientString(raw.Image)), Profile: parseFetchedProfile(raw.Profile),
 			}
 		})
-	// Organizations take neither an image nor a profile.
+	// Organizations take a profile but not yet an image.
 	out.Organizations = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.Organizations), OrganizationRoles,
-		limits.OrganizationsPerRoleMaxCount, func(role OrganizationRole, name string, ids []ExternalID, _ fetchedCreditJSON) FetchedOrganization {
-			return FetchedOrganization{Role: role, Name: name, ExternalIDs: ids}
+		limits.OrganizationsPerRoleMaxCount, func(role OrganizationRole, name string, ids []ExternalID, raw fetchedCreditJSON) FetchedOrganization {
+			return FetchedOrganization{Role: role, Name: name, ExternalIDs: ids, Profile: parseFetchedOrganizationProfile(raw.Profile)}
 		})
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)

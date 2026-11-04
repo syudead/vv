@@ -210,6 +210,7 @@ var assistantCatalog = []AssistantAction{
 		AssistantArgNewName, AssistantArgAliases, AssistantArgParentName),
 	assistantRow("deleteOrganization", AssistantTargetOrganization, oneCall, cannotUndo),
 	assistantRow("mergeOrganizations", AssistantTargetOrganization, oneCall, cannotUndo, AssistantArgNames),
+	assistantRow("deleteOrganizationImage", AssistantTargetOrganization, oneCall, cannotUndo),
 
 	// Playlists, groups and smart folders
 	assistantRow("createPlaylist", AssistantTargetNone, oneCall, canUndo, AssistantArgName),

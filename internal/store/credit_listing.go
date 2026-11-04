@@ -48,8 +48,8 @@ func (s *CreditStore) List(ctx context.Context, audience domain.Audience, kind d
 	if err := tx.QueryRowContext(ctx, t.q(`select count(*) from {entity}`)).Scan(&page.TotalAll); err != nil {
 		return domain.CreditPage{}, fmt.Errorf("cannot count %s entities: %w", kind, err)
 	}
-	if (query.FavoriteOnly || query.Provisional != nil) && t.kind != domain.CreditPerson {
-		return domain.CreditPage{}, fmt.Errorf("the favorite and provisional filters apply to people only, not %s", kind)
+	if query.Provisional != nil && t.kind != domain.CreditPerson {
+		return domain.CreditPage{}, fmt.Errorf("the provisional filter applies to people only, not %s", kind)
 	}
 	listed, listedArgs := listedCreditsCTE(t, audience, creditFilter{
 		search: strings.TrimSpace(domain.FoldForMatch(query.Q)), favoriteOnly: query.FavoriteOnly,
@@ -132,7 +132,7 @@ func listedCreditsCTE(t creditTables, audience domain.Audience, filter creditFil
 		whereArgs = append(whereArgs, filter.search)
 	}
 	if filter.favoriteOnly {
-		conditions = append(conditions, `exists (select 1 from person_favorites pf where pf.person_id = e.id)`)
+		conditions = append(conditions, `exists (select 1 from {favorites} pf where pf.{id} = e.id)`)
 	}
 	if filter.provisional != nil {
 		conditions = append(conditions, `(n.{id} is null) = ?`)
@@ -228,10 +228,8 @@ func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []d
 	if err != nil {
 		return fmt.Errorf("cannot read the external IDs of %s entities: %w", t.kind, err)
 	}
-	if t.kind == domain.CreditPerson {
-		if err := addPersonProfiles(ctx, tx, items, index, string(encoded)); err != nil {
-			return err
-		}
+	if err := addCreditProfiles(ctx, tx, t, items, index, string(encoded)); err != nil {
+		return err
 	}
 	for i := range items {
 		domain.SortAliases(items[i].Aliases)

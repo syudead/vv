@@ -289,7 +289,7 @@ no URL.
 | `getPluginProxySettings` | Settings, Network | Its URL may hold the proxy's user and password |
 | Pairing with another node and the peer's own calls (`applyPeerVocabulary`, `rankPeerRelated`, …) | Settings, Pairing | Pairing is a trust decision made with the other node's code; the peer's calls carry its credential ([peer-library.md](peer-library.md)) |
 | `deleteVideo`, `clearPeople` | The video page; Settings, Danger zone | An irreversible delete stays on its page |
-| `uploadThumbnailImage`, `uploadPersonImage`, `startThumbnailEditFromImage` | The video or person page | The server holds no such file; the fetch-apply rows cover plugin images |
+| `uploadThumbnailImage`, `uploadPersonImage`, `uploadOrganizationImage`, `startThumbnailEditFromImage` | The video, person or organizations page | The server holds no such file; the fetch-apply rows cover plugin images |
 | Drag operations (`organize*`) | Library | They take drag tokens; the group, bundle and playlist rows make the same changes |
 | `openVideoFile`, video and event streams, subtitles, the transcode start, `getHealth` | The video page | Loopback-only, or a stream rather than data |
 | `/api/assistant/*` | | The assistant does not call itself |

@@ -190,10 +190,14 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	}
 	organizations := make([]gen.WorkInfoFetchedOrganization, 0, len(details.Organizations))
 	for i, o := range details.Organizations {
-		organizations = append(organizations, gen.WorkInfoFetchedOrganization{
+		organization := gen.WorkInfoFetchedOrganization{
 			Role: gen.WorkOrganizationRole(o.Role), Name: o.Name, ExternalIds: toAPIExternalIDs(o.ExternalIDs),
 			Match: toAPIWorkInfoMatch(fetch.OrganizationMatches, i),
-		})
+		}
+		if profile := domain.ShownFetchedOrganizationProfile(o.Profile, today); !profile.Equal(domain.OrganizationProfile{}) {
+			organization.Profile = new(toAPIOrganizationProfile(profile))
+		}
+		organizations = append(organizations, organization)
 	}
 	urls := details.URLs
 	if urls == nil {

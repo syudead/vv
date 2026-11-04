@@ -27,6 +27,11 @@ func newPersonImageFixture(t *testing.T) *creditFixture {
 
 func (f *creditFixture) putPersonImage(t *testing.T, id int64) *httptest.ResponseRecorder {
 	t.Helper()
+	return f.putCreditImage(t, "/api/people", id)
+}
+
+func (f *creditFixture) putCreditImage(t *testing.T, collection string, id int64) *httptest.ResponseRecorder {
+	t.Helper()
 	var picture bytes.Buffer
 	if err := png.Encode(&picture, image.NewGray(image.Rect(0, 0, 4, 3))); err != nil {
 		t.Fatal(err)
@@ -44,7 +49,7 @@ func (f *creditFixture) putPersonImage(t *testing.T, id int64) *httptest.Respons
 		t.Fatal(err)
 	}
 	return f.env.serve(authRequest{
-		method: http.MethodPut, target: creditPath("/api/people", id, "/image"), body: body.String(),
+		method: http.MethodPut, target: creditPath(collection, id, "/image"), body: body.String(),
 		cookies: []*http.Cookie{f.owner}, header: map[string]string{"Content-Type": writer.FormDataContentType()},
 	})
 }

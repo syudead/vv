@@ -9,6 +9,7 @@ import RowNameInput from "../tags/RowNameInput";
 import type { TagFieldError } from "../tags/tagNameField";
 import { RowIconButton, RowMoreMenu, type TagRowRefs } from "../tags/TagRow";
 import { creditNameRules } from "../ui/CreditCommand";
+import FavoriteToggle from "../ui/FavoriteToggle";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -29,6 +30,8 @@ export interface CreditRowHandlers {
   onOpenMerge: (credit: Credit) => void;
   onDelete: (credit: Credit) => void;
   onDraftChange: () => void;
+  /** Organizations only; people mark favorites on their page. */
+  onToggleFavorite: (credit: Credit) => Promise<unknown>;
 }
 
 export const creditRowIdAttribute = "data-credit-id";
@@ -53,6 +56,7 @@ function CreditRow({
   onOpenMerge,
   onDelete,
   onDraftChange,
+  onToggleFavorite,
 }: CreditRowHandlers & {
   kind: CreditKind;
   /** Virtualization reads this position through data-index. */
@@ -116,69 +120,81 @@ function CreditRow({
         {t.credits.row.videoCount(credit.videoCount)}
       </TableCell>
       <TableCell>
-        <div className="hidden justify-end max-sm:flex [@media(pointer:coarse)]:flex">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                ref={(node) => registerRefs(credit.id, { actionsButton: node })}
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t.credits.row.actions}
-                disabled={renaming}
-              >
-                <Ellipsis aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => onStartRename(credit)}
-                disabled={blockStart}
-              >
-                <Pencil aria-hidden="true" />
-                {t.credits.row.rename}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenDetails(credit)}>
-                <IdCard aria-hidden="true" />
-                {t.credits.row.details}
-              </DropdownMenuItem>
+        <div className="flex items-center justify-end gap-1">
+          {kind === "organization" && (
+            <FavoriteToggle
+              favorite={credit.favorite}
+              label={
+                credit.favorite ? t.credits.row.favoriteOn : t.credits.row.favoriteOff
+              }
+              onToggle={() => onToggleFavorite(credit)}
+              variant="row"
+            />
+          )}
+          <div className="hidden justify-end max-sm:flex [@media(pointer:coarse)]:flex">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ref={(node) => registerRefs(credit.id, { actionsButton: node })}
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.credits.row.actions}
+                  disabled={renaming}
+                >
+                  <Ellipsis aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => onStartRename(credit)}
+                  disabled={blockStart}
+                >
+                  <Pencil aria-hidden="true" />
+                  {t.credits.row.rename}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onOpenDetails(credit)}>
+                  <IdCard aria-hidden="true" />
+                  {t.credits.row.details}
+                </DropdownMenuItem>
+                <MenuEnd
+                  mergeLabel={mergeLabel}
+                  blockStart={blockStart}
+                  onMerge={() => onOpenMerge(credit)}
+                  onDelete={() => onDelete(credit)}
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div className="flex items-center justify-end gap-1 max-sm:hidden [@media(pointer:coarse)]:hidden">
+            <RowIconButton
+              ref={(node) => registerRefs(credit.id, { renameButton: node })}
+              label={t.credits.row.rename}
+              onClick={() => onStartRename(credit)}
+              disabled={renaming || blockStart}
+            >
+              <Pencil aria-hidden="true" />
+            </RowIconButton>
+            <RowIconButton
+              ref={(node) => registerRefs(credit.id, { synonymsButton: node })}
+              label={t.credits.row.details}
+              onClick={() => onOpenDetails(credit)}
+              disabled={renaming}
+            >
+              <IdCard aria-hidden="true" />
+            </RowIconButton>
+            <RowMoreMenu
+              buttonRef={(node) => registerRefs(credit.id, { menuButton: node })}
+              label={t.credits.row.more}
+              disabled={renaming || blockStart}
+            >
               <MenuEnd
                 mergeLabel={mergeLabel}
-                blockStart={blockStart}
+                blockStart={false}
                 onMerge={() => onOpenMerge(credit)}
                 onDelete={() => onDelete(credit)}
               />
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <div className="flex items-center justify-end gap-1 max-sm:hidden [@media(pointer:coarse)]:hidden">
-          <RowIconButton
-            ref={(node) => registerRefs(credit.id, { renameButton: node })}
-            label={t.credits.row.rename}
-            onClick={() => onStartRename(credit)}
-            disabled={renaming || blockStart}
-          >
-            <Pencil aria-hidden="true" />
-          </RowIconButton>
-          <RowIconButton
-            ref={(node) => registerRefs(credit.id, { synonymsButton: node })}
-            label={t.credits.row.details}
-            onClick={() => onOpenDetails(credit)}
-            disabled={renaming}
-          >
-            <IdCard aria-hidden="true" />
-          </RowIconButton>
-          <RowMoreMenu
-            buttonRef={(node) => registerRefs(credit.id, { menuButton: node })}
-            label={t.credits.row.more}
-            disabled={renaming || blockStart}
-          >
-            <MenuEnd
-              mergeLabel={mergeLabel}
-              blockStart={false}
-              onMerge={() => onOpenMerge(credit)}
-              onDelete={() => onDelete(credit)}
-            />
-          </RowMoreMenu>
+            </RowMoreMenu>
+          </div>
         </div>
       </TableCell>
     </TableRow>

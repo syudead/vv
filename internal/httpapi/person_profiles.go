@@ -52,3 +52,27 @@ func fromAPIProfilePatch(p gen.PersonProfilePatch) domain.PersonProfile {
 		CareerEndYear: p.CareerEndYear, Bio: p.Bio, Links: p.Links,
 	})
 }
+
+func toAPIOrganizationProfile(p domain.OrganizationProfile) gen.OrganizationProfile {
+	out := gen.OrganizationProfile{
+		FoundedDate: optionalString(p.FoundedDate), DissolvedDate: optionalString(p.DissolvedDate),
+		Location: optionalString(p.Location), Bio: optionalString(p.Bio),
+	}
+	if len(p.Links) > 0 {
+		links := append([]string(nil), p.Links...)
+		out.Links = &links
+	}
+	return out
+}
+
+func fromAPIOrganizationProfile(p gen.OrganizationProfile) domain.OrganizationProfile {
+	return domain.OrganizationProfile{
+		FoundedDate: valueOrZero(p.FoundedDate), DissolvedDate: valueOrZero(p.DissolvedDate),
+		Location: valueOrZero(p.Location), Bio: valueOrZero(p.Bio), Links: valueOrZero(p.Links),
+	}
+}
+
+// A patch decodes null and absent alike; organizationProfilePatchOf tells them apart from the raw properties.
+func fromAPIOrganizationProfilePatch(p gen.OrganizationProfilePatch) domain.OrganizationProfile {
+	return fromAPIOrganizationProfile(gen.OrganizationProfile(p))
+}

@@ -3049,7 +3049,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -3090,6 +3090,34 @@ export interface paths {
          * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle.
          */
         patch: operations["updateOrganization"];
+        trace?: never;
+    };
+    "/api/organizations/{id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return an organization's logo
+         * @description Owner-only. Served as getPersonImage serves a face, with the organization's imageRevision as `ETag`. Missing organization returns 404 organization_not_found; one without a logo returns 404 person_image_not_found.
+         */
+        get: operations["getOrganizationImage"];
+        /**
+         * Set an organization's logo from an uploaded image
+         * @description Owner-only. Takes, fits and stores the image as uploadPersonImage does, with the same limits and errors, and returns Organization with a new imageRevision. No face recognition runs on a logo. Missing organization returns 404 organization_not_found.
+         */
+        put: operations["uploadOrganizationImage"];
+        post?: never;
+        /**
+         * Remove an organization's logo
+         * @description Owner-only; no body. Removes the logo and returns Organization without imageRevision; one without a logo is returned unchanged. Missing organization returns 404 organization_not_found.
+         */
+        delete: operations["deleteOrganizationImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/organizations/{id}/merge": {
@@ -5223,6 +5251,8 @@ export interface components {
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
             match: components["schemas"]["WorkInfoMatch"];
+            /** @description Plugin-provided profile values that pass validation; omitted when none. Applying the organization's role fills only the linked organization's empty fields. */
+            profile?: components["schemas"]["OrganizationProfile"];
         };
         /**
          * @description Fetched fields applicable to the video, in comparison-row order.
@@ -5854,7 +5884,7 @@ export interface components {
             /** @description HTTP(S) URLs in order, at most 20 and unique; omitted when empty. */
             links?: string[] | null;
         };
-        /** @description One organization, with Person fields plus a parent organization. */
+        /** @description One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization. */
         Organization: {
             /** Format: int64 */
             id: number;
@@ -5863,6 +5893,11 @@ export interface components {
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
+            profile: components["schemas"]["OrganizationProfile"];
+            /** @description Whether the owner marked this organization as a favorite. */
+            favorite: boolean;
+            /** @description Present only while the organization has a logo; changes with every change of it. */
+            imageRevision?: components["schemas"]["PersonImageRevision"];
             /** @description Visible videos linked to this organization in any role. */
             videoCount: number;
             /** Format: date-time */
@@ -5870,7 +5905,38 @@ export interface components {
             /** @description Parent organization; omitted for roots. */
             parent?: components["schemas"]["CreditRef"];
         };
-        /** @description Person or organization creation body; parentId is organization-only and profile person-only. */
+        /** @description An organization's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field organizationProfile.<name>. */
+        OrganizationProfile: {
+            /**
+             * @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+             * @example 1990
+             * @example 1990-05
+             * @example 1990-05-17
+             */
+            foundedDate?: string;
+            /** @description Same format as foundedDate; not before it at the precision both share. */
+            dissolvedDate?: string;
+            /** @description 1-200 code points. */
+            location?: string;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string;
+            /** @description HTTP(S) URLs in order, at most 100 and unique; omitted when empty. */
+            links?: string[];
+        };
+        /** @description Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list. */
+        OrganizationProfilePatch: {
+            /** @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC. */
+            foundedDate?: string | null;
+            /** @description Same format as foundedDate; not before it at the precision both share. */
+            dissolvedDate?: string | null;
+            /** @description 1-200 code points. */
+            location?: string | null;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string | null;
+            /** @description HTTP(S) URLs in order, at most 100 and unique. */
+            links?: string[] | null;
+        };
+        /** @description Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only. */
         CreditInput: {
             name: string;
             aliases?: components["schemas"]["Alias"][];
@@ -5882,6 +5948,8 @@ export interface components {
             parentId?: number;
             /** @description Person-only profile; sending it for an organization returns 400 invalid_request. */
             profile?: components["schemas"]["PersonProfile"];
+            /** @description Organization-only profile; sending it for a person returns 400 invalid_request. */
+            organizationProfile?: components["schemas"]["OrganizationProfile"];
         };
         /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
         CreditPatch: {
@@ -5895,6 +5963,8 @@ export interface components {
             parentId?: number | null;
             /** @description Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing. */
             profile?: components["schemas"]["PersonProfilePatch"];
+            /** @description Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing. */
+            organizationProfile?: components["schemas"]["OrganizationProfilePatch"];
         };
         CreditMergeRequest: {
             /** @description Source IDs: 1-20,000 entries. */
@@ -6122,6 +6192,8 @@ export interface components {
             smartFolderIds?: number[];
             /** @description Person IDs whose favorite state changes; missing people are ignored. */
             personIds?: number[];
+            /** @description Organization IDs whose favorite state changes; missing organizations are ignored. */
+            organizationIds?: number[];
             /** @description True adds favorites; false removes them. */
             favorite: boolean;
         };
@@ -8449,6 +8521,7 @@ export interface components {
             role: components["schemas"]["WorkOrganizationRole"];
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
+            profile?: components["schemas"]["OrganizationProfile"];
         };
         /** @description The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links. */
         PeerFetchedPluginPerson: {
@@ -8773,7 +8846,7 @@ export interface components {
         CreditCursor: string;
         /** @description Page size; omit for all results without nextCursor */
         CreditLimit: number;
-        /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+        /** @description True keeps favorites, combined with q by AND, and total counts them. */
         CreditFavorite: boolean;
         /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
         CreditProvisional: boolean;
@@ -13252,7 +13325,7 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
-                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                /** @description True keeps favorites, combined with q by AND, and total counts them. */
                 favorite?: components["parameters"]["CreditFavorite"];
                 /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
                 provisional?: components["parameters"]["CreditProvisional"];
@@ -13909,7 +13982,7 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
-                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                /** @description True keeps favorites, combined with q by AND, and total counts them. */
                 favorite?: components["parameters"]["CreditFavorite"];
                 /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
                 provisional?: components["parameters"]["CreditProvisional"];
@@ -14036,6 +14109,96 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getOrganizationImage: {
+        parameters: {
+            query?: {
+                /** @description imageRevision from Organization; ignored by the server */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description `If-None-Match` matches `ETag` */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadOrganizationImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadPersonImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PersonImageTooLarge"];
+        };
+    };
+    deleteOrganizationImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     mergeOrganizations: {

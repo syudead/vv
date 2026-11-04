@@ -32,6 +32,7 @@ const (
 	pageHistory          = "/history"
 	pageVideo            = "/videos/:id"
 	pagePerson           = "/people/:id"
+	pageOrganizations    = "/organizations"
 	pageOnboarding       = "/welcome"
 	pageSettingsLibrary  = "/settings/library"
 	pageSettingsFaces    = "/settings/face-recognition"
@@ -58,7 +59,7 @@ var assistantPages = []AssistantPage{
 	{pagePerson, "Person", "A person's videos, image, aliases and profile"},
 	{"/people/:id/faces", "Person faces", "Confirm, move or split the face appearances recognised as a person"},
 	{"/people/:id/edit", "Person editor", "Edit a person's name, aliases, profile and image"},
-	{"/organizations", "Organizations", "List, create, merge and edit organizations"},
+	{pageOrganizations, "Organizations", "List, create, merge and edit organizations"},
 	{pageHistory, "History", "The videos watched recently, with their positions"},
 	{"/playlists", "Playlists", "List and create playlists"},
 	{"/playlists/:id", "Playlist", "Play a playlist and reorder its videos"},
@@ -150,6 +151,8 @@ var assistantExclusions = slices.Concat(
 	excluded("Files the browser sends",
 		"The server holds no such file; the fetch-apply tools cover plugin images", pagePerson, false,
 		"uploadPersonImage"),
+	excluded("Files the browser sends", "The server holds no such file", pageOrganizations, false,
+		"uploadOrganizationImage"),
 	excluded("Drag operations",
 		"They take drag tokens; the group, bundle and playlist tools make the same changes", pageLibrary, false,
 		"organizeReorder", "organizeGroup", "organizeMove", "organizeMerge", "organizeBundle", "organizeUndo"),

@@ -9,6 +9,8 @@ export type Organization = components["schemas"]["Organization"];
 export type CreditInput = components["schemas"]["CreditInput"];
 export type CreditRef = components["schemas"]["CreditRef"];
 export type CreditPatch = components["schemas"]["CreditPatch"];
+export type OrganizationProfile = components["schemas"]["OrganizationProfile"];
+export type OrganizationProfilePatch = components["schemas"]["OrganizationProfilePatch"];
 export type CreditSort = components["schemas"]["CreditSort"];
 export type Alias = components["schemas"]["Alias"];
 export type ExternalId = components["schemas"]["ExternalId"];
@@ -40,7 +42,7 @@ export interface CreditListQuery {
   /** 1..200 results; omit to retrieve every match. */
   limit?: number;
   cursor?: string;
-  /** People only: keep favorites. */
+  /** Keep favorites. */
   favorite?: boolean;
   /** People only: true keeps provisional people, false named ones; omit for both. */
   provisional?: boolean;
@@ -181,27 +183,65 @@ export function personFaceSrc(person: {
     : personImagePath(person.id, person.imageRevision);
 }
 
+/** The organization's logo URL, or undefined without a logo. */
+export function organizationLogoSrc(organization: {
+  id: number;
+  imageRevision?: number;
+}): string | undefined {
+  return organization.imageRevision === undefined
+    ? undefined
+    : `${itemPath("organization", organization.id)}/image?v=${String(organization.imageRevision)}`;
+}
+
 /** Let the browser set the multipart boundary; the server fits and stores the image. */
+function uploadCreditImage<T extends Credit>(
+  kind: CreditKind,
+  id: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<T> {
+  const form = new FormData();
+  form.append("image", image, image instanceof File ? image.name : "image");
+  return afterCreditChange(
+    request<T>(`${itemPath(kind, id)}/image`, { method: "PUT", body: form, signal }),
+  );
+}
+
+function removeCreditImage<T extends Credit>(
+  kind: CreditKind,
+  id: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  return afterCreditChange(
+    request<T>(`${itemPath(kind, id)}/image`, { method: "DELETE", signal }),
+  );
+}
+
 export function uploadPersonImage(
   id: number,
   image: Blob,
   signal?: AbortSignal,
 ): Promise<Person> {
-  const form = new FormData();
-  form.append("image", image, image instanceof File ? image.name : "image");
-  return afterCreditChange(
-    request<Person>(`${itemPath("person", id)}/image`, {
-      method: "PUT",
-      body: form,
-      signal,
-    }),
-  );
+  return uploadCreditImage<Person>("person", id, image, signal);
 }
 
 export function removePersonImage(id: number, signal?: AbortSignal): Promise<Person> {
-  return afterCreditChange(
-    request<Person>(`${itemPath("person", id)}/image`, { method: "DELETE", signal }),
-  );
+  return removeCreditImage<Person>("person", id, signal);
+}
+
+export function uploadOrganizationLogo(
+  id: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<Organization> {
+  return uploadCreditImage<Organization>("organization", id, image, signal);
+}
+
+export function removeOrganizationLogo(
+  id: number,
+  signal?: AbortSignal,
+): Promise<Organization> {
+  return removeCreditImage<Organization>("organization", id, signal);
 }
 
 /** Match missing target entities only; field-qualified missing parents are input errors. */

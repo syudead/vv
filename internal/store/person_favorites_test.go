@@ -60,9 +60,6 @@ func TestListPeopleFavoriteOnlyCountsFavorites(t *testing.T) {
 	if len(page.Items) != 1 || page.Items[0].ID != liked.ID || !page.Items[0].Favorite || page.Total != 1 || page.TotalAll != 2 {
 		t.Errorf("お気に入りだけの一覧 = %+v", page)
 	}
-	if _, err := db.Credits().List(ctx, owner, domain.CreditOrganization, domain.CreditQuery{FavoriteOnly: true}); err == nil {
-		t.Error("団体のお気に入り絞り込みが通った")
-	}
 }
 
 func TestMergePeopleKeepsASourceFavorite(t *testing.T) {

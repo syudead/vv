@@ -340,7 +340,7 @@ A non-zero exit, or output that is none of these, fails the run with
 | `description` | string; line feeds allowed | Trimmed, cut to 10,000 characters |
 | `dates` | `[{"kind": "release", "date": "2024-03-01"}]`; `kind` is `release`, `recorded` or `published`; `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | The first date of each kind |
 | `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}], "image": "https://...", "profile": {...}}]`; `role` is `performer`, `director`, `photographer` or `streamer`; `externalIds`, `image` and `profile` optional | The first 100 of each role, and the first 20 distinct external IDs of each person; `image` and `profile` as in [People's images and profiles](#peoples-images-and-profiles) |
-| `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
+| `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...], "profile": {...}}]`; `role` is `maker` or `label`; `externalIds` and `profile` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization; `profile` as in [People's images and profiles](#peoples-images-and-profiles) |
 | `urls` | `["https://..."]` | The first 20 distinct |
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
 | `covers` | `["https://..."]`, `http` or `https` URLs of the work's cover images, each at most 2048 characters | The first 5 distinct valid URLs, whose images VVMDM fetches itself after the run; see [Cover images](#cover-images) |
@@ -412,7 +412,10 @@ profile properties of
 `links`. Numbers are integers, `links` is an array of URLs, and the rest are
 strings, under the rules in
 [People: profiles](../design-docs/people.md#what-a-valid-profile-is).
-Organizations take neither field.
+An organization in `organizations` may carry `profile` with `foundedDate`,
+`dissolvedDate`, `location`, `bio` and `links`, under
+[the organization rules](../design-docs/people.md#organizations-share-the-profile-image-and-favorite-shapes);
+VVMDM does not fetch an organization's `image`.
 
 VVMDM drops an `image` that is not such a URL and a `profile` property of
 another JSON type, and keeps the rest of the person. It treats control

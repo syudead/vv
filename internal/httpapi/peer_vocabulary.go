@@ -242,7 +242,7 @@ var organizationsMerge = creditMerge[gen.Organization]{
 		local.VideoCount += peer.VideoCount
 		return local
 	},
-	favorite: func(gen.Organization) bool { return false },
+	favorite: func(organization gen.Organization) bool { return organization.Favorite },
 	list: func(items []gen.Organization, total, totalAll int, next *string) any {
 		return gen.OrganizationList{Items: items, Total: total, TotalAll: totalAll, NextCursor: next}
 	},

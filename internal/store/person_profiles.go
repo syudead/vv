@@ -3,23 +3,19 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Profiles are columns on people plus ordered rows in people_links; organizations have none.
+// A person's profile is columns on people plus ordered rows in people_links.
 
 // personProfileColumnNames is the order scannedProfile.targets and personProfileArgs use.
 var personProfileColumnNames = []string{
 	"gender", "birth_date", "death_date", "birthplace", "height_cm", "bust_cm", "waist_cm", "hips_cm",
 	"cup", "blood_type", "career_start_year", "career_end_year", "bio",
 }
-
-var personProfileColumns = strings.Join(personProfileColumnNames, ", ")
 
 type scannedProfile struct {
 	texts [7]sql.NullString
@@ -69,28 +65,10 @@ func personProfileArgs(p domain.PersonProfile) []any {
 
 // writePersonProfile replaces the stored profile with a normalized one.
 func writePersonProfile(ctx context.Context, tx *sql.Tx, id int64, profile domain.PersonProfile) error {
-	statement := `update people set `
-	for i, column := range personProfileColumnNames {
-		if i > 0 {
-			statement += `, `
-		}
-		statement += column + ` = ?`
-	}
-	statement += `, birth_key = ?`
-	args := append(personProfileArgs(profile), birthKeyArg(profile.BirthDate), id)
-	if _, err := tx.ExecContext(ctx, statement+` where id = ?`, args...); err != nil {
-		return fmt.Errorf("cannot save the profile of person %d: %w", id, err)
-	}
-	if _, err := tx.ExecContext(ctx, `delete from people_links where person_id = ?`, id); err != nil {
-		return fmt.Errorf("cannot replace the links of person %d: %w", id, err)
-	}
-	for position, url := range profile.Links {
-		if _, err := tx.ExecContext(ctx, `insert into people_links (person_id, position, url) values (?, ?, ?)`,
-			id, position, url); err != nil {
-			return fmt.Errorf("cannot save the links of person %d: %w", id, err)
-		}
-	}
-	return nil
+	t := creditTablesByKind[domain.CreditPerson]
+	columns := append(slices.Clone(personProfileColumnNames), "birth_key")
+	args := append(personProfileArgs(profile), birthKeyArg(profile.BirthDate))
+	return writeCreditProfile(ctx, tx, t, id, columns, args, profile.Links)
 }
 
 // birthKeyArg is domain.BirthKey, or null for an unknown date.
@@ -101,63 +79,24 @@ func birthKeyArg(date string) any {
 	return nil
 }
 
-// addPersonProfiles reads the profiles, favorite marks, image revisions and links of a page of people in two statements.
-func addPersonProfiles(ctx context.Context, tx *sql.Tx, items []domain.Credit, index map[int64]int, encodedIDs string) error {
-	rows, err := tx.QueryContext(ctx, `select id, exists (select 1 from person_favorites pf where pf.person_id = people.id), `+
-		personImageRevision("people.id")+`, `+personProfileColumns+` from people where id in (select value from json_each(?))`, encodedIDs)
-	if err != nil {
-		return fmt.Errorf("cannot read the profiles of people: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var id, revision int64
-		var favorite bool
+var personProfileCodec = profileCodec{
+	columns: personProfileColumnNames,
+	scan: func(c *domain.Credit) ([]any, func()) {
 		var scanned scannedProfile
-		if err := rows.Scan(append([]any{&id, &favorite, &revision}, scanned.targets()...)...); err != nil {
-			return fmt.Errorf("cannot read the profiles of people: %w", err)
+		return scanned.targets(), func() { c.Profile = scanned.profile() }
+	},
+	links: func(c *domain.Credit) *[]string { return &c.Profile.Links },
+	write: func(ctx context.Context, tx *sql.Tx, id int64, input domain.CreditInput) error {
+		return writePersonProfile(ctx, tx, id, input.Profile)
+	},
+	set:     func(input domain.CreditInput) bool { return !input.Profile.Equal(domain.PersonProfile{}) },
+	differs: func(c domain.Credit, next domain.CreditInput) bool { return !c.Profile.Equal(next.Profile) },
+	fill: func(target domain.Credit, sources []domain.Credit) (domain.CreditInput, bool) {
+		profiles := make([]domain.PersonProfile, len(sources))
+		for i, source := range sources {
+			profiles[i] = source.Profile
 		}
-		items[index[id]].Profile = scanned.profile()
-		items[index[id]].Favorite = favorite
-		items[index[id]].ImageRevision = revision
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("cannot read the profiles of people: %w", err)
-	}
-	err = eachCreditRow(ctx, tx, `select person_id, url, '' from people_links
-		 where person_id in (select value from json_each(?)) order by person_id, position`, encodedIDs,
-		func(id int64, url, _ string) {
-			items[index[id]].Profile.Links = append(items[index[id]].Profile.Links, url)
-		})
-	if err != nil {
-		return fmt.Errorf("cannot read the links of people: %w", err)
-	}
-	return nil
-}
-
-// fillMergedPersonProfile fills each empty target field and an empty link list from the first source in sourceIDs
-// order whose value keeps the profile valid; it must run before the sources are deleted.
-func fillMergedPersonProfile(ctx context.Context, tx *sql.Tx, targetID int64, sourceIDs []int64) error {
-	ids := append([]int64{targetID}, sourceIDs...)
-	encoded, err := json.Marshal(ids)
-	if err != nil {
-		return fmt.Errorf("cannot build person ids: %w", err)
-	}
-	people := make([]domain.Credit, len(ids))
-	index := make(map[int64]int, len(ids))
-	for i, id := range ids {
-		index[id] = i
-	}
-	if err := addPersonProfiles(ctx, tx, people, index, string(encoded)); err != nil {
-		return err
-	}
-	sources := make([]domain.PersonProfile, len(sourceIDs))
-	for i := range sources {
-		sources[i] = people[i+1].Profile
-	}
-	current := people[0].Profile
-	filled := domain.FillPersonProfile(current, sources, time.Now())
-	if filled.Equal(current) {
-		return nil
-	}
-	return writePersonProfile(ctx, tx, targetID, filled)
+		filled := domain.FillPersonProfile(target.Profile, profiles, time.Now())
+		return domain.CreditInput{Profile: filled}, !filled.Equal(target.Profile)
+	},
 }

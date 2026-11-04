@@ -1,11 +1,12 @@
 package domain
 
 type FavoriteChange struct {
-	VideoIDs       []int64
-	GroupIDs       []int64
-	SmartFolderIDs []int64
-	PersonIDs      []int64
-	Favorite       bool
+	VideoIDs        []int64
+	GroupIDs        []int64
+	SmartFolderIDs  []int64
+	PersonIDs       []int64
+	OrganizationIDs []int64
+	Favorite        bool
 }
 
 // FavoriteApplied counts distinct existing IDs, including already-matching states and separate video IDs in the same bundle.

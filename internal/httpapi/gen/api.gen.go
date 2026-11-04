@@ -4758,11 +4758,14 @@ type CreditIdRef struct {
 	Name *string `json:"name,omitempty"`
 }
 
-// CreditInput Person or organization creation body; parentId is organization-only and profile person-only.
+// CreditInput Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.
 type CreditInput struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 	Name        string        `json:"name"`
+
+	// OrganizationProfile Organization-only profile; sending it for a person returns 400 invalid_request.
+	OrganizationProfile *OrganizationProfile `json:"organizationProfile,omitempty"`
 
 	// ParentId Parent organization ID; sending it for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
@@ -4782,6 +4785,9 @@ type CreditPatch struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 	Name        *string       `json:"name,omitempty"`
+
+	// OrganizationProfile Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing.
+	OrganizationProfile *OrganizationProfilePatch `json:"organizationProfile,omitempty"`
 
 	// ParentId Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
@@ -5108,6 +5114,9 @@ type FavoritesRequest struct {
 
 	// GroupIds Group IDs whose favorite state changes.
 	GroupIds *[]int64 `json:"groupIds,omitempty"`
+
+	// OrganizationIds Organization IDs whose favorite state changes; missing organizations are ignored.
+	OrganizationIds *[]int64 `json:"organizationIds,omitempty"`
 
 	// PersonIds Person IDs whose favorite state changes; missing people are ignored.
 	PersonIds *[]int64 `json:"personIds,omitempty"`
@@ -6010,7 +6019,7 @@ type Onboarding struct {
 // OnboardingStep オンボードの段階（docs/design-docs/home.md）
 type OnboardingStep string
 
-// Organization One organization, with Person fields plus a parent organization.
+// Organization One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization.
 type Organization struct {
 	// Aliases Natural-name order.
 	Aliases   []Alias   `json:"aliases"`
@@ -6018,11 +6027,20 @@ type Organization struct {
 
 	// ExternalIds Ordered by (source, value).
 	ExternalIds []ExternalId `json:"externalIds"`
-	Id          int64        `json:"id"`
-	Name        string       `json:"name"`
+
+	// Favorite Whether the owner marked this organization as a favorite.
+	Favorite bool  `json:"favorite"`
+	Id       int64 `json:"id"`
+
+	// ImageRevision Present only while the organization has a logo; changes with every change of it.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+	Name          string               `json:"name"`
 
 	// Parent Parent organization; omitted for roots.
 	Parent *CreditRef `json:"parent,omitempty"`
+
+	// Profile An organization's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field organizationProfile.<name>.
+	Profile OrganizationProfile `json:"profile"`
 
 	// VideoCount Visible videos linked to this organization in any role.
 	VideoCount int `json:"videoCount"`
@@ -6047,8 +6065,46 @@ type OrganizationMergeResponse struct {
 	// NotFoundIds Sources that no longer exist.
 	NotFoundIds []int64 `json:"notFoundIds"`
 
-	// Organization One organization, with Person fields plus a parent organization.
+	// Organization One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization.
 	Organization Organization `json:"organization"`
+}
+
+// OrganizationProfile An organization's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field organizationProfile.<name>.
+type OrganizationProfile struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// DissolvedDate Same format as foundedDate; not before it at the precision both share.
+	DissolvedDate *string `json:"dissolvedDate,omitempty"`
+
+	// FoundedDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	FoundedDate *string `json:"foundedDate,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 100 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// Location 1-200 code points.
+	Location *string `json:"location,omitempty"`
+}
+
+// OrganizationProfilePatch Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list.
+type OrganizationProfilePatch struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// DissolvedDate Same format as foundedDate; not before it at the precision both share.
+	DissolvedDate *string `json:"dissolvedDate,omitempty"`
+
+	// FoundedDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	FoundedDate *string `json:"foundedDate,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 100 and unique.
+	Links *[]string `json:"links,omitempty"`
+
+	// Location 1-200 code points.
+	Location *string `json:"location,omitempty"`
 }
 
 // OrganizeBundle defines model for OrganizeBundle.
@@ -6199,6 +6255,9 @@ type PeerCreditMatches struct {
 type PeerFetchedOrganization struct {
 	ExternalIds []ExternalId `json:"externalIds"`
 	Name        string       `json:"name"`
+
+	// Profile An organization's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field organizationProfile.<name>.
+	Profile *OrganizationProfile `json:"profile,omitempty"`
 
 	// Role Organization role in a video.
 	Role WorkOrganizationRole `json:"role"`
@@ -8851,6 +8910,9 @@ type WorkInfoFetchedOrganization struct {
 	// Name Plugin-provided name.
 	Name string `json:"name"`
 
+	// Profile Plugin-provided profile values that pass validation; omitted when none. Applying the organization's role fills only the linked organization's empty fields.
+	Profile *OrganizationProfile `json:"profile,omitempty"`
+
 	// Role Organization role in a video.
 	Role WorkOrganizationRole `json:"role"`
 }
@@ -9556,11 +9618,17 @@ type ListOrganizationsParams struct {
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
+	// Favorite True keeps favorites, combined with q by AND, and total counts them.
 	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Provisional People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request.
 	Provisional *CreditProvisional `form:"provisional,omitempty" json:"provisional,omitempty"`
+}
+
+// GetOrganizationImageParams defines parameters for GetOrganizationImage.
+type GetOrganizationImageParams struct {
+	// V imageRevision from Organization; ignored by the server
+	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
 // ListPeopleParams defines parameters for ListPeople.
@@ -9577,7 +9645,7 @@ type ListPeopleParams struct {
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
+	// Favorite True keeps favorites, combined with q by AND, and total counts them.
 	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Provisional People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request.
@@ -10019,6 +10087,9 @@ type CreateOrganizationJSONRequestBody = CreditInput
 
 // UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
 type UpdateOrganizationJSONRequestBody = CreditPatch
+
+// UploadOrganizationImageMultipartRequestBody defines body for UploadOrganizationImage for multipart/form-data ContentType.
+type UploadOrganizationImageMultipartRequestBody = UploadPersonImageRequest
 
 // MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
 type MergeOrganizationsJSONRequestBody = CreditMergeRequest
@@ -10469,6 +10540,15 @@ type ServerInterface interface {
 	// UpdateOrganization Update an organization's name, aliases and external IDs
 	// (PATCH /api/organizations/{id})
 	UpdateOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// DeleteOrganizationImage Remove an organization's logo
+	// (DELETE /api/organizations/{id}/image)
+	DeleteOrganizationImage(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// GetOrganizationImage Return an organization's logo
+	// (GET /api/organizations/{id}/image)
+	GetOrganizationImage(w http.ResponseWriter, r *http.Request, id OrganizationId, params GetOrganizationImageParams)
+	// UploadOrganizationImage Set an organization's logo from an uploaded image
+	// (PUT /api/organizations/{id}/image)
+	UploadOrganizationImage(w http.ResponseWriter, r *http.Request, id OrganizationId)
 	// MergeOrganizations Merge sourceIds into organization id
 	// (POST /api/organizations/{id}/merge)
 	MergeOrganizations(w http.ResponseWriter, r *http.Request, id OrganizationId)
@@ -13338,6 +13418,100 @@ func (siw *ServerInterfaceWrapper) UpdateOrganization(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateOrganization(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteOrganizationImage operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrganizationImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrganizationImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationImage operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetOrganizationImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationImage(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadOrganizationImage operation middleware
+func (siw *ServerInterfaceWrapper) UploadOrganizationImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadOrganizationImage(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18946,6 +19120,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{id}", wrapper.GetOrganization)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/organizations/{id}", wrapper.UpdateOrganization)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}/image", wrapper.DeleteOrganizationImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{id}/image", wrapper.GetOrganizationImage)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/organizations/{id}/image", wrapper.UploadOrganizationImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations/{id}/merge", wrapper.MergeOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)

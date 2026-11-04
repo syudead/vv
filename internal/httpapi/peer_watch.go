@@ -29,7 +29,8 @@ func (s *server) writePeerWriteFailure(w http.ResponseWriter, err error) {
 
 // favoriteChangeNames reports whether change names any entity.
 func favoriteChangeNames(change domain.FavoriteChange) bool {
-	return len(change.VideoIDs)+len(change.GroupIDs)+len(change.SmartFolderIDs)+len(change.PersonIDs) > 0
+	return len(change.VideoIDs)+len(change.GroupIDs)+len(change.SmartFolderIDs)+len(change.PersonIDs)+
+		len(change.OrganizationIDs) > 0
 }
 
 // setPeerFavorites applies change, in the ids of the link in slot, on that link in one request; when it fails, it
@@ -44,6 +45,7 @@ func (s *server) setPeerFavorites(
 	body := gen.FavoritesRequest{
 		Favorite: change.Favorite, VideoIds: optionalIDList(change.VideoIDs), GroupIds: optionalIDList(change.GroupIDs),
 		SmartFolderIds: optionalIDList(change.SmartFolderIDs), PersonIds: optionalIDList(change.PersonIDs),
+		OrganizationIds: optionalIDList(change.OrganizationIDs),
 	}
 	if err := s.peerCall(r, slot, http.MethodPut, "/api/favorites", nil, body, &applied); err != nil {
 		s.writePeerWriteFailure(w, err)

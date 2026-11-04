@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Favorites are persistent user data; index rebuilds leave them intact, while deleting a group, smart folder or person cascades its favorite.
+// Favorites are persistent user data; index rebuilds leave them intact, while deleting a group, smart folder, person or organization cascades its favorite.
 
 var favoriteColumn = `exists (select 1 from video_favorites fav where fav.content_key = ` + userKeyExpr("videos") +
 	` and videos.content_key <> '')`
@@ -45,6 +45,10 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 	if err != nil {
 		return domain.FavoriteApplied{}, err
 	}
+	organizations, err := existingIDs(ctx, tx, "organizations", change.OrganizationIDs)
+	if err != nil {
+		return domain.FavoriteApplied{}, err
+	}
 
 	encodedKeys, err := json.Marshal(nonNil(userKeys))
 	if err != nil {
@@ -58,7 +62,7 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 		ids           []int64
 	}{
 		{"group_favorites", "group_id", groups}, {"smart_folder_favorites", "smart_folder_id", folders},
-		{"person_favorites", "person_id", people},
+		{"person_favorites", "person_id", people}, {"organization_favorites", "organization_id", organizations},
 	} {
 		encoded, err := json.Marshal(nonNil(ids.ids))
 		if err != nil {
@@ -73,7 +77,8 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 				select max(favorited_at) as m from video_favorites
 				union all select max(favorited_at) from group_favorites
 				union all select max(favorited_at) from smart_folder_favorites
-				union all select max(favorited_at) from person_favorites)), 0) + 1)`,
+				union all select max(favorited_at) from person_favorites
+				union all select max(favorited_at) from organization_favorites)), 0) + 1)`,
 			favoriteNow().UnixMilli()).Scan(&at); err != nil {
 			return domain.FavoriteApplied{}, fmt.Errorf("cannot decide the favorited time: %w", err)
 		}
@@ -93,7 +98,7 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 		}
 	}
 
-	// No smart rule reads a person favorite, so a people-only change refreshes no folder.
+	// No smart rule reads a person or organization favorite, so a change of only those refreshes no folder.
 	matched := len(change.VideoIDs)+len(change.GroupIDs)+len(change.SmartFolderIDs) > 0
 	if err := s.db.commitMatchChangeIf(ctx, tx, matched); err != nil {
 		return domain.FavoriteApplied{}, fmt.Errorf("cannot update favorites: %w", err)
