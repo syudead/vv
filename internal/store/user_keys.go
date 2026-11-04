@@ -17,6 +17,17 @@ func userKeyExpr(alias string) string {
 		`where ukm.content_key = ` + alias + `.content_key), ` + alias + `.content_key)`
 }
 
+// userKeyHasVideo reports whether a video v of the user key key meets condition, looking the key up through indexes;
+// joining on userKeyExpr instead scans every video for each key. key appears twice, so bind its arguments twice.
+func userKeyHasVideo(key, condition string) string {
+	return `(exists (select 1 from videos v where v.content_key = ` + key + ` and v.content_key <> '' ` +
+		`and not exists (select 1 from video_bundle_members ukm where ukm.content_key = v.content_key) and ` +
+		condition + `) or exists (select 1 from video_bundles ukb ` +
+		`join video_bundle_members ukm on ukm.bundle_id = ukb.id ` +
+		`join videos v on v.content_key = ukm.content_key and v.content_key <> '' ` +
+		`where ukb.user_key = ` + key + ` and ` + condition + `))`
+}
+
 // Resolve a key set to videos without per-video key lookups; keys appears twice, so bind its arguments twice.
 func userKeyVideosSQL(keys string) string {
 	return `select v.id from videos v where v.content_key <> '' and v.content_key in (` + keys + `) ` +

@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, type RefObject, useLayoutEffect, useRef } from "react";
 
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
@@ -24,8 +24,11 @@ export function SelectionBar({
   children,
   placement = "bottom",
 }: SelectionBarProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useSelectionBarHeight(ref, placement === "bottom");
   return (
     <div
+      ref={ref}
       data-slot="selection-bar"
       data-placement={placement}
       className={cn(
@@ -65,4 +68,25 @@ export function SelectionBar({
       </div>
     </div>
   );
+}
+
+/**
+ * Publish the bottom bar's height as `--selection-bar-height` on the document, so notifications
+ * placed above it clear it when its actions wrap onto more rows.
+ */
+function useSelectionBarHeight(ref: RefObject<HTMLDivElement | null>, enabled: boolean) {
+  useLayoutEffect(() => {
+    const bar = ref.current;
+    if (!enabled || bar === null || typeof ResizeObserver !== "function") return;
+    const root = document.documentElement;
+    const publish = () =>
+      root.style.setProperty("--selection-bar-height", `${String(bar.offsetHeight)}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--selection-bar-height");
+    };
+  }, [ref, enabled]);
 }

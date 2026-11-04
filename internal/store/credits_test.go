@@ -209,6 +209,19 @@ func TestListCreditsCountsShownVideosAndSortsByCount(t *testing.T) {
 	}
 }
 
+func TestGetCreditCountsABundleOnce(t *testing.T) {
+	db, ids := versionFixture(t)
+	person := createPerson(t, db, "A")
+	bundle(t, db, ids["a"], ids["a"], ids["b"])
+	setWorkInfo(t, db, ids["a"], domain.WorkInfo{People: []domain.WorkPerson{performer(person.ID)}})
+	setWorkInfo(t, db, ids["c"], domain.WorkInfo{People: []domain.WorkPerson{performer(person.ID)}})
+
+	got, err := db.Credits().Get(context.Background(), domain.CreditPerson, person.ID)
+	if err != nil || got.VideoCount != 2 {
+		t.Fatalf("Get = %+v, %v; want the bundle and c counted once each", got, err)
+	}
+}
+
 func TestCreateCreditStoresEverythingAndGetReadsIt(t *testing.T) {
 	db := migratedDB(t)
 	root := createOrganization(t, db, "親会社", nil)

@@ -39,6 +39,12 @@ func (s *server) splitVideoEdit(w http.ResponseWriter, r *http.Request, edit dom
 			parts.local = &local
 		}
 	}
+	if len(edit.Merges) > 0 {
+		if parts.local == nil {
+			parts.local = &domain.VideoEdit{}
+		}
+		parts.local.Merges = edit.Merges
+	}
 	for _, link := range sel.links {
 		part := linkEdit{selectionLink: link}
 		peer, err := translateEdit(edit, s.linkEditVocabulary(r, link.slot, entries))

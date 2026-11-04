@@ -143,10 +143,9 @@ func listedCreditsCTE(t creditTables, audience domain.Audience, filter creditFil
 	}
 	statement := `with credit_counts as (
 			select l.{id} as credit_id, count(distinct l.content_key) as video_count
-			  from videos v
-			  join {links} l on l.content_key = ` + userKeyExpr("v") + `
-			 where v.content_key <> '' and ` + listedVideoCondition("v", audience) + ` and ` +
-		listedShownVideoCondition("v", audience) + countFilter + `
+			  from {links} l
+			 where ` + userKeyHasVideo("l.content_key",
+		listedVideoCondition("v", audience)+` and `+listedShownVideoCondition("v", audience)) + countFilter + `
 			 group by l.{id}
 		), listed as (
 			select e.id as id, coalesce(n.name, '') as name, n.{id} is null as provisional,

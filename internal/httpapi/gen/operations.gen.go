@@ -209,6 +209,7 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "POST", Path: "/api/video-code-edits", Response: "VideoCodeEditResponse", Request: "VideoCodeEditRequest"},
 	{Method: "POST", Path: "/api/video-code-edits/summary", Response: "VideoCodeEditSummary", Request: "VideoTagsSummaryRequest", BodyIDs: []string{"smartFolderIds", "videoIds"}},
 	{Method: "POST", Path: "/api/video-edits", Response: "VideoEditResponse", Request: "VideoEditRequest", BodyIDs: []string{"smartFolderIds", "videoIds"}},
+	{Method: "POST", Path: "/api/video-edits/provisional-matches", Response: "ProvisionalMatches", Request: "ProvisionalMatchRequest", BodyIDs: []string{"personIds", "smartFolderIds", "videoIds"}},
 	{Method: "POST", Path: "/api/video-edits/summary", Response: "VideoEditSummary", Request: "VideoTagsSummaryRequest", BodyIDs: []string{"smartFolderIds", "videoIds"}},
 	{Method: "POST", Path: "/api/video-tags", Response: "VideoTagsResponse", Request: "VideoTagsRequest", BodyIDs: []string{"smartFolderIds", "videoIds"}},
 	{Method: "POST", Path: "/api/video-tags/summary", Response: "VideoTagsSummary", Request: "VideoTagsSummaryRequest", BodyIDs: []string{"smartFolderIds", "videoIds"}},

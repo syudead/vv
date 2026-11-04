@@ -5,8 +5,10 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type Ref,
+  type RefObject,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -472,6 +474,12 @@ function ListNameCommand({
   }));
   if (createLabel !== null) rows.push({ value: createValue, choice: null });
   const rowCount = rows.length;
+  const alignClass = useAlignEndWhenClipped(listRef, {
+    open,
+    inline,
+    rowCount,
+    valueKey,
+  });
 
   useEffect(() => {
     setActiveIndex(-1);
@@ -599,7 +607,10 @@ function ListNameCommand({
       className={
         inline
           ? "max-h-none overflow-visible"
-          : "absolute top-full z-50 mt-1 max-h-combobox-list w-combobox-list rounded-md bg-popover py-1 shadow-elevated"
+          : cn(
+              "absolute top-full z-50 mt-1 max-h-combobox-list w-combobox-list rounded-md bg-popover py-1 shadow-elevated",
+              alignClass,
+            )
       }
     >
       {rendered.slice(0, choices.length)}
@@ -671,4 +682,46 @@ function ListNameCommand({
       {reasonText}
     </Command>
   );
+}
+
+/**
+ * A dropdown starts under the input's left edge; when that would run past the right edge of the
+ * nearest clipping ancestor, which then scrolls sideways, it aligns to the input's right edge
+ * instead. A pick clears the value and drops its row while adding a chip beside the input, which
+ * can move it, so the value and the row count measure it again.
+ */
+function useAlignEndWhenClipped(
+  listRef: RefObject<HTMLDivElement | null>,
+  {
+    open,
+    inline,
+    rowCount,
+    valueKey,
+  }: { open: boolean; inline: boolean; rowCount: number; valueKey: string },
+): string | undefined {
+  const [alignEnd, setAlignEnd] = useState(false);
+  const shown = open && !inline && rowCount > 0;
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const anchor = list?.parentElement;
+    setAlignEnd(
+      shown &&
+        list != null &&
+        anchor != null &&
+        anchor.getBoundingClientRect().left + list.offsetWidth > clipRight(anchor),
+    );
+  }, [listRef, shown, rowCount, valueKey]);
+  return alignEnd ? "right-0" : undefined;
+}
+
+function clipRight(element: HTMLElement): number {
+  for (
+    let parent = element.parentElement;
+    parent !== null;
+    parent = parent.parentElement
+  ) {
+    if (getComputedStyle(parent).overflowX !== "visible")
+      return parent.getBoundingClientRect().left + parent.clientWidth;
+  }
+  return document.documentElement.clientWidth;
 }

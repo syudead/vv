@@ -1165,7 +1165,7 @@
       "method": "POST",
       "path": "/api/video-edits",
       "summary": "Apply one bulk edit to selected videos",
-      "description": "Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.",
+      "description": "Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed. merges run after the other parts in the same local transaction and only on this node: each source still provisional is merged into its into person as confirmFaceCandidate does, with undoActivityId when the merge can be undone; a source that no longer exists or has been named since is skipped and listed in skippedPersonIds. A missing into returns 404 person_not_found and a merge id at or above 2^40 returns 400 invalid_request with provisional_person_remote, both at merges[i]. See docs/design-docs/bulk-editing.md.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -1246,6 +1246,36 @@
                 "maxItems": 3,
                 "type": "array"
               },
+              "merges": {
+                "description": "Provisional people to merge into a person, at most one entry per into person; a source listed twice, or equal to an into, returns 400 work_info_duplicate at its field.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "into": {
+                      "description": "The person the sources are merged into.",
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "sourceIds": {
+                      "description": "Provisional people to merge into into.",
+                      "items": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "maxItems": 20000,
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "into",
+                    "sourceIds"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
               "public": {
                 "description": "True makes the videos public, false private; omit to keep each video's visibility.",
                 "type": "boolean"
@@ -1317,6 +1347,11 @@
       "body": true,
       "bodyType": "application/json",
       "ids": [
+        {
+          "in": "body",
+          "field": "/merges/*/sourceIds",
+          "kind": ""
+        },
         {
           "in": "body",
           "field": "/smartFolderIds",
@@ -8179,6 +8214,79 @@
       },
       "body": true,
       "bodyType": "application/json"
+    },
+    {
+      "operationId": "matchProvisionalPeople",
+      "method": "POST",
+      "path": "/api/video-edits/provisional-matches",
+      "summary": "Tell which provisional performers of selected videos are which added people",
+      "description": "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "personIds": {
+                "description": "The people being added, whose faces similarTo compares.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              "smartFolderIds": {
+                "description": "Smart-folder IDs resolved to their current member videos, as in VideoEditRequest.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "maxItems": 20000,
+                "type": "array"
+              },
+              "videoIds": {
+                "description": "Video IDs to read. May be empty when smartFolderIds is not.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "maxItems": 20000,
+                "type": "array"
+              }
+            },
+            "required": [
+              "videoIds",
+              "personIds"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      },
+      "body": true,
+      "bodyType": "application/json",
+      "ids": [
+        {
+          "in": "body",
+          "field": "/personIds",
+          "kind": ""
+        },
+        {
+          "in": "body",
+          "field": "/smartFolderIds",
+          "kind": ""
+        },
+        {
+          "in": "body",
+          "field": "/videoIds",
+          "kind": ""
+        }
+      ]
     },
     {
       "operationId": "mergeOrganizations",
