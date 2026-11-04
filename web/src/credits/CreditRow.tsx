@@ -75,7 +75,12 @@ function CreditRow({
   const mergeLabel = kindTexts(kind).mergeInto;
 
   return (
-    <TableRow ref={measureRef} data-index={index} data-credit-id={credit.id}>
+    <TableRow
+      ref={measureRef}
+      data-index={index}
+      data-credit-id={credit.id}
+      className="group"
+    >
       {/* max-w-0 prevents long names from widening the table. */}
       <TableCell className="w-full max-w-0 whitespace-normal">
         {renaming ? (
