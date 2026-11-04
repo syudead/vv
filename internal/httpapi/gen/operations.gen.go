@@ -264,6 +264,7 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "DELETE", Path: "/api/work-info-plugins/{id}"},
 	{Method: "PUT", Path: "/api/work-info-plugins/{id}/approval", Response: "WorkInfoPlugin", Request: "ApproveWorkInfoPluginRequest"},
 	{Method: "DELETE", Path: "/api/work-info-plugins/{id}/approval", Response: "WorkInfoPlugin"},
+	{Method: "PUT", Path: "/api/work-info-plugins/{id}/enabled", Response: "WorkInfoPlugin", Request: "SetWorkInfoPluginEnabledRequest"},
 	{Method: "GET", Path: "/api/work-info-plugins/{id}/last-run", Response: "WorkInfoPluginLastRun"},
 	{Method: "POST", Path: "/api/work-info-plugins/{id}/person-search", Response: "PersonPluginSearchResult", Request: "WorkInfoSearchRequest"},
 	{Method: "POST", Path: "/api/work-info-plugins/{id}/search", Response: "WorkInfoSearchResult", Request: "WorkInfoSearchRequest"},

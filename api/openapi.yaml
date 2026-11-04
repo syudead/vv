@@ -3138,6 +3138,33 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/work-info-plugins/{id}/enabled:
+    put:
+      operationId: setWorkInfoPluginEnabled
+      summary: "Switch a plugin on or off"
+      description: "Owner-only. A switched-off plugin keeps its approval, settings and link order, but every run returns 409 plugin_disabled, link fetches skip it, and results fetched before switching off can no longer be applied. Switching on again needs no new approval. The bundled plugin can be switched off too. Missing plugins return 404 not_found; repeating the current state returns 200 without changes."
+      parameters:
+        - $ref: "#/components/parameters/WorkInfoPluginId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetWorkInfoPluginEnabledRequest"
+      responses:
+        "200":
+          description: "Plugin with its new switch"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoPlugin"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/work-info-plugins/{id}/settings:
     put:
       operationId: setWorkInfoPluginSettings
@@ -8109,10 +8136,13 @@ components:
     WorkInfoPlugin:
       type: object
       required:
-        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources, domains, builtin]
+        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources, domains, builtin, enabled]
       additionalProperties: false
       description: "One work-info or person plugin."
       properties:
+        enabled:
+          type: boolean
+          description: "The owner's switch. A plugin that is off never runs, whatever its state; new plugins start on."
         id:
           type: integer
           format: int64
@@ -8241,6 +8271,14 @@ components:
         digest:
           type: string
           description: "Digest observed in the list response."
+
+    SetWorkInfoPluginEnabledRequest:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
 
     SetWorkInfoPluginSettingsRequest:
       type: object
@@ -14729,6 +14767,7 @@ components:
             - plugin_changed
             - plugin_unusable
             - plugin_not_approved
+            - plugin_disabled
             - plugin_settings_missing
             - plugin_failed
             - plugin_timed_out

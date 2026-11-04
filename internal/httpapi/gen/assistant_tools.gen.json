@@ -11045,6 +11045,54 @@
       ]
     },
     {
+      "operationId": "setWorkInfoPluginEnabled",
+      "method": "PUT",
+      "path": "/api/work-info-plugins/{id}/enabled",
+      "summary": "Switch a plugin on or off",
+      "description": "Owner-only. A switched-off plugin keeps its approval, settings and link order, but every run returns 409 plugin_disabled, link fetches skip it, and results fetched before switching off can no longer be applied. Switching on again needs no new approval. The bundled plugin can be switched off too. Missing plugins return 404 not_found; repeating the current state returns 200 without changes.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "description": "Work-info plugin ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
+        "type": "object"
+      },
+      "body": true,
+      "bodyType": "application/json",
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "workInfoPlugin"
+        }
+      ]
+    },
+    {
       "operationId": "setWorkInfoPluginLinkOrder",
       "method": "PUT",
       "path": "/api/work-info-plugins/link-order",

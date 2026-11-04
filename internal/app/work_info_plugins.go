@@ -28,6 +28,8 @@ type WorkInfoPluginStore interface {
 	ApproveWorkInfoPlugin(ctx context.Context, id int64, digest string, now time.Time) (domain.WorkInfoPlugin, error)
 	// RevokeWorkInfoPlugin returns ErrNotFound when absent.
 	RevokeWorkInfoPlugin(ctx context.Context, id int64, now time.Time) (domain.WorkInfoPlugin, error)
+	// SetWorkInfoPluginEnabled switches the plugin on or off, or returns ErrNotFound when absent.
+	SetWorkInfoPluginEnabled(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPlugin, error)
 	// SetWorkInfoPluginValues revalidates transactionally like approval; unknown keys or oversized values additionally return ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginValues(ctx context.Context, id int64, values map[string]*string, now time.Time) (domain.WorkInfoPlugin, error)
 	// DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound or ErrWorkInfoPluginBuiltin.
@@ -162,6 +164,12 @@ func (p *WorkInfoPlugins) ApproveWorkInfoPlugin(ctx context.Context, id int64, d
 // RevokeWorkInfoPluginApproval returns ErrNotFound when absent.
 func (p *WorkInfoPlugins) RevokeWorkInfoPluginApproval(ctx context.Context, id int64) (domain.WorkInfoPluginEntry, error) {
 	return entryOf(p.store.RevokeWorkInfoPlugin(ctx, id, p.now()))
+}
+
+// SetWorkInfoPluginEnabled switches the plugin on or off without touching approval or settings; a switched-off plugin
+// never runs. Missing plugins return ErrNotFound.
+func (p *WorkInfoPlugins) SetWorkInfoPluginEnabled(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPluginEntry, error) {
+	return entryOf(p.store.SetWorkInfoPluginEnabled(ctx, id, enabled))
 }
 
 // SetWorkInfoPluginSettings clears nil/empty values, preserves omitted keys and leaves approval unchanged. Missing/unusable plugins or undeclared/oversized values return ErrNotFound, ErrWorkInfoPluginUnusable or ErrWorkInfoPluginSettingInvalid without writes.

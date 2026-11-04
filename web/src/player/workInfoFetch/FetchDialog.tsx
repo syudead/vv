@@ -8,6 +8,7 @@ import {
   applyWorkInfoFetch,
   fetchWorkInfo,
   fetchWorkInfoByLink,
+  PLUGIN_GONE_CODES,
   searchWorkInfo,
   type WorkInfoCandidate,
   type WorkInfoFetchApplied,
@@ -39,8 +40,6 @@ import {
   type WorkSelection,
   workSelectionEmpty,
 } from "./workSelection";
-
-const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 type Step = "find" | "compare" | "result";
 
@@ -220,7 +219,7 @@ function useFetchFlow({
       if (isAborted(error) || signal.aborted) return;
       setFailure({ operation, error, plugin: target });
       setStep("find");
-      if (error instanceof RequestFailed && PLUGIN_GONE.has(error.code ?? ""))
+      if (error instanceof RequestFailed && PLUGIN_GONE_CODES.has(error.code ?? ""))
         void onReload();
     } finally {
       if (!signal.aborted) setRunning(null);

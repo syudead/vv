@@ -15,6 +15,8 @@ var (
 	ErrWorkInfoPluginSettingInvalid = errors.New("the work-info plugin setting is not declared or its value is too long")
 	// ErrWorkInfoPluginKindMismatch reports a work-info operation on a person plugin, or the reverse.
 	ErrWorkInfoPluginKindMismatch = errors.New("the plugin is of the other kind")
+	// ErrWorkInfoPluginDisabled reports a run of a plugin the owner switched off.
+	ErrWorkInfoPluginDisabled = errors.New("the plugin is switched off")
 )
 
 // Invalid uploads do not persist Module and treat Operations/Settings as unreadable.
@@ -47,6 +49,13 @@ type WorkInfoPlugin struct {
 	Builtin bool
 	// LinkRank orders the plugins that declare domains for a link, lowest first; zero without domains.
 	LinkRank int
+	// Disabled is the owner's switch turned off; such a plugin keeps its approval and settings but never runs.
+	Disabled bool
+}
+
+// Runnable reports whether the plugin may run: approved and switched on.
+func (p WorkInfoPlugin) Runnable() bool {
+	return !p.Disabled && p.State() == WorkInfoPluginApproved
 }
 
 func (p WorkInfoPlugin) State() WorkInfoPluginState {
@@ -85,6 +94,7 @@ type WorkInfoPluginEntry struct {
 	Builtin bool
 	// LinkRank is the plugin's 1-based place among the plugins that declare domains, or zero.
 	LinkRank int
+	Disabled bool
 }
 
 // Entry preserves declaration order and removes secret values.
@@ -131,6 +141,7 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		Domains:     domains,
 		Builtin:     p.Builtin,
 		LinkRank:    p.LinkRank,
+		Disabled:    p.Disabled,
 	}
 }
 

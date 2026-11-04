@@ -25,6 +25,8 @@ type WorkInfoPlugins interface {
 	ApproveWorkInfoPlugin(ctx context.Context, id int64, digest string) (domain.WorkInfoPluginEntry, error)
 	// RevokeWorkInfoPluginApproval returns ErrNotFound when absent.
 	RevokeWorkInfoPluginApproval(ctx context.Context, id int64) (domain.WorkInfoPluginEntry, error)
+	// SetWorkInfoPluginEnabled switches the plugin on or off; an absent plugin returns ErrNotFound.
+	SetWorkInfoPluginEnabled(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPluginEntry, error)
 	// SetWorkInfoPluginSettings may return ErrNotFound, ErrWorkInfoPluginUnusable, or ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
 	// DeleteWorkInfoPlugin removes settings too; an absent plugin returns ErrNotFound, the bundled one
@@ -235,6 +237,19 @@ func (s *server) RevokeWorkInfoPluginApproval(w http.ResponseWriter, r *http.Req
 	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
 }
 
+func (s *server) SetWorkInfoPluginEnabled(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
+	enabled, ok := s.readSwitchBody(w, r)
+	if !ok || !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	entry, err := s.workInfoPlugins.SetWorkInfoPluginEnabled(r.Context(), id, enabled)
+	if err != nil {
+		s.workInfoPluginError(w, err)
+		return
+	}
+	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
+}
+
 func (s *server) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	var body gen.SetWorkInfoPluginSettingsRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -360,6 +375,7 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		// All version 1 plugins can access internet sites.
 		Network:   true,
 		UpdatedAt: entry.UpdatedAt.Unix(),
+		Enabled:   !entry.Disabled,
 		Builtin:   entry.Builtin,
 	}
 	if entry.LinkRank > 0 {

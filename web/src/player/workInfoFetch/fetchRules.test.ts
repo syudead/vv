@@ -29,6 +29,7 @@ function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
     network: true,
     updatedAt: 0,
     builtin: false,
+    enabled: true,
     ...overrides,
   };
 }
@@ -59,9 +60,10 @@ function result(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
 }
 
 describe("fetchRules", () => {
-  it("承認済みの作品情報プラグインだけを一覧の順のまま返す", () => {
+  it("承認済みでオンの作品情報プラグインだけを一覧の順のまま返す", () => {
     const list = [
       plugin({ id: 1, state: "unapproved" }),
+      plugin({ id: 6, enabled: false }),
       plugin({ id: 2 }),
       plugin({ id: 3, state: "invalid" }),
       plugin({ id: 5, kind: "person", sources: ["example.people"] }),

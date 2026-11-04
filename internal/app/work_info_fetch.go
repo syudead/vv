@@ -273,7 +273,7 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source or a link outside the domains, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
+// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source or a link outside the domains, ErrWorkInfoPluginNotApproved, ErrWorkInfoPluginDisabled, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
 	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
@@ -293,6 +293,9 @@ func (p *WorkInfoPlugins) run(
 	req.Kind, req.Sources = kind, plugin.Manifest.Sources
 	if plugin.State() != domain.WorkInfoPluginApproved {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginNotApproved
+	}
+	if plugin.Disabled {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginDisabled
 	}
 	if !plugin.Manifest.Supports(req.Operation) {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoOperationUnsupported

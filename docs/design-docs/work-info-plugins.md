@@ -44,6 +44,20 @@ sections from the bytes.
 | `_start` takes and returns nothing, and `memory` is exported                                                                                                                                         | `export_invalid`       |
 | Every table's minimum, and its declared maximum when it has one, is 100,000 elements or less, and so is the sum over all tables of each table's declared maximum, or 100,000 for a table without one | `table_too_large`      |
 
+## The owner's switch stops a plugin without removing it
+
+Each plugin row has a switch, `work_info_plugins.enabled`, which starts on for
+every plugin, the bundled one included. A plugin that is off keeps its module,
+approval, settings and place in the link order, so switching it on again needs
+no new review.
+
+| Rule                                                                                                               | Where                                                               | Why                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| A run of a plugin that is off returns `ErrWorkInfoPluginDisabled` (`409 plugin_disabled`) before the module starts | [`work_info_fetch.go`](../../internal/app/work_info_fetch.go)       | Every caller, the screens, the assistant and a peer's fetch, goes through the one check |
+| A link fetch skips a plugin that is off and tries the next one in link order                                       | [`link_plugin.go`](../../internal/domain/link_plugin.go)            | The owner turns a site's plugin off to fall back to the next one                        |
+| Switching off increments the generation; switching on leaves it                                                    | [`work_info_plugins.go`](../../internal/store/work_info_plugins.go) | A result fetched before the switch went off cannot be applied, as after revocation      |
+| The screens offer only plugins that are approved and on                                                            | [`fetchRules.ts`](../../web/src/player/workInfoFetch/fetchRules.ts) | The video and person pages never show a plugin that would refuse to run                 |
+
 ## Tables get a maximum before compiling
 
 A table without a declared maximum, as Go's `wasip1` linker writes the
@@ -357,16 +371,16 @@ and the unnamed person's face for a person without one. An unnamed person
 holding external IDs is merged as a named one, without undo, because the undo
 snapshot keeps no external IDs.
 
-| Case | Result |
-| --- | --- |
-| The person is no longer an unnamed performer of the work, or the entry was skipped | Nothing is merged for the pair |
-| The merge is refused for good (the people's limits) | Rolled back alone and reported as skipped under the entry |
+| Case                                                                               | Result                                                    |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| The person is no longer an unnamed performer of the work, or the entry was skipped | Nothing is merged for the pair                            |
+| The merge is refused for good (the people's limits)                                | Rolled back alone and reported as skipped under the entry |
 
-| Rejected | Why |
-| --- | --- |
-| Matching on the person's faces page | The fetched person has no face from the video, so the pair is never offered as a candidate there |
-| Linking the entry to the unnamed person and naming them | A second write path beside the merge, and no undo |
-| Lowering the automatic merge thresholds | The automatic merges are already too inaccurate for the owner; a person decides the pairs |
+| Rejected                                                | Why                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Matching on the person's faces page                     | The fetched person has no face from the video, so the pair is never offered as a candidate there |
+| Linking the entry to the unnamed person and naming them | A second write path beside the merge, and no undo                                                |
+| Lowering the automatic merge thresholds                 | The automatic merges are already too inaccurate for the owner; a person decides the pairs        |
 
 ## VVMDM fetches the covers and applies one as an uploaded image
 
@@ -544,8 +558,8 @@ flowchart LR
   same --> commit[Commit, then events]
 ```
 
-1. The plugin row is read again, as before: a replaced, revoked or deleted
-   plugin answers `ErrWorkInfoFetchStale` and nothing is written.
+1. The plugin row is read again, as before: a replaced, revoked, switched-off
+   or deleted plugin answers `ErrWorkInfoFetchStale` and nothing is written.
 2. The fetched people and organizations are matched again with the same
    query as at fetch time (`matchCredits` in
    [`credit_match.go`](../../internal/store/credit_match.go)). An entity
