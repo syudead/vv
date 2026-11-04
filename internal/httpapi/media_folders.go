@@ -101,8 +101,8 @@ func (s *server) loadMediaFolders(w http.ResponseWriter, r *http.Request) ([]dom
 	return folders, true
 }
 
-// readSwitchBody reads a folder switch's {"enabled": bool}; a missing enabled is refused rather than read as false,
-// which would switch the folder off.
+// readSwitchBody reads a switch's {"enabled": bool}; a missing enabled is refused rather than read as false,
+// which would switch the folder or plugin off.
 func (s *server) readSwitchBody(w http.ResponseWriter, r *http.Request) (enabled, ok bool) {
 	var body struct {
 		Enabled *bool `json:"enabled"`

@@ -105,6 +105,15 @@ func (s *fakePluginStore) RevokeWorkInfoPlugin(ctx context.Context, id int64, _ 
 	return *s.plugin, nil
 }
 
+func (s *fakePluginStore) SetWorkInfoPluginEnabled(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPlugin, error) {
+	s.writes++
+	if _, err := s.WorkInfoPlugin(ctx, id); err != nil {
+		return domain.WorkInfoPlugin{}, err
+	}
+	s.plugin.Disabled = !enabled
+	return *s.plugin, nil
+}
+
 func (s *fakePluginStore) SetWorkInfoPluginValues(_ context.Context, _ int64, values map[string]*string, _ time.Time) (domain.WorkInfoPlugin, error) {
 	s.writes++
 	for key, value := range values {

@@ -42,12 +42,12 @@ func (p WorkInfoPlugin) HandlesLinks() bool {
 	return p.Kind() == WorkInfoPluginKindWork && len(p.Manifest.Domains) > 0
 }
 
-// LinkPluginsFor returns the work-info plugins that would run for link, in link order: approved, able to fetch,
+// LinkPluginsFor returns the work-info plugins that would run for link, in link order: approved and switched on, able to fetch,
 // with every required setting set, and declaring a domain that matches.
 func LinkPluginsFor(plugins []WorkInfoPlugin, link string) []WorkInfoPlugin {
 	var out []WorkInfoPlugin
 	for _, p := range plugins {
-		if p.HandlesLinks() && p.State() == WorkInfoPluginApproved && p.Manifest.Supports(WorkInfoFetch) &&
+		if p.HandlesLinks() && p.Runnable() && p.Manifest.Supports(WorkInfoFetch) &&
 			len(MissingWorkInfoPluginSettings(p.Manifest.Settings, p.Values)) == 0 &&
 			LinkMatchesDomains(link, p.Manifest.Domains) {
 			out = append(out, p)

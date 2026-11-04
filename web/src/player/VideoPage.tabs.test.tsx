@@ -105,6 +105,7 @@ const approvedWorkPlugin = {
   operations: ["search"],
   digest: "d",
   state: "approved",
+  enabled: true,
   settings: [],
 };
 

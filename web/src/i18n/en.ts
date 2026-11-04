@@ -242,6 +242,7 @@ const errorCodes = {
   plugin_changed: "The plugin was replaced. Review it again.",
   plugin_unusable: "The plugin can't be used.",
   plugin_not_approved: "The plugin is no longer approved.",
+  plugin_disabled: "The plugin is switched off.",
   plugin_settings_missing: "The plugin needs settings first.",
   plugin_failed: "The plugin failed.",
   plugin_timed_out: "The plugin didn't finish in 30 seconds and was stopped.",
@@ -5015,7 +5016,7 @@ export const en = {
     workInfoPlugins: {
       heading: "Work-info plugins",
       description:
-        "Plugins fetch work information from other sites for the video page. Approve a plugin before it can run.",
+        "Plugins fetch work information from other sites for the video page. Approve a plugin before it can run, and switch it off to stop using it without removing it.",
       guide: "How plugins work",
       opensInNewTab: "(opens in a new tab)",
       list: "Added work-info plugins",
@@ -5056,7 +5057,7 @@ export const en = {
       person: {
         heading: "Person plugins",
         description:
-          "Plugins fetch a person's face and profile from other sites, from the person page and when fetched work information names a person they know. Approve a plugin before it can run.",
+          "Plugins fetch a person's face and profile from other sites, from the person page and when fetched work information names a person they know. Approve a plugin before it can run, and switch it off to stop using it without removing it.",
         list: "Added person plugins",
         loading: "Loading the person plugins",
         loadFailed: (reason: string) => `Couldn't load the person plugins: ${reason}`,
@@ -5097,6 +5098,8 @@ export const en = {
       delete: "Delete",
       revoking: "Revoking…",
       deleting: "Deleting…",
+      switchLabel: (name: string) => `Use ${name}`,
+      switching: "Saving…",
       rowFailed: (name: string, reason: string) => `Couldn't change ${name}: ${reason}`,
       problems: {
         not_wasm: "The file isn't a WebAssembly module.",

@@ -1043,6 +1043,7 @@ const (
 	ErrorCodePluginBuiltin               ErrorCode = "plugin_builtin"
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
+	ErrorCodePluginDisabled              ErrorCode = "plugin_disabled"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
 	ErrorCodePluginKindMismatch          ErrorCode = "plugin_kind_mismatch"
 	ErrorCodePluginNotApproved           ErrorCode = "plugin_not_approved"
@@ -1130,6 +1131,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePluginBusy:
 		return true
 	case ErrorCodePluginChanged:
+		return true
+	case ErrorCodePluginDisabled:
 		return true
 	case ErrorCodePluginFailed:
 		return true
@@ -7183,6 +7186,11 @@ type SetMediaFolderEnabledRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+// SetWorkInfoPluginEnabledRequest defines model for SetWorkInfoPluginEnabledRequest.
+type SetWorkInfoPluginEnabledRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // SetWorkInfoPluginSettingsRequest defines model for SetWorkInfoPluginSettingsRequest.
 type SetWorkInfoPluginSettingsRequest struct {
 	// Values Map of keys to new values; null deletes a value, omitted keys remain unchanged.
@@ -8933,6 +8941,9 @@ type WorkInfoPlugin struct {
 	// Domains The link hosts the plugin fetches by url, in manifest order; empty when it declares none. The bundled plugin's only domain is *, which stands for every link.
 	Domains []string `json:"domains"`
 
+	// Enabled The owner's switch. A plugin that is off never runs, whatever its state; new plugins start on.
+	Enabled bool `json:"enabled"`
+
 	// FileName Uploaded filename.
 	FileName string `json:"fileName"`
 	Id       int64  `json:"id"`
@@ -10249,6 +10260,9 @@ type SetWorkInfoPluginLinkOrderJSONRequestBody = WorkInfoPluginLinkOrder
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
 
+// SetWorkInfoPluginEnabledJSONRequestBody defines body for SetWorkInfoPluginEnabled for application/json ContentType.
+type SetWorkInfoPluginEnabledJSONRequestBody = SetWorkInfoPluginEnabledRequest
+
 // SearchPeopleWithPluginJSONRequestBody defines body for SearchPeopleWithPlugin for application/json ContentType.
 type SearchPeopleWithPluginJSONRequestBody = WorkInfoSearchRequest
 
@@ -10989,6 +11003,9 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin Approve the module inspected by the owner
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// SetWorkInfoPluginEnabled Switch a plugin on or off
+	// (PUT /api/work-info-plugins/{id}/enabled)
+	SetWorkInfoPluginEnabled(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// GetWorkInfoPluginLastRun Read stderr from the latest work-info plugin run
 	// (GET /api/work-info-plugins/{id}/last-run)
 	GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -18495,6 +18512,32 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// SetWorkInfoPluginEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkInfoPluginEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWorkInfoPluginEnabled(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWorkInfoPluginLastRun operation middleware
 func (siw *ServerInterfaceWrapper) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request) {
 
@@ -18847,6 +18890,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/link-order", wrapper.SetWorkInfoPluginLinkOrder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/enabled", wrapper.SetWorkInfoPluginEnabled)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)

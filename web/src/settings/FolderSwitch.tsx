@@ -3,7 +3,7 @@ import { Label } from "../ui/shadcn/label";
 import { Switch } from "../ui/shadcn/switch";
 
 /**
- * The word and the track are one control in a fixed column, so every folder switch of the page lines up.
+ * The word and the track are one control in a fixed column, so every row switch of the page lines up.
  * Below sm it takes its own line under the path, track first at the left, where FormRow stacks the page's other switches.
  */
 export function FolderSwitch({

@@ -2218,6 +2218,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-plugins/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a plugin on or off
+         * @description Owner-only. A switched-off plugin keeps its approval, settings and link order, but every run returns 409 plugin_disabled, link fetches skip it, and results fetched before switching off can no longer be applied. Switching on again needs no new approval. The bundled plugin can be switched off too. Missing plugins return 404 not_found; repeating the current state returns 200 without changes.
+         */
+        put: operations["setWorkInfoPluginEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins/{id}/settings": {
         parameters: {
             query?: never;
@@ -4931,6 +4951,8 @@ export interface components {
         WorkInfoPluginKind: "work" | "person";
         /** @description One work-info or person plugin. */
         WorkInfoPlugin: {
+            /** @description The owner's switch. A plugin that is off never runs, whatever its state; new plugins start on. */
+            enabled: boolean;
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["WorkInfoPluginKind"];
@@ -5001,6 +5023,9 @@ export interface components {
         ApproveWorkInfoPluginRequest: {
             /** @description Digest observed in the list response. */
             digest: string;
+        };
+        SetWorkInfoPluginEnabledRequest: {
+            enabled: boolean;
         };
         SetWorkInfoPluginSettingsRequest: {
             /** @description Map of keys to new values; null deletes a value, omitted keys remain unchanged. */
@@ -8523,7 +8548,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "assistant_busy" | "service_unavailable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_disabled" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "assistant_busy" | "service_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -12407,6 +12432,36 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Plugin with approval revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setWorkInfoPluginEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Work-info plugin ID */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkInfoPluginEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description Plugin with its new switch */
             200: {
                 headers: {
                     [name: string]: unknown;

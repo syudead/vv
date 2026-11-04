@@ -407,6 +407,8 @@ func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound str
 		s.writePluginKindMismatch(w)
 	case errors.Is(err, domain.ErrWorkInfoPluginNotApproved):
 		s.writeError(w, http.StatusConflict, codePluginNotApproved, "The plugin is not approved.")
+	case errors.Is(err, domain.ErrWorkInfoPluginDisabled):
+		s.writeError(w, http.StatusConflict, codePluginDisabled, "The plugin is switched off.")
 	case errors.Is(err, domain.ErrWorkInfoOperationUnsupported):
 		s.writeError(w, http.StatusConflict, codeOperationUnsupported, "The plugin does not support this operation.")
 	case errors.As(err, &missing):
