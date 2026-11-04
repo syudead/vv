@@ -55,6 +55,20 @@ export function dropOn(name: string | RegExp, from: number, to: number) {
   release(to);
 }
 
+// dnd-kit stops every document click for this long after a drop.
+const dropClickGuardMs = 50;
+
+/** Drop on fake timers and pass dnd-kit's post-drop click guard, so the next click reaches the page. */
+export async function releaseAndSettle(drop: () => void) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    drop();
+    await act(() => vi.advanceTimersByTimeAsync(dropClickGuardMs));
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 /** Wait 50ms for dnd-kit's document click suppression before selecting the drop menu. */
 export async function afterDrop() {
   await act(async () => {

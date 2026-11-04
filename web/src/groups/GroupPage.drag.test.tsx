@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { releaseAndSettle } from "../testing/cardDrag";
 import {
   json,
   layoutRows,
@@ -60,18 +61,6 @@ function moveTo(index: number, ratio: number) {
 
 function release(index: number, ratio: number) {
   fireEvent.pointerUp(document, { ...mouse, ...pointOn(index, ratio) });
-}
-
-/** Drop, then let dnd-kit's post-drop click guard expire so the next click reaches the page. */
-async function releaseAndSettle(index: number, ratio: number) {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  try {
-    release(index, ratio);
-    // dnd-kit suppresses document clicks for 50ms after a drop.
-    await act(() => vi.advanceTimersByTimeAsync(50));
-  } finally {
-    vi.useRealTimers();
-  }
 }
 
 function cardTitles(): string[] {
@@ -184,7 +173,7 @@ describe("GroupPage drag", () => {
     await openGrid();
     lift("Episode 2", 2);
     moveTo(0, 0.1);
-    await releaseAndSettle(0, 0.1);
+    await releaseAndSettle(() => release(0, 0.1));
     await screen.findByText('Reordered "Season"');
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
@@ -204,7 +193,7 @@ describe("GroupPage drag", () => {
     await openGrid();
     lift("Episode 2", 2);
     moveTo(0, 0.1);
-    await releaseAndSettle(0, 0.1);
+    await releaseAndSettle(() => release(0, 0.1));
     await screen.findByText('Reordered "Season"');
     server.undoAnswer = () =>
       json({ code: "conflict", reason: "undo_conflict", message: "x" }, 409);

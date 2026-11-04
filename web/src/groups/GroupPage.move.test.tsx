@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { releaseAndSettle } from "../testing/cardDrag";
 import {
   json,
   renderPage,
@@ -196,7 +197,7 @@ describe("GroupPage move", () => {
     await openSeason();
     lift("Episode 1", 0);
     moveTo(onCard(1));
-    release(onCard(1));
+    await releaseAndSettle(() => release(onCard(1)));
     await screen.findByText('Moved 1 item to "Extras"');
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
