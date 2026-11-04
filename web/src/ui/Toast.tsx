@@ -134,8 +134,11 @@ function toasterPlacement(placement: Placement, wide: boolean) {
   if (wide) {
     return {
       position: "bottom-center",
-      // Place above the sticky selection bar.
-      offset: { bottom: "calc(var(--spacing-selection-bar) + 2rem)" },
+      // Place above the sticky selection bar, whose height grows when its actions wrap.
+      offset: {
+        bottom:
+          "calc(max(var(--spacing-selection-bar), var(--selection-bar-height, 0px)) + 2rem)",
+      },
     } as const;
   }
   const top = "calc(var(--spacing-navbar) + 0.5rem)";

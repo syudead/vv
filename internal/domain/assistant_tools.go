@@ -167,7 +167,8 @@ var assistantSelf = AssistantExclusion{Group: "The assistant itself", Reason: "T
 
 // assistantReadPosts write nothing although they are sent as POST.
 var assistantReadPosts = []string{
-	"tagImpact", "summarizeVideoTags", "summarizeVideoEdits", "summarizeVideoCodeEdits", "listWorkInfoFillTargets",
+	"tagImpact", "summarizeVideoTags", "summarizeVideoEdits", "summarizeVideoCodeEdits", "matchProvisionalPeople",
+	"listWorkInfoFillTargets",
 	"searchWorkInfo", "fetchWorkInfo", "searchPeopleWithPlugin", "fetchPersonWithPlugin", "checkOllama",
 	"checkComfyUI", "checkAutoTaggingClassifier",
 }

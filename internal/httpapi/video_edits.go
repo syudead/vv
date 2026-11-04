@@ -16,6 +16,8 @@ type VideoEdits interface {
 	Summary(ctx context.Context, videoIDs []int64) (domain.VideoEditSummary, error)
 	// Apply writes every part atomically; ContentKeys lists the targets' content keys when it made them private.
 	Apply(ctx context.Context, videoIDs []int64, edit domain.VideoEdit) (domain.VideoEditResult, error)
+	// ProvisionalMatches lists the provisional performers of the listed videos against the people being added.
+	ProvisionalMatches(ctx context.Context, videoIDs, personIDs []int64) ([]domain.ProvisionalMatch, error)
 }
 
 func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +78,10 @@ func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if field, remote := remoteMergeField(edit.Merges); remote {
+		s.writeSplitEditError(w, &provisionalPersonError{field: field})
+		return
+	}
 	parts, ok := s.splitVideoEdit(w, r, edit, sel)
 	if !ok {
 		return
@@ -91,6 +97,7 @@ func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 		for _, ref := range result.Tags {
 			out.Tags = append(out.Tags, toAPITagRef(ref))
 		}
+		addMergeResult(&out, result)
 	}
 	s.editOnPeer(r, parts, &out)
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -126,7 +133,68 @@ func videoEditFromRequest(body gen.VideoEditRequest) domain.VideoEdit {
 	for _, date := range deref(body.Dates) {
 		edit.Dates = append(edit.Dates, domain.DateEdit{Kind: domain.DateKind(date.Kind), Date: date.Date})
 	}
+	for _, merge := range deref(body.Merges) {
+		edit.Merges = append(edit.Merges, domain.PersonMerge{Into: merge.Into, SourceIDs: merge.SourceIds})
+	}
 	return edit
+}
+
+// remoteMergeField names the first merge id of the peer; merges only run on this node.
+func remoteMergeField(merges []domain.PersonMerge) (string, bool) {
+	for i, merge := range merges {
+		if domain.IsRemoteID(merge.Into) {
+			return fmt.Sprintf("merges[%d].into", i), true
+		}
+		for j, id := range merge.SourceIDs {
+			if domain.IsRemoteID(id) {
+				return fmt.Sprintf("merges[%d].sourceIds[%d]", i, j), true
+			}
+		}
+	}
+	return "", false
+}
+
+func addMergeResult(out *gen.VideoEditResponse, result domain.VideoEditResult) {
+	if len(result.Merged) > 0 {
+		merged := make([]gen.VideoEditMerged, len(result.Merged))
+		for i, m := range result.Merged {
+			merged[i] = gen.VideoEditMerged{PersonId: m.PersonID, Into: m.Into}
+			if m.UndoActivityID != 0 {
+				merged[i].UndoActivityId = &m.UndoActivityID
+			}
+		}
+		out.Merged = &merged
+	}
+	if len(result.SkippedPersonIDs) > 0 {
+		out.SkippedPersonIds = &result.SkippedPersonIDs
+	}
+}
+
+// MatchProvisionalPeople reads this node's videos only: a provisional person cannot be merged across nodes.
+func (s *server) MatchProvisionalPeople(w http.ResponseWriter, r *http.Request) {
+	var body gen.ProvisionalMatchRequest
+	if !s.readJSONBody(w, r, &body) || !s.videoEditsConfigured(w) {
+		return
+	}
+	sel, ok := s.resolveSelection(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
+	if !ok {
+		return
+	}
+	out := gen.ProvisionalMatches{Items: []gen.ProvisionalMatch{}}
+	if len(sel.local) > 0 {
+		matches, err := s.videoEdits.ProvisionalMatches(r.Context(), sel.local, body.PersonIds)
+		if err != nil {
+			s.internalError(w, "Could not read the unnamed performers.", err)
+			return
+		}
+		for _, m := range matches {
+			out.Items = append(out.Items, gen.ProvisionalMatch{
+				PersonId: m.PersonID, Alone: m.Alone, CoPerformers: m.CoPerformers, SimilarTo: m.SimilarTo,
+			})
+		}
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
 func deref[T any](list *[]T) []T {

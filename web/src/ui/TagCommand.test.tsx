@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { t } from "../i18n";
 import TagCommand, { type TagChoice, type TagCommandLayout } from "./TagCommand";
@@ -48,6 +48,36 @@ function input() {
 }
 
 describe("TagCommand（dropdown）", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("aligns the list to the input's right edge only when it would run past the scrolling panel", () => {
+    // The panel is 300px wide from 0; the list is 256px wide.
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(256);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    const at = (left: number) =>
+      vi
+        .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+        .mockImplementation(function (this: HTMLElement) {
+          return DOMRect.fromRect({ x: this.hasAttribute("cmdk-root") ? left : 0 });
+        });
+    const panel = (
+      <div style={{ overflowX: "auto" }}>
+        <Harness layout="dropdown" />
+      </div>
+    );
+
+    at(150);
+    const { unmount } = render(panel);
+    act(() => input().focus());
+    expect(screen.getByRole("listbox").className).toContain("right-0");
+    unmount();
+
+    at(20);
+    render(panel);
+    act(() => input().focus());
+    expect(screen.getByRole("listbox").className).not.toContain("right-0");
+  });
+
   it("入力に触れると開き、矢印を押すまでどの行も選ばない", async () => {
     render(<Harness layout="dropdown" />);
     expect(input().getAttribute("aria-expanded")).toBe("false");

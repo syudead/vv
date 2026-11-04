@@ -103,6 +103,11 @@ func (s *VideoEditStore) Apply(ctx context.Context, videoIDs []int64, edit domai
 	if result.ContentKeys, err = w.visibility(ctx, edit.Public); err != nil {
 		return domain.VideoEditResult{}, err
 	}
+	merged, err := w.merges(ctx, edit.Merges, &result)
+	if err != nil {
+		return domain.VideoEditResult{}, err
+	}
+	events = append(events, merged...)
 	if err := s.db.commitWith(ctx, tx, w.c, events...); err != nil {
 		return domain.VideoEditResult{}, fmt.Errorf("cannot apply the edit: %w", err)
 	}

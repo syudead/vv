@@ -3,7 +3,7 @@
 - Status: adopted
 - Scope: the `Edit` and `Edit codes` actions of the list selection bar, the
   editors they open, and the `/api/video-edits` and `/api/video-code-edits`
-  operations behind them
+  operations behind them, including the merge of unnamed performers
 
 `Edit` on the selection bar opens one full-screen editor that shows what the
 selected videos carry and applies every change in one request. It holds the
@@ -95,6 +95,62 @@ filter makes the page clear the selection and reload.
 | --- | --- |
 | One request per field from the client | A failure halfway leaves part of the edit applied, and the toast cannot say what happened |
 | Descriptions, links and external IDs in the editor | They belong to one video; setting one value on many videos is not an edit anyone makes |
+
+## Unnamed performers merge into the added performer
+
+Face recognition credits each face it cannot link as an unnamed (provisional)
+performer ([people.md](people.md#a-person-without-a-canonical-name-is-provisional)),
+so adding the real performer to the selected videos would otherwise list them
+twice. When the draft adds a named performer, or a name created on Apply, an
+`Unnamed performers` field under `Performers` shows each unnamed performer of
+the selection as a `PersonFace judge` tile with how many selected videos have
+them. Pressing a tile steps through keeping the person apart and merging them
+into each added performer; the change list shows each merge.
+
+The client code is in [`merges.ts`](../../web/src/library/bulkEdit/merges.ts)
+and [`MergeField.tsx`](../../web/src/library/bulkEdit/MergeField.tsx), the
+store in [`bulk_person_merges.go`](../../internal/store/bulk_person_merges.go)
+and [`provisional_matches.go`](../../internal/store/provisional_matches.go).
+
+```mermaid
+flowchart LR
+  draft[Draft adds a performer] --> matches[POST /api/video-edits/provisional-matches]
+  matches --> suggest[Suggested merges]
+  suggest -->|press a tile| choice[Owner's choice]
+  choice -->|Apply| apply[POST /api/video-edits with merges]
+  apply --> tx[Credits, then each merge, in one transaction]
+  tx --> toast[Toast with Undo merges]
+  toast -->|Undo| undo[POST /api/activity/id/undo per merge]
+```
+
+A tile starts as merged when the editor can tell who the person is, and kept
+apart otherwise:
+
+| Starts merged into | When |
+| --- | --- |
+| The added performer the person's faces are most similar to | Their mean face reaches the recognizer's merge threshold against that performer's face or the mean of their faces, and the owner has not dismissed the pair |
+| The only added performer | The person is the only unnamed performer of at least one selected video |
+| Nobody | Neither holds, two or more performers are added and no face decides, or another unnamed performer of the same video would start merged into the same performer, since one video's unnamed performers are different people |
+
+Apply sends `merges` with the edit. The store applies the other parts first
+and then merges each source still unnamed as the faces page's confirmation
+does (`mergeByOwner`), recording a `face_merge` entry the toast's
+`Undo merges` takes back, newest first. A source merged, named or deleted
+meanwhile is skipped and counted in the toast; a missing target fails the
+whole edit. A source holding an external ID merges without an entry, because
+the undo cannot restore the ID, and the toast says so. Merges run on this node
+only: the candidates leave out the peer's people, and the request refuses
+their IDs.
+
+A merge moves the whole person, so their videos outside the selection change
+too; the field's hint says so.
+
+| Rejected | Why |
+| --- | --- |
+| Moving only the selected videos' faces and credits | The person stays split across two entries for the same face, which the next analysis or face image would merge anyway |
+| Suggesting every unnamed performer of the selection | A co-performer would be merged into the wrong person whenever the owner missed one tile |
+| Merging without a tile per person | The owner could not see or undo who is merged before Apply |
+| Waiting with Apply only for the summary | Apply pressed before the suggestions arrived would send no merges while the tiles then show some |
 
 ## Codes are edited in a table, one value per video
 
