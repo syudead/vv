@@ -12,6 +12,7 @@ import type {
 import * as events from "../api/serverEvents";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import VideoHeader from "../player/VideoHeader";
+import OllamaSection from "../settings/OllamaSection";
 import TopBar from "../shell/TopBar";
 import { SidebarProvider } from "../ui/shadcn/sidebar";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -232,13 +233,14 @@ function renderApp({
   );
 }
 
-const trigger = () => screen.getByRole("button", { name: /^Assistant/ });
+/** Waits for the first readiness read, which shows the trigger once Ollama is saved. */
+const trigger = () => screen.findByRole("button", { name: /^Assistant/ });
 const field = () => screen.getByRole("textbox", { name: "Request" });
 const panel = () => screen.getByRole("complementary", { name: "Assistant" });
 const location = () => screen.getByRole("status", { name: "location" });
 
 async function ask(user: ReturnType<typeof userEvent.setup>, text: string) {
-  await user.click(trigger());
+  await user.click(await trigger());
   await user.type(field(), `${text}{Enter}`);
 }
 
@@ -265,12 +267,57 @@ describe("AssistantPanel", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
   });
 
+  async function saveOllamaAfterNotSaved(afterSave: () => Response) {
+    let reads = 0;
+    server.readiness = () => {
+      reads += 1;
+      return json({ ready: false, reason: "ollama_not_saved", vision: false });
+    };
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <AudienceProvider audience="owner">
+          <ToastProvider>
+            <TooltipProvider>
+              <AssistantProvider>
+                <SidebarProvider open={false} onOpenChange={() => undefined}>
+                  <TopBar />
+                  <OllamaSection />
+                </SidebarProvider>
+              </AssistantProvider>
+            </TooltipProvider>
+          </ToastProvider>
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+    const save = await screen.findByRole("button", { name: "Save" });
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    await act(async () => undefined);
+    expect(screen.queryByRole("button", { name: /^Assistant/ })).toBeNull();
+
+    server.readiness = afterSave;
+    await user.type(screen.getByLabelText("Ollama URL"), "http://gpu:11434");
+    await user.click(save);
+  }
+
+  it("Ollama の接続が保存されるまでトリガーを出さず、保存したら出す", async () => {
+    await saveOllamaAfterNotSaved(() => json({ ready: true, vision: false }));
+
+    expect(await trigger()).toBeDefined();
+  });
+
+  it("保存後の readiness が読めなくても、パネルで失敗を示せるようトリガーを出す", async () => {
+    await saveOllamaAfterNotSaved(() => json({ code: "internal", message: "boom" }, 500));
+
+    expect(await trigger()).toBeDefined();
+  });
+
   it("準備ができていなければ、入力欄の代わりに Connections への案内を出す", async () => {
     server.readiness = () => json({ ready: false, reason: "generation_model_unset" });
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(trigger());
+    await user.click(await trigger());
 
     const alert = await within(panel()).findByRole("alert");
     expect(alert.textContent).toContain("Choose a model for the assistant");
@@ -286,7 +333,7 @@ describe("AssistantPanel", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(trigger());
+    await user.click(await trigger());
 
     const alert = await within(panel()).findByRole("alert");
     expect(alert.textContent).toContain("The model can’t use tools");
@@ -320,7 +367,7 @@ describe("AssistantPanel", () => {
     );
     expect(screen.queryByRole("complementary", { name: "Assistant" })).toBeNull();
 
-    await user.click(trigger());
+    await user.click(await trigger());
     const chips = within(panel()).getByRole("list", { name: "Tags in the filter" });
     expect(
       within(chips)
@@ -559,7 +606,7 @@ describe("AssistantPanel", () => {
     renderApp();
     await ask(user, "何かして");
     await user.click(within(panel()).getByRole("button", { name: "Close" }));
-    expect(trigger().getAttribute("aria-label")).toBe("Assistant · working");
+    expect((await trigger()).getAttribute("aria-label")).toBe("Assistant · working");
 
     const later = turn({
       id: 3,
@@ -570,7 +617,7 @@ describe("AssistantPanel", () => {
     server.turnRead = () => json(later);
     server.active = () => json({ items: [later] });
     act(() => server.emit());
-    await user.click(trigger());
+    await user.click(await trigger());
 
     expect(await within(panel()).findByText("Looking for tools")).toBeDefined();
     expect(within(panel()).getAllByText("何かして")).toHaveLength(1);
@@ -599,7 +646,7 @@ describe("AssistantPanel", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(trigger());
+    await user.click(await trigger());
 
     expect(await within(panel()).findByText("後の依頼")).toBeDefined();
     expect(within(panel()).getByText("Looking for tools")).toBeDefined();
@@ -728,7 +775,7 @@ describe("AssistantPanel", () => {
   it("IME の確定の Enter と 500 文字を超える依頼は送らない", async () => {
     const user = userEvent.setup();
     renderApp();
-    await user.click(trigger());
+    await user.click(await trigger());
     await user.type(field(), "タグ");
     fireEvent.keyDown(field(), { key: "Enter", isComposing: true });
 
@@ -747,7 +794,7 @@ describe("AssistantPanel", () => {
     renderApp({
       screen: { videoIds: [3, 5], groupIds: [7], smartFolderIds: [9], count: 3 },
     });
-    await user.click(trigger());
+    await user.click(await trigger());
     expect(within(panel()).getByText("Talking about 3 selected items")).toBeDefined();
 
     await user.type(field(), "これにタグを付けて{Enter}");
@@ -1005,7 +1052,7 @@ describe("AssistantPanel", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(trigger());
+    await user.click(await trigger());
 
     const runs = await within(panel()).findByRole("region", { name: "Recent runs" });
     expect(

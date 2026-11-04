@@ -487,6 +487,12 @@ not rebuilt; active proposals no turn in the thread holds are listed under
 | `409 assistant_busy` | A warning under the request, and the running turn the body names joins the thread |
 | `404` on a read | `This request is no longer kept.` in place of the reply |
 
+The trigger appears once readiness, read when the app loads for the owner and
+again after the Ollama settings are saved, reports a saved Ollama connection;
+until then it stays hidden unless the panel is open or a turn, a run or a
+review still has something to show. A failed read shows the trigger so the
+panel can report the failure.
+
 The trigger shows its dot while a turn, a run or a review is working, and
 says `Assistant · waiting for you` when a turn ended on a card or a question
 while the panel was closed.

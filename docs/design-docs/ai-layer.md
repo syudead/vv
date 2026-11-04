@@ -170,13 +170,14 @@ request (`ollama_not_saved`, `generation_model_unset`,
 images (`vision`). `app.OllamaConnection` reads a model's capabilities when the
 settings are saved, by the connection test, and on readiness's first read for
 an endpoint and model pair, and keeps them in memory for that pair, since
-readiness is read each time the panel opens. When Ollama cannot answer then,
+readiness is read when the app loads, after the Ollama settings are saved, and
+each time the panel opens. When Ollama cannot answer then,
 nothing is kept, readiness answers ready, and the request reports the
 connection failure.
 
 | Rejected | Why |
 | --- | --- |
-| Calling `/api/show` on every readiness read | The panel reads readiness each time it opens |
+| Calling `/api/show` on every readiness read | The app reads readiness on load and each time the panel opens |
 | Trying a chat call and reporting a model without tools afterwards | The owner sees the reason before sending a request |
 
 | Setting | Default |

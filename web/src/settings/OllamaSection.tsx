@@ -2,6 +2,7 @@ import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getAssistantReadiness } from "../api/assistant";
+import { useAssistant } from "../assistant/AssistantProvider";
 import {
   checkOllama,
   getOllamaSettings,
@@ -155,6 +156,7 @@ export default function OllamaSection() {
   const controller = useRef<AbortController | null>(null);
   const toolsController = useRef<AbortController | null>(null);
   const { models, reload } = useOllamaModels();
+  const assistant = useAssistant();
 
   const readTools = useCallback((saved: OllamaSettings) => {
     toolsController.current?.abort();
@@ -204,6 +206,8 @@ export default function OllamaSection() {
       setSettings(saved);
       setDraft(saved);
       readTools(saved);
+      // The assistant's trigger appears once a connection is saved.
+      assistant?.checkReadiness();
       return saved;
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));

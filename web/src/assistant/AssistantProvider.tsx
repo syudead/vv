@@ -10,6 +10,8 @@ import {
 } from "react";
 import { useNavigate } from "react-router";
 
+import { useAudience } from "../auth/audience";
+
 import {
   type AssistantCandidate,
   type AssistantProposal,
@@ -46,6 +48,8 @@ export interface AssistantStore {
   /** A turn ended on a card or a question while the panel was closed, and the panel has not opened since. */
   awaiting: boolean;
   readiness: Readiness;
+  /** An Ollama connection is saved, or the last readiness read failed; null until the first read answers. */
+  ollamaSaved: boolean | null;
   draft: string;
   screen: AssistantScreen;
   /** True once after the panel opened by a press, so the composer takes the focus then only. */
@@ -88,6 +92,7 @@ function isWide(): boolean {
 
 function useReadiness() {
   const [readiness, setReadiness] = useState<Readiness>({ state: "checking" });
+  const [ollamaSaved, setOllamaSaved] = useState<boolean | null>(null);
   const readinessRead = useRef<AbortController | null>(null);
   const checkReadiness = useCallback(() => {
     readinessRead.current?.abort();
@@ -99,6 +104,7 @@ function useReadiness() {
     getAssistantReadiness(controller.signal).then(
       (result) => {
         if (controller.signal.aborted) return;
+        setOllamaSaved(result.reason !== "ollama_not_saved");
         setReadiness(
           result.ready
             ? { state: "ready", vision: result.vision }
@@ -106,15 +112,18 @@ function useReadiness() {
         );
       },
       (error: unknown) => {
-        if (!controller.signal.aborted) setReadiness({ state: "failed", error });
+        if (controller.signal.aborted) return;
+        setOllamaSaved(true);
+        setReadiness({ state: "failed", error });
       },
     );
   }, []);
   const onNotReady = useCallback((reason: AssistantReadinessReason) => {
     setReadiness({ state: "notReady", reason });
+    setOllamaSaved(reason !== "ollama_not_saved");
   }, []);
   useEffect(() => () => readinessRead.current?.abort(), []);
-  return { readiness, checkReadiness, onNotReady };
+  return { readiness, ollamaSaved, checkReadiness, onNotReady };
 }
 
 /** The review runs the thread's turns started, in thread order. */
@@ -140,7 +149,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     return requested;
   }, []);
   const [draft, setDraft] = useState("");
-  const { readiness, checkReadiness, onNotReady } = useReadiness();
+  const { readiness, ollamaSaved, checkReadiness, onNotReady } = useReadiness();
+  const owner = useAudience() === "owner";
+  // The trigger stays hidden until readiness says an Ollama connection is saved.
+  useEffect(() => {
+    if (owner) checkReadiness();
+  }, [owner, checkReadiness]);
 
   const onApplied = useCallback(
     (path: string) => {
@@ -199,6 +213,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       working: waiting || running || reviewing,
       awaiting,
       readiness,
+      ollamaSaved,
       draft,
       screen,
       takeFocus,
@@ -224,6 +239,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       reviewing,
       awaiting,
       readiness,
+      ollamaSaved,
       draft,
       screen,
       takeFocus,
