@@ -146,25 +146,42 @@ func (l *turnLoop) nameStep(ctx context.Context, tool domain.AssistantTool, raw 
 	return bindCreated(plan)
 }
 
-// unresolved ends the turn as clarify when a name needs the owner's choice; any other reason is the failure the
-// model receives to fix its call.
+// unresolved ends the turn as clarify when a name matches several entities the owner chooses among; any other
+// reason, a name that matches nothing included, is the failure the model receives to fix its call.
 func (l *turnLoop) unresolved(t *assistantTurn) string {
 	c := t.clarification
 	switch {
 	case t.failure != "":
 		return t.failure
-	case c != nil && t.clarifyName != "" && (len(c.Candidates) > 0 || len(c.Names) > 0):
+	case c != nil && t.clarifyName != "" && len(c.Candidates) > 0:
 		l.turn.Status = domain.AssistantTurnClarify
 		l.turn.Clarify = &domain.AssistantTurnClarification{
 			Name: t.clarifyName, Kind: t.clarifyKind, Candidates: append([]domain.AssistantCandidate{}, c.Candidates...),
 		}
 		l.writes.plans = nil
 		return ""
+	case c != nil && len(c.Names) > 0:
+		return unmatchedNames(t.clarifyKind, c.Names)
 	case c != nil && c.About == "target":
 		return "the target names nothing this operation can act on: nothing is selected, or it holds another " +
 			"number of items than the operation takes"
 	}
 	return "an argument the operation needs is missing or has a value it does not take"
+}
+
+// unmatchedNames tells the model which names matched nothing. A model often puts a tag or person name in the
+// target of a video operation, so the video case says what the target takes.
+func unmatchedNames(kind domain.AssistantLabelKind, names []string) string {
+	quoted := strings.Join(names, ", ")
+	if kind == domain.AssistantLabelVideo {
+		return "no video title matches " + quoted + "; the target is the videos to change (selection, current, " +
+			"a filter or video titles), and tag, person and other names go in their own arguments"
+	}
+	if kind == "" {
+		kind = "entity"
+	}
+	return fmt.Sprintf("no %s is named %s; look the name up with a read tool and call again with a name it lists",
+		kind, quoted)
 }
 
 // noteClarify records the name and kind the first clarification asks about. A blank name asks nothing the owner
@@ -237,8 +254,7 @@ func rowRequest(row domain.AssistantAction, raw json.RawMessage) (*domain.Assist
 			continue
 		}
 		if !slices.Contains(allowed, key) {
-			return nil, nil, fmt.Sprintf("%s takes no argument %s; it takes %s", domain.AssistantModelToolName(row.ID), key,
-				strings.Join(allowed, ", "))
+			return nil, nil, unknownArgument(row.ID, key, allowed)
 		}
 		value = unquoted(key, value)
 		if slices.Contains(nameArguments, key) {
@@ -258,6 +274,16 @@ func rowRequest(row domain.AssistantAction, raw json.RawMessage) (*domain.Assist
 		return nil, nil, "the arguments do not match the tool's schema: " + err.Error()
 	}
 	return &domain.AssistantActionRequest{Operation: row.ID, Target: parsed.Target, Arguments: &parsed.AssistantArguments}, pins, ""
+}
+
+// unknownArgument names the arguments a row takes; ids belong in the target, which names the entities.
+func unknownArgument(rowID, key string, allowed []string) string {
+	message := fmt.Sprintf("%s takes no argument %s; it takes %s", domain.AssistantModelToolName(rowID), key,
+		strings.Join(allowed, ", "))
+	if slices.Contains(allowed, "target") {
+		message += `; give the entities as target {"kind":"named","names":[{"name":"...","id":1}]}`
+	}
+	return message
 }
 
 // unquoted reads a target or list argument that a model wrote as text: JSON encoded in a string, a target kind
@@ -385,9 +411,10 @@ func hasPlaceholder(value any) bool {
 // propose stores the turn's steps as one proposal when the turn answered, or stopped only because its answer was
 // ungrounded, and discards the pending proposal of the request it follows up.
 func (l *turnLoop) propose(ctx context.Context) error {
-	ungrounded := l.turn.Status == domain.AssistantTurnStopped && l.turn.Stop != nil &&
-		l.turn.Stop.Reason == domain.AssistantStopUngrounded
-	if len(l.writes.plans) == 0 || (l.turn.Status != domain.AssistantTurnDone && !ungrounded) {
+	// A model that repeats a call it already proposed stops at step_limit with its steps complete.
+	kept := l.turn.Status == domain.AssistantTurnStopped && l.turn.Stop != nil &&
+		(l.turn.Stop.Reason == domain.AssistantStopUngrounded || l.turn.Stop.Reason == domain.AssistantStopStepLimit)
+	if len(l.writes.plans) == 0 || (l.turn.Status != domain.AssistantTurnDone && !kept) {
 		return nil
 	}
 	proposal, err := l.a.Propose(ctx, l.turn.ID, l.turn.Request, l.writes.plans)

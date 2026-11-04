@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -198,9 +201,56 @@ func rejectedNameQuery(_ context.Context, d *planDraft) (bool, error) {
 	return true, nil
 }
 
-func tagBatch(_ context.Context, d *planDraft) (bool, error) {
+func tagBatch(ctx context.Context, d *planDraft) (bool, error) {
+	if ok, err := d.tagStatesFit(ctx); !ok || err != nil {
+		return false, err
+	}
 	d.body("ids", labelIDs(d.plan.Targets.Labels))
 	return true, nil
+}
+
+// tentativeRows are the tag rows by whether they take only tentative tags; the endpoint skips the others.
+var tentativeRows = map[string]bool{
+	"batchTags.confirm": true, "batchTags.reject": true, "batchTags.delete": false,
+}
+
+// tagStatesFit refuses a tag the row would skip, so the card never lists a tag the step leaves unchanged.
+func (d *planDraft) tagStatesFit(ctx context.Context) (bool, error) {
+	wantTentative, checked := tentativeRows[d.row.ID]
+	if !checked || d.t.runner == nil {
+		return true, nil
+	}
+	result, err := d.t.runner.Read(ctx, domain.AssistantRead{Operation: "listTags", Arguments: []byte(`{"tentative":true}`)})
+	if err != nil {
+		return false, fmt.Errorf("cannot read the tentative tags: %w", err)
+	}
+	var page struct {
+		Items []struct {
+			ID int64 `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(result.Body, &page); err != nil {
+		return false, fmt.Errorf("cannot read the tentative tags: %w", err)
+	}
+	tentative := map[int64]bool{}
+	for _, item := range page.Items {
+		tentative[item.ID] = true
+	}
+	var skipped []string
+	for _, label := range d.plan.Targets.Labels {
+		if tentative[label.ID] != wantTentative {
+			skipped = append(skipped, label.Name)
+		}
+	}
+	if len(skipped) == 0 {
+		return true, nil
+	}
+	if wantTentative {
+		return d.t.refuse("%s takes only tentative tags; %s are confirmed: leave them out, or delete them with "+
+			"batchTags__delete", domain.AssistantModelToolName(d.row.ID), strings.Join(skipped, ", ")), nil
+	}
+	return d.t.refuse("batchTags__delete takes only confirmed tags; %s are tentative: leave them out, or reject "+
+		"them with batchTags__reject", strings.Join(skipped, ", ")), nil
 }
 
 func tagBatchKind(ctx context.Context, d *planDraft) (bool, error) {

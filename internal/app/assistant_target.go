@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -82,6 +83,9 @@ func (d *planDraft) resolveTarget(ctx context.Context) (bool, error) {
 	if target == nil {
 		target = &domain.AssistantTargetRequest{Kind: "selection"}
 	}
+	if target.Kind == "" && len(target.Names) > 0 {
+		target = &domain.AssistantTargetRequest{Kind: "named", Names: target.Names}
+	}
 	switch row := d.row.Target; {
 	case row == domain.AssistantTargetNone:
 		return true, nil
@@ -104,6 +108,8 @@ func (d *planDraft) entityTarget(
 	switch {
 	case target.Kind == "named" && len(target.Names) == 1:
 		name = target.Names[0]
+	case target.Kind == "named" && len(target.Names) > 1:
+		return d.t.refuse("%s", severalNamesRefusal(d.row.ID, kind, target.Names)), nil
 	case target.Kind != "current" && target.Kind != "selection":
 		d.t.clarify("target", nil)
 		return false, nil
@@ -122,8 +128,8 @@ func (d *planDraft) namedTargets(
 	ctx context.Context, kind domain.AssistantLabelKind, target *domain.AssistantTargetRequest,
 ) (bool, error) {
 	if target.Kind != "named" || len(target.Names) == 0 {
-		d.t.clarify("target", nil)
-		return false, nil
+		return d.t.refuse(`%s takes its items by name, not from the screen: give target {"kind":"named",`+
+			`"names":[...]} with the names a read tool lists`, domain.AssistantModelToolName(d.row.ID)), nil
 	}
 	for _, name := range target.Names {
 		label, ok, err := d.collectionOrKind(ctx, kind, name)
@@ -399,4 +405,19 @@ func (t *assistantTurn) queryIDs(ctx context.Context, q domain.VideoQuery, cappe
 		}
 		q.Cursor = page.NextCursor
 	}
+}
+
+// batchTagRows are the rows that act on several tags in one step for a single-tag row.
+var batchTagRows = map[string]string{
+	"confirmTag": "batchTags.confirm", "rejectTag": "batchTags.reject", "deleteTag": "batchTags.delete",
+}
+
+// severalNamesRefusal answers a single-entity row given several names, naming the batch row when one exists.
+func severalNamesRefusal(rowID string, kind domain.AssistantLabelKind, names []string) string {
+	tool := domain.AssistantModelToolName(rowID)
+	if batch, ok := batchTagRows[rowID]; ok {
+		return fmt.Sprintf("%s acts on one tag; call %s once with every tag in its target",
+			tool, domain.AssistantModelToolName(batch))
+	}
+	return fmt.Sprintf("%s acts on one %s per call; call it once for each of %s", tool, kind, strings.Join(names, ", "))
 }

@@ -143,6 +143,9 @@ func newRelay(cfg config, client *http.Client) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"capabilities": capabilities})
 	})
+	mux.HandleFunc("GET /api/ps", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, loadedModels())
+	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		relay(w, r, cfg, client)
 	})

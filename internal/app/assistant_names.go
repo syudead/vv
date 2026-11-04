@@ -161,6 +161,11 @@ func (t *assistantTurn) one(
 	if chosen, ok := t.idPinned(name, similar); ok {
 		return chosen, true, nil
 	}
+	if len(similar) == 0 {
+		if refused, err := t.misspelledPin(ctx, kind, name); refused || err != nil {
+			return domain.AssistantLabel{}, false, err
+		}
+	}
 	t.noteClarify(kind, name, similar)
 	if len(similar) > 0 {
 		t.clarify(use.about, similar)
@@ -168,6 +173,25 @@ func (t *assistantTurn) one(
 		t.clarify(use.about, nil, name)
 	}
 	return domain.AssistantLabel{}, false, nil
+}
+
+// misspelledPin refuses a name that matches nothing when the id given with it names an entity, and tells the
+// model that entity's name: models often garble the characters of a name while copying its id intact.
+func (t *assistantTurn) misspelledPin(ctx context.Context, kind domain.AssistantLabelKind, name string) (bool, error) {
+	id, ok := t.idPins[domain.FoldForMatch(name)]
+	if !ok {
+		return false, nil
+	}
+	names, err := t.a.vocabulary.EntityNames(ctx, kind, []int64{id})
+	if err != nil {
+		return false, err
+	}
+	actual, ok := names[id]
+	if !ok {
+		return false, nil
+	}
+	t.refuse("no %s is named %s; id %d is %s, so call again with the name %s", kind, name, id, actual, actual)
+	return true, nil
 }
 
 // pinnedAmong returns the candidate the owner chose in a clarification, since the choice re-sends the same
