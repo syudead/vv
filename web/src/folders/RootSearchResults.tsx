@@ -19,6 +19,7 @@ import { resultCountText } from "../videoList/listSummary";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useVideoSelection } from "../videoList/useVideoSelection";
 import VideoCard from "../videoList/VideoCard";
+import { MarqueeCard } from "../library/MarqueeBox";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
@@ -161,11 +162,7 @@ export default function RootSearchResults({
             <TagRowMeasureProvider>
               <CardGrid size={zoom}>
                 {itemVideos(items).map((video) => (
-                  <div
-                    key={video.id}
-                    data-card-key={videoKey(video.id)}
-                    className="grid min-w-0"
-                  >
+                  <MarqueeCard key={video.id} id={videoKey(video.id)}>
                     <VideoCard
                       video={video}
                       backTo={backTo}
@@ -181,7 +178,7 @@ export default function RootSearchResults({
                             )
                       }
                     />
-                  </div>
+                  </MarqueeCard>
                 ))}
               </CardGrid>
             </TagRowMeasureProvider>

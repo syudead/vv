@@ -27,7 +27,9 @@ const (
 // Every scope is restricted to audience-visible locations.
 type locationScope struct {
 	// Restrict collection reads before selecting representative locations.
-	withinGroup  int64
+	withinGroup int64
+	// groupMembers names the group_id and video_id rows withinGroup reads; empty reads the stored group_members.
+	groupMembers string
 	withinVideos string
 	kind         locationScopeKind
 	// Absolute folder path; unused for the library scope.
@@ -64,7 +66,10 @@ func (s locationScope) choosesAllKinds() bool {
 func (s locationScope) membership(alias string) (string, []any) {
 	var clause string
 	var args []any
-	if s.withinGroup != 0 {
+	if s.withinGroup != 0 && s.groupMembers != "" {
+		clause += ` and ` + alias + `.video_id in (select video_id from ` + s.groupMembers + ` where group_id = ?)`
+		args = append(args, s.withinGroup)
+	} else if s.withinGroup != 0 {
 		clause += ` and ` + alias + `.video_id in (select video_id from group_members where group_id = ? and audience = ?)`
 		args = append(args, s.withinGroup, audienceValue(s.audience))
 	}
@@ -77,7 +82,7 @@ func (s locationScope) membership(alias string) (string, []any) {
 
 func (s locationScope) condition(alias string) (string, []any) {
 	membership, scopeArgs := s.membership(alias)
-	visible := visibleLocationCondition(alias, s.audience) + membership
+	visible := listedLocationCondition(alias, s.audience) + membership
 	if s.kind == scopeLibrary {
 		return visible, scopeArgs
 	}
@@ -107,6 +112,8 @@ type listSpec struct {
 	personRole domain.PersonRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
+	// Duration, added-day and watch-state filters; zero values do not filter.
+	conditions domain.VideoConditions
 	// tagKindNameID is the kind a kind name resolved to, ANDed with tagKindID; zero disables it.
 	tagKindNameID int64
 	// personName and organizationName match every entity with that canonical name; personRole applies to both
@@ -147,15 +154,34 @@ func (s *LibraryStore) listTaggedVideoPage(ctx context.Context, q domain.VideoQu
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
-	page, err := listVideoPageTx(ctx, tx, filters.narrow(spec(filters.tagIDs)))
+	narrowed := filters.narrow(spec(filters.tagIDs))
+	page, err := listVideoPageTx(ctx, tx, narrowed)
 	if err != nil {
 		return domain.VideoPage{}, err
+	}
+	if narrowed.scope.kind == scopeLibrary {
+		if page.EmptyReason, err = libraryEmptyReason(ctx, tx, narrowed.scope.audience, len(page.Items)); err != nil {
+			return domain.VideoPage{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.VideoPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
 	page.MissingTagIDs = filters.missingTagIDs
 	return page, nil
+}
+
+// libraryEmptyReason reads this node's switches for an empty library page; an explicit folder scope names no reason
+// because this node's switches do not apply to it.
+func libraryEmptyReason(ctx context.Context, q queryExecer, audience domain.Audience, items int) (domain.EmptyReason, error) {
+	if _, explicit := audience.ExcludedFolders(); items > 0 || explicit {
+		return "", nil
+	}
+	folders, err := listMediaFolders(ctx, q)
+	if err != nil {
+		return "", err
+	}
+	return domain.LibraryEmptyReason(items, folders), nil
 }
 
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
@@ -171,7 +197,8 @@ func filteredListSpec(scope locationScope, q domain.VideoQuery, tagIDs []int64) 
 		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
 		personName: q.PersonName, organizationName: q.OrganizationName,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+		conditions: q.VideoConditions,
+		sort:       q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
 
@@ -215,7 +242,7 @@ func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, 
 func chosenFilesSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
-		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
+		listedRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
 	// All expressions must match the same location row, including inside a bundle.
 	var exprClauses, bundleClauses []string
 	var exprArgs, bundleArgs []any
@@ -233,7 +260,7 @@ func chosenFilesSelect(scope locationScope, searchAudience domain.Audience, expr
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
 			join video_locations bl on bl.video_id = bv.id
-			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+strings.Join(bundleClauses, " and ")+`)))`)
+			where bm.bundle_id = sbm.bundle_id and `+scopedLocationCondition("bl", scope.audience)+` and `+strings.Join(bundleClauses, " and ")+`)))`)
 		args = append(args, exprArgs...)
 		args = append(args, bundleArgs...)
 	}

@@ -19,7 +19,9 @@ function approvedPlugins(
   plugins: readonly WorkInfoPlugin[],
   kind: WorkInfoPlugin["kind"],
 ): WorkInfoPlugin[] {
-  return plugins.filter((plugin) => plugin.kind === kind && plugin.state === "approved");
+  return plugins.filter(
+    (plugin) => plugin.kind === kind && plugin.state === "approved" && plugin.enabled,
+  );
 }
 
 /** Person plugins share the list but never fetch work information. */

@@ -87,7 +87,8 @@ func newThumbnailImageFixture(t *testing.T) *thumbnailImageFixture {
 	thumbDir := Config{DataDir: dataDir}.ThumbnailsDir()
 	artifactStore := artifacts.New(thumbDir)
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: db.Ingest(), Generator: frameGenerator{}, Artifacts: artifactStore, Logger: logger,
+		Store: db.Ingest(), Generator: frameGenerator{}, Artifacts: artifactStore,
+		Sources: app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()}, Logger: logger,
 	})
 	catalog := app.NewCatalog(app.CatalogOptions{
 		Index: db.Library(), Ingest: db.Ingest(), Files: artifactStore, Logger: logger,

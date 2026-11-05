@@ -116,7 +116,9 @@ type FetchedPluginPerson struct {
 	ExternalIDs []ExternalID
 	// ImageURLs are the first PersonPluginImagesMaxCount distinct valid image URLs in result order.
 	ImageURLs []string
-	Profile   PersonProfile
+	// ImageReferer is the Referer VVMDM sends with each image request, empty for none.
+	ImageReferer string
+	Profile      PersonProfile
 }
 
 type personResponseJSON struct {
@@ -133,6 +135,8 @@ type personResponseJSON struct {
 		ExternalIDs json.RawMessage `json:"externalIds"`
 		Images      json.RawMessage `json:"images"`
 		Profile     json.RawMessage `json:"profile"`
+		// ImageReferer follows the image URL rules.
+		ImageReferer json.RawMessage `json:"imageReferer"`
 	} `json:"person"`
 	Error *runErrorJSON `json:"error"`
 }
@@ -161,11 +165,12 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 		}
 		ids = appendFetchedExternalIDs(ids, raw.Person.ExternalIDs)
 		return WorkInfoRunResult{Person: FetchedPluginPerson{
-			Name:        name,
-			Aliases:     parseFetchedAliases(raw.Person.Aliases),
-			ExternalIDs: ids,
-			ImageURLs:   parseFetchedImageURLs(raw.Person.Images, PersonPluginImagesMaxCount),
-			Profile:     parseFetchedProfile(raw.Person.Profile),
+			Name:         name,
+			Aliases:      parseFetchedAliases(raw.Person.Aliases),
+			ExternalIDs:  ids,
+			ImageURLs:    parseFetchedImageURLs(raw.Person.Images, PersonPluginImagesMaxCount),
+			ImageReferer: fetchedImageURL(lenientString(raw.Person.ImageReferer)),
+			Profile:      parseFetchedProfile(raw.Person.Profile),
 		}}, nil
 	}
 	return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
@@ -178,7 +183,7 @@ func parsePersonCandidates(raw personResponseJSON, sources []string) (WorkInfoRu
 	candidates := make([]PersonCandidate, 0, len(kept))
 	for _, c := range kept {
 		id, err := NormalizeWorkInfoSearchQuery(c.ID)
-		name := trimWorkInfoText(c.Name)
+		name := fetchedText(c.Name)
 		if !slices.Contains(sources, c.Source) || err != nil || name == "" || !isWorkURL(c.URL) {
 			return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 		}
@@ -194,7 +199,7 @@ func parseFetchedImageURLs(raw json.RawMessage, limit int) []string {
 		if len(out) == limit {
 			break
 		}
-		if url := fetchedImageURL(trimWorkInfoText(item)); url != "" && !slices.Contains(out, url) {
+		if url := fetchedImageURL(fetchedText(item)); url != "" && !slices.Contains(out, url) {
 			out = append(out, url)
 		}
 	}
@@ -209,11 +214,11 @@ func parseFetchedAliases(raw json.RawMessage) []Alias {
 		if len(out) == CreditAliasesMaxCount {
 			break
 		}
-		name := trimWorkInfoText(a.Name)
+		name := fetchedText(a.Name)
 		if name == "" || slices.ContainsFunc(out, func(kept Alias) bool { return kept.Name == name }) {
 			continue
 		}
-		out = append(out, Alias{Name: name, Language: trimWorkInfoText(a.Language)})
+		out = append(out, Alias{Name: name, Language: fetchedText(a.Language)})
 	}
 	return out
 }

@@ -291,7 +291,7 @@ type fakeMediaFiles struct{}
 
 func (fakeMediaFiles) ResolveMediaFile(roots []string, path string) (string, error) {
 	if len(roots) != 1 || !strings.HasPrefix(path, roots[0]) {
-		return "", domain.ErrMediaFileOutsideRoot
+		return "", fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, domain.ErrMediaFileOutsideRoot)
 	}
 	return "resolved:" + path, nil
 }

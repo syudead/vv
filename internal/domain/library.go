@@ -99,6 +99,7 @@ type VideoQuery struct {
 	TagKindID int64
 	// Kind narrows the listing to file or virtual videos; empty means VideoKindAll.
 	Kind VideoKind
+	VideoConditions
 	// TagNames, TagKindName, PersonName and OrganizationName filter by name with the semantics of the ID
 	// filters beside them; a name no entity has matches nothing. The paired node sends its filters this way.
 	TagNames         []string
@@ -115,7 +116,7 @@ func (q VideoQuery) ByName() bool {
 // ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		!q.ByName() && q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
+		!q.HasCondition() && !q.ByName() && q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
 }
 
 type VideoPage struct {
@@ -128,6 +129,27 @@ type VideoPage struct {
 	MissingTagIDs []int64
 	// ItemCursors holds each item's place in order, for merging with the paired node's list.
 	ItemCursors []ItemCursor
+	// EmptyReason is set only on an empty page whose emptiness has a cause the screens name.
+	EmptyReason EmptyReason
+}
+
+// EmptyReason names why a list has no item.
+type EmptyReason string
+
+// EmptyAllFoldersOff marks a library left empty because every folder this node shows is switched off.
+const EmptyAllFoldersOff EmptyReason = "all_folders_off"
+
+// LibraryEmptyReason answers EmptyAllFoldersOff for an empty page while folders exist and none is on.
+func LibraryEmptyReason(items int, folders []MediaFolder) EmptyReason {
+	if items > 0 || len(folders) == 0 {
+		return ""
+	}
+	for _, folder := range folders {
+		if folder.Enabled {
+			return ""
+		}
+	}
+	return EmptyAllFoldersOff
 }
 
 type ScanState string

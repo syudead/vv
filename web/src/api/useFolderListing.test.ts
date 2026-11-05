@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FolderListing, FolderRef } from "./client";
+import { emitServerEvent, installFakeEventSource } from "./fakeEventSource";
 
 const { getFolder } = vi.hoisted(() => ({ getFolder: vi.fn() }));
 
@@ -92,5 +93,30 @@ describe("useFolderListing の取り直し", () => {
     await act(async () => pending[1]?.(listing("new")));
     expect(result.current.data).toEqual(listing("new"));
     expect(result.current.loading).toBe(false);
+  });
+});
+
+describe("useFolderListing と mediaFolders", () => {
+  beforeEach(() => {
+    installFakeEventSource();
+    getFolder.mockReset();
+    getFolder.mockImplementation((folder: FolderRef) =>
+      Promise.resolve(listing(folder.path)),
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  // The child folder page streams for its guest video list, so its folders must follow a switch too.
+  it("ゲストでも mediaFolders で子フォルダの一覧を取り直す", async () => {
+    const { result } = renderHook(() => useFolderListing({ rootId: 1, path: "a" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await emitServerEvent("mediaFolders", {});
+
+    await waitFor(() => expect(getFolder).toHaveBeenCalledTimes(2));
+    expect(getFolder).toHaveBeenLastCalledWith(
+      { rootId: 1, path: "a" },
+      expect.any(AbortSignal),
+    );
   });
 });

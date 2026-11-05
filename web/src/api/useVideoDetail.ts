@@ -326,6 +326,8 @@ export function useVideoDetail(
           },
           group: onGroup,
           smartFolder: onSmartFolder,
+          // A switch turns folderOff on or off for the open video.
+          mediaFolders: () => void load(),
           // Reconnection requires refresh because events may have been missed.
           // Avoid duplicate initial reads unless processing could have completed before the event connection opened.
           open: (reconnected) => {
@@ -336,6 +338,7 @@ export function useVideoDetail(
       : subscribeServerEvents({
           group: onGroup,
           smartFolder: onSmartFolder,
+          mediaFolders: () => void load(),
           open: (reconnected) => {
             if (reconnected) void load();
           },

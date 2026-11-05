@@ -52,7 +52,7 @@ func groupMembers(t *testing.T, n *peerNode, id int64) []int64 {
 func remoteIDs(ids ...int64) []int64 {
 	out := make([]int64, len(ids))
 	for i, id := range ids {
-		out[i] = domain.ToRemoteID(id)
+		out[i] = domain.RemoteID(1, id)
 	}
 	return out
 }
@@ -60,7 +60,7 @@ func remoteIDs(ids ...int64) []int64 {
 func TestPeerGroupIsListedAndOpensWithRemoteIDs(t *testing.T) {
 	fa, _, a, b, _ := groupNodes(t)
 	group := createGroup(t, a, "g", fa.ids["b"], fa.ids["c"])
-	remote, members := domain.ToRemoteID(group), remoteIDs(fa.ids["b"], fa.ids["c"])
+	remote, members := domain.RemoteID(1, group), remoteIDs(fa.ids["b"], fa.ids["c"])
 
 	library := decode[gen.LibraryPage](t, b.owner(http.MethodGet, "/api/library?limit=100", ""))
 	index := slices.IndexFunc(library.Items, func(item gen.LibraryItem) bool {
@@ -95,8 +95,8 @@ func TestPeerGroupIsListedAndOpensWithRemoteIDs(t *testing.T) {
 	}
 }
 
-// A remote group's page keeps the reader's favorites and play history local, as the merged lists do.
-func TestPeerGroupReadUsesNoneOfThePeersFavorites(t *testing.T) {
+// A remote group's page sorts and filters by the peer's own favorites.
+func TestPeerGroupReadUsesThePeersFavorites(t *testing.T) {
 	fa, _, a, b, _ := groupNodes(t)
 	group := createGroup(t, a, "g", fa.ids["b"], fa.ids["c"])
 	if rec := a.owner(http.MethodPut, "/api/favorites", favoritesBody(true, []int64{fa.ids["b"]})); rec.Code != http.StatusOK {
@@ -108,11 +108,11 @@ func TestPeerGroupReadUsesNoneOfThePeersFavorites(t *testing.T) {
 		query string
 		want  []int64
 	}{
-		{"favorite=true", nil},
-		{"sort=favoritedDesc", remoteIDs(fa.ids["c"], fa.ids["b"])},
+		{"favorite=true", remoteIDs(fa.ids["b"])},
+		{"sort=favoritedDesc", remoteIDs(fa.ids["b"], fa.ids["c"])},
 	} {
 		for _, path := range []string{"", "/items"} {
-			rec := b.owner(http.MethodGet, groupPath(domain.ToRemoteID(group))+path+"?"+tc.query, "")
+			rec := b.owner(http.MethodGet, groupPath(domain.RemoteID(1, group))+path+"?"+tc.query, "")
 			if rec.Code != http.StatusOK {
 				t.Fatalf("%s%s: status = %d: %s", path, tc.query, rec.Code, rec.Body)
 			}
@@ -133,10 +133,10 @@ func TestPeerGroupRefusesVideosOfBothNodes(t *testing.T) {
 	group := createGroup(t, a, "g", fa.ids["b"])
 
 	for _, tc := range []struct{ label, path, body string }{
-		{"add a local video to the peer's group", groupPath(domain.ToRemoteID(group)) + "/items",
+		{"add a local video to the peer's group", groupPath(domain.RemoteID(1, group)) + "/items",
 			fmt.Sprintf(`{"videoIds":[%d]}`, fb.ids["a"])},
 		{"create a group of both nodes' videos", "/api/groups",
-			fmt.Sprintf(`{"name":"x","videoIds":[%d,%d]}`, fb.ids["a"], domain.ToRemoteID(fa.ids["a"]))},
+			fmt.Sprintf(`{"name":"x","videoIds":[%d,%d]}`, fb.ids["a"], domain.RemoteID(1, fa.ids["a"]))},
 	} {
 		rec := b.owner(http.MethodPost, tc.path, tc.body)
 		if problem := decode[gen.Error](t, rec); rec.Code != http.StatusBadRequest ||
@@ -154,7 +154,7 @@ func TestOrganizeMoveOfPeerVideosIsForwardedAndUndone(t *testing.T) {
 	group := createGroup(t, a, "g", fa.ids["b"])
 
 	body := fmt.Sprintf(`{"items":[{"kind":"video","id":%d}],"to":%d}`,
-		domain.ToRemoteID(fa.ids["e"]), domain.ToRemoteID(group))
+		domain.RemoteID(1, fa.ids["e"]), domain.RemoteID(1, group))
 	rec := b.owner(http.MethodPost, "/api/organize/move", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("move: status = %d: %s", rec.Code, rec.Body)
@@ -182,7 +182,7 @@ func TestCollectionsDeleteSplitsByNodeAndReportsThePeersFailure(t *testing.T) {
 	deleteOneOfEach := func() (result gen.CollectionsDeleteResponse, remote gen.RemoteSelectionResult, peer int64) {
 		t.Helper()
 		local, peer := createGroup(t, b, "local", fb.ids["a"]), createGroup(t, a, "peer", fa.ids["a"])
-		body := fmt.Sprintf(`{"groupIds":[%d,%d]}`, local, domain.ToRemoteID(peer))
+		body := fmt.Sprintf(`{"groupIds":[%d,%d]}`, local, domain.RemoteID(1, peer))
 		rec := b.owner(http.MethodPost, "/api/collections/delete", body)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("delete: status = %d: %s", rec.Code, rec.Body)
@@ -208,10 +208,10 @@ func TestCollectionsDeleteSplitsByNodeAndReportsThePeersFailure(t *testing.T) {
 	stopA()
 	alone, remote, peer := deleteOneOfEach()
 	if alone.DissolvedGroups != 1 || remote.Applied != 0 ||
-		!slices.Equal(remote.FailedVideoIds, []int64{domain.ToRemoteID(peer)}) ||
+		!slices.Equal(remote.FailedVideoIds, []int64{domain.RemoteID(1, peer)}) ||
 		remote.Reason == nil || *remote.Reason != gen.ErrorReasonPeerUnreachable {
 		t.Errorf("peer stopped: %+v, remote %+v, want 1 dissolved and [%d] with peer_unreachable",
-			alone, remote, domain.ToRemoteID(peer))
+			alone, remote, domain.RemoteID(1, peer))
 	}
 	if groupMembers(t, a, peer) == nil {
 		t.Errorf("the peer's group %d was removed while the peer was stopped", peer)

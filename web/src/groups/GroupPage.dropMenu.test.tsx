@@ -36,7 +36,7 @@ function organizeWrites() {
 describe("GroupPage drop a video on a video", () => {
   it("「Make a group」は from 付きで送り、新しいグループのカードを落とした先の位置に出す", async () => {
     await openGrid();
-    dropOn("Episode 2", 2, 0);
+    await dropOn("Episode 2", 2, 0);
     const menu = await openedMenu();
     expect(within(menu).getByText('Dropped on "Episode 1"')).toBeDefined();
     await userEvent
@@ -61,7 +61,7 @@ describe("GroupPage drop a video on a video", () => {
   it("名前の欄を開いている間にグループが読み直されても、欄は入力ごと残る", async () => {
     await openGrid();
     const user = userEvent.setup();
-    dropOn("Episode 2", 2, 0);
+    await dropOn("Episode 2", 2, 0);
     await user.click(
       within(await openedMenu()).getByRole("menuitem", {
         name: "Make a group",
@@ -84,7 +84,7 @@ describe("GroupPage drop a video on a video", () => {
   it("名前の欄の Esc は何も送らずに閉じ、読み直したグループを出す", async () => {
     await openGrid();
     const user = userEvent.setup();
-    dropOn("Episode 2", 2, 0);
+    await dropOn("Episode 2", 2, 0);
     await user.click(
       within(await openedMenu()).getByRole("menuitem", {
         name: "Make a group",

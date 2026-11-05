@@ -241,7 +241,7 @@ export interface paths {
         };
         /**
          * Return related videos
-         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a paired node the list holds the visible videos of both nodes, a remote id also opens one, and the directory clue is 0 between nodes; while the peer cannot be reached its videos are left out.
+         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a node that reads other VVMDMs the list holds the visible videos of this node and every connected link, a remote id also opens one, and the directory clue is 0 between nodes; a link that cannot be reached is left out for the rest of the list.
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -562,7 +562,7 @@ export interface paths {
         get?: never;
         /**
          * Save playback position
-         * @description The server determines watched state; clients send only the position. Records follow video content across moves and renames.
+         * @description The server determines watched state; clients send only the position. Records follow video content across moves and renames. For the peer's video (an id at or above 2^40) the position and history entry are saved on the peer, whose Progress is returned as it is.
          */
         put: operations["putVideoProgress"];
         post?: never;
@@ -892,6 +892,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media-folders/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a media folder on or off
+         * @description Owner-only. A switched-off folder's videos leave this node's lists, searches, counts and folder reads; scans, watching, ingest and jobs go on, and a read by id answers them with folderOff. Writes only the switch, so path and version stay and it is allowed during a scan. Sends mediaFolders on /api/events after commit when the value changes.
+         */
+        put: operations["setMediaFolderEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media-folders/{id}/usage": {
         parameters: {
             query?: never;
@@ -1093,9 +1113,233 @@ export interface paths {
         put?: never;
         /**
          * Check the saved Ollama connection and model availability
-         * @description Uses only GET /api/version and GET /api/tags, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md.
+         * @description Uses only GET /api/version, GET /api/tags and, for a saved generation model, POST /api/show, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md.
          */
         post: operations["checkOllama"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/ollama/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the models at the saved Ollama endpoint
+         * @description Uses only GET /api/version, GET /api/tags and POST /api/show for each model at the saved URL, never a request-supplied URL, without loading a model. Models come in the order Ollama lists them, with whether each can call tools and see images, for the decision and generation model pickers; see docs/design-docs/ai-layer.md.
+         */
+        get: operations["listOllamaModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Say whether the assistant can take a request
+         * @description Reads the saved Ollama connection and generation model. The model's capabilities come from POST /api/show on the first read for an endpoint and model pair and are kept after that; when Ollama cannot be reached then, ready is true and the turn reports the failure.
+         */
+        get: operations["getAssistantReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the assistant's active turns
+         * @description Owner-only. Lists, newest first, the running turn and the turns finished within the last hour, so the panel rebuilds its thread after a reload. active=true is the only filter and is required.
+         */
+        get: operations["listAssistantTurns"];
+        put?: never;
+        /**
+         * Start one request as a server-side turn
+         * @description Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers, repeats its previous tool calls exactly, or the owner stops it with stopAssistantTurn. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. Empty text, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId.
+         */
+        post: operations["createAssistantTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turns/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one assistant turn
+         * @description Owner-only. The panel reads it again on each assistant event. A turn is kept for 24 hours after it finished; a missing or expired turn returns 404 not_found.
+         */
+        get: operations["getAssistantTurn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turns/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop the running assistant turn
+         * @description Owner-only. Cancels the running turn with this id; it then ends stopped with reason cancelled, keeping its progress and building no proposal. A turn that is not running returns 409 conflict.
+         */
+        post: operations["stopAssistantTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the assistant's active proposals
+         * @description Owner-only. Lists, newest first, the proposals that are approved or running and those finished within the last hour, so the panel shows them when it opens. active=true is the only filter and is required.
+         */
+        get: operations["listAssistantProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/proposals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one assistant proposal
+         * @description Owner-only. The panel reads it again on each assistant event. A missing or expired proposal returns 404 not_found.
+         */
+        get: operations["getAssistantProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/proposals/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an assistant proposal for execution
+         * @description Owner-only. Moves a proposed proposal to approved with the steps the owner kept, marks the others skipped and returns it with 202; the assistant worker then runs exactly the kept steps' stored plans in card order in the background, each in batches of 500 videos, stops at the first step that ends stale or with a failed batch, and the progress follows assistant events. No index, or an index the proposal does not have, returns 400 invalid_request. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field; a kept step that uses what an unticked step creates returns 409 step_needs_skipped with that kept step's index in the error's step field.
+         */
+        post: operations["executeAssistantProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/review-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a review run and a page of its candidates
+         * @description Owner-only. Returns the run with its progress and its listed, adopted and rejected candidate sets, most probable first, each member with its current name and count. A candidate whose member no longer exists, such as the source of a merged tag, is left out, so a page may hold fewer than limit items. A missing run returns 404 not_found; an unknown cursor 400 invalid_request.
+         */
+        get: operations["getAssistantReviewRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/review-runs/{id}/candidates/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt review candidates
+         * @description Owner-only. Stores one approved proposal per chosen candidate, in the order of ids, each running the set's one operation: mergeTag or mergePeople into the member with more videos, or createGroup of the videos named by their common title. The assistant worker executes them like any approved proposal. skippedIds lists the ids that are not listed in the run or whose member no longer exists. A missing run returns 404 not_found.
+         */
+        post: operations["adoptAssistantReviewCandidates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/review-runs/{id}/candidates/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject review candidates
+         * @description Owner-only. Marks the listed candidates among ids rejected and remembers their sets, which later runs of the kind do not judge again. skippedIds lists the ids that are not listed in the run. A missing run returns 404 not_found.
+         */
+        post: operations["rejectAssistantReviewCandidates"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1495,7 +1739,7 @@ export interface paths {
         };
         /**
          * Return the pairing state
-         * @description Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
+         * @description Pairing is one-directional: links are the VVMDMs this node reads, at most 8, and grant the VVMDM that reads this one, at most one; each direction is absent until paired, and they are independent, so a mutual pairing is two pairings. links are in slot order; a link's ids in the screen API are its own ids plus slot times 2^40. Owners receive each link's node id, name, address, version and waiting fingerprint, the grant's name and pairing time, and this node's identity; guests receive each link's slot, state and reason only. A link's state is its connection, held in memory: after a start it is revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. Each link keeps its own open event stream to its node as the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s, independently of the other links. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
          */
         get: operations["getPeer"];
         put?: never;
@@ -1506,7 +1750,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/link": {
+    "/api/peer/links/{nodeId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1517,8 +1761,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Stop reading the other VVMDM
-         * @description Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204.
+         * Stop reading one VVMDM
+         * @description Tells the read node through its forgetPeer, best effort, then deletes that link and nothing else, which also clears a revoked state; the other links and the grant, if any, stay. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. A node id this node does not read also returns 204.
          */
         delete: operations["unpairPeer"];
         options?: never;
@@ -1577,7 +1821,7 @@ export interface paths {
         put?: never;
         /**
          * Read the node whose code the owner typed
-         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link in the next slot with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node this node already reads, or whose target another node already reads, 409 already_paired; a ninth link 409 peer_limit, before the other node is called; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
          */
         post: operations["pairPeer"];
         delete?: never;
@@ -1586,7 +1830,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/address": {
+    "/api/peer/links/{nodeId}/address": {
         parameters: {
             query?: never;
             header?: never;
@@ -1595,8 +1839,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Change the read node's address
-         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found.
+         * Change a read node's address
+         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; a node id this node does not read, 404 not_found.
          */
         put: operations["updatePeerAddress"];
         post?: never;
@@ -1606,7 +1850,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/certificate": {
+    "/api/peer/links/{nodeId}/certificate": {
         parameters: {
             query?: never;
             header?: never;
@@ -1616,10 +1860,70 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Trust the read node's changed certificate
-         * @description Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found.
+         * Trust a read node's changed certificate
+         * @description Pins the SPKI fingerprint that getPeer shows for that link with state unreachable and reason certificate, and reconnects it at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. A node id this node does not read, 404 not_found.
          */
         post: operations["confirmPeerCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/links/{nodeId}/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a read node's media folders with this node's switches
+         * @description Answers this node's snapshot of the link's media folders, in the link's id order and in the link's own ids, with the owner's switch of each and the link's state as getPeer gives it, whether or not the link is connected. The snapshot is refreshed when the link's event stream opens and on each mediaFolders the link sends: a folder the link no longer lists leaves it, and a folder whose path or version changed is replaced with its switch on. Every request this node sends to the link carries the switched-off ids in X-VV-Peer-Excluded-Folders. A node id this node does not read, 404 not_found.
+         */
+        get: operations["listPeerLinkMediaFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/links/{nodeId}/media-folders/{folderId}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a read node's media folder on or off on this node
+         * @description Changes the owner's switch in this node's snapshot only; the link is never written and its own switches and other readers are not affected. Sends mediaFolders on /api/events to this node's viewers when the value changes, never to a peer-credential stream. A folder the snapshot of that link lacks, or a node id this node does not read, 404 not_found.
+         */
+        put: operations["setPeerLinkMediaFolderEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List this node's media folders to the reading node
+         * @description Called by the reading node with its credential, never by the screens; any other caller gets 404. Answers each media folder's id, path and version in id order, so the reader keeps its snapshot and switches; listMediaFolders stays refused to the credential.
+         */
+        get: operations["listPeerMediaFolders"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1914,6 +2218,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-plugins/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a plugin on or off
+         * @description Owner-only. A switched-off plugin keeps its approval, settings and link order, but every run returns 409 plugin_disabled, link fetches skip it, and results fetched before switching off can no longer be applied. Switching on again needs no new approval. The bundled plugin can be switched off too. Missing plugins return 404 not_found; repeating the current state returns 200 without changes.
+         */
+        put: operations["setWorkInfoPluginEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins/{id}/settings": {
         parameters: {
             query?: never;
@@ -1985,7 +2309,7 @@ export interface paths {
         put?: never;
         /**
          * List the videos a selection fill searches for
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With read VVMDMs' videos or smart folders in the selection, this node's targets come first, then each link's in slot order in their remote ids; a link that does not answer returns 503 with peer_unreachable.
          */
         post: operations["listWorkInfoFillTargets"];
         delete?: never;
@@ -2725,7 +3049,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -2768,6 +3092,34 @@ export interface paths {
         patch: operations["updateOrganization"];
         trace?: never;
     };
+    "/api/organizations/{id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return an organization's logo
+         * @description Owner-only. Served as getPersonImage serves a face, with the organization's imageRevision as `ETag`. Missing organization returns 404 organization_not_found; one without a logo returns 404 person_image_not_found.
+         */
+        get: operations["getOrganizationImage"];
+        /**
+         * Set an organization's logo from an uploaded image
+         * @description Owner-only. Takes, fits and stores the image as uploadPersonImage does, with the same limits and errors, and returns Organization with a new imageRevision. No face recognition runs on a logo. Missing organization returns 404 organization_not_found.
+         */
+        put: operations["uploadOrganizationImage"];
+        post?: never;
+        /**
+         * Remove an organization's logo
+         * @description Owner-only; no body. Removes the logo and returns Organization without imageRevision; one without a logo is returned unchanged. Missing organization returns 404 organization_not_found.
+         */
+        delete: operations["deleteOrganizationImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{id}/merge": {
         parameters: {
             query?: never;
@@ -2799,7 +3151,7 @@ export interface paths {
         put?: never;
         /**
          * Add or remove a video tag
-         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags go to the peer by name, created there when missing; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
+         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name read VVMDMs' videos and smart folders by their slot: the request splits by node, applies the local part first in one transaction and then each link's part in one forwarded request in slot order; a local smart folder adds every connected link's videos matching its rule, and a link's smart folder adds this node's. The limit counts every node's resolved videos together. Tags go to each link by name, created there when missing; applied counts every node and remote sums the links' parts, with the video ids of the links that failed.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -2879,9 +3231,29 @@ export interface paths {
         put?: never;
         /**
          * Apply one bulk edit to selected videos
-         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
+         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed. merges run after the other parts in the same local transaction and only on this node: each source still provisional is merged into its into person as confirmFaceCandidate does, with undoActivityId when the merge can be undone; a source that no longer exists or has been named since is skipped and listed in skippedPersonIds. A missing into returns 404 person_not_found and a merge id at or above 2^40 returns 400 invalid_request with provisional_person_remote, both at merges[i]. See docs/design-docs/bulk-editing.md.
          */
         post: operations["applyVideoEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/video-edits/provisional-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tell which provisional performers of selected videos are which added people
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.
+         */
+        post: operations["matchProvisionalPeople"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2958,7 +3330,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -3089,14 +3461,14 @@ export interface paths {
         };
         /**
          * List watch history, newest first
-         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request.
+         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While this node reads other VVMDMs, the entries of this node and every link are merged newest first by playedAt, this node's first on equal times and then the links in slot order, and nextCursor holds each node's cursor; a link's entry ids and video ids carry its offset, and its videos keep that link's progress and favorite. A link that is not connected when the list starts, or fails, is left out for the rest of the list. A peer that does not answer is left out for the rest of the listing.
          */
         get: operations["listWatchHistory"];
         put?: never;
         post?: never;
         /**
          * Clear all watch history
-         * @description Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events.
+         * @description Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events. While paired, the peer's history is cleared first, then this node's: while the peer is not connected neither changes and 503 service_unavailable with peer_unreachable is returned; when the peer gives no answer, this node's history is unchanged, 503 peer_unreachable is returned, and the peer's clear committed or did not.
          */
         delete: operations["clearWatchHistory"];
         options?: never;
@@ -3113,7 +3485,7 @@ export interface paths {
         };
         /**
          * List days with watch history, newest first
-         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request.
+         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While this node reads other VVMDMs, returns the union of the dates of this node and every connected link, leaving out a link that does not answer.
          */
         get: operations["listWatchHistoryDates"];
         put?: never;
@@ -3136,7 +3508,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a watch-history entry
-         * @description Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events.
+         * @description Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events. An id at or above 2^40 deletes the peer's entry: while the peer is not connected nothing changes and 503 service_unavailable with peer_unreachable is returned.
          */
         delete: operations["deleteWatchHistoryEntry"];
         options?: never;
@@ -3838,7 +4210,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates and activity are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3914,10 +4286,15 @@ export interface components {
             path: string;
             /** Format: int64 */
             version: number;
+            /** @description False while the folder is switched off: its videos are left out of this node's lists, searches and counts. */
+            enabled: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        SetMediaFolderEnabledRequest: {
+            enabled: boolean;
         };
         MediaFolderUsage: {
             /** Format: int64 */
@@ -4053,8 +4430,10 @@ export interface components {
         OllamaSettings: {
             /** @description HTTP(S) Ollama base URL; defaults to http://127.0.0.1:11434 */
             endpoint: string;
-            /** @description Ollama model name; defaults to clef-flash */
+            /** @description Decision model name for the Clef classifier; defaults to clef-flash */
             model: string;
+            /** @description Chat model name the assistant generates with; empty until the owner saves one, and empty turns the assistant off */
+            generationModel: string;
             /** @description Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true. */
             saved: boolean;
         };
@@ -4062,8 +4441,370 @@ export interface components {
         UpdateOllamaSettingsRequest: {
             /** @description Ollama base URL using HTTP or HTTPS. */
             endpoint: string;
-            /** @description Ollama model name. */
+            /** @description Decision model name. */
             model: string;
+            /** @description Generation model name; an empty string clears it and keeps the connection saved. Omitted keeps the saved value. */
+            generationModel?: string;
+        };
+        /** @description Models at the saved Ollama endpoint, in Ollama's order. */
+        OllamaModelList: {
+            items: components["schemas"]["OllamaModel"][];
+        };
+        OllamaModel: {
+            /** @description Model name as Ollama lists it, such as qwen3:8b. */
+            name: string;
+            /** @description The model can call tools, from capabilities of POST /api/show; false when Ollama reports none. */
+            tools: boolean;
+            /** @description The model can see images, from capabilities of POST /api/show; false when Ollama reports none. */
+            vision: boolean;
+        };
+        AssistantTurnRequest: {
+            /** @description The owner's request, as untranslated user data; at most 500 characters. */
+            text: string;
+            context: components["schemas"]["AssistantTurnContext"];
+            /**
+             * Format: int64
+             * @description The turn a follow-up continues; its request and its proposal's steps go to the model.
+             */
+            previousTurnId?: number;
+        };
+        /** @description The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it. */
+        AssistantTurnContext: {
+            route: components["schemas"]["AssistantRoute"];
+            /** @description The list selection; over 20,000 returns 400 too_many_videos. */
+            selectedVideoIds?: number[];
+            selectedCollectionIds?: components["schemas"]["AssistantSelectedCollections"];
+            filter?: components["schemas"]["SmartRule"];
+            sort?: components["schemas"]["VideoSort"];
+            /** @description Ids chosen in a clarification, used before resolving the same name again. */
+            pinned?: components["schemas"]["AssistantPin"][];
+        };
+        AssistantRoute: {
+            /** @enum {string} */
+            kind: "library" | "folder" | "video" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "tag" | "tags" | "people" | "duplicates" | "settings" | "other";
+            /**
+             * Format: int64
+             * @description The entity the screen shows, for the kinds that show one.
+             */
+            id?: number;
+        };
+        AssistantSelectedCollections: {
+            groups?: number[];
+            smartFolders?: number[];
+        };
+        AssistantPin: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /** @description The name the clarification asked about, as untranslated user data. */
+            name: string;
+            /** Format: int64 */
+            id: number;
+        };
+        /** @description One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason. */
+        AssistantTurn: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * @description interrupted was running when the server stopped.
+             * @enum {string}
+             */
+            status: "running" | "done" | "clarify" | "stopped" | "interrupted";
+            /** @description The owner's request, as untranslated user data. */
+            request: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            progress: components["schemas"]["AssistantProgressItem"][];
+            /** @description The model's final text in the request's language. It is model text: show it as plain text. */
+            answer?: string;
+            /** @description Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images. */
+            unchecked?: string[];
+            /** @description The answer used the classifier's answers, which are estimates. */
+            judged: boolean;
+            directive?: components["schemas"]["AssistantDirective"];
+            clarify?: components["schemas"]["AssistantTurnClarification"];
+            proposal?: components["schemas"]["AssistantProposal"];
+            stop?: components["schemas"]["AssistantTurnStop"];
+            usage?: components["schemas"]["AssistantTurnUsage"];
+        };
+        /** @description How the turn used the generation model so far; absent before the first model reply. Every model call reads the whole prompt again. */
+        AssistantTurnUsage: {
+            modelCalls: number;
+            /** @description The last call's prompt, as the provider counted it. */
+            promptTokens: number;
+            /** @description The context the model ran with. */
+            contextTokens: number;
+            /** @description Part of the model ran outside the GPU's memory in some call, which is many times slower. */
+            cpu: boolean;
+        };
+        AssistantTurnList: {
+            items: components["schemas"]["AssistantTurn"][];
+        };
+        /** @description One tool call, composed by the server from the tool and its arguments, never from the model's text. */
+        AssistantProgressItem: {
+            /** @description The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools. */
+            tool: string;
+            /**
+             * @description image is a read that answers an image.
+             * @enum {string}
+             */
+            kind: "builtin" | "read" | "image" | "write" | "excluded";
+            /** @description The entities the call's id arguments name. */
+            labels: components["schemas"]["AssistantLabel"][];
+            /** @description Images the call sends. */
+            images?: number;
+            n?: number;
+            /** @description With n, how far a call over m items has come. */
+            m?: number;
+            /**
+             * Format: int64
+             * @description For start_review, the review run it started or found running; the panel links its review list.
+             */
+            reviewRunId?: number;
+            /** @description Why the call came back as an error result, in English; the model may recover. */
+            error?: string;
+            /** Format: date-time */
+            at: string;
+        };
+        /** @description The turn's last library filter or navigation, which the panel applies without confirmation. */
+        AssistantDirective: {
+            /** @enum {string} */
+            kind: "filter" | "navigate";
+            criteria?: components["schemas"]["AssistantCriteria"];
+            destination?: components["schemas"]["AssistantDestination"];
+        };
+        /** @description The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal. */
+        AssistantTurnClarification: {
+            /** @description As untranslated user data. */
+            name: string;
+            kind: components["schemas"]["AssistantLabelKind"];
+            candidates: components["schemas"]["AssistantCandidate"][];
+        };
+        /** @description Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; context_too_small: the instructions, the request and the tools leave the model's context too little room for tool results; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal. */
+        AssistantTurnStop: {
+            /** @enum {string} */
+            reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "context_too_small" | "ungrounded" | "cancelled";
+            /** @description For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for context_too_small, the context, the tokens the fixed part takes and the context it needs; for ungrounded, the unchecked numbers and names. English, for diagnosis. */
+            detail?: string;
+            excluded?: components["schemas"]["AssistantExcludedOperation"];
+        };
+        /** @description An operation the assistant leaves to its page, which the model asked for. */
+        AssistantExcludedOperation: {
+            operation: string;
+            reason: string;
+            /** @description The route of the page that does it. */
+            page: string;
+        };
+        /** @description Library conditions with ids, in the names the library URL uses, and the labels of the entities they name. */
+        AssistantCriteria: {
+            rule: components["schemas"]["SmartRule"];
+            sort?: components["schemas"]["VideoSort"];
+            labels: components["schemas"]["AssistantLabel"][];
+        };
+        AssistantDestination: {
+            /** @enum {string} */
+            kind: "video" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "tag" | "library" | "folders" | "tags" | "people" | "organizations" | "playlists" | "history" | "duplicates" | "activity" | "settings";
+            /** Format: int64 */
+            id?: number;
+            /** @enum {string} */
+            settingsPage?: "scan" | "library" | "auto-tagging" | "face-recognition" | "connections" | "plugins" | "conversion" | "network" | "account" | "api" | "danger-zone";
+        };
+        AssistantCandidate: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /** Format: int64 */
+            id: number;
+            /** @description The entity's name, as untranslated user data. */
+            name: string;
+            /** @description Videos the tag is on or the person or organization is credited on; 0 for other kinds. */
+            count: number;
+        };
+        /**
+         * @description activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+         * @enum {string}
+         */
+        AssistantLabelKind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot" | "activity" | "faceAppearance";
+        /** @description A search for candidate sets of one kind and their judging by the classifier, one question per set. */
+        AssistantReviewRun: {
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "tags" | "people" | "works";
+            /**
+             * @description interrupted was stopped by a restart.
+             * @enum {string}
+             */
+            status: "running" | "done" | "failed" | "interrupted";
+            /** @description Candidate sets found. */
+            total: number;
+            /** @description Sets judged so far. */
+            judged: number;
+            /** @description Sets judged at 0.5 or more and listed. */
+            listed: number;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+        };
+        AssistantReviewRunPage: {
+            run: components["schemas"]["AssistantReviewRun"];
+            items: components["schemas"]["AssistantReviewCandidate"][];
+            nextCursor?: string;
+        };
+        AssistantReviewCandidate: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: double
+             * @description The classifier's probability that the set is one entity or one work, 0.5 or more.
+             */
+            probability: number;
+            /** @description Two tags or two people, or two or more videos. */
+            members: components["schemas"]["AssistantReviewMember"][];
+            /** @enum {string} */
+            state: "listed" | "adopted" | "rejected";
+        };
+        AssistantReviewMember: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /**
+             * Format: int64
+             * @description The tag or person, or a current library video of the member.
+             */
+            id: number;
+            /** @description The current name, or the video's title when the set was judged, as untranslated user data. */
+            name: string;
+            /** @description Videos the tag is on or the person is credited on; 0 for a video. */
+            count: number;
+        };
+        AssistantReviewCandidateIds: {
+            ids: number[];
+        };
+        AssistantReviewAdoption: {
+            /** @description The approved proposals, in the order of ids. */
+            proposals: components["schemas"]["AssistantProposal"][];
+            skippedIds: number[];
+        };
+        AssistantReviewRejection: {
+            rejectedIds: number[];
+            skippedIds: number[];
+        };
+        AssistantProposalList: {
+            items: components["schemas"]["AssistantProposal"][];
+        };
+        AssistantExecution: {
+            /** @description The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped. */
+            steps: number[];
+        };
+        /** @description The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress. */
+        AssistantProposal: {
+            /** Format: int64 */
+            id: number;
+            status: components["schemas"]["AssistantProposalStatus"];
+            /** @description The owner's text, as untranslated user data. */
+            request: string;
+            /**
+             * Format: int64
+             * @description The turn that built the proposal; absent for an adoption from a review list.
+             */
+            turnId?: number;
+            steps: components["schemas"]["AssistantProposalStep"][];
+            /**
+             * Format: int64
+             * @description The assistant_run activity entry, present once the proposal is approved.
+             */
+            activityId?: number;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+        };
+        /** @description One write of a proposal: what the card shows for it and its progress. */
+        AssistantProposalStep: {
+            /** @description Position in the card, from 0. */
+            index: number;
+            /** @description The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add. */
+            operation: string;
+            /** @description From the catalog row; the card marks the change as one that cannot be undone. */
+            irreversible: boolean;
+            targets: components["schemas"]["AssistantProposalTargets"];
+            /** @description The arguments after resolution, one per argument, in the order the card shows them. */
+            change: components["schemas"]["AssistantChange"][];
+            /** @description Names the operation creates, such as a tag to attach that does not exist yet. */
+            created: string[];
+            /** @description Names this step uses that an earlier step of the same proposal creates. */
+            createdBy: components["schemas"]["AssistantCreatedBy"][];
+            impact?: components["schemas"]["AssistantImpact"];
+            status: components["schemas"]["AssistantStepStatus"];
+            counts: components["schemas"]["AssistantProposalCounts"];
+            error?: components["schemas"]["AssistantProposalError"];
+        };
+        AssistantCreatedBy: {
+            /** @description The name as the card shows it, as untranslated user data. */
+            name: string;
+            /** @description The index of the step that creates it. */
+            step: number;
+        };
+        /**
+         * @description pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
+         * @enum {string}
+         */
+        AssistantStepStatus: "pending" | "skipped" | "running" | "done" | "partial" | "stale" | "failed" | "notRun";
+        /**
+         * @description proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.
+         * @enum {string}
+         */
+        AssistantProposalStatus: "proposed" | "approved" | "running" | "done" | "partial" | "stale" | "failed" | "discarded";
+        AssistantProposalTargets: {
+            /** @description The catalog row's target kind; empty for a row that acts on its arguments alone. */
+            kind: string;
+            /** @description Videos for a video target, otherwise the named entities. */
+            count: number;
+            /** @description The first 10 targets the card names. */
+            labels: components["schemas"]["AssistantLabel"][];
+        };
+        AssistantLabel: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /**
+             * Format: int64
+             * @description The entity's id when the card showed it; absent when unknown.
+             */
+            id?: number;
+            /** @description The name the card showed, as untranslated user data. */
+            name: string;
+        };
+        AssistantChange: {
+            /** @description The argument name of the action outcome, such as tagNames or enabled. */
+            argument: string;
+            /** @description The entities the argument names after resolution. */
+            labels?: components["schemas"]["AssistantLabel"][];
+            /** @description A literal value, such as a boolean, a number or a date. */
+            value?: unknown;
+        };
+        /** @description Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored. */
+        AssistantImpact: {
+            videos: number;
+        };
+        /** @description In videos for a batched operation, otherwise 0 or 1 for the one call. */
+        AssistantProposalCounts: {
+            total: number;
+            applied: number;
+            failed: number;
+        };
+        /** @description The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart. */
+        AssistantProposalError: {
+            code: string;
+            reason?: string;
+            message?: string;
+        };
+        /** @description Whether a turn can run; reason is present only when ready is false. */
+        AssistantReadiness: {
+            ready: boolean;
+            /**
+             * @description ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools.
+             * @enum {string}
+             */
+            reason?: "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools";
+            /** @description The generation model can see images; false when it is unknown. */
+            vision: boolean;
         };
         /**
          * @description ComfyUI provider: self_hosted for the owner's instance, cloud for Comfy Cloud.
@@ -4119,6 +4860,11 @@ export interface components {
             available: boolean;
             /** @description Unavailability reason in English, possibly including the provider's JSON error message. */
             message?: string;
+            /**
+             * @description Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools.
+             * @enum {string}
+             */
+            reason?: "generation_model_missing" | "generation_model_without_tools";
             /** @description ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows. */
             missing?: components["schemas"]["ComfyUIMissingItem"][];
         };
@@ -4233,6 +4979,8 @@ export interface components {
         WorkInfoPluginKind: "work" | "person";
         /** @description One work-info or person plugin. */
         WorkInfoPlugin: {
+            /** @description The owner's switch. A plugin that is off never runs, whatever its state; new plugins start on. */
+            enabled: boolean;
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["WorkInfoPluginKind"];
@@ -4303,6 +5051,9 @@ export interface components {
         ApproveWorkInfoPluginRequest: {
             /** @description Digest observed in the list response. */
             digest: string;
+        };
+        SetWorkInfoPluginEnabledRequest: {
+            enabled: boolean;
         };
         SetWorkInfoPluginSettingsRequest: {
             /** @description Map of keys to new values; null deletes a value, omitted keys remain unchanged. */
@@ -4500,6 +5251,8 @@ export interface components {
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
             match: components["schemas"]["WorkInfoMatch"];
+            /** @description Plugin-provided profile values that pass validation; omitted when none. Applying the organization's role fills only the linked organization's empty fields. */
+            profile?: components["schemas"]["OrganizationProfile"];
         };
         /**
          * @description Fetched fields applicable to the video, in comparison-row order.
@@ -5131,7 +5884,7 @@ export interface components {
             /** @description HTTP(S) URLs in order, at most 20 and unique; omitted when empty. */
             links?: string[] | null;
         };
-        /** @description One organization, with Person fields plus a parent organization. */
+        /** @description One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization. */
         Organization: {
             /** Format: int64 */
             id: number;
@@ -5140,6 +5893,11 @@ export interface components {
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
+            profile: components["schemas"]["OrganizationProfile"];
+            /** @description Whether the owner marked this organization as a favorite. */
+            favorite: boolean;
+            /** @description Present only while the organization has a logo; changes with every change of it. */
+            imageRevision?: components["schemas"]["PersonImageRevision"];
             /** @description Visible videos linked to this organization in any role. */
             videoCount: number;
             /** Format: date-time */
@@ -5147,7 +5905,38 @@ export interface components {
             /** @description Parent organization; omitted for roots. */
             parent?: components["schemas"]["CreditRef"];
         };
-        /** @description Person or organization creation body; parentId is organization-only and profile person-only. */
+        /** @description An organization's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field organizationProfile.<name>. */
+        OrganizationProfile: {
+            /**
+             * @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+             * @example 1990
+             * @example 1990-05
+             * @example 1990-05-17
+             */
+            foundedDate?: string;
+            /** @description Same format as foundedDate; not before it at the precision both share. */
+            dissolvedDate?: string;
+            /** @description 1-200 code points. */
+            location?: string;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string;
+            /** @description HTTP(S) URLs in order, at most 100 and unique; omitted when empty. */
+            links?: string[];
+        };
+        /** @description Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list. */
+        OrganizationProfilePatch: {
+            /** @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC. */
+            foundedDate?: string | null;
+            /** @description Same format as foundedDate; not before it at the precision both share. */
+            dissolvedDate?: string | null;
+            /** @description 1-200 code points. */
+            location?: string | null;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string | null;
+            /** @description HTTP(S) URLs in order, at most 100 and unique. */
+            links?: string[] | null;
+        };
+        /** @description Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only. */
         CreditInput: {
             name: string;
             aliases?: components["schemas"]["Alias"][];
@@ -5159,6 +5948,8 @@ export interface components {
             parentId?: number;
             /** @description Person-only profile; sending it for an organization returns 400 invalid_request. */
             profile?: components["schemas"]["PersonProfile"];
+            /** @description Organization-only profile; sending it for a person returns 400 invalid_request. */
+            organizationProfile?: components["schemas"]["OrganizationProfile"];
         };
         /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
         CreditPatch: {
@@ -5172,6 +5963,8 @@ export interface components {
             parentId?: number | null;
             /** @description Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing. */
             profile?: components["schemas"]["PersonProfilePatch"];
+            /** @description Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing. */
+            organizationProfile?: components["schemas"]["OrganizationProfilePatch"];
         };
         CreditMergeRequest: {
             /** @description Source IDs: 1-20,000 entries. */
@@ -5382,11 +6175,11 @@ export interface components {
             deletedSmartFolders: number;
             remote?: components["schemas"]["RemoteSelectionResult"];
         };
-        /** @description The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails. */
+        /** @description The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails. */
         RemoteSelectionResult: {
-            /** @description Videos or collections changed on the peer. */
+            /** @description Videos or collections changed on the read VVMDMs, summed. */
             applied: number;
-            /** @description Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success. */
+            /** @description Requested ids of the read VVMDMs that were not changed, in their remote ids; for collections, the group and smart-folder ids. Empty on success. */
             failedVideoIds: number[];
             reason?: components["schemas"]["ErrorReason"];
         };
@@ -5399,6 +6192,8 @@ export interface components {
             smartFolderIds?: number[];
             /** @description Person IDs whose favorite state changes; missing people are ignored. */
             personIds?: number[];
+            /** @description Organization IDs whose favorite state changes; missing organizations are ignored. */
+            organizationIds?: number[];
             /** @description True adds favorites; false removes them. */
             favorite: boolean;
         };
@@ -5502,6 +6297,52 @@ export interface components {
             dates?: components["schemas"]["VideoDateEdit"][];
             /** @description True makes the videos public, false private; omit to keep each video's visibility. */
             public?: boolean;
+            /** @description Provisional people to merge into a person, at most one entry per into person; a source listed twice, or equal to an into, returns 400 work_info_duplicate at its field. */
+            merges?: components["schemas"]["VideoEditMerge"][];
+        };
+        VideoEditMerge: {
+            /**
+             * Format: int64
+             * @description The person the sources are merged into.
+             */
+            into: number;
+            /** @description Provisional people to merge into into. */
+            sourceIds: number[];
+        };
+        VideoEditMerged: {
+            /**
+             * Format: int64
+             * @description The merged provisional person, which no longer exists.
+             */
+            personId: number;
+            /** Format: int64 */
+            into: number;
+            /**
+             * Format: int64
+             * @description The face_merge entry undoActivity takes back; absent when the person held an external ID, which the undo cannot restore.
+             */
+            undoActivityId?: number;
+        };
+        ProvisionalMatchRequest: {
+            /** @description Video IDs to read. May be empty when smartFolderIds is not. */
+            videoIds: number[];
+            /** @description Smart-folder IDs resolved to their current member videos, as in VideoEditRequest. */
+            smartFolderIds?: number[];
+            /** @description The people being added, whose faces similarTo compares. */
+            personIds: number[];
+        };
+        ProvisionalMatches: {
+            items: components["schemas"]["ProvisionalMatch"][];
+        };
+        ProvisionalMatch: {
+            /** Format: int64 */
+            personId: number;
+            /** @description The person is the only provisional performer of at least one resolved video. */
+            alone: boolean;
+            /** @description Other provisional performers sharing a resolved video with the person, in ID order. */
+            coPerformers: number[];
+            /** @description personIds whose faces reach the merge threshold, most similar first. */
+            similarTo: number[];
         };
         VideoTagEdit: {
             /** @description Up to 100 tags to attach; a tag named twice, or by a name and its ID, is attached once. */
@@ -5519,6 +6360,10 @@ export interface components {
             applied: number;
             /** @description The tags of tags.add as resolved, in request order without repeats. */
             tags: components["schemas"]["TagRef"][];
+            /** @description The merges applied, in request order; absent without merges. */
+            merged?: components["schemas"]["VideoEditMerged"][];
+            /** @description Merge sources that no longer existed or had been named, in request order; absent when none. */
+            skippedPersonIds?: number[];
             remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoCodeEditSummary: {
@@ -5659,6 +6504,7 @@ export interface components {
             missingTagIds?: number[];
             /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
             peerItems?: components["schemas"]["PeerListItem"][];
+            emptyReason?: components["schemas"]["EmptyReason"];
         };
         LibraryPage: {
             items: components["schemas"]["LibraryItem"][];
@@ -5670,7 +6516,13 @@ export interface components {
             missingTagIds?: number[];
             /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
             peerItems?: components["schemas"]["PeerListItem"][];
+            emptyReason?: components["schemas"]["EmptyReason"];
         };
+        /**
+         * @description Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+         * @enum {string}
+         */
+        EmptyReason: "all_folders_off";
         /** @description One listed item's place for merging lists of two paired VVMDMs. */
         PeerListItem: {
             /** @description Cursor that continues the list after this item. */
@@ -5943,7 +6795,27 @@ export interface components {
              * @description Organization IDs linked in any role.
              */
             organization?: number;
+            /**
+             * Format: int64
+             * @description Shortest duration in milliseconds, as `listLibrary`'s `minDurationMs`.
+             */
+            minDurationMs?: number;
+            /**
+             * Format: int64
+             * @description Longest duration in milliseconds, as `listLibrary`'s `maxDurationMs`; below `minDurationMs` returns 400 invalid_smart_rule.
+             */
+            maxDurationMs?: number;
+            /** @description First `YYYY-MM-DD` day added, in the server's local time zone. */
+            addedFrom?: string;
+            /** @description Last `YYYY-MM-DD` day added, in the server's local time zone; before `addedFrom` returns 400 invalid_smart_rule. */
+            addedTo?: string;
+            watchState?: components["schemas"]["WatchState"];
         };
+        /**
+         * @description unwatched without a started position, watched when complete, otherwise inProgress.
+         * @enum {string}
+         */
+        WatchState: "unwatched" | "inProgress" | "watched";
         /** @description Entities referenced by filters that no longer exist. */
         SmartRuleRef: {
             /** @enum {string} */
@@ -6015,7 +6887,20 @@ export interface components {
             tags: components["schemas"]["VideoTag"][];
             /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
+            conditions?: components["schemas"]["SmartFolderConditions"];
             peerRule?: components["schemas"]["PeerSmartRule"];
+        };
+        /** @description The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them. */
+        SmartFolderConditions: {
+            /** Format: int64 */
+            minDurationMs?: number;
+            /** Format: int64 */
+            maxDurationMs?: number;
+            /** @description `YYYY-MM-DD` day in the server's local time zone. */
+            addedFrom?: string;
+            /** @description `YYYY-MM-DD` day in the server's local time zone. */
+            addedTo?: string;
+            watchState?: components["schemas"]["WatchState"];
         };
         /** @description GET /api/smart-folders/cards response. */
         SmartFolderCards: {
@@ -6155,6 +7040,8 @@ export interface components {
             id: number;
             /** @description True for a virtual video, which has no file and is never playable. */
             virtual: boolean;
+            /** @description True on a read by id (the video, a playlist's items) while every media folder holding the video is switched off; omitted otherwise. Lists leave such a video out. */
+            folderOff?: boolean;
             linkFetch?: components["schemas"]["VirtualLinkFetch"];
             /** @description Effective title: display name when set, otherwise filename without extension; a virtual video's own title. */
             title: string;
@@ -7086,6 +7973,8 @@ export interface components {
             items: components["schemas"]["WatchHistoryEntry"][];
             /** @description Included only when more results remain. */
             nextCursor?: string;
+            /** @description Per-item cursors, one per item in order, with playedAt in Unix milliseconds as the sort value; only in answers to the paired VVMDM's peer credential. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         /** @description One history entry per playback. video appears only when that content is currently in the library and openable, using list shape including progress, tags and favorite; otherwise the entry cannot be played. */
         WatchHistoryEntry: {
@@ -7180,12 +8069,12 @@ export interface components {
          * @description Activity record kind.
          * @enum {string}
          */
-        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "face_merge" | "pipeline" | "undo";
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "face_merge" | "assistant_run" | "pipeline" | "undo";
         /**
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
          */
-        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize" | "face_recognition";
+        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize" | "face_recognition" | "assistant";
         /**
          * @description Record status.
          * @enum {string}
@@ -7200,7 +8089,7 @@ export interface components {
          * @description Outcome of done records.
          * @enum {string}
          */
-        ActivityOutcome: "completed" | "same" | "different" | "failed" | "superseded" | "decided_by_owner" | "gone" | "already_reverted";
+        ActivityOutcome: "completed" | "same" | "different" | "failed" | "superseded" | "decided_by_owner" | "gone" | "already_reverted" | "partial" | "stale";
         /**
          * @description Actor responsible for the recorded decision, otherwise the actor that started processing.
          * @enum {string}
@@ -7236,6 +8125,7 @@ export interface components {
             media_folders: number;
             organize: number;
             face_recognition: number;
+            assistant: number;
         };
         /** @description One activity record. */
         ActivityEntry: components["schemas"]["ActivityEntryFields"];
@@ -7360,7 +8250,7 @@ export interface components {
         /** @description Record targets, one per key: two for pairs and one otherwise. */
         ActivitySubject: {
             /** @enum {string} */
-            kind: "video" | "pair" | "scan" | "folder" | "person";
+            kind: "video" | "pair" | "scan" | "folder" | "person" | "proposal";
             items: components["schemas"]["ActivitySubjectItem"][];
         };
         ActivitySubjectItem: {
@@ -7438,16 +8328,35 @@ export interface components {
             /** @description Release version, as getHealth reports it; shown for reference, never compared */
             version: string;
         };
-        /** @description The VVMDM this node reads */
-        PeerLink: {
-            /** @description Its host name at pairing */
-            name: string;
-            /** @description Its base URL */
-            address: string;
-            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted */
-            pinned: boolean;
-            /** @description Its version last seen, shown for reference */
+        /** @description One VVMDM this node reads, with its connection. Guests receive slot, state and reason only. */
+        PeerLinkState: {
+            /**
+             * Format: int64
+             * @description The link's slot, 1 or more and never reused; its entities' ids in the screen API are their own ids plus slot times 2^40
+             */
+            slot: number;
+            /** @description Its node id, the path parameter of the link's operations. Owner only. */
+            nodeId?: string;
+            /**
+             * @description The connection to that VVMDM
+             * @enum {string}
+             */
+            state: "connected" | "unreachable" | "revoked";
+            /**
+             * @description Present with unreachable
+             * @enum {string}
+             */
+            reason?: "network" | "certificate";
+            /** @description Its host name at pairing. Owner only. */
+            name?: string;
+            /** @description Its base URL. Owner only. */
+            address?: string;
+            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted. Owner only. */
+            pinned?: boolean;
+            /** @description Its version last seen, shown for reference. Owner only. */
             version?: string;
+            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
+            fingerprint?: string;
         };
         /** @description The VVMDM that reads this one */
         PeerGrant: {
@@ -7456,23 +8365,51 @@ export interface components {
             /** Format: date-time */
             pairedAt: string;
         };
-        /** @description Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity. */
+        /** @description Guests receive links in their guest shape only; owners also receive grant (while one reads this node) and node, this node's identity. */
         PeerState: {
+            /** @description The VVMDMs this node reads, in slot order; empty while it reads none */
+            links: components["schemas"]["PeerLinkState"][];
+            grant?: components["schemas"]["PeerGrant"];
+            node?: components["schemas"]["PeerNode"];
+        };
+        /** @description One media folder of the read node as it answers its reader */
+        PeerFolder: {
+            /** Format: int64 */
+            id: number;
+            path: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description One media folder of a link in this node's snapshot, with the owner's switch on this node */
+        PeerMediaFolder: {
             /**
-             * @description The connection to the VVMDM this node reads; unpaired without link
+             * Format: int64
+             * @description The folder's id on the link
+             */
+            id: number;
+            /** @description Its path on the link, as last listed */
+            path: string;
+            /** @description False while switched off on this node: the link leaves its videos out of this node's reads */
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description When the snapshot was last reconciled with the link's listing
+             */
+            refreshedAt: string;
+        };
+        PeerLinkMediaFolders: {
+            /**
+             * @description The link's connection, as getPeer answers it
              * @enum {string}
              */
-            state: "unpaired" | "connected" | "unreachable" | "revoked";
+            state: "connected" | "unreachable" | "revoked";
             /**
              * @description Present with unreachable
              * @enum {string}
              */
             reason?: "network" | "certificate";
-            link?: components["schemas"]["PeerLink"];
-            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
-            fingerprint?: string;
-            grant?: components["schemas"]["PeerGrant"];
-            node?: components["schemas"]["PeerNode"];
+            /** @description In the link's id order */
+            folders: components["schemas"]["PeerMediaFolder"][];
         };
         PairingCode: {
             code: string;
@@ -7584,6 +8521,7 @@ export interface components {
             role: components["schemas"]["WorkOrganizationRole"];
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
+            profile?: components["schemas"]["OrganizationProfile"];
         };
         /** @description The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links. */
         PeerFetchedPluginPerson: {
@@ -7641,6 +8579,8 @@ export interface components {
             tagKindName?: string;
             personName?: string;
             organizationName?: string;
+            /** @description Whether a matching video must be a favorite of the node that holds it. */
+            favorite?: boolean;
         };
         /** @description One entity a smart rule names, with its canonical name. */
         SmartRuleRefName: {
@@ -7652,7 +8592,7 @@ export interface components {
         };
         /** @description Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder. */
         PeerSmartRule: {
-            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos. */
+            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then matches its own favorites, as match.favorite also says. */
             favorite: boolean;
             match?: components["schemas"]["SmartRuleByName"];
             sort?: components["schemas"]["VideoSort"];
@@ -7681,7 +8621,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "service_unavailable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_disabled" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "assistant_busy" | "service_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -7699,14 +8639,24 @@ export interface components {
             settingKeys?: string[];
             /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
             fingerprint?: string;
+            /** @description The name of the read VVMDM that caused the error; for peer_unreachable and a read VVMDM's refusal of a rename, merge or deletion of a tag, person or organization. */
+            peer?: string;
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
+            proposal?: components["schemas"]["AssistantProposal"];
+            /** @description The index of the kept step that uses what an unticked step creates; only for step_needs_skipped. */
+            step?: number;
+            /**
+             * Format: int64
+             * @description The running turn; only for assistant_busy.
+             */
+            turnId?: number;
         };
         /**
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */
@@ -7799,8 +8749,27 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The paired VVMDM is not connected or gave no answer (code service_unavailable, reason peer_unreachable) */
+        PeerUnreachable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
+        /** @description The node id of a link, as getPeer answers it */
+        PeerLinkNodeId: string;
+        /** @description The folder's id on the link, as listPeerLinkMediaFolders answers it */
+        PeerLinkFolderId: number;
+        /** @description Assistant review run ID */
+        AssistantReviewRunId: number;
+        /** @description Assistant turn ID */
+        AssistantTurnId: number;
+        /** @description Assistant proposal ID */
+        AssistantProposalId: number;
         /** @description Activity record ID */
         ActivityId: number;
         /** @description Thumbnail-edit session ID */
@@ -7819,6 +8788,16 @@ export interface components {
         OrganizationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
+        /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
+        MinDurationFilter: number;
+        /** @description Videos at most this long, in milliseconds; a video of unknown duration never matches. */
+        MaxDurationFilter: number;
+        /** @description Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request. */
+        AddedFromFilter: string;
+        /** @description Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone. */
+        AddedToFilter: string;
+        /** @description Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        WatchStateFilter: components["schemas"]["WatchState"];
         /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
         TagNameFilter: string[];
         /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
@@ -7867,7 +8846,7 @@ export interface components {
         CreditCursor: string;
         /** @description Page size; omit for all results without nextCursor */
         CreditLimit: number;
-        /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+        /** @description True keeps favorites, combined with q by AND, and total counts them. */
         CreditFavorite: boolean;
         /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
         CreditProvisional: boolean;
@@ -8132,6 +9111,16 @@ export interface operations {
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
+                minDurationMs?: components["parameters"]["MinDurationFilter"];
+                /** @description Videos at most this long, in milliseconds; a video of unknown duration never matches. */
+                maxDurationMs?: components["parameters"]["MaxDurationFilter"];
+                /** @description Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request. */
+                addedFrom?: components["parameters"]["AddedFromFilter"];
+                /** @description Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone. */
+                addedTo?: components["parameters"]["AddedToFilter"];
+                /** @description Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                watchState?: components["parameters"]["WatchStateFilter"];
                 /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagName?: components["parameters"]["TagNameFilter"];
                 /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
@@ -8184,6 +9173,16 @@ export interface operations {
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
+                minDurationMs?: components["parameters"]["MinDurationFilter"];
+                /** @description Videos at most this long, in milliseconds; a video of unknown duration never matches. */
+                maxDurationMs?: components["parameters"]["MaxDurationFilter"];
+                /** @description Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request. */
+                addedFrom?: components["parameters"]["AddedFromFilter"];
+                /** @description Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone. */
+                addedTo?: components["parameters"]["AddedToFilter"];
+                /** @description Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                watchState?: components["parameters"]["WatchStateFilter"];
                 /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagName?: components["parameters"]["TagNameFilter"];
                 /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
@@ -9491,6 +10490,36 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    setMediaFolderEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media folder ID */
+                id: components["parameters"]["MediaFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaFolderEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The media folder with its switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMediaFolderUsage: {
         parameters: {
             query?: never;
@@ -9870,6 +10899,347 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listOllamaModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Models and their capabilities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OllamaModelList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description ollama_unreachable: the saved endpoint cannot be reached (reason connection) or does not answer as Ollama (reason not_ollama) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssistantReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Readiness */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReadiness"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listAssistantTurns: {
+        parameters: {
+            query: {
+                /** @description Must be true. */
+                active: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active turns */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTurnList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createAssistantTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description The running turn */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTurn"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools), or another turn is running (`assistant_busy`, its id in turnId) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssistantTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant turn ID */
+                id: components["parameters"]["AssistantTurnId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The turn */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTurn"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    stopAssistantTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant turn ID */
+                id: components["parameters"]["AssistantTurnId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The turn is stopping */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAssistantProposals: {
+        parameters: {
+            query: {
+                /** @description Must be true. */
+                active: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active proposals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantProposalList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAssistantProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant proposal ID */
+                id: components["parameters"]["AssistantProposalId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantProposal"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    executeAssistantProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant proposal ID */
+                id: components["parameters"]["AssistantProposalId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantExecution"];
+            };
+        };
+        responses: {
+            /** @description The approved proposal */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantProposal"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The proposal is not pending (`proposal_not_pending`), and proposal carries it; or a kept step needs an unticked one (`step_needs_skipped`), and step is its index */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssistantReviewRun: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Candidates per page; 50 when omitted. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Assistant review run ID */
+                id: components["parameters"]["AssistantReviewRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run and one page of candidates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReviewRunPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adoptAssistantReviewCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant review run ID */
+                id: components["parameters"]["AssistantReviewRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantReviewCandidateIds"];
+            };
+        };
+        responses: {
+            /** @description The approved proposals */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReviewAdoption"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectAssistantReviewCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant review run ID */
+                id: components["parameters"]["AssistantReviewRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantReviewCandidateIds"];
+            };
+        };
+        responses: {
+            /** @description The rejected and skipped ids */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReviewRejection"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getComfyUISettings: {
@@ -10494,7 +11864,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -10581,7 +11954,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10608,7 +11984,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10630,6 +12009,84 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listPeerLinkMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link's folders and state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerLinkMediaFolders"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setPeerLinkMediaFolderEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+                /** @description The folder's id on the link, as listPeerLinkMediaFolders answers it */
+                folderId: components["parameters"]["PeerLinkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaFolderEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The folder with its switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerMediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPeerMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node's media folders */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerFolder"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     acceptPairing: {
@@ -11048,6 +12505,36 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Plugin with approval revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setWorkInfoPluginEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Work-info plugin ID */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkInfoPluginEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description Plugin with its new switch */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11838,7 +13325,7 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
-                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                /** @description True keeps favorites, combined with q by AND, and total counts them. */
                 favorite?: components["parameters"]["CreditFavorite"];
                 /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
                 provisional?: components["parameters"]["CreditProvisional"];
@@ -12495,7 +13982,7 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
-                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                /** @description True keeps favorites, combined with q by AND, and total counts them. */
                 favorite?: components["parameters"]["CreditFavorite"];
                 /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
                 provisional?: components["parameters"]["CreditProvisional"];
@@ -12622,6 +14109,96 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getOrganizationImage: {
+        parameters: {
+            query?: {
+                /** @description imageRevision from Organization; ignored by the server */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description `If-None-Match` matches `ETag` */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadOrganizationImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadPersonImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PersonImageTooLarge"];
+        };
+    };
+    deleteOrganizationImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     mergeOrganizations: {
@@ -12799,6 +14376,32 @@ export interface operations {
             };
         };
     };
+    matchProvisionalPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionalMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Provisional performers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionalMatches"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     summarizeVideoCodeEdits: {
         parameters: {
             query?: never;
@@ -12917,6 +14520,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            503: components["responses"]["PeerUnreachable"];
         };
     };
     listPlaylists: {
@@ -13187,6 +14791,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+            503: components["responses"]["PeerUnreachable"];
         };
     };
     listWatchHistoryDates: {
@@ -13239,6 +14844,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["PeerUnreachable"];
         };
     };
     getPlaylistPlayback: {

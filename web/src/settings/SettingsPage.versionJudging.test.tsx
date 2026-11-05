@@ -12,7 +12,12 @@ const judgingURL = "/api/settings/version-judging";
 const noteText = /^No Ollama connection is saved\./;
 
 function ollama(saved: boolean) {
-  return { endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved };
+  return {
+    endpoint: "http://127.0.0.1:11434",
+    model: "clef-flash",
+    generationModel: "",
+    saved,
+  };
 }
 
 function judgingSwitch(): HTMLElement {

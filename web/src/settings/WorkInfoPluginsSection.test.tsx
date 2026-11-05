@@ -25,6 +25,7 @@ function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
     sources: [],
     domains: [],
     builtin: false,
+    enabled: true,
     name: "example.works",
     fileName: "example.wasm",
     version: "1.2.0",
@@ -124,13 +125,16 @@ function server(initial: WorkInfoPlugin[], override: Override = () => undefined)
       return Promise.resolve(json({ plugins: stored }));
     if (url === "/api/work-info-plugins" && method === "POST")
       return Promise.resolve(upload(init?.body as FormData));
-    const match = /^\/api\/work-info-plugins\/(\d+)(\/approval|\/settings)?$/.exec(url);
+    const match =
+      /^\/api\/work-info-plugins\/(\d+)(\/approval|\/settings|\/enabled)?$/.exec(url);
     if (match === null) throw new Error(`unexpected request: ${method} ${url}`);
     const id = Number(match[1]);
     if (match[2] === "/approval")
       return Promise.resolve(
         json(replace(id, { state: method === "PUT" ? "approved" : "unapproved" })),
       );
+    if (match[2] === "/enabled")
+      return Promise.resolve(json(replace(id, body as { enabled: boolean })));
     if (match[2] === "/settings") {
       const { values } = body as { values: Record<string, string | null> };
       const current = stored.find((item) => item.id === id);
@@ -652,6 +656,25 @@ describe("WorkInfoPluginsSection", () => {
       ),
     );
     expect(fake.stored().map((item) => item.id)).toEqual([2]);
+  });
+
+  it("スイッチは承認を保ったまま行を切り替える", async () => {
+    const fake = server([plugin({ id: 1, state: "approved" })]);
+    fetchMock.mockImplementation(fake.handler);
+    const user = userEvent.setup();
+    renderSection();
+
+    const row = await waitFor(() => rowOf("example.works"));
+    const toggle = within(row).getByRole("switch", { name: "Use example.works" });
+    await user.click(toggle);
+
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
+    expect(within(row).getByText("Approved")).toBeDefined();
+    expect(fake.requests.at(-1)).toEqual({
+      method: "PUT",
+      url: "/api/work-info-plugins/1/enabled",
+      body: { enabled: false },
+    });
   });
 
   it("追加の後の読み直しより先に取り消しが終わっても、遅れて届いた一覧で承認済みに戻らない", async () => {

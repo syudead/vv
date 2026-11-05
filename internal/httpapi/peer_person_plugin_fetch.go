@@ -30,7 +30,7 @@ func peerPersonPath(id int64, rest string) string {
 // Get gives the person's external IDs and links, the values a fetch picks its key from.
 func (p *peerPersonFetch) Get(_ context.Context, _ domain.CreditKind, id int64) (domain.Credit, error) {
 	var person gen.Person
-	if err := p.s.peerGet(p.r, peerPersonPath(id, ""), url.Values{}, &person); err != nil {
+	if err := p.s.peerGet(p.r, domain.RemoteSlot(id), peerPersonPath(id, ""), url.Values{}, &person); err != nil {
 		return domain.Credit{}, peerWorkInfoError(err)
 	}
 	return domain.Credit{
@@ -55,7 +55,7 @@ func (p *peerPersonFetch) ApplyPersonPluginFetch(
 	}
 	var answer gen.PersonPluginFetchApplied
 	path := "/api/peer/people/" + strconv.FormatInt(domain.FromRemoteID(apply.PersonID), 10) + "/fetched-person"
-	if err := p.s.peerCall(p.r, http.MethodPost, path, url.Values{}, body, &answer); err != nil {
+	if err := p.s.peerCall(p.r, domain.RemoteSlot(apply.PersonID), http.MethodPost, path, url.Values{}, body, &answer); err != nil {
 		return domain.PersonPluginApplied{}, peerWorkInfoError(err)
 	}
 	p.latest = &answer.Person
@@ -74,7 +74,7 @@ func (p *peerPersonFetch) ApplyPersonPluginFetch(
 // ReplacePersonImage uploads the face as the screens upload one, as a multipart form.
 func (p *peerPersonFetch) ReplacePersonImage(ctx context.Context, id int64, data []byte) (int64, error) {
 	var person gen.Person
-	err := p.s.peerUpload(ctx, http.MethodPut, peerPersonPath(id, "/image"), func(form *multipart.Writer) error {
+	err := p.s.peerUpload(ctx, domain.RemoteSlot(id), http.MethodPut, peerPersonPath(id, "/image"), func(form *multipart.Writer) error {
 		part, err := form.CreateFormFile("image", "face")
 		if err != nil {
 			return err
@@ -97,10 +97,10 @@ func (p *peerPersonFetch) appliedPerson(ctx context.Context, id int64) (gen.Pers
 	var person gen.Person
 	if p.latest != nil {
 		person = *p.latest
-	} else if err := p.s.peerGet(p.r, peerPersonPath(id, ""), url.Values{}, &person); err != nil {
+	} else if err := p.s.peerGet(p.r, domain.RemoteSlot(id), peerPersonPath(id, ""), url.Values{}, &person); err != nil {
 		return gen.Person{Id: id}, err
 	}
-	join, err := p.s.vocabularyJoin(ctx)
+	join, err := p.s.vocabularyJoin(ctx, domain.RemoteSlot(id))
 	if err != nil {
 		return gen.Person{Id: id}, err
 	}

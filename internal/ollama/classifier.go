@@ -1,15 +1,12 @@
 package ollama
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -46,9 +43,16 @@ func NewWithHTTPClient(settings SettingsSource, client *http.Client) *Classifier
 	return &Classifier{settings: settings, http: client}
 }
 
+// Clef takes at most 255 options in a choice question; one is the none option.
+const maxChoiceOptions = 254
+
+// noneKey is the option Choose adds for "none of these"; callers' option keys must differ from it.
+const noneKey = "_none"
+
 type question struct {
-	Type         string `json:"type"`
-	Instructions string `json:"instructions"`
+	Type         string            `json:"type"`
+	Instructions string            `json:"instructions"`
+	Criteria     map[string]string `json:"criteria,omitempty"`
 }
 
 type requestBody struct {
@@ -60,8 +64,9 @@ type requestBody struct {
 }
 
 type answer struct {
-	Type string   `json:"type"`
-	Noul *float64 `json:"noul"`
+	Type          string             `json:"type"`
+	Noul          *float64           `json:"noul"`
+	Probabilities map[string]float64 `json:"probabilities"`
 }
 
 type responseBody struct {
@@ -80,26 +85,70 @@ func (c *Classifier) Classify(ctx context.Context, req domain.ClassifierRequest)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
 	}
-	var images []string
-	for _, image := range req.Input.Images {
-		images = append(images, base64.StdEncoding.EncodeToString(image))
-	}
+	images := encodeBase64(req.Input.Images)
 	for start := 0; start < len(req.Questions); start += BatchSize {
 		batch := req.Questions[start:min(start+BatchSize, len(req.Questions))]
-		answers, err := c.post(ctx, settings, req.Input.Facts, images, batch)
+		questions := make(map[string]question, len(batch))
+		for _, q := range batch {
+			questions[q.Key] = question{Type: "noul", Instructions: q.Text}
+		}
+		answers, err := c.post(ctx, settings, req.Input.Facts, images, questions)
 		if err != nil {
 			return nil, err
 		}
-		for key, p := range answers {
-			probabilities[key] = p
+		for key, a := range answers {
+			if a.Noul != nil {
+				probabilities[key] = *a.Noul
+			}
 		}
 	}
 	return probabilities, nil
 }
 
+// Choose asks one choice question per request, since a question with all its options costs about as many input
+// tokens as a batch of yes/no questions. More options than Clef takes are dealt round-robin into equal questions, so
+// options next to each other in the caller's order do not compete in the same question.
+func (c *Classifier) Choose(ctx context.Context, req domain.ClassifierChoiceRequest) (map[string]float64, error) {
+	probabilities := map[string]float64{}
+	if len(req.Options) == 0 {
+		return probabilities, nil
+	}
+	settings, err := c.settings.OllamaSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
+	}
+	images := encodeBase64(req.Input.Images)
+	groups := (len(req.Options) + maxChoiceOptions - 1) / maxChoiceOptions
+	for g := range groups {
+		criteria := map[string]string{noneKey: req.None}
+		for i := g; i < len(req.Options); i += groups {
+			criteria[req.Options[i].Key] = req.Options[i].Text
+		}
+		questions := map[string]question{"choice": {Type: "choice", Instructions: req.Instructions, Criteria: criteria}}
+		answers, err := c.post(ctx, settings, req.Input.Facts, images, questions)
+		if err != nil {
+			return nil, err
+		}
+		for key, p := range answers["choice"].Probabilities {
+			if key != noneKey {
+				probabilities[key] = p
+			}
+		}
+	}
+	return probabilities, nil
+}
+
+func encodeBase64(images [][]byte) []string {
+	var encoded []string
+	for _, image := range images {
+		encoded = append(encoded, base64.StdEncoding.EncodeToString(image))
+	}
+	return encoded
+}
+
 func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, facts map[string]string,
-	images []string, questions []domain.ClassifierQuestion,
-) (map[string]float64, error) {
+	images []string, questions map[string]question,
+) (map[string]answer, error) {
 	if facts == nil {
 		facts = map[string]string{}
 	}
@@ -107,58 +156,65 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 		Model:     settings.Model,
 		State:     facts,
 		Images:    images,
-		Questions: make(map[string]question, len(questions)),
+		Questions: questions,
 		KeepAlive: keepAlive,
 	}
-	for _, q := range questions {
-		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Text}
-	}
-	encoded, err := json.Marshal(body)
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build the classifier request: %w", err)
+		return nil, err
 	}
-
-	url := strings.TrimRight(settings.Endpoint, "/") + "/v1/systemone"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(encoded))
-	if err != nil {
-		return nil, fmt.Errorf("cannot build the classifier request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("cannot reach Ollama at %s: %w", settings.Endpoint, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the classifier response: %w", err)
+	if status != http.StatusOK {
+		return nil, answerError(status, raw)
 	}
 	var decoded responseBody
-	decodeErr := json.Unmarshal(raw, &decoded)
-	if resp.StatusCode != http.StatusOK {
-		// Expose only Ollama's structured error message; raw responses could reveal content from an
-		// unrelated service.
-		message := strings.TrimSpace(decoded.Error)
-		if decodeErr != nil || message == "" {
-			return nil, fmt.Errorf("ollama answered %d", resp.StatusCode)
-		}
-		if len(message) > 300 {
-			message = message[:300]
-		}
-		return nil, fmt.Errorf("ollama answered %d: %s", resp.StatusCode, message)
-	}
-	if decodeErr != nil {
+	if decodeErr := json.Unmarshal(raw, &decoded); decodeErr != nil {
 		return nil, fmt.Errorf("cannot read the classifier response: %w", decodeErr)
 	}
 	if decoded.Answers == nil {
 		return nil, errors.New("the classifier response has no answers")
 	}
-	probabilities := make(map[string]float64, len(decoded.Answers))
-	for key, a := range decoded.Answers {
-		if a.Noul != nil {
-			probabilities[key] = *a.Noul
-		}
+	return decoded.Answers, nil
+}
+
+// answerError passes on only the error text of an Ollama JSON answer.
+func answerError(status int, raw []byte) error {
+	var decoded responseBody
+	if json.Unmarshal(raw, &decoded) != nil {
+		decoded.Error = ""
 	}
-	return probabilities, nil
+	return errors.New(statusMessage(status, decoded.Error))
+}
+
+// SystemOne sends Clef's own request with the saved decision model and keep-alive, and answers the endpoint's JSON
+// as it is. More images than Ollama takes are tiled into one, since splitting would change what Clef judges together.
+func (c *Classifier) SystemOne(ctx context.Context, req domain.ClefRequest) (json.RawMessage, error) {
+	settings, err := c.settings.OllamaSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
+	}
+	images, err := encodeImages(req.Images, maxImages)
+	if err != nil {
+		return nil, fmt.Errorf("cannot tile the images: %w", err)
+	}
+	body := requestBody{
+		Model: settings.Model, State: req.State, Images: images,
+		Questions: make(map[string]question, len(req.Questions)), KeepAlive: keepAlive,
+	}
+	if body.State == nil {
+		body.State = map[string]string{}
+	}
+	for key, q := range req.Questions {
+		body.Questions[key] = question{Type: q.Type, Instructions: q.Instructions}
+	}
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, answerError(status, raw)
+	}
+	if !json.Valid(raw) {
+		return nil, errors.New("the classifier response is not JSON")
+	}
+	return raw, nil
 }

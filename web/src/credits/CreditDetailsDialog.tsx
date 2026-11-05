@@ -8,6 +8,7 @@ import {
   type CreditPatch,
   type ExternalId,
   isCreditGone,
+  type Organization,
   listCredits,
   updateCredit,
 } from "../api/credits";
@@ -39,6 +40,14 @@ import {
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { parentOf } from "./creditRows";
+import {
+  type OrganizationDraft,
+  organizationDraftOf,
+  OrganizationLogoField,
+  organizationProfileControl,
+  organizationProfilePatch,
+  OrganizationProfileFields,
+} from "./OrganizationProfileFields";
 
 const maxAliases = 50;
 export const maxExternalIds = 20;
@@ -65,6 +74,8 @@ export function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
     return { control: "parent", text };
   }
   const field = failure.field ?? "";
+  const profileControl = organizationProfileControl(field);
+  if (profileControl !== undefined) return { control: profileControl, text };
   if (field === "aliases") return { control: "aliases", text };
   if (field === "externalIds") return { control: "ids", text };
   const alias = /^aliases\[(\d+)\]\.(name|language)$/.exec(field);
@@ -87,6 +98,12 @@ interface Edited {
   parent: boolean;
 }
 
+/** The organization-only state the patch compares; people have none. */
+interface OrganizationEdit {
+  draft: OrganizationDraft;
+  loaded: OrganizationDraft;
+}
+
 /** Ignore newly added rows whose inputs are all blank. */
 function blank(...values: string[]): boolean {
   return values.every((value) => value.trim() === "");
@@ -103,6 +120,7 @@ function buildPatch(
   ids: readonly IdRow[],
   parent: string,
   edited: Edited,
+  organization: OrganizationEdit | null,
 ): { patch: CreditPatch; sent: Sent } {
   const sentAliases = aliasesToSend(edited.aliases ? aliases : []);
   const sentIds = idsToSend(edited.ids ? ids : []);
@@ -111,6 +129,10 @@ function buildPatch(
   if (edited.ids) patch.externalIds = sentIds.values;
   if (kind === "organization" && edited.parent)
     patch.parentId = parent === noParent ? null : Number(parent);
+  if (organization !== null) {
+    const profile = organizationProfilePatch(organization.draft, organization.loaded);
+    if (Object.keys(profile).length > 0) patch.organizationProfile = profile;
+  }
   return { patch, sent: { aliasKeys: sentAliases.keys, idKeys: sentIds.keys } };
 }
 
@@ -161,14 +183,22 @@ export default function CreditDetailsDialog({
   onClose,
   onSaved,
   onStale,
+  onLogoChanged,
 }: {
   kind: CreditKind;
   credit: Credit;
   onClose: () => void;
   onSaved: (updated: Credit) => void;
   onStale: () => void;
+  /** A logo saved at once, before or without Save. */
+  onLogoChanged?: (updated: Credit) => void;
 }) {
   const d = t.credits.details;
+  const organization = kind === "organization" ? (credit as Organization) : null;
+  const [organizationDraft, setOrganizationDraft] = useState<OrganizationDraft | null>(
+    () => (organization === null ? null : organizationDraftOf(organization.profile)),
+  );
+  const [loadedOrganization] = useState(organizationDraft);
   const [aliases, setAliases] = useState<AliasRow[]>(() => aliasRowsOf(credit.aliases));
   const [ids, setIds] = useState<IdRow[]>(() => idRowsOf(credit.externalIds));
   const [parent, setParent] = useState(() => {
@@ -191,7 +221,16 @@ export default function CreditDetailsDialog({
 
   async function submit() {
     if (pending) return;
-    const { patch, sent } = buildPatch(kind, aliases, ids, parent, edited);
+    const { patch, sent } = buildPatch(
+      kind,
+      aliases,
+      ids,
+      parent,
+      edited,
+      organizationDraft === null || loadedOrganization === null
+        ? null
+        : { draft: organizationDraft, loaded: loadedOrganization },
+    );
     setPending(true);
     setProblem(null);
     setError(null);
@@ -275,6 +314,33 @@ export default function CreditDetailsDialog({
             problem={problem}
           />
         </FieldSet>
+      )}
+      {organization !== null && organizationDraft !== null && (
+        <>
+          <FieldSet>
+            <FieldLegend>{d.logo}</FieldLegend>
+            <OrganizationLogoField
+              organization={organization}
+              disabled={pending}
+              onChanged={(updated) => onLogoChanged?.(updated)}
+              onStale={onStale}
+            />
+          </FieldSet>
+          <FieldSet>
+            <FieldLegend>{d.profile}</FieldLegend>
+            <OrganizationProfileFields
+              draft={organizationDraft}
+              onChange={(next) => {
+                setOrganizationDraft(next);
+                if (problem?.control.startsWith("organization-") === true)
+                  setProblem(null);
+              }}
+              saving={pending}
+              problem={problem}
+              onEnter={onEnter}
+            />
+          </FieldSet>
+        </>
       )}
       {error !== null && <DialogError message={error} />}
     </FormDialog>

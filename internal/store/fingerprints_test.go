@@ -5,10 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -280,23 +277,8 @@ func TestRequeueMissingSeekThumbnailsDropsWaitingFingerprint(t *testing.T) {
 }
 
 func TestFingerprintMigrationBackfillsAndRollsBack(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 24)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 24); err != nil {
-		t.Fatal(err)
-	}
 	ids := map[string]int64{}
 	for _, item := range []struct {
 		key, seek string

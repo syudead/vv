@@ -14,6 +14,7 @@ import (
 
 // faceStore keeps faces by person id; a person absent from known does not exist.
 type faceStore struct {
+	unusedCreditImages
 	known map[int64]bool
 	faces map[int64][]byte
 	added []int64

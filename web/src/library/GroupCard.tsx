@@ -329,7 +329,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
           ratio={ratio}
           face={
             <>
-              {remote && <ItemRemoteMark id={remoteId} />}
+              {remote && <ItemRemoteMark itemId={group.id} id={remoteId} />}
               <span>{countText}</span>
               {duration !== "" && <span>{duration}</span>}
             </>
@@ -362,7 +362,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
   const cover = group.previews[0];
-  // Favorites and playlists stay on each node; the empty cells keep the columns aligned.
+  // Playlists stay on each node; the empty cell keeps the columns aligned.
   const remote = isRemoteId(group.id);
 
   return (
@@ -420,7 +420,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          {!remote && <GroupFavorite group={group} variant="row" />}
+          <GroupFavorite group={group} variant="row" />
         </TableCell>
       )}
       {owner && (
@@ -434,7 +434,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
         </TableCell>
       )}
       <CollectionValueCells
-        remote={remote}
+        itemId={group.id}
         state={state}
         watchedCount={watchedCount}
         videoCount={group.videoCount}
@@ -447,7 +447,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
 }
 
 export function CollectionValueCells({
-  remote,
+  itemId,
   state,
   watchedCount,
   videoCount,
@@ -455,7 +455,8 @@ export function CollectionValueCells({
   sizeBytes,
   addedAt,
 }: {
-  remote: boolean;
+  /** The collection's id; a link's collection is marked. */
+  itemId: number;
   state: ReturnType<typeof useCollectionFacts>["state"];
   watchedCount: number;
   videoCount: number;
@@ -476,7 +477,7 @@ export function CollectionValueCells({
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
         <span className="inline-flex items-center justify-end gap-1.5">
-          {remote && <ItemRemoteMark />}
+          {isRemoteId(itemId) && <ItemRemoteMark itemId={itemId} />}
           {duration}
         </span>
       </TableCell>

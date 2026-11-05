@@ -24,6 +24,7 @@ describe("ruleFromLibrary", () => {
         criteria: unfiltered,
         tagIds: [3],
         credits: {},
+        conditions: {},
       }),
     ).toEqual({ tags: [3] });
     expect(
@@ -31,6 +32,11 @@ describe("ruleFromLibrary", () => {
         criteria: { ...unfiltered, query: "kyoto", favorite: true },
         tagIds: [],
         credits: { person: 4, organization: 5, tagKind: 6 },
+        conditions: {
+          minDurationMs: 1_800_000,
+          addedTo: "2025-12-31",
+          watchState: "unwatched",
+        },
       }),
     ).toEqual({
       q: "kyoto",
@@ -38,6 +44,9 @@ describe("ruleFromLibrary", () => {
       person: 4,
       organization: 5,
       tagKind: 6,
+      minDurationMs: 1_800_000,
+      addedTo: "2025-12-31",
+      watchState: "unwatched",
     });
   });
 });

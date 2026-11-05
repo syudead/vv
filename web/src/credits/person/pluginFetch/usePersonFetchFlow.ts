@@ -10,7 +10,7 @@ import {
   type PersonPluginFetch,
   searchPersonWithPlugin,
 } from "../../../api/personPluginFetches";
-import type { WorkInfoPlugin } from "../../../api/workInfoPlugins";
+import { PLUGIN_GONE_CODES, type WorkInfoPlugin } from "../../../api/workInfoPlugins";
 import { t } from "../../../i18n";
 import { hostOf, type SkippedLine } from "../../../player/workInfoFetch/fetchRules";
 import type { RunFailure } from "../../../player/workInfoFetch/FindStep";
@@ -23,8 +23,6 @@ import {
   skippedPersonLines,
 } from "./personCompareRows";
 import { typedLink } from "../../../lib/typedLink";
-
-const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 export type Step = "find" | "compare" | "result";
 
@@ -144,7 +142,8 @@ export function usePersonFetchFlow({
     if (isCreditGone(error)) return gone();
     setFailure({ operation, error, plugin });
     setStep("find");
-    if (error instanceof RequestFailed && PLUGIN_GONE.has(error.code)) void onReload();
+    if (error instanceof RequestFailed && PLUGIN_GONE_CODES.has(error.code))
+      void onReload();
   };
 
   const search = async (target: WorkInfoPlugin, words = query) => {

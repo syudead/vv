@@ -294,6 +294,14 @@ be picked; typing matches names and aliases, and `#<id>` finds that one.
 Applied tags, kinds, people and organizations also show as chips in the
 `Filtering by` row, and an id the server or the loaded lists no longer hold
 leaves the URL with a toast.
+The library page alone also takes `minDurationMs` and `maxDurationMs`
+(milliseconds), `addedFrom` and `addedTo` (`YYYY-MM-DD`, a day in the server's
+time zone) and `watchState` (`unwatched`, `inProgress`, `watched`). The popover
+has no control for them; a URL sets them, and they show after the other chips
+as one duration chip, one added-date chip and one watch chip, each with its
+icon and a remove control that drops both bounds of a range. A value the
+server would reject, or a pair in the wrong order, is ignored. Guests and
+folder pages take none of them.
 Opening the popover focuses the panel itself, not its first field, so the tag
 picker's candidate list stays closed until the owner enters the field.
 The popover's fields edit a draft copied from the applied conditions on each
@@ -319,7 +327,11 @@ action `Save as smart folder`, which opens the smart folder dialog with the
 filter as its conditions and the current sort, `Random` replaced by date added;
 the `Created "{name}"` toast carries `Open` to the new folder's page.
 The dialog's conditions are the search text, `Favorites only`, tags and tag
-kind, person and organization, the same set as the library filter.
+kind, person and organization, the same set as the library filter. A rule with
+duration, added-date or watch conditions lists them under `Set by the
+assistant` as chips that can only be removed. The smart folder page shows
+them on its condition lines, and the owner's smart folder card shows the
+folder's own ones as chips after its tags.
 
 ### Scan entry and progress
 
@@ -525,9 +537,12 @@ video's row shows the virtual mark in the duration cell, empty quality and size
 cells and its creation time as the date added.
 
 Selection is owner-only, on the library, group, smart-folder and folder pages
-and in folder search results. A folder page selects only its videos, with the
-same checks, Shift ranges, drawn boxes and multi-card drags as the library, and
-clears the selection when its conditions change. Its check shows on hover or focus in the
+and in folder search results. Every one of them has the same checks, Shift
+ranges, drawn boxes, Escape and selection bar, through one shared hook
+([`useListSelection.tsx`](../../web/src/library/useListSelection.tsx)); a page
+adds only its rule for items that leave its list. A folder page selects only
+its videos, with the same multi-card drags as the library, and clears the
+selection when its conditions change. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
 every item during selection. A group's check selects that group; the selection
 bar below decides whether an operation sends the group or its selected videos.

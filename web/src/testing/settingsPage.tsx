@@ -25,6 +25,7 @@ export function folder(id: number, path: string, version = 1): MediaFolder {
     id,
     path,
     version,
+    enabled: true,
     createdAt: "2026-09-21T00:00:00Z",
     updatedAt: "2026-09-21T00:00:00Z",
   };
@@ -52,10 +53,15 @@ function sectionResponses(): Record<string, () => Response> {
     "/api/api-tokens": () => json({ items: [] }),
     "/api/settings/network": () => json({ code: "not_found", message: "not found" }, 404),
     "/api/settings/plugin-proxy": () => json({ url: "" }),
-    "/api/peer": () => json({ state: "unpaired" }),
+    "/api/peer": () => json({ links: [] }),
     "/api/settings/auto-import": () => json({ enabled: false, watch: { state: "off" } }),
     "/api/settings/ollama": () =>
-      json({ endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved: false }),
+      json({
+        endpoint: "http://127.0.0.1:11434",
+        model: "clef-flash",
+        generationModel: "",
+        saved: false,
+      }),
     "/api/settings/auto-tagging": () =>
       json({
         enabled: false,

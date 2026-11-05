@@ -8,7 +8,14 @@ import { installFakeEventSource } from "../api/fakeEventSource";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
-import { layoutCards, lift, moveTo, openedMenu, release } from "../testing/cardDrag";
+import {
+  layoutCards,
+  lift,
+  moveTo,
+  openedMenu,
+  release,
+  releaseAndSettle,
+} from "../testing/cardDrag";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderPage from "./FolderPage";
@@ -127,7 +134,7 @@ async function dropXOnY() {
   lift("x", 0);
   moveTo(1);
   expect(screen.queryByLabelText(/items$/)).toBeNull();
-  release(1);
+  await releaseAndSettle(() => release(1));
   return openedMenu();
 }
 
@@ -224,7 +231,7 @@ describe("FolderPage drag a video onto a video", () => {
 
     lift("y", 1);
     moveTo(2);
-    release(2);
+    await releaseAndSettle(() => release(2));
     await user.click(
       within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
     );

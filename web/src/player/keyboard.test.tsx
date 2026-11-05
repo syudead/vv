@@ -132,6 +132,27 @@ describe("useKeyboardShortcuts", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("横のパネルの中では、Esc でも Space でもページの操作は起きない", () => {
+    const controls = fakeControls();
+    const onClose = vi.fn();
+    render(
+      <>
+        <Harness controls={controls} onClose={onClose} />
+        <aside data-slot="side-panel">
+          <button type="button">パネルを閉じる</button>
+        </aside>
+      </>,
+    );
+    const inPanel = screen.getByRole("button", { name: "パネルを閉じる" });
+    fireEvent.keyDown(inPanel, { key: "Escape" });
+    fireEvent.keyDown(inPanel, { key: "t" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(controls.togglePlay).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByTestId("plain"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("修飾キー付きでは起きない", () => {
     const controls = fakeControls();
     setup(controls);

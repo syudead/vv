@@ -25,6 +25,8 @@ export interface DetailPageProps {
    * attribute changes, so toggling it keeps the media mounted.
    */
   theater?: boolean;
+  /** One SidePanel beside the content row, under the header band. */
+  panel?: ReactNode;
 }
 
 export function DetailPage({
@@ -35,6 +37,7 @@ export function DetailPage({
   contentClassName,
   style,
   theater = false,
+  panel,
 }: DetailPageProps) {
   return (
     <DensityProvider density="viewing">
@@ -50,41 +53,44 @@ export function DetailPage({
         >
           {header}
         </div>
-        <div className="flex w-full flex-col gap-5 split:min-h-0 split:flex-1 split:flex-row split:gap-6 split:px-6">
-          {/*
-           * Expand scrolling edges with padding to preserve focus rings; establish a relative
-           * container so absolute accessibility elements cannot enlarge the page.
-           */}
-          <div
-            data-slot="detail-page-main"
-            className="flex min-w-0 flex-col gap-5 split:relative split:-mx-1 split:min-h-0 split:flex-1 split:scrollbar-none split:overflow-y-auto split:overscroll-contain split:px-1 split:pt-6"
-          >
+        <div className="flex w-full split:min-h-0 split:flex-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-5 split:min-h-0 split:flex-row split:gap-6 split:px-6">
+            {/*
+             * Expand scrolling edges with padding to preserve focus rings; establish a relative
+             * container so absolute accessibility elements cannot enlarge the page.
+             */}
             <div
-              data-slot="detail-page-content"
-              className={cn(
-                "flex flex-col gap-6 split:mx-auto split:w-full",
-                contentClassName,
-              )}
+              data-slot="detail-page-main"
+              className="flex min-w-0 flex-col gap-5 split:relative split:-mx-1 split:min-h-0 split:flex-1 split:scrollbar-none split:overflow-y-auto split:overscroll-contain split:px-1 split:pt-6"
             >
-              {media}
-              {/* Room under the last child, so it is not read against the window's edge. */}
-              <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6 split:px-0 split:pb-16">
-                {children}
+              <div
+                data-slot="detail-page-content"
+                className={cn(
+                  "flex flex-col gap-6 split:mx-auto split:w-full",
+                  contentClassName,
+                )}
+              >
+                {media}
+                {/* Room under the last child, so it is not read against the window's edge. */}
+                <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6 split:px-0 split:pb-16">
+                  {children}
+                </div>
               </div>
             </div>
+            {/*
+             * Extend the wide-screen aside to the viewport edge for its scrollbar; inner lists own
+             * right padding.
+             */}
+            {aside && (
+              <aside
+                data-slot="detail-page-aside"
+                className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 split:flex split:min-h-0 split:w-detail-aside split:shrink-0 split:flex-col split:-mr-6 split:border-t-0 split:border-l split:pt-6 split:pr-0 split:pl-5 split:xl:w-detail-aside-wide"
+              >
+                {aside}
+              </aside>
+            )}
           </div>
-          {/*
-           * Extend the wide-screen aside to the viewport edge for its scrollbar; inner lists own
-           * right padding.
-           */}
-          {aside && (
-            <aside
-              data-slot="detail-page-aside"
-              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 split:flex split:min-h-0 split:w-detail-aside split:shrink-0 split:flex-col split:-mr-6 split:border-t-0 split:border-l split:pt-6 split:pr-0 split:pl-5 split:xl:w-detail-aside-wide"
-            >
-              {aside}
-            </aside>
-          )}
+          {panel}
         </div>
       </div>
     </DensityProvider>

@@ -1,7 +1,16 @@
 import { FolderSearch, TriangleAlert } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useLocation, useParams } from "react-router";
 
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryGroup, LibraryItem, TagRef, Video } from "../api/client";
 import { itemKey } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
@@ -14,27 +23,18 @@ import { formatDuration } from "../lib/format";
 import { GroupCard, GroupRow } from "../library/GroupCard";
 import { LibraryTableHeader } from "../library/LibraryPage";
 import LibraryToolbar from "../library/LibraryToolbar";
+import { MarqueeCard } from "../library/MarqueeBox";
 import {
-  emptySelection,
-  retainVideos,
   isGroupSelected,
   keepMembers,
   keepSmartFolders,
-  type LibrarySelection,
   reconcileGroups,
   selectedCount,
-  selectedGroupOf,
-  setGroup,
-  setSmartFolder,
-  setVideo,
-  toggleGroup,
-  toggleSmartFolder,
-  toggleVideo,
 } from "../library/selection";
 import SelectionBar from "../library/SelectionBar";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { useCardTagRows } from "../library/useCardTagRows";
-import { useEscapeClearsSelection } from "../library/useEscapeClearsSelection";
+import { useListSelection } from "../library/useListSelection";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
@@ -44,7 +44,6 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
-import { isRemoteId } from "../lib/remoteId";
 import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { Button } from "../ui/shadcn/button";
 import { TableBody } from "../ui/shadcn/table";
@@ -106,55 +105,18 @@ export default function SmartFolderPage() {
  * Select only loaded videos, groups and child folders. Remove unmatched items on refresh so bulk
  * actions cannot affect hidden members.
  */
-function useFolderSelection(items: readonly LibraryItem[]) {
-  const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
+function useFolderSelection(items: readonly LibraryItem[], boxes: boolean) {
+  const list = useListSelection({ boxes });
+  const { setSelection, show } = list;
   const loaded = useMemo(() => loadedVideoIds(items), [items]);
   const folders = useMemo(() => loadedSmartFolderIds(items), [items]);
   useEffect(() => {
     setSelection((current) =>
       reconcileGroups(keepSmartFolders(keepMembers(current, loaded), folders), items),
     );
-  }, [folders, loaded, items]);
-  const clear = useCallback(() => setSelection(emptySelection), []);
-  useEscapeClearsSelection(selectedCount(selection) > 0, clear);
-  return {
-    selection,
-    clear,
-    retain: useCallback(
-      (kept: ReadonlySet<number>) =>
-        setSelection((current) => retainVideos(current, kept)),
-      [],
-    ),
-    changeVideo: useCallback(
-      (videoId: number, selected: boolean) =>
-        setSelection((current) => setVideo(current, videoId, selected)),
-      [],
-    ),
-    changeGroup: useCallback(
-      (group: LibraryGroup, selected: boolean) =>
-        setSelection((current) => setGroup(current, selectedGroupOf(group), selected)),
-      [],
-    ),
-    changeSmartFolder: useCallback(
-      (folderId: number, selected: boolean) =>
-        setSelection((current) => setSmartFolder(current, folderId, selected)),
-      [],
-    ),
-    toggleSmartFolder: useCallback(
-      (folderId: number) =>
-        setSelection((current) => toggleSmartFolder(current, folderId)),
-      [],
-    ),
-    toggleVideo: useCallback(
-      (videoId: number) => setSelection((current) => toggleVideo(current, videoId)),
-      [],
-    ),
-    toggleGroup: useCallback(
-      (group: LibraryGroup) =>
-        setSelection((current) => toggleGroup(current, selectedGroupOf(group))),
-      [],
-    ),
-  };
+  }, [folders, loaded, items, setSelection]);
+  useLayoutEffect(() => show(items));
+  return list;
 }
 
 type FolderSelection = ReturnType<typeof useFolderSelection>;
@@ -179,10 +141,15 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   const preview = usePreviewCoordination();
   const { resetPreview } = preview;
   const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
-  const selection = useFolderSelection(data?.items ?? noItems);
+  const selection = useFolderSelection(
+    data?.items ?? noItems,
+    owner && view === "grid" && data !== null,
+  );
   const listUrl = `${location.pathname}${location.search}`;
 
-  useDocumentTitle(data?.folder.name);
+  const folderName = data?.folder.name;
+  useDocumentTitle(folderName);
+  useAssistantScreen(selectionScreen(selection.selection, folderName));
   useEffect(() => {
     resetPreview();
   }, [data, resetPreview, view, zoom]);
@@ -269,25 +236,29 @@ function SmartFolderScreen({ id }: { id: number | null }) {
           />
         )}
         {data !== null && id !== null && (
-          <div ref={listRef} className="flex flex-col gap-6">
-            {data.items.length > 0 && (
-              <FolderItems
-                id={id}
-                items={data.items}
-                view={view}
-                zoom={zoom}
-                listUrl={listUrl}
-                owner={owner}
-                selection={selection}
-                preview={preview.cardProps}
-                onPressTag={pressTag}
-              />
-            )}
-            {controls.filtered && data.items.length === 0 ? (
-              <NoMatches onSearch={() => controls.toolbar.searchRef.current?.focus()} />
-            ) : (
-              <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
-            )}
+          // Mounted with the data, empty or not, so boxes work once items arrive in place.
+          <div ref={selection.container} className="contents">
+            <div ref={listRef} className="flex flex-col gap-6">
+              {selection.marqueeBox}
+              {data.items.length > 0 && (
+                <FolderItems
+                  id={id}
+                  items={data.items}
+                  view={view}
+                  zoom={zoom}
+                  listUrl={listUrl}
+                  owner={owner}
+                  selection={selection}
+                  preview={preview.cardProps}
+                  onPressTag={pressTag}
+                />
+              )}
+              {controls.filtered && data.items.length === 0 ? (
+                <NoMatches onSearch={() => controls.toolbar.searchRef.current?.focus()} />
+              ) : (
+                <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
+              )}
+            </div>
           </div>
         )}
         {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
@@ -431,7 +402,7 @@ function SmartFolderHeader({
           </span>
         }
         count={
-          <RemoteCountLine remote={isRemoteId(folder.id)}>
+          <RemoteCountLine itemId={folder.id}>
             {t.groups.detail.count(folder.videoCount, formatDuration(folder.durationMs))}
           </RemoteCountLine>
         }
@@ -539,7 +510,13 @@ function FolderItems(props: ItemsProps) {
   return (
     // Share one tag-row width observer across the list.
     <TagRowMeasureProvider>
-      <Grid zoom={zoom}>{items.map(cell)}</Grid>
+      <Grid zoom={zoom}>
+        {items.map((item) => (
+          <MarqueeCard key={itemKey(item)} id={itemKey(item)}>
+            {cell(item)}
+          </MarqueeCard>
+        ))}
+      </Grid>
     </TagRowMeasureProvider>
   );
 }

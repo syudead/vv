@@ -7,6 +7,7 @@ import {
   deleteWorkInfoPlugin,
   listWorkInfoPlugins,
   revokeWorkInfoPluginApproval,
+  setWorkInfoPluginEnabled,
   setWorkInfoPluginLinkOrder,
   setWorkInfoPluginSettings,
   uploadWorkInfoPlugin,
@@ -250,12 +251,18 @@ export default function WorkInfoPluginsSection() {
     }
   };
 
-  const revoke = async (target: WorkInfoPlugin) => {
+  /** focusRow moves focus to the row's first button, for a change that removes the control the owner used. */
+  const changeRow = async (
+    target: WorkInfoPlugin,
+    kind: RowWork,
+    change: () => Promise<WorkInfoPlugin>,
+    focusRow: boolean,
+  ) => {
     setRowError(null);
-    setWork({ id: target.id, kind: "revoke" });
+    setWork({ id: target.id, kind });
     try {
-      replacePlugin(await revokeWorkInfoPluginApproval(target.id));
-      focusAfterRender.current = target.id;
+      replacePlugin(await change());
+      if (focusRow) focusAfterRender.current = target.id;
     } catch (failure) {
       setRowError({
         id: target.id,
@@ -264,6 +271,19 @@ export default function WorkInfoPluginsSection() {
     } finally {
       setWork(null);
     }
+  };
+
+  const revoke = (target: WorkInfoPlugin) =>
+    changeRow(target, "revoke", () => revokeWorkInfoPluginApproval(target.id), true);
+
+  const toggle = (target: WorkInfoPlugin) => {
+    if (work !== null) return;
+    void changeRow(
+      target,
+      "toggle",
+      () => setWorkInfoPluginEnabled(target.id, !target.enabled),
+      false,
+    );
   };
 
   const moveLink = async (target: WorkInfoPlugin, offset: -1 | 1) => {
@@ -355,6 +375,7 @@ export default function WorkInfoPluginsSection() {
       onSettings={() => setConfiguring({ plugin, pending: false, error: null })}
       onLastRun={() => setReading(plugin)}
       onRevoke={() => void revoke(plugin)}
+      onToggle={() => toggle(plugin)}
       onDelete={() => setDeleting({ plugin, pending: false, error: null })}
     />
   );

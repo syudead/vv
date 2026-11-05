@@ -4,11 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io/fs"
 	"slices"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -294,23 +291,8 @@ func TestThumbnailImageSurvivesVideoDeletion(t *testing.T) {
 
 // Legacy images have NULL sources and generated origin; also exercise invariant rejection of empty sources and invalid origins.
 func TestThumbnailImageSourcesMigration(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 40)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 40); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.sql.Exec(`insert into thumbnail_images (content_key, image, revision, applied_at)
 		values ('key-old', x'ffd8', 1, 1)`); err != nil {
 		t.Fatal(err)

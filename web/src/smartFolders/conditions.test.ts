@@ -28,6 +28,23 @@ describe("conditionChips", () => {
     ]);
   });
 
+  it("長さ・追加日・視聴状態は既存のチップの後に文字のチップで並べる", () => {
+    const chips = conditionChips({
+      tags: [3],
+      watchState: "watched",
+      addedFrom: "2025-03-10",
+      maxDurationMs: 9_000_000,
+      minDurationMs: 600_000,
+    });
+
+    expect(chips.map((chip) => (chip.kind === "text" ? chip.text : chip.key))).toEqual([
+      "tag:3",
+      "10 min–2 h 30 min",
+      "Added since Mar 10, 2025",
+      "Watched",
+    ]);
+  });
+
   it("空の条件はチップを持たない", () => {
     expect(conditionChips({})).toEqual([]);
   });

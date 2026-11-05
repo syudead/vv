@@ -69,7 +69,7 @@ flowchart LR
 | Layer | Packages | Owns | Must not import |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
-| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
+| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging, the assistant) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
 | Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin`, `faceruntime`, `peer` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
@@ -140,8 +140,9 @@ worker or a scan.
 **One owner for opening files.** `internal/mediafs` alone decides whether a
 file may be opened: inside a registered media folder, after resolving symbolic
 links, and a regular file. Streaming, live transcoding, subtitles, opening in
-the default app and the directory picker all go through it, and a location
-that fails the check is answered like a missing file.
+the default app, the directory picker, the import stages, the backfills and
+face analysis all go through it, and a location that fails the check is
+answered like a missing file.
 
 **One owner for generated files.** `internal/artifacts` alone places, publishes,
 opens and removes thumbnails, seek sprites and hover previews. A file becomes
@@ -164,7 +165,11 @@ work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations
-or folders takes a `domain.Audience`, whose zero value is the guest. The HTTP
+or folders takes a `domain.Audience`: a role and a folder scope, whose zero
+value is the guest with this node's media-folder switches. Lists, searches,
+counts and folder reads leave a switched-off folder's videos out; reads by id,
+scans and jobs do not
+([media-folder-switches.md](docs/design-docs/media-folder-switches.md)). The HTTP
 layer classifies every request at its outermost layer, before routing, by path
 into bearer, anyone, guests too or owner only, matching each operation's
 `security` in `api/openapi.yaml` (a Go test checks that). Hidden videos answer
@@ -173,17 +178,22 @@ credential and the viewer's audience, so the paired node filters before paging
 too ([authentication.md](docs/design-docs/authentication.md#paired-vvmdm)).
 
 **Remote ids carry an offset.** An id at or above `2^40` in the screen API
-names an entity of the paired VVMDM, whose own id is the value minus the
-offset; local ids stay below it, and the HTTP layer forwards such a request
-to the paired node instead of reading the store
-([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). No local
-table stores a remote entity, so pairing and unpairing change no user data.
+names an entity of a VVMDM this node reads: `id div 2^40` is the slot of that
+link, and the link's own id is the value minus `slot × 2^40`. Local ids stay
+below `2^40`, and the HTTP layer forwards such a request to the link of that
+slot instead of reading the store, or answers `404` when no link holds the
+slot ([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). The one
+local table naming a link's entities is `peer_media_folders`, the snapshot of
+its media folders with this node's switches, deleted with the link
+([media-folder-switches.md](docs/design-docs/media-folder-switches.md#a-links-folders-keep-their-switches-on-the-reading-node));
+pairing and unpairing change no other user data.
 
 **Only a scan walks the media folders.** Only a scan reads the media folders'
 trees and identifies their files, and only a user-started scan walks them
 whole. Outside a scan a file is opened only for one known video, through
-`internal/mediafs`: playback, live transcoding and face analysis, which needs
-full frames. The folder watcher (`internal/watcher`) reads directory entries
+`internal/mediafs`: playback, live transcoding, the import stages that read
+the file (probe, thumbnail, seek sprites, preview), the backfills that re-read
+it and face analysis, which needs full frames. The folder watcher (`internal/watcher`) reads directory entries
 only, to place a watch on each directory, and never opens a file. The folder index (the
 folder names above each video), the folder members of automatic groups, folder
 browsing and the import status are derived from SQLite, never from the
@@ -228,7 +238,8 @@ and stops when its context ends.
 | `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [authentication.md](docs/design-docs/authentication.md), [i18n.md](docs/design-docs/i18n.md) |
 | External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md) |
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
-| `internal/app` (`Classifier`, `OllamaConnection`), `internal/ollama` | The AI layer: a task-agnostic classifier port, and the Ollama provider behind it with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`Classifier`, `ClefWire`, `ToolChat`, `OllamaConnection`), `internal/ollama` | The AI layer: task-agnostic classifier, Clef wire and tool-calling chat ports, and the Ollama provider behind them with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`Assistant`), `internal/store` (`AssistantStore`), `internal/httpapi` (`ActionRunner`) | The in-app assistant: each request a server-side turn that loops over the tool-calling chat port, calling the screen API's operations as read tools and turning write calls into the steps of one proposal; names resolved by the server, a grounding check on the answer, proposals that a worker runs step by step through the screen API's handlers after the owner approves them, and review runs judged through the classifier port | [assistant.md](docs/design-docs/assistant.md) |
 | `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`WorkInfoPluginRuntime`, `WorkInfoPlugins`), `internal/store` (`WorkInfoPluginStore`, `OverrideStore.ApplyFetchedWorkInfo`), `internal/wasmplugin` | Work-info plugins: inspecting a WebAssembly module without running it, running it in a wazero sandbox with no files or environment and fixed limits, performing its HTTP requests so that only public internet addresses are reached, the owner's plugin rows with an approval bound to the module's digest and per-plugin setting values, and searching, fetching into a 10-minute in-memory result, and applying the selected title, tags and work details in one transaction that re-checks the plugin's approval, matches the fetched people and organizations again and creates only the entities the merge keeps | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
@@ -266,6 +277,7 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `app/` | Routes |
 | `shell/` | Top bar, sidebar, scan state, the frame around a screen |
 | `library/`, `folders/`, `settings/`, `tags/`, `player/`, `versions/` | Their product flows |
+| `assistant/` | The assistant's panel, mounted above the routes, its thread store and the review list page |
 | `credits/` | The people and organizations admin screens: one page that takes the kind, built from the tag admin screen's list pieces in `tags/` |
 | `videoList/` | List pieces the library and folder screens share |
 | `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |

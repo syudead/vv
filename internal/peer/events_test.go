@@ -51,28 +51,30 @@ func watchUntil(t *testing.T, client *Client, target domain.PeerTarget, secret s
 	return got, opened, err
 }
 
-func TestWatchForwardsEventsWithRemoteIDs(t *testing.T) {
+func TestWatchForwardsEventsWithThePeersIDs(t *testing.T) {
 	server := httptest.NewServer(eventPeer("retry: 3000\n\n" +
 		"event: scan\ndata: {\"status\":\"idle\"}\n\n" +
 		": keep-alive\n\n" +
 		"event: video\ndata: {\"id\":7}\n\n" +
 		// An id that is already remote on the peer names this node's own video and is not sent back.
 		"event: group\ndata: {\"ids\":[3,1099511627779]}\n\n" +
-		"event: smartFolder\ndata: {\"ids\":[4]}\n\n"))
+		"event: smartFolder\ndata: {\"ids\":[4]}\n\n" +
+		"event: mediaFolders\ndata: {}\n\n"))
 	t.Cleanup(server.Close)
 
-	got, opened, err := watchUntil(t, New(Options{}), domain.PeerTarget{Address: server.URL}, "vvp_secret", 3)
+	got, opened, err := watchUntil(t, New(Options{}), domain.PeerTarget{Address: server.URL}, "vvp_secret", 4)
 	if !opened || !errors.Is(err, context.Canceled) {
 		t.Fatalf("opened = %v, err = %v", opened, err)
 	}
 	want := []domain.PeerChanged{
-		{VideoIDs: []int64{domain.PeerIDOffset + 7}},
-		{GroupIDs: []int64{domain.PeerIDOffset + 3}},
-		{SmartFolderIDs: []int64{domain.PeerIDOffset + 4}},
+		{VideoIDs: []int64{7}},
+		{GroupIDs: []int64{3}},
+		{SmartFolderIDs: []int64{4}},
+		{MediaFolders: true},
 	}
 	if !slices.EqualFunc(got, want, func(a, b domain.PeerChanged) bool {
 		return slices.Equal(a.VideoIDs, b.VideoIDs) && slices.Equal(a.GroupIDs, b.GroupIDs) &&
-			slices.Equal(a.SmartFolderIDs, b.SmartFolderIDs)
+			slices.Equal(a.SmartFolderIDs, b.SmartFolderIDs) && a.MediaFolders == b.MediaFolders
 	}) {
 		t.Errorf("転送されたイベント = %+v, want %+v", got, want)
 	}

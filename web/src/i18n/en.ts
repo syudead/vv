@@ -152,6 +152,24 @@ function smartFolders(count: number): string {
   });
 }
 
+function counted(count: number, one: string, other: string): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} ${one}`,
+    other: `${formatNumber(count)} ${other}`,
+  });
+}
+
+/** An operation sentence with the name it acts on, or without one when the name is unknown. */
+function quoted(sentence: string, name: string | undefined, bare = sentence): string {
+  return name === undefined || name === "" ? bare : `${sentence} “${name}”`;
+}
+
+/** What an operation sentence reads from a proposal. */
+export interface OperationInput {
+  name?: string;
+  on?: boolean;
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -224,6 +242,7 @@ const errorCodes = {
   plugin_changed: "The plugin was replaced. Review it again.",
   plugin_unusable: "The plugin can't be used.",
   plugin_not_approved: "The plugin is no longer approved.",
+  plugin_disabled: "The plugin is switched off.",
   plugin_settings_missing: "The plugin needs settings first.",
   plugin_failed: "The plugin failed.",
   plugin_timed_out: "The plugin didn't finish in 30 seconds and was stopped.",
@@ -245,6 +264,12 @@ const errorCodes = {
   smart_folder_not_found: "That smart folder no longer exists.",
   smart_folder_cycle:
     "A smart folder can't be put inside itself or inside one of its children.",
+  ollama_unreachable: "Ollama can't be reached at the saved URL",
+  proposal_not_pending: "This proposal was already handled",
+  step_needs_skipped: "A kept step needs a step that is not ticked",
+  assistant_not_ready: "Choose a model for the assistant in Settings, Connections.",
+  assistant_unavailable: "The generation model couldn't answer. Nothing was changed.",
+  assistant_busy: "Another request is still running. It shows above when it finishes.",
   service_unavailable: "This isn't available right now. Try again later.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
@@ -411,6 +436,16 @@ const errorReasons = {
     "The two descriptions together are too long. Shorten one and try again.",
   too_many_urls:
     "The two videos have more than 20 links together. Remove some and try again.",
+  connection: "Ollama can't be reached at the saved URL",
+  not_ollama: "The server at the saved URL isn't Ollama",
+  model: "The generation model didn't answer. Check that Ollama has it.",
+  timeout: "The model took too long. Try a shorter request, or a smaller model.",
+  ollama_not_saved:
+    "Save the Ollama URL in Settings, Connections, then choose a generation model.",
+  generation_model_unset:
+    "Pick a generation model in Settings, Connections. The decision model used for tagging can't chat.",
+  generation_model_without_tools:
+    "The generation model can't call tools, which the assistant needs. Choose another generation model in Settings, Connections.",
   peer_unknown: "The other VVMDM no longer knows this one.",
   peer_not_allowed: "The other VVMDM can't use this operation.",
   invalid_address:
@@ -418,12 +453,13 @@ const errorReasons = {
   invalid_code:
     "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
   already_paired:
-    "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing first.",
+    "This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.",
+  peer_limit: "This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.",
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
   mixed_nodes:
-    "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
+    "Videos and groups of different VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
     tagName === undefined
       ? "A tag on the other VVMDM already has that name."
@@ -621,6 +657,14 @@ export const en = {
       tentativeTag: "kyoto",
     },
     pattern: {
+      sidePanel: {
+        open: "Open the side panel",
+        title: "Assistant",
+        field: "Request",
+        send: "Send",
+        request: "Show the videos added last week",
+        reply: "Filtered the library",
+      },
       intro:
         "Each page skeleton with its sections and states, filled with sample data. Copy the block of the skeleton a new screen needs.",
       items: "Items",
@@ -639,6 +683,7 @@ export const en = {
         stepsPage: "Steps page",
         cardList: "Card list",
         recordPage: "Record page",
+        sidePanel: "Side panel",
         listState: (state: string) => `List page: ${state}`,
       },
       recordTitle:
@@ -988,9 +1033,11 @@ export const en = {
       // `name` is the peer's host name, which guests do not receive.
       remote: {
         on: (name: string | undefined) =>
-          name === undefined ? "On the other VVMDM" : `On ${name}`,
-        name: (name: string | undefined) => name ?? "Other VVMDM",
+          name === undefined ? "On another VVMDM" : `On ${name}`,
+        name: (name: string | undefined) => name ?? "Another VVMDM",
       },
+      folderOff: (name: string | undefined) =>
+        name === undefined ? "Folder off" : `Folder off on ${name}`,
     },
   },
   library: {
@@ -1002,6 +1049,11 @@ export const en = {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
       setUp: "Set up library",
+    },
+    allFoldersOff: {
+      title: "Every media folder is off",
+      description: "Switch a folder on in Settings to see its videos.",
+      open: "Open Media folders",
     },
     newVirtualVideo: {
       action: "New virtual video",
@@ -1045,6 +1097,26 @@ export const en = {
       removeKind: "Remove the kind filter",
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
+    },
+    conditions: {
+      minutes: (count: number) => `${formatNumber(count)} min`,
+      hours: (count: number) => `${formatNumber(count)} h`,
+      hoursMinutes: (hours: number, minutes: number) =>
+        `${formatNumber(hours)} h ${formatNumber(minutes)} min`,
+      durationRange: (min: string, max: string) => `${min}–${max}`,
+      durationAtLeast: (min: string) => `${min} or longer`,
+      durationUpTo: (max: string) => `Up to ${max}`,
+      addedRange: (from: string, to: string) => `Added ${from}–${to}`,
+      addedSince: (from: string) => `Added since ${from}`,
+      addedUntil: (to: string) => `Added until ${to}`,
+      unwatched: "Unwatched",
+      removeDuration: "Remove the duration filter",
+      removeAdded: "Remove the added-date filter",
+      removeWatch: "Remove the watch filter",
+      assistantLegend: "Set by the assistant",
+      assistantDescription:
+        "Remove a chip to drop that condition. The assistant can set it again.",
+      outOfOrder: "A duration or date here is out of order",
     },
     tagFilter: {
       kindHint: "Tag kind",
@@ -1167,6 +1239,45 @@ export const en = {
       apply: (count: number) => `Apply to ${videos(count)}`,
       applying: "Applying…",
       applied: (count: number) => `Updated ${videos(count)}`,
+      unnamedPerformers: "Unnamed performers",
+      mergeHint:
+        "Press a face to merge that person into a performer you add. A merged person becomes that performer in every video, including videos outside the selection.",
+      keepApart: "Keep apart",
+      mergeTileLabel: (label: string, count: number, total: number, target?: string) =>
+        target === undefined
+          ? `${label}, on ${formatNumber(count)} of ${videos(total)}, kept apart`
+          : `${label}, on ${formatNumber(count)} of ${videos(total)}, will be merged into ${target}`,
+      changeMerge: (label: string, target: string, count: number) =>
+        `Performers: merge ${label} into ${target}, on ${videos(count)} here`,
+      appliedWithMerges: (
+        count: number,
+        merged: number,
+        skipped: number,
+        notUndoable: number,
+      ) =>
+        [
+          merged === 0
+            ? `Updated ${videos(count)}.`
+            : selectPlural(merged, {
+                one: `Updated ${videos(count)} and merged 1 unnamed person.`,
+                other: `Updated ${videos(count)} and merged ${formatNumber(merged)} unnamed people.`,
+              }),
+          skipped === 0
+            ? ""
+            : selectPlural(skipped, {
+                one: "1 unnamed person was skipped because it was merged, named or deleted meanwhile.",
+                other: `${formatNumber(skipped)} unnamed people were skipped because they were merged, named or deleted meanwhile.`,
+              }),
+          notUndoable === 0
+            ? ""
+            : selectPlural(notUndoable, {
+                one: "1 merge can't be undone because the person had an external ID.",
+                other: `${formatNumber(notUndoable)} merges can't be undone because the people had external IDs.`,
+              }),
+        ]
+          .filter((part) => part !== "")
+          .join(" "),
+      undoMerges: "Undo merges",
       failed: (reason: string) => `Couldn't apply the changes: ${reason}`,
       discardTitle: "Discard these changes?",
       discardText: "The changes in the editor aren't applied yet.",
@@ -1354,8 +1465,9 @@ export const en = {
       description: "No videos or subfolders were found. Put files there, then scan.",
     },
     noMediaFolders: {
-      title: "No media folders yet",
-      description: "Add a media folder in Settings and scan to see it here.",
+      title: "No folders to show",
+      description:
+        "Add a media folder in Settings, or switch one on, and scan to see it here.",
       openSettings: "Open Settings",
     },
     notFound: {
@@ -1742,6 +1854,8 @@ export const en = {
       more: "More actions",
       delete: "Delete…",
       actions: "Actions",
+      favoriteOff: "Add to favorites",
+      favoriteOn: "Remove from favorites",
     },
     details: {
       title: (name: string) => `Edit "${name}"`,
@@ -1762,6 +1876,21 @@ export const en = {
       parentSearch: "Search organizations",
       parentEmpty: "No matching organizations",
       parentsFailed: (reason: string) => `Couldn't load organizations: ${reason}`,
+      profile: "Profile",
+      foundedDate: "Founded",
+      dissolvedDate: "Dissolved",
+      datePlaceholder: "YYYY-MM-DD",
+      location: "Location",
+      bio: "About",
+      links: "Links",
+      linksHint: "One URL per line.",
+      logo: "Logo",
+      logoAlt: (name: string) => `Logo of ${name}`,
+      logoAdd: "Add logo",
+      logoReplace: "Replace logo",
+      logoRemove: "Remove logo",
+      logoUploadTitle: "Upload a logo",
+      logoFailed: (reason: string) => `Couldn't change the logo: ${reason}`,
       submit: "Save",
       submitting: "Saving…",
     },
@@ -2252,6 +2381,10 @@ export const en = {
     missing: {
       title: "This video can't be opened",
       description: "It was removed from the library, or its file is gone.",
+    },
+    folderOff: {
+      band: "Not shown in the library",
+      detail: "Its media folder is switched off, so it isn't listed. Playing it is fine.",
     },
     virtual: {
       band: "Virtual video",
@@ -3153,6 +3286,7 @@ export const en = {
       media_folders: "Media folders",
       organize: "Drag and drop",
       face_recognition: "Face recognition",
+      assistant: "Assistant",
     } satisfies Record<ActivityFeature, string>,
     deciderValue: {
       ai: "AI",
@@ -3191,6 +3325,7 @@ export const en = {
       organize_undo: "Drag and drop undone",
       face_analysis: "Face analysis",
       face_merge: "Person merged",
+      assistant_run: "Assistant run",
       pipeline: "Import run",
       undo: "Undo",
     } satisfies Record<ActivityKind, string>,
@@ -3854,6 +3989,8 @@ export const en = {
       certificateBody: "Confirm it in Pairing to reconnect.",
       revokedTitle: (name: string) => `Access removed by ${name}`,
       revokedBody: "It no longer shares its library with this VVMDM.",
+      severalTitle: (count: number) => `${String(count)} VVMDMs aren't connected`,
+      severalBody: "Their videos, groups and smart folders are hidden until they answer.",
       guestTitle: "The other library isn't available right now",
       guestBody: "Some videos aren't shown until it is.",
       openPairing: "Open Pairing",
@@ -3930,6 +4067,551 @@ export const en = {
       openStatus: (label: string) => `${label}. Open the scan status`,
       dismiss: "Hide the scan progress",
       progress: "Progress of the videos in this scan",
+    },
+  },
+  assistant: {
+    title: "Assistant",
+    trigger: "Assistant",
+    working: "Assistant · working",
+    clearThread: "Clear thread",
+    field: "Request",
+    placeholder: "Ask or tell the assistant…",
+    hint: "Enter sends · Shift+Enter for a new line",
+    tooLong: (count: number) => `${formatNumber(count)} / 500`,
+    send: "Send",
+    context: {
+      selectedVideos: (count: number) =>
+        selectPlural(count, {
+          one: `Talking about ${formatNumber(count)} selected video`,
+          other: `Talking about ${formatNumber(count)} selected videos`,
+        }),
+      selectedItems: (count: number) =>
+        selectPlural(count, {
+          one: `Talking about ${formatNumber(count)} selected item`,
+          other: `Talking about ${formatNumber(count)} selected items`,
+        }),
+      filteredLibrary: "Talking about the filtered library",
+      video: (title: string) => `Talking about “${title}”`,
+      named: (name: string) => `Talking about ${name}`,
+      screen: "Talking about this screen",
+    },
+    empty:
+      "Ask about your library, how something works, or for a change. Changes are shown for approval first.",
+    // Sample requests in the language the assistant is asked in.
+    examples: {
+      library: "カラオケ関連の動画",
+      help: "お気に入りの使い方を教えて",
+      tidy: "タグを整理して",
+    },
+    withoutVision:
+      "This model can’t see images, so the assistant asks Clef to judge them.",
+    awaiting: "Assistant · waiting for you",
+    busyHint: "The assistant is working on the request above",
+    busy: "Another request is still running. It shows above when it finishes.",
+    expired: "This request is no longer kept.",
+    readiness: {
+      ollamaNotSavedTitle: "The assistant needs Ollama",
+      ollamaNotSaved:
+        "Save the Ollama URL in Settings, Connections, then choose a generation model.",
+      modelUnsetTitle: "Choose a model for the assistant",
+      modelUnset:
+        "Pick a generation model in Settings, Connections. The decision model used for tagging can’t chat.",
+      withoutToolsTitle: "The model can’t use tools",
+      withoutTools: (model: string) =>
+        `“${model}” can’t call tools, which the assistant needs. Choose another generation model in Settings, Connections.`,
+      openConnections: "Open Connections",
+      failed: (reason: string) => `Couldn’t check the assistant: ${reason}`,
+    },
+    // One line per tool call; {tool} is the operation's name as the progress item carries it.
+    tools: {
+      screen_context: "Checking the screen",
+      find_tools: "Looking for tools",
+      app_help: "Looking up how the app works",
+      read: (tool: string) => `Reading ${tool}`,
+      image: (tool: string) => `Reading an image with ${tool}`,
+      clef: (images: number) =>
+        selectPlural(images, {
+          one: `Asking Clef about ${formatNumber(images)} image`,
+          other: `Asking Clef about ${formatNumber(images)} images`,
+        }),
+      view_images: (images: number) =>
+        selectPlural(images, {
+          one: `Looking at ${formatNumber(images)} image`,
+          other: `Looking at ${formatNumber(images)} images`,
+        }),
+      write: (sentence: string) => `Proposing: ${sentence}`,
+      show_in_library: "Filtering the library",
+      video_stats: "Counting videos",
+      usage: (calls: number, prompt: number, context: number) =>
+        selectPlural(calls, {
+          one: `${formatNumber(calls)} model call · last prompt ${formatNumber(prompt)} of ${formatNumber(context)} tokens`,
+          other: `${formatNumber(calls)} model calls · last prompt ${formatNumber(prompt)} of ${formatNumber(context)} tokens`,
+        }),
+      cpu: "Part of the model runs on the CPU, which is many times slower. Give Ollama a smaller context, or choose a smaller model.",
+      open_page: (page: string) => (page === "" ? "Opening a page" : `Opening ${page}`),
+      start_review: (kind: string) =>
+        kind === "" ? "Starting a review" : `Starting a review of ${kind}`,
+      excluded: (tool: string) => `Can’t use ${tool}: it is done on its own page`,
+      failed: "didn’t work",
+      of: (n: number, m: number) => `${formatNumber(n)} of ${formatNumber(m)}`,
+      more: (count: number) => `+${formatNumber(count)}`,
+      working: (time: string) => `Working · ${time}`,
+      stop: "Stop",
+      workingLong: (time: string) =>
+        `Working · ${time} · it keeps going if you close the panel`,
+      show: (count: number) =>
+        selectPlural(count, {
+          one: `Show ${formatNumber(count)} tool call`,
+          other: `Show ${formatNumber(count)} tool calls`,
+        }),
+      hide: "Hide tool calls",
+      list: "Tool calls",
+      progress: "Progress of the tool call",
+    },
+    judged: "Judged by Clef · its probabilities are estimates",
+    unchecked: (items: string) =>
+      `Not found in what the assistant read: ${items}. Check these yourself.`,
+    mentioned: "Mentioned",
+    showInLibrary: "Show in the library",
+    excludedReply: (operation: string) =>
+      `The assistant can’t do this. ${operation} is done on its own page.`,
+    openPage: (page: string) => `Open ${page}`,
+    settingsPage: (page: string) => `Settings, ${page}`,
+    filtered: "Filtered the library",
+    show: "Show",
+    saveSmartFolder: "Save as smart folder…",
+    opened: (name: string) => `Opened ${name}`,
+    open: "Open",
+    clarify: {
+      which: (kind: string, name: string) => `Which ${kind} did you mean by “${name}”?`,
+      notFound: (name: string) => `Couldn’t find “${name}”. Check the name.`,
+      kinds: {
+        video: "video",
+        tag: "tag",
+        tagKind: "tag kind",
+        person: "person",
+        organization: "organization",
+        playlist: "playlist",
+        group: "group",
+        smartFolder: "smart folder",
+        folderRoot: "media folder",
+        activity: "activity entry",
+        faceAppearance: "face appearance",
+      } satisfies Record<components["schemas"]["AssistantLabelKind"], string>,
+    },
+    // Keyed by the excluded screen operation; the sentence names what the owner does on its own page.
+    excluded: {
+      setupAccount: "Changing the account",
+      login: "Signing in",
+      logout: "Signing out",
+      updateAccount: "Changing the account",
+      getAuthSession: "Reading the sign-in",
+      getAccount: "Reading the account",
+      createApiToken: "Creating API tokens",
+      deleteApiToken: "Deleting API tokens",
+      listApiTokens: "Listing API tokens",
+      uploadWorkInfoPlugin: "Changing plugins",
+      deleteWorkInfoPlugin: "Changing plugins",
+      approveWorkInfoPlugin: "Changing plugins",
+      revokeWorkInfoPluginApproval: "Changing plugins",
+      setWorkInfoPluginSettings: "Changing plugins",
+      setWorkInfoPluginLinkOrder: "Changing plugins",
+      updateNetworkSettings: "Changing network settings",
+      updatePluginProxySettings: "Changing network settings",
+      getPluginProxySettings: "Reading the plugin proxy",
+      createMediaFolder: "Adding a media folder",
+      updateMediaFolder: "Changing a media folder",
+      deleteMediaFolder: "Deleting a media folder",
+      clearWatchHistory: "Deleting watch history",
+      deleteWatchHistoryEntry: "Deleting watch history",
+      downloadFaceRuntime: "Downloading the face runtime",
+      updateOnboarding: "Onboarding",
+      pickOnboardingInterests: "Onboarding",
+      issuePairingCode: "Pairing",
+      pairPeer: "Pairing",
+      updatePeerAddress: "Pairing",
+      confirmPeerCertificate: "Pairing",
+      unpairPeer: "Pairing",
+      forgetPeer: "Pairing",
+      revokePeerGrant: "Pairing",
+      applyPeerVocabulary: "Pairing",
+      matchPeerCredits: "Pairing",
+      applyPeerFetchedWorkInfo: "Pairing",
+      applyPeerFetchedPerson: "Pairing",
+      peerHandshake: "Pairing",
+      getPeerRelatedClues: "Pairing",
+      rankPeerRelated: "Pairing",
+      countPeerRuleMatches: "Pairing",
+      deleteVideo: "Deleting a video",
+      clearPeople: "Clearing every person",
+      uploadThumbnailImage: "Uploading an image",
+      startThumbnailEditFromImage: "Uploading an image",
+      uploadPersonImage: "Uploading an image",
+      uploadOrganizationImage: "Uploading an image",
+      organizeReorder: "Dragging",
+      organizeGroup: "Dragging",
+      organizeMove: "Dragging",
+      organizeMerge: "Dragging",
+      organizeBundle: "Dragging",
+      organizeUndo: "Dragging",
+      openVideoFile: "Playing",
+      streamVideo: "Playing",
+      transcodeVideo: "Playing",
+      getTranscodeStart: "Playing",
+      getVideoSubtitle: "Playing",
+      getVideoPreview: "Playing",
+      streamEvents: "Playing",
+      getHealth: "Playing",
+    } as Readonly<Record<string, string>>,
+    // An excluded operation this build does not know.
+    excludedOther: "This",
+    unavailable: {
+      connection: "Couldn’t reach Ollama. Check the URL in Settings, Connections.",
+      model: (model: string) =>
+        model === ""
+          ? "The generation model didn’t answer. Check that Ollama has it."
+          : `The generation model didn’t answer. Check that Ollama has “${model}”.`,
+    },
+    stopped: {
+      step_limit:
+        "Stopped: the model repeated the same tool calls. Nothing was changed. Ask again in other words, or try another model.",
+      timeout:
+        "Stopped: the model didn’t answer in time. Nothing was changed. Ask again, or try a faster model.",
+      cancelled: "Stopped. Nothing was changed.",
+      ungrounded:
+        "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
+      no_answer:
+        "Stopped: the model ended without an answer. Nothing was changed. Ask again, or try another model.",
+      context_too_small:
+        "Stopped: the model’s context is too small for the assistant’s tools. Nothing was changed. Run the model with a larger context in Ollama (OLLAMA_CONTEXT_LENGTH), or choose another model.",
+      interrupted:
+        "Stopped by a restart before it finished. Nothing was changed. Ask again.",
+    },
+    tooManyVideos: "That is more than 20,000 videos. Narrow the selection or the filter.",
+    failed: (reason: string) => `Couldn’t ask the assistant: ${reason}`,
+    // One sentence per catalog row id; on is the change's public or enabled value when the row has one.
+    operation: {
+      "updateVideoTags.add": () => "Add tags",
+      "updateVideoTags.remove": () => "Remove tags",
+      "applyVideoEdits.add": () => "Add tags and credits",
+      "applyVideoEdits.remove": () => "Remove tags and credits",
+      applyVideoCodeEdits: () => "Set the work code",
+      updateVideoVisibility: ({ on }) =>
+        on === undefined ? "Change visibility" : on ? "Make public" : "Make private",
+      updateFavorites: ({ on }) =>
+        on === undefined
+          ? "Change favorites"
+          : on
+            ? "Add to favorites"
+            : "Remove from favorites",
+      setVideoDisplayName: ({ name }) =>
+        quoted("Rename the video to", name, "Rename the video"),
+      setVideoWorkInfo: () => "Set work information",
+      setVideoThumbnailPosition: () => "Set the thumbnail position",
+      reprobeVideo: () => "Read the video file again",
+      autoTagVideo: () => "Auto-tag the video",
+      confirmVideoTag: () => "Confirm tags",
+      rejectVideoTag: () => "Reject tags",
+      bundleVideos: () => "Bundle as versions of one video",
+      makeRepresentativeVersion: () => "Make the representative version",
+      unbundleVideo: () => "Take out of the bundle",
+      dismissVersionCandidate: () => "Dismiss the version candidate",
+      rejudgeVersionCandidate: () => "Judge the version candidate again",
+      createVirtualVideo: ({ name }) => quoted("Create virtual video", name),
+      mergeVirtualVideo: () => "Merge the virtual video into a file",
+      createTag: ({ name }) => quoted("Create tag", name),
+      renameTag: ({ name }) => quoted("Rename tag to", name, "Rename tag"),
+      deleteTag: ({ name }) => quoted("Delete tag", name),
+      mergeTag: ({ name }) => quoted("Merge tags into", name, "Merge tags"),
+      addTagSynonym: ({ name }) => quoted("Add a synonym to", name, "Add a synonym"),
+      removeTagSynonym: ({ name }) =>
+        quoted("Remove a synonym from", name, "Remove a synonym"),
+      confirmTag: ({ name }) => quoted("Confirm tag", name),
+      rejectTag: ({ name }) => quoted("Reject tag", name),
+      forgetRejectedTagName: ({ name }) => quoted("Forget the rejected name", name),
+      "batchTags.confirm": () => "Confirm tags",
+      "batchTags.reject": () => "Reject tags",
+      "batchTags.delete": () => "Delete tags",
+      "batchTags.setKind": () => "Set the tag kind",
+      "batchTags.clearKind": () => "Clear the tag kind",
+      createTagKind: ({ name }) => quoted("Create tag kind", name),
+      renameTagKind: ({ name }) => quoted("Rename tag kind to", name, "Rename tag kind"),
+      deleteTagKind: ({ name }) => quoted("Delete tag kind", name),
+      setTagKindCardFirst: ({ on }) =>
+        on === false
+          ? "Stop showing the tag kind first on cards"
+          : "Show the tag kind first on cards",
+      createPerson: ({ name }) => quoted("Add person", name),
+      updatePerson: () => "Edit the person",
+      deletePerson: ({ name }) => quoted("Delete person", name),
+      mergePeople: ({ name }) => quoted("Merge people into", name, "Merge people"),
+      deletePersonImage: () => "Delete the person’s image",
+      confirmFaceCandidate: () => "Confirm the face match",
+      dismissFaceCandidate: () => "Dismiss the face match",
+      reopenFaceCandidate: () => "Reopen the face match",
+      createOrganization: ({ name }) => quoted("Add organization", name),
+      updateOrganization: () => "Edit the organization",
+      deleteOrganization: ({ name }) => quoted("Delete organization", name),
+      mergeOrganizations: ({ name }) =>
+        quoted("Merge organizations into", name, "Merge organizations"),
+      deleteOrganizationImage: () => "Delete the organization’s logo",
+      createPlaylist: ({ name }) => quoted("Create playlist", name),
+      renamePlaylist: ({ name }) => quoted("Rename playlist to", name, "Rename playlist"),
+      deletePlaylist: ({ name }) => quoted("Delete playlist", name),
+      addPlaylistItems: ({ name }) => quoted("Add to playlist", name),
+      removePlaylistItem: ({ name }) => quoted("Remove from playlist", name),
+      movePlaylistItem: ({ name }) => quoted("Move in playlist", name),
+      createGroup: ({ name }) => quoted("Create group", name),
+      renameGroup: ({ name }) => quoted("Rename group to", name, "Rename group"),
+      dissolveGroup: ({ name }) => quoted("Dissolve group", name),
+      addGroupItems: ({ name }) => quoted("Add to group", name),
+      removeGroupItems: ({ name }) => quoted("Remove from group", name),
+      moveGroupItem: ({ name }) => quoted("Move in group", name),
+      tagGroup: ({ name }) =>
+        quoted("Tag the videos of group", name, "Tag the videos of the group"),
+      deleteCollections: () => "Delete groups and smart folders",
+      setFolderGrouping: () => "Change folder grouping",
+      createSmartFolder: ({ name }) => quoted("Create smart folder", name),
+      changeSmartFolder: () => "Change the smart folder",
+      deleteSmartFolder: ({ name }) => quoted("Delete smart folder", name),
+      updateAutoTaggingSettings: () => "Change auto-tagging settings",
+      startAutoTagging: () => "Start auto-tagging",
+      updateVersionJudgingSettings: () => "Change version judging settings",
+      updateFaceRecognitionSettings: () => "Change face recognition settings",
+      startFaceRecognition: () => "Start face recognition",
+      updateAutoImportSettings: () => "Change auto-import settings",
+      updateTranscodingSettings: () => "Change video conversion settings",
+      updateOllamaSettings: () => "Change Ollama settings",
+      updateComfyUISettings: () => "Change ComfyUI settings",
+      startScan: () => "Start a scan",
+      startRescan: () => "Start a rescan",
+      applyWorkInfoFetch: () => "Apply fetched work information",
+      applyPersonPluginFetch: () => "Apply fetched person details",
+      editVideoThumbnail: () => "Edit the thumbnail with ComfyUI",
+      revertThumbnailImage: () => "Restore the original thumbnail",
+      setVideoDetails: () => "Edit the video details",
+      putVideoProgress: () => "Set the watch position",
+      undoActivity: ({ name }) => quoted("Undo", name),
+      retryActivity: ({ name }) => quoted("Retry", name),
+      moveFaceAppearances: ({ name }) => quoted("Move faces to", name, "Move faces"),
+      splitFaceAppearances: () => "Split faces into a new person",
+      splitFaceAppearance: () => "Split faces into a new person",
+    } satisfies Record<string, (input: OperationInput) => string>,
+    // A row this build does not know, such as one added to the catalog later.
+    otherOperation: "Change",
+    card: {
+      impact: {
+        video: (count: number) => counted(count, "video", "videos"),
+        tag: (count: number) => counted(count, "tag", "tags"),
+        tagKind: (count: number) => counted(count, "tag kind", "tag kinds"),
+        person: (count: number) => counted(count, "person", "people"),
+        organization: (count: number) => counted(count, "organization", "organizations"),
+        playlist: (count: number) => counted(count, "playlist", "playlists"),
+        group: (count: number) => counted(count, "group", "groups"),
+        smartFolder: (count: number) => counted(count, "smart folder", "smart folders"),
+        folderRoot: (count: number) => counted(count, "media folder", "media folders"),
+        activity: (count: number) => counted(count, "activity entry", "activity entries"),
+        faceAppearance: (count: number) =>
+          counted(count, "face appearance", "face appearances"),
+        items: (count: number) => counted(count, "item", "items"),
+        setting: "This setting",
+      },
+      more: (count: number) => `+${formatNumber(count)} more`,
+      argument: {
+        name: "Name",
+        newName: "New name",
+        names: "Names",
+        tagNames: "Tags",
+        tagKindName: "Tag kind",
+        personNames: "People",
+        organizationNames: "Organizations",
+        role: "Role",
+        synonym: "Synonym",
+        aliases: "Aliases",
+        code: "Work code",
+        url: "URL",
+        dateKind: "Date",
+        date: "Day",
+        enabled: "Switch",
+        number: "Value",
+        public: "Visibility",
+        model: "Model",
+        encoder: "Encoder",
+        provider: "Provider",
+        sort: "Sort",
+        parentName: "Parent",
+        scope: "Scope",
+        people: "People",
+        organizations: "Organizations",
+        links: "Links",
+        atMs: "Frame",
+        instruction: "Instruction",
+      } as Readonly<Record<string, string>>,
+      mergeFrom: "Merge from",
+      created: "Creates",
+      on: "On",
+      off: "Off",
+      public: "Public",
+      private: "Private",
+      newMark: "New",
+      newNamed: (kind: string, name: string) => `New ${kind} ${name}`,
+      newImage: "New image",
+      none: "None",
+      restoreUndoes: "Restore the original thumbnail undoes it",
+      irreversible: "Can’t be undone",
+      moves: (count: number, name: string) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} video moves to “${name}”`,
+          other: `${formatNumber(count)} videos move to “${name}”`,
+        }),
+      execute: "Execute",
+      executing: "Executing…",
+      dismiss: "Dismiss",
+      executeFailed: (reason: string) => `Couldn’t execute: ${reason}`,
+      running: (applied: number, total: number) =>
+        `Running · ${formatNumber(applied)} of ${formatNumber(total)}`,
+      runningOnce: "Running…",
+      done: (applied: number) =>
+        selectPlural(applied, {
+          one: `Done · ${formatNumber(applied)} video changed`,
+          other: `Done · ${formatNumber(applied)} videos changed`,
+        }),
+      doneOnce: "Done",
+      partial: (applied: number, failed: number, reason: string) =>
+        `${formatNumber(applied)} changed · ${formatNumber(failed)} failed: ${reason}`,
+      failed: (reason: string) => `Failed: ${reason} · nothing changed`,
+      interrupted: (applied: number) =>
+        `Stopped by a restart. ${formatNumber(applied)} changed · ask again for the rest.`,
+      expired: "This proposal expired. Ask again.",
+      replaced: "Replaced by the next request",
+      dismissed: "Dismissed · nothing changed",
+      openInActivity: "Open in Activity",
+      progress: "Progress of the run",
+      // A card of two or more steps: one block per step, each with its checkbox and, after Execute, its state.
+      steps: {
+        heading: (count: number, selected: number) =>
+          `${formatNumber(count)} steps · ${formatNumber(selected)} selected`,
+        include: (step: number) => `Include step ${formatNumber(step)}`,
+        createdBy: (step: number) => `Created by step ${formatNumber(step)}`,
+        needs: (step: number) => `Needs step ${formatNumber(step)}`,
+        blocked: (step: number, needed: number) =>
+          `Step ${formatNumber(step)} needs step ${formatNumber(needed)}. Tick step ${formatNumber(needed)}, or untick step ${formatNumber(step)}.`,
+        noneSelected: "Tick at least one step.",
+        wontRun: "Won’t run",
+        execute: (count: number) => `Execute ${formatNumber(count)} steps`,
+        skipped: "Skipped",
+        waiting: "Waiting",
+        done: (applied: number) => `Done · ${formatNumber(applied)} changed`,
+        stale: "Changed since it was proposed, so it didn’t run. Ask again.",
+        failed: (reason: string) => `Failed: ${reason}`,
+        notRun: "Not run: an earlier step stopped",
+        allDone: (count: number) => `Done · ${counted(count, "step", "steps")}`,
+        stoppedAt: (step: number) => `Stopped at step ${formatNumber(step)}`,
+      },
+    },
+    recentRuns: "Recent runs",
+    // The Activity entry's result for a run, after its operation sentence.
+    runCounts: (applied: number, failed: number) =>
+      `${formatNumber(applied)} changed · ${formatNumber(failed)} failed`,
+    review: {
+      kinds: {
+        tags: "duplicate tags",
+        people: "duplicate people",
+        works: "parts of one work",
+      } satisfies Record<components["schemas"]["AssistantReviewRun"]["kind"], string>,
+      titles: {
+        tags: "Review: duplicate tags",
+        people: "Review: duplicate people",
+        works: "Review: parts of one work",
+      } satisfies Record<components["schemas"]["AssistantReviewRun"]["kind"], string>,
+      looking: (kind: string, judged: number, total: number) =>
+        `Looking for ${kind}… Judged ${formatNumber(judged)} of ${formatNumber(total)}`,
+      toReview: (listed: number) =>
+        listed === 0
+          ? "Nothing looked like a duplicate"
+          : selectPlural(listed, {
+              one: `${formatNumber(listed)} candidate to review`,
+              other: `${formatNumber(listed)} candidates to review`,
+            }),
+      // The run carries no failure reason; a restart is the one cause it names.
+      stopped: "The review stopped.",
+      stoppedByRestart: "The review stopped: the app restarted.",
+      openList: "Open the review list",
+      alreadyRunning: (kind: string) => `A review of ${kind} is already running`,
+      progress: "Progress of the review",
+      back: "Assistant",
+      request: (text: string) => `“${text}”`,
+      judged: (judged: number, total: number, listed: number) =>
+        `Judged ${formatNumber(judged)} of ${formatNumber(total)} · ${formatNumber(listed)} listed`,
+      summary: (listed: number, total: number, adopted: number, rejected: number) =>
+        [
+          `${formatNumber(listed)} of ${counted(total, "candidate", "candidates")} listed`,
+          ...(adopted > 0 ? [`${formatNumber(adopted)} adopted`] : []),
+          ...(rejected > 0 ? [`${formatNumber(rejected)} rejected`] : []),
+        ].join(" · "),
+      interruptedNotice: "The review was stopped by a restart. Ask again to run it.",
+      askAgain: "Ask again",
+      table: "Review candidates",
+      columns: {
+        candidates: "Candidates",
+        confidence: "Confidence",
+        state: "State",
+        result: "Result",
+      },
+      confidence: (percent: string) => `Confidence ${percent}`,
+      adopted: "Adopted",
+      selectAll: "Select all listed",
+      selectRow: (names: string) => `Select ${names}`,
+      both: (first: string, second: string) => `${first} and ${second}`,
+      selected: (count: number) => `${formatNumber(count)} selected`,
+      clearSelection: "Clear selection",
+      adoptSelected: "Adopt selected",
+      rejectSelected: "Reject selected",
+      mergeTagsTitle: (count: number) =>
+        selectPlural(count, {
+          one: `Merge ${formatNumber(count)} tag pair?`,
+          other: `Merge ${formatNumber(count)} tag pairs?`,
+        }),
+      mergeTagsDescription:
+        "Each pair’s less used tag is merged into the more used one, and the videos move with it. This can’t be undone.",
+      mergePeopleTitle: (count: number) =>
+        selectPlural(count, {
+          one: `Merge ${formatNumber(count)} people pair?`,
+          other: `Merge ${formatNumber(count)} people pairs?`,
+        }),
+      mergePeopleDescription:
+        "Each pair’s person with fewer credits is merged into the other. This can’t be undone.",
+      merge: "Merge",
+      creatingGroups: (count: number) =>
+        selectPlural(count, {
+          one: `Creating ${formatNumber(count)} group`,
+          other: `Creating ${formatNumber(count)} groups`,
+        }),
+      merging: (count: number) =>
+        selectPlural(count, {
+          one: `Merging ${formatNumber(count)} pair`,
+          other: `Merging ${formatNumber(count)} pairs`,
+        }),
+      rejectedToast: (count: number) =>
+        selectPlural(count, {
+          one: `Rejected ${formatNumber(count)} candidate. It won’t be listed again.`,
+          other: `Rejected ${formatNumber(count)} candidates. They won’t be listed again.`,
+        }),
+      adoptFailed: (reason: string) => `Couldn’t adopt: ${reason}`,
+      rejectFailed: (reason: string) => `Couldn’t reject: ${reason}`,
+      skipped: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} candidate was skipped because a tag or person changed`,
+          other: `${formatNumber(count)} candidates were skipped because a tag or person changed`,
+        }),
+      emptyTitle: "No candidates",
+      emptyDescription:
+        "Nothing looked like a duplicate. Candidates you rejected before aren’t listed.",
+      loadingCandidates: "Looking for candidates…",
+      notFound: "This review isn’t here any more.",
+      loadFailed: (reason: string) => `Couldn’t load the review: ${reason}`,
+      loadMoreFailed: "Couldn’t load more candidates",
+      loadingMore: "Loading more candidates",
     },
   },
   settings: {
@@ -4129,17 +4811,36 @@ export const en = {
     ollama: {
       heading: "Ollama",
       description:
-        "Where VVMDM reaches Ollama and which model it uses. Auto-tagging and duplicate judging use it; the test works whether they are on or off.",
+        "Where VVMDM reaches Ollama and which models it uses. The decision model answers auto-tagging and duplicate judging; the generation model answers the assistant.",
       endpoint: "Ollama URL",
       endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
-      model: "Model",
+      model: "Decision model",
       modelHint: "clef-flash is fast; clef is larger and more accurate.",
+      generationModel: "Generation model",
+      generationModelHint:
+        "A chat model the assistant uses to read your requests, such as a Japanese-capable instruct model. Leave empty to turn the assistant off.",
+      none: "None",
+      modelSearch: "Search or type a model name",
+      modelsLoading: "Loading the models…",
+      modelsFailed: (reason: string) =>
+        `Couldn’t list the models: ${reason}. Type the name.`,
+      modelsEmpty: "No models match. Type the full name.",
+      useTyped: (name: string) => `Use “${name}”`,
       save: "Save",
       saving: "Saving…",
       saved: "Ollama settings saved",
       check: "Save and test connection",
       checking: "Testing…",
       checkOk: "Ollama is running and has the model.",
+      checkOkBoth: "Ollama is running and has both models.",
+      generationModelMissing: (model: string) =>
+        `Ollama is running but doesn’t have the generation model “${model}”.`,
+      checkWithoutTools: (model: string) =>
+        `Ollama has “${model}”, but it can’t call tools. The assistant needs a model that can.`,
+      withoutToolsOption: (model: string) => `${model} · can’t call tools`,
+      visionOption: (model: string) => `${model} · sees images`,
+      savedWithoutTools: (model: string) =>
+        `“${model}” can’t call tools, so the assistant won’t take requests.`,
       checkFailed: (reason: string) => `The connection test failed: ${reason}`,
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loading: "Loading the Ollama settings",
@@ -4334,7 +5035,7 @@ export const en = {
     workInfoPlugins: {
       heading: "Work-info plugins",
       description:
-        "Plugins fetch work information from other sites for the video page. Approve a plugin before it can run.",
+        "Plugins fetch work information from other sites for the video page. Approve a plugin before it can run, and switch it off to stop using it without removing it.",
       guide: "How plugins work",
       opensInNewTab: "(opens in a new tab)",
       list: "Added work-info plugins",
@@ -4375,7 +5076,7 @@ export const en = {
       person: {
         heading: "Person plugins",
         description:
-          "Plugins fetch a person's face and profile from other sites, from the person page and when fetched work information names a person they know. Approve a plugin before it can run.",
+          "Plugins fetch a person's face and profile from other sites, from the person page and when fetched work information names a person they know. Approve a plugin before it can run, and switch it off to stop using it without removing it.",
         list: "Added person plugins",
         loading: "Loading the person plugins",
         loadFailed: (reason: string) => `Couldn't load the person plugins: ${reason}`,
@@ -4416,6 +5117,8 @@ export const en = {
       delete: "Delete",
       revoking: "Revoking…",
       deleting: "Deleting…",
+      switchLabel: (name: string) => `Use ${name}`,
+      switching: "Saving…",
       rowFailed: (name: string, reason: string) => `Couldn't change ${name}: ${reason}`,
       problems: {
         not_wasm: "The file isn't a WebAssembly module.",
@@ -4508,7 +5211,7 @@ export const en = {
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” on the Scan page. Auto-import doesn't start one.",
+        "Folders on the server where VVMDM looks for videos. Switch a folder off to leave its videos out of this library; scanning and auto-import go on. After adding or changing a folder, start a scan with “Scan library” on the Scan page.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       rowsLockedWhileScanning:
         "You can't change or force rescan media folders while a scan is running",
@@ -4520,10 +5223,9 @@ export const en = {
       removing: "Removing…",
       changing: "Changing…",
       current: "Current location",
+      actions: (path: string) => `Actions for ${path}`,
       change: "Change folder",
-      changeShort: "Change",
       remove: "Remove folder",
-      removeShort: "Remove",
       add: "Add folder",
       addBlocked: "You can add a folder once the current folders have loaded",
       changedElsewhere:
@@ -4531,6 +5233,22 @@ export const en = {
       added: "Added. Run a scan to apply the change.",
       changed: "Changed. Run a scan to apply the change.",
       removed: "Removed. A scan doesn't start automatically.",
+      switchLabel: (path: string) => `Show videos from ${path}`,
+      on: "On",
+      off: "Off",
+      switchFailed: (reason: string) => `Couldn't switch the folder: ${reason}`,
+      link: {
+        description: (name: string) =>
+          `Its media folders, as it lists them. A switch here changes only what this VVMDM shows; ${name} is unchanged.`,
+        list: (name: string) => `Media folders on ${name}`,
+        loading: (name: string) => `Loading the folders on ${name}`,
+        loadFailed: (name: string, reason: string) =>
+          `Couldn't load the folders on ${name}: ${reason}`,
+        empty: (name: string) => `No media folders on ${name}`,
+        emptyHint: "Folders it adds show here while it is connected.",
+        switchLabel: (path: string, name: string) =>
+          `Show videos from ${path} on ${name}`,
+      },
       usage: {
         loading: "Checking disk space",
         free: (size: string) => `${size} free`,
@@ -4539,7 +5257,6 @@ export const en = {
         unavailable: "Disk space unavailable",
       },
       forceRescan: "Force rescan folder",
-      forceRescanShort: "Force rescan",
       rescanDialog: {
         title: "Force rescan this folder?",
         description:
@@ -4627,6 +5344,7 @@ export const en = {
         heading: "Read another VVMDM",
         description:
           "Enter the pairing code another VVMDM on your local network shows to browse, play and organize its library from this one. Only this VVMDM connects to it, so it needs no address of this one.",
+        limit: "This VVMDM reads 8 VVMDMs, the most it can. Unpair one to read another.",
       },
       readers: {
         heading: "VVMDMs that read this one",
@@ -4669,16 +5387,16 @@ export const en = {
         invalidCode:
           "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
         alreadyPaired:
-          "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing on its Pairing page first.",
+          "This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.",
+        peerLimit:
+          "This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.",
         unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
         failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
         untrustedTitle: "Certificate not trusted",
         trust: "Trust and pair",
       },
       link: {
-        description:
-          "Its videos, groups and smart folders show in this library while it is connected.",
-        name: "Name",
+        description: "Its videos, groups and smart folders show in this library.",
         version: "Version",
         address: "Address",
         addressDescription:
@@ -4695,17 +5413,17 @@ export const en = {
         remove: "Remove pairing",
         removeFailed: (reason: string) => `Couldn't remove the pairing: ${reason}`,
       },
-      state: {
+      badge: {
         connected: "Connected",
-        network: "Can't reach it",
+        unreachable: "Not connected",
+        revoked: "Access removed",
+      },
+      state: {
         networkDetail:
           "Its videos, groups and smart folders are hidden until it answers. Check that it is running and that the address below is right.",
-        certificate: "Certificate changed",
         certificateDetail:
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
-        untrusted: "Can't verify its certificate",
         untrustedDetail: "Confirm its certificate below to connect.",
-        revoked: "Access removed by the other side",
         revokedDetail:
           "It no longer shares its library with this VVMDM. Remove the pairing, then enter a new code from it to read it again.",
       },
@@ -4790,6 +5508,8 @@ export const en = {
     code: errorCodes,
     reason: errorReasons,
     requestFailed: (status: number) => `Request failed (HTTP ${String(status)})`,
+    peerUnreachable: (name: string) => `Couldn't reach ${name}`,
+    onPeer: (name: string, message: string) => `On ${name}: ${message}`,
     unreachable: "Couldn't reach the server. Check that VVMDM is running and try again.",
     unexpected: "Something went wrong.",
     probe: probeErrors,

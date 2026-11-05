@@ -181,6 +181,34 @@ func TestWorkInfoPluginRevokeAndDelete(t *testing.T) {
 	}
 }
 
+// The switch keeps approval and settings; only switching off makes earlier fetch results stale.
+func TestWorkInfoPluginSwitchKeepsApproval(t *testing.T) {
+	ctx := context.Background()
+	s := migratedDB(t).WorkInfoPlugins()
+	added, _ := savePlugin(t, s, pluginUpload("example", "d1", "apiKey"))
+	if added.Disabled {
+		t.Fatal("a new plugin starts switched off; want on")
+	}
+	approved, err := s.ApproveWorkInfoPlugin(ctx, added.ID, "d1", pluginNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, err := s.SetWorkInfoPluginEnabled(ctx, added.ID, false)
+	if err != nil || !off.Disabled || off.State() != domain.WorkInfoPluginApproved || off.Generation != approved.Generation+1 {
+		t.Fatalf("switch off = %+v, %v; want off, still approved, next generation", off, err)
+	}
+	if again, err := s.SetWorkInfoPluginEnabled(ctx, added.ID, false); err != nil || again.Generation != off.Generation {
+		t.Fatalf("repeated switch off = %+v, %v; want no change", again, err)
+	}
+	on, err := s.SetWorkInfoPluginEnabled(ctx, added.ID, true)
+	if err != nil || on.Disabled || on.State() != domain.WorkInfoPluginApproved || on.Generation != off.Generation {
+		t.Fatalf("switch on = %+v, %v; want on, approved, same generation", on, err)
+	}
+	if _, err := s.SetWorkInfoPluginEnabled(ctx, added.ID+100, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("switch of a missing plugin err = %v; want ErrNotFound", err)
+	}
+}
+
 func TestWorkInfoPluginValuesKeepApproval(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()

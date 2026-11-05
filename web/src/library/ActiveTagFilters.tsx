@@ -5,10 +5,17 @@ import type { CreditKind } from "../api/credits";
 import { compareNatural } from "../api/tagOrder";
 import { creditFace } from "../credits/creditFace";
 import { t } from "../i18n";
+import { cn } from "../lib/cn";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Toggle } from "../ui/shadcn/toggle";
 import { type CreditFilter, creditKinds } from "./creditCriteria";
+import { conditionIcon } from "./conditionIcon";
 import { useCreditRef, useTagNames } from "./filterNames";
+import {
+  type VideoConditionKind,
+  videoConditionChips,
+  type VideoConditions,
+} from "./videoConditions";
 
 export interface ActiveTagFiltersProps {
   tagIds: readonly number[];
@@ -20,6 +27,9 @@ export interface ActiveTagFiltersProps {
   /** Undefined until kind names load; render a skeleton meanwhile. */
   tagKindName?: string;
   onRemoveTagKind?: () => void;
+  /** Shown after the tag, credit and kind chips in the order duration, added date, watch state. */
+  conditions?: VideoConditions;
+  onRemoveCondition?: (kind: VideoConditionKind) => void;
   searchFieldRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -38,6 +48,8 @@ interface ChipProps {
   namedLabel?: (name: string) => string;
   text?: (name: string) => string;
   onPress: () => void;
+  /** Condition texts are short and built here, so they skip the name width cap. */
+  uncapped?: boolean;
   buttonRef: (node: HTMLButtonElement | null) => void;
 }
 
@@ -48,6 +60,7 @@ function FilterChip({
   namedLabel = t.library.activeTags.removeNamed,
   text = (shown) => shown,
   onPress,
+  uncapped = false,
   buttonRef,
 }: ChipProps) {
   // Keep an accessible remove name even before the filter's display name arrives.
@@ -67,7 +80,10 @@ function FilterChip({
         {name === undefined ? (
           <Skeleton className="h-3 w-12" />
         ) : (
-          <span title={text(name)} className="max-w-chip-label min-w-0 truncate">
+          <span
+            title={text(name)}
+            className={cn("min-w-0 truncate", !uncapped && "max-w-chip-label")}
+          >
             {text(name)}
           </span>
         )}
@@ -105,6 +121,11 @@ function CreditChip({
 
 const noCredits: CreditFilter = {};
 const ignoreCredit = () => undefined;
+const noConditions: VideoConditions = {};
+
+function conditionKey(kind: VideoConditionKind): ChipKey {
+  return `condition:${kind}`;
+}
 
 export default function ActiveTagFilters({
   tagIds,
@@ -114,6 +135,8 @@ export default function ActiveTagFilters({
   onCreditGone = ignoreCredit,
   tagKindName,
   onRemoveTagKind = ignoreCredit,
+  conditions = noConditions,
+  onRemoveCondition = ignoreCredit,
   searchFieldRef,
 }: ActiveTagFiltersProps) {
   const byId = useTagNames(tagIds);
@@ -129,7 +152,14 @@ export default function ActiveTagFilters({
       return;
     }
     buttonRefs.current.get(pending)?.focus();
-  }, [tagIds, credits.person, credits.organization, credits.tagKind, searchFieldRef]);
+  }, [
+    tagIds,
+    credits.person,
+    credits.organization,
+    credits.tagKind,
+    conditions,
+    searchFieldRef,
+  ]);
 
   const orderedTags = [...tagIds].sort((a, b) => {
     const nameA = byId.get(a)?.name;
@@ -141,10 +171,12 @@ export default function ActiveTagFilters({
     const id = credits[kind];
     return id === undefined ? [] : [{ kind, id }];
   });
+  const conditionChips = videoConditionChips(conditions);
   const ordered: ChipKey[] = [
     ...orderedTags.map(tagKey),
     ...activeCredits.map(({ kind }) => kind),
     ...(credits.tagKind === undefined ? [] : [tagKindKey]),
+    ...conditionChips.map((chip) => conditionKey(chip.kind)),
   ];
 
   // Focus the search input before removing the last chip because unmounting prevents the focus effect.
@@ -203,6 +235,20 @@ export default function ActiveTagFilters({
             onPress={() => removeChip(tagKindKey, onRemoveTagKind)}
           />
         )}
+        {conditionChips.map((chip) => (
+          <FilterChip
+            key={conditionKey(chip.kind)}
+            buttonRef={refFor(conditionKey(chip.kind))}
+            icon={conditionIcon(chip.kind, conditions)}
+            name={chip.text}
+            unnamedLabel={chip.remove}
+            namedLabel={() => chip.remove}
+            uncapped
+            onPress={() =>
+              removeChip(conditionKey(chip.kind), () => onRemoveCondition(chip.kind))
+            }
+          />
+        ))}
       </ul>
     </div>
   );

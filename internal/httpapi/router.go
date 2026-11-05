@@ -70,6 +70,8 @@ type MediaFolders interface {
 	AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error)
 	ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error)
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
+	// SetMediaFolderEnabled returns ErrNotFound for a missing folder and is allowed during a scan.
+	SetMediaFolderEnabled(ctx context.Context, id int64, enabled bool) (domain.MediaFolder, error)
 }
 
 type MediaFolderUsage interface {
@@ -78,7 +80,7 @@ type MediaFolderUsage interface {
 
 // Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
-	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
+	ListTags(ctx context.Context, audience domain.Audience, query domain.TagListQuery) (domain.TagPage, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error
@@ -198,10 +200,10 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
-	// MergedRelatedVideos is RelatedVideos over both nodes; a nil or failing peer is skipped.
-	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
-	// RemoteRelatedVideos is the related list over both nodes of a peer video with clues; exclude holds peer ids.
-	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
+	// MergedRelatedVideos is RelatedVideos over this node and peers; a failing peer is skipped.
+	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error)
+	// RemoteRelatedVideos is the related list over this node and peers of a link's video with clues.
+	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error)
 	// PeerRelated scores this node's videos, except exclude, against the clues the peer sent; openID, when not
 	// 0, is the open video in this node's ids, whose directory adds the folder points.
 	PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, openID int64, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error)
@@ -332,6 +334,8 @@ type Options struct {
 	VersionReview  VersionJudgeReview
 
 	Ollama OllamaConnection
+	// Nil Assistant makes the assistant proposal routes fail with 500.
+	Assistant AssistantProposals
 
 	ComfyUI ComfyUIConnection
 
@@ -430,6 +434,7 @@ type server struct {
 	versionJudging    VersionJudging
 	versionReview     VersionJudgeReview
 	ollama            OllamaConnection
+	assistant         AssistantProposals
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
@@ -465,6 +470,12 @@ type server struct {
 // NewRouter registers generated UI/external APIs and Bearer-only MCP, returns JSON 404 for unknown
 // API paths, and falls back to the SPA elsewhere.
 func NewRouter(opts Options) http.Handler {
+	handler, _ := NewServer(opts)
+	return handler
+}
+
+// NewServer returns NewRouter's handler and the assistant's runner over the same handlers.
+func NewServer(opts Options) (http.Handler, *ActionRunner) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -520,6 +531,7 @@ func NewRouter(opts Options) http.Handler {
 		versionJudging:         opts.VersionJudging,
 		versionReview:          opts.VersionReview,
 		ollama:                 opts.Ollama,
+		assistant:              opts.Assistant,
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,
@@ -558,8 +570,15 @@ func NewRouter(opts Options) http.Handler {
 
 	registerExternalAPI(mux, srv)
 	mux.Handle(mcpPath, newMCPHandler(srv))
-	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
-		BaseRouter: mux,
+	generated := gen.HandlerWithOptions(srv, generatedOptions(mux, logger))
+	// The runner skips the auth and mutation boundaries but forwards a peer's entity like the screens do.
+	runner := &ActionRunner{api: srv.remoteBoundary(gen.HandlerWithOptions(srv, generatedOptions(http.NewServeMux(), logger)))}
+	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated))))), runner
+}
+
+func generatedOptions(base *http.ServeMux, logger *slog.Logger) gen.StdHTTPServerOptions {
+	return gen.StdHTTPServerOptions{
+		BaseRouter: base,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			w.Header().Set("Cache-Control", cacheNoStore)
 			writeJSON(w, http.StatusBadRequest, gen.Error{
@@ -567,8 +586,7 @@ func NewRouter(opts Options) http.Handler {
 				Message: err.Error(),
 			}, logger)
 		},
-	})
-	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated)))))
+	}
 }
 
 // Set no-store at write time for all 4xx/5xx, including ServeContent Range errors that bypass
@@ -635,7 +653,17 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 
 func requiresJSONBody(r *http.Request) bool {
 	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONBody(r) || isWorkInfoFetchJSONPost(r) ||
-		isActivityUndoPost(r) || requiresOtherJSONBody(r)
+		isActivityUndoPost(r) || isAssistantReviewDecision(r) || requiresOtherJSONBody(r)
+}
+
+// isAssistantReviewDecision matches adopting and rejecting a review run's candidates.
+func isAssistantReviewDecision(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/assistant/review-runs/")
+	if r.Method != http.MethodPost || !ok {
+		return false
+	}
+	id, rest, found := strings.Cut(suffix, "/")
+	return found && id != "" && (rest == "candidates/adopt" || rest == "candidates/reject")
 }
 
 func requiresOtherJSONBody(r *http.Request) bool {
@@ -655,23 +683,27 @@ var idActionBodyPaths = []struct{ prefix, action string }{
 	{"/api/videos/", "thumbnail-edits"},
 	{"/api/peer/videos/", "fetched-work-info"},
 	{"/api/peer/people/", "fetched-person"},
+	{"/api/peer/links/", "certificate"},
 	{"/api/virtual-videos/", "merge"},
+	{"/api/assistant/proposals/", "execute"},
 }
 
 func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
 		"/api/video-tags", "/api/video-tags/summary", "/api/video-edits", "/api/video-edits/summary",
+		"/api/video-edits/provisional-matches",
 		"/api/video-code-edits", "/api/video-code-edits/summary", "/api/work-info-fill-targets",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/version-candidates/rejudge", "/api/virtual-videos", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
+		"/api/assistant/turns",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
 		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
-		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/vocabulary",
+		"/api/peer/pair", "/api/peer/pairings", "/api/peer/related", "/api/peer/vocabulary",
 		"/api/peer/rule-counts", "/api/peer/credit-matches":
 		return true
 	}
@@ -721,7 +753,6 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/comfyui":          true,
 	"/api/settings/version-judging":  true,
 	"/api/onboarding":                true,
-	"/api/peer/address":              true,
 }
 
 func requiresPutJSONBody(path string) bool {
@@ -736,14 +767,25 @@ func requiresPutJSONBody(path string) bool {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "card-first"
 	}
-	if id, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
-		return id != "" && !strings.Contains(id, "/")
+	if suffix, ok := strings.CutPrefix(path, "/api/peer/links/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && (rest == "address" || isLinkFolderSwitch(rest))
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return id != "" && (!found || rest == "enabled")
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && isVideoJSONPut(rest)
 	}
 	return false
+}
+
+// isLinkFolderSwitch matches media-folders/{folderId}/enabled under a link's path.
+func isLinkFolderSwitch(rest string) bool {
+	folder, action, found := strings.Cut(strings.TrimPrefix(rest, "media-folders/"), "/")
+	return strings.HasPrefix(rest, "media-folders/") && found && folder != "" && action == "enabled"
 }
 
 func requiresPatchJSONBody(path string) bool {
@@ -788,7 +830,7 @@ func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	}
 	switch r.Method {
 	case http.MethodPut:
-		return rest == "approval" || rest == "settings" || rest == "auto-lookup"
+		return rest == "approval" || rest == "settings" || rest == "auto-lookup" || rest == "enabled"
 	case http.MethodPost:
 		return rest == "search" || rest == "person-search"
 	}
@@ -935,6 +977,7 @@ const (
 	codePluginChanged               = gen.ErrorCodePluginChanged
 	codePluginUnusable              = gen.ErrorCodePluginUnusable
 	codePluginNotApproved           = gen.ErrorCodePluginNotApproved
+	codePluginDisabled              = gen.ErrorCodePluginDisabled
 	codePluginSettingsMissing       = gen.ErrorCodePluginSettingsMissing
 	codePluginFailed                = gen.ErrorCodePluginFailed
 	codePluginTimedOut              = gen.ErrorCodePluginTimedOut
@@ -950,6 +993,7 @@ const (
 	codeLinkOrderChanged            = gen.ErrorCodeLinkOrderChanged
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
+	codeOllamaUnreachable           = gen.ErrorCodeOllamaUnreachable
 )
 
 // Error reasons likewise come from the schema; aliases distinguish generated unprefixed constants.

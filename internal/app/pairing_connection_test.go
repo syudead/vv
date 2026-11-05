@@ -41,6 +41,8 @@ type streamLink struct {
 	attempts  []watchAttempt
 	end       chan error
 	forgotten []string
+	// folders answers each MediaFolders call in turn; the last one repeats.
+	folders [][]domain.PeerFolder
 }
 
 func newStreamLink(steps ...watchStep) *streamLink {
@@ -106,6 +108,19 @@ func (l *streamLink) Watch(
 	}
 }
 
+func (l *streamLink) MediaFolders(context.Context, domain.PeerTarget, string) ([]domain.PeerFolder, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.folders) == 0 {
+		return nil, nil
+	}
+	listed := l.folders[0]
+	if len(l.folders) > 1 {
+		l.folders = l.folders[1:]
+	}
+	return listed, nil
+}
+
 func (l *streamLink) Forget(_ context.Context, _ domain.PeerTarget, secret, nodeID string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -131,6 +146,7 @@ type peerEventLog struct {
 	states  []domain.PeerState
 	revoked []bool
 	changed []domain.PeerChanged
+	folders []domain.MediaFoldersChanged
 }
 
 func (l *peerEventLog) Publish(events ...domain.Event) {
@@ -147,6 +163,10 @@ func (l *peerEventLog) Publish(events ...domain.Event) {
 			l.mu.Lock()
 			l.changed = append(l.changed, event)
 			l.mu.Unlock()
+		case domain.MediaFoldersChanged:
+			l.mu.Lock()
+			l.folders = append(l.folders, event)
+			l.mu.Unlock()
 		}
 	}
 }
@@ -156,10 +176,8 @@ func (l *peerEventLog) stateNames() []string {
 	defer l.mu.Unlock()
 	names := make([]string, len(l.states))
 	for i, state := range l.states {
-		names[i] = string(state.State)
-		if state.Reason != "" {
-			names[i] += "/" + string(state.Reason)
-		}
+		names[i] = linkStateName(state)
+
 	}
 	return names
 }
@@ -190,7 +208,7 @@ func startLoggedConnection(t *testing.T, link *streamLink, logger *slog.Logger) 
 	t.Helper()
 	store := &fakePeerStore{}
 	record := domain.PeerLink{NodeID: connectionPeerID, Name: "peer", Address: connectionPeer, Secret: "vvp_outgoing"}
-	if err := store.AddLink(context.Background(), record); err != nil {
+	if _, err := store.AddLink(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}
 	events := &peerEventLog{store: store}
@@ -212,6 +230,28 @@ func startLoggedConnection(t *testing.T, link *streamLink, logger *slog.Logger) 
 	t.Cleanup(node.stop)
 	synctest.Wait()
 	return node
+}
+
+// linkStateName names the state of the first link, with its reason, or unpaired without a link.
+func linkStateName(state domain.PeerState) string {
+	if len(state.Links) == 0 {
+		return "unpaired"
+	}
+	link := state.Links[0]
+	name := string(link.State)
+	if link.Reason != "" {
+		name += "/" + string(link.Reason)
+	}
+	return name
+}
+
+func (n *connectionNode) state(t *testing.T) domain.PeerState {
+	t.Helper()
+	state, err := n.pairing.State(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
 }
 
 func assertStates(t *testing.T, label string, events *peerEventLog, want ...string) {
@@ -249,34 +289,33 @@ func TestConnectionRetriesFromFiveToSixtySeconds(t *testing.T) {
 		}
 		// The start already shows unreachable, so failing again publishes nothing.
 		assertStates(t, "失敗の繰り返し", node.events)
-		if state, _ := node.pairing.State(context.Background()); state.State != domain.PeerUnreachable ||
-			state.Reason != domain.PeerReasonNetwork {
-			t.Errorf("State = %s/%s, want unreachable/network", state.State, state.Reason)
+		if got := linkStateName(node.state(t)); got != "unreachable/network" {
+			t.Errorf("State = %s, want unreachable/network", got)
 		}
 	})
 }
 
 func TestConnectionStatesAndEvents(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		forwarded := domain.PeerChanged{VideoIDs: []int64{domain.ToRemoteID(7)}}
+		forwarded := domain.PeerChanged{VideoIDs: []int64{7}}
 		node := startConnection(t, newStreamLink(
 			watchStep{open: true, changed: &forwarded},
 			watchStep{open: true},
 		))
 		assertStates(t, "ストリームが開く", node.events, "connected")
 		states, _, changed := node.events.snapshot()
-		if version := states[0].PeerVersion; version != "1.2.0" {
+		if version := states[0].Links[0].PeerVersion; version != "1.2.0" {
 			t.Errorf("connected の PeerVersion = %q, want 1.2.0", version)
 		}
-		if len(changed) != 1 || changed[0].VideoIDs[0] != domain.ToRemoteID(7) {
-			t.Errorf("転送されたイベント = %+v, want %+v", changed, forwarded)
+		if len(changed) != 1 || changed[0].VideoIDs[0] != domain.RemoteID(1, 7) {
+			t.Errorf("転送されたイベント = %+v, want スロット 1 の 7", changed)
 		}
 
 		node.link.end <- &domain.PeerUnreachableError{Message: "connection reset"}
 		synctest.Wait()
 		assertStates(t, "ストリームが切れる", node.events, "connected", "unreachable/network")
 		states, _, _ = node.events.snapshot()
-		if version := states[1].PeerVersion; version != "1.2.0" {
+		if version := states[1].Links[0].PeerVersion; version != "1.2.0" {
 			t.Errorf("切れた後の PeerVersion = %q, want 最後に見た 1.2.0", version)
 		}
 		lost := time.Now()
@@ -296,7 +335,7 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 			t.Error("revoked のイベントの時点で link に revoked が記録されていない")
 		}
 
-		if err := node.pairing.Unpair(context.Background()); err != nil {
+		if err := node.pairing.Unpair(context.Background(), connectionPeerID); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
@@ -319,8 +358,8 @@ func TestConnectionIgnoresTheVersionLabel(t *testing.T) {
 		node := startConnection(t, link)
 
 		assertStates(t, "版の違う相手", node.events, "connected")
-		if state, _ := node.pairing.State(context.Background()); state.PeerVersion != domain.DefaultVersion {
-			t.Errorf("PeerVersion = %q, want %s", state.PeerVersion, domain.DefaultVersion)
+		if version := node.state(t).Links[0].PeerVersion; version != domain.DefaultVersion {
+			t.Errorf("PeerVersion = %q, want %s", version, domain.DefaultVersion)
 		}
 	})
 }
@@ -331,9 +370,8 @@ func TestConnectionRefusesAnotherNode(t *testing.T) {
 		link.node.ID = "0b9d3f1e-2c4a-4e6b-9d8c-7a6b5c4d3e2f"
 		node := startConnection(t, link)
 
-		state, _ := node.pairing.State(context.Background())
-		if state.State != domain.PeerUnreachable || state.Reason != domain.PeerReasonNetwork {
-			t.Errorf("State = %s/%s, want unreachable/network", state.State, state.Reason)
+		if got := linkStateName(node.state(t)); got != "unreachable/network" {
+			t.Errorf("State = %s, want unreachable/network", got)
 		}
 		if attempts := len(link.attemptTimes()); attempts != 0 {
 			t.Errorf("別の VVMDM のストリームを %d 回開いた", attempts)
@@ -348,15 +386,14 @@ func TestConnectionConfirmsAChangedCertificate(t *testing.T) {
 			watchStep{open: true},
 		))
 		ctx := context.Background()
-		state, _ := node.pairing.State(ctx)
-		if state.Reason != domain.PeerReasonCertificate || state.Fingerprint != "spki-new" {
-			t.Fatalf("State = %+v, want certificate と spki-new", state)
+		if link := node.state(t).Links[0]; link.Reason != domain.PeerReasonCertificate || link.Fingerprint != "spki-new" {
+			t.Fatalf("State = %+v, want certificate と spki-new", link)
 		}
 
-		if _, err := node.pairing.ConfirmCertificate(ctx, "spki-old"); !errors.Is(err, domain.ErrFingerprintChanged) {
+		if _, err := node.pairing.ConfirmCertificate(ctx, connectionPeerID, "spki-old"); !errors.Is(err, domain.ErrFingerprintChanged) {
 			t.Errorf("別の指紋の ConfirmCertificate err = %v, want ErrFingerprintChanged", err)
 		}
-		if _, err := node.pairing.ConfirmCertificate(ctx, "spki-new"); err != nil {
+		if _, err := node.pairing.ConfirmCertificate(ctx, connectionPeerID, "spki-new"); err != nil {
 			t.Fatal(err)
 		}
 		// The confirmation reconnects at once, not after the retry delay.
@@ -374,7 +411,7 @@ func TestReportFailureMarksUnreachableAtOnce(t *testing.T) {
 		node := startConnection(t, newStreamLink(watchStep{open: true}, watchStep{open: true}))
 		reported := time.Now()
 
-		node.pairing.ReportFailure(context.Background(), &domain.PeerUnreachableError{Message: "list timed out"})
+		node.pairing.ReportFailure(context.Background(), 1, &domain.PeerUnreachableError{Message: "list timed out"})
 		assertStates(t, "読み取りの失敗", node.events, "connected", "unreachable/network")
 
 		time.Sleep(domain.PeerRetryFirst)
@@ -390,13 +427,16 @@ func TestConnectionOffersThePeerOnlyWhileConnected(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		node := startConnection(t, newStreamLink(watchStep{open: true}))
 
-		target, secret, ok, err := node.pairing.Connection(context.Background())
+		target, secret, ok, err := node.pairing.Connection(context.Background(), 1)
 		if err != nil || !ok || target.Address != connectionPeer || secret != "vvp_outgoing" {
 			t.Fatalf("接続中の Connection = %+v, %q, %v, %v", target, secret, ok, err)
 		}
-		node.pairing.ReportFailure(context.Background(), &domain.PeerUnreachableError{Message: "lost"})
-		if _, secret, ok, err := node.pairing.Connection(context.Background()); err != nil || ok || secret != "" {
+		node.pairing.ReportFailure(context.Background(), 1, &domain.PeerUnreachableError{Message: "lost"})
+		if _, secret, ok, err := node.pairing.Connection(context.Background(), 1); err != nil || ok || secret != "" {
 			t.Errorf("届かない間の Connection = %q, %v, %v, want ok なし", secret, ok, err)
+		}
+		if _, _, _, err := node.pairing.Connection(context.Background(), 2); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("リンクの無いスロットの Connection err = %v, want ErrNotFound", err)
 		}
 	})
 }
@@ -417,7 +457,7 @@ func TestInterruptedAttemptRevokesNothing(t *testing.T) {
 		}
 		node := startConnection(t, link)
 
-		if _, err := node.pairing.ChangeAddress(context.Background(), corrected); err != nil {
+		if _, err := node.pairing.ChangeAddress(context.Background(), connectionPeerID, corrected); err != nil {
 			t.Fatal(err)
 		}
 		close(answered)
@@ -439,7 +479,7 @@ func TestUnpairTellsThePeerAndDeletesOnFailure(t *testing.T) {
 		ctx := context.Background()
 		self, _ := node.pairing.Node(ctx)
 
-		if err := node.pairing.Unpair(ctx); err != nil {
+		if err := node.pairing.Unpair(ctx, connectionPeerID); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
@@ -499,6 +539,107 @@ func TestConnectionLogsEachTransitionOnce(t *testing.T) {
 		}
 		if got := logs.all(); !slices.Equal(got, want) {
 			t.Errorf("info のログ = %q, want %q", got, want)
+		}
+	})
+}
+
+// routedLinks answers each call by the streamLink at the target's address, as several read nodes.
+type routedLinks map[string]*streamLink
+
+func (r routedLinks) RequestPairing(ctx context.Context, target domain.PeerTarget, req domain.PairingRequest) (domain.PairingAnswer, error) {
+	return r[target.Address].RequestPairing(ctx, target, req)
+}
+
+func (r routedLinks) Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error) {
+	return r[target.Address].Handshake(ctx, target, secret)
+}
+
+func (r routedLinks) Watch(
+	ctx context.Context, target domain.PeerTarget, secret string, opened func(), changed func(domain.PeerChanged),
+) error {
+	return r[target.Address].Watch(ctx, target, secret, opened, changed)
+}
+
+func (r routedLinks) Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error {
+	return r[target.Address].Forget(ctx, target, secret, nodeID)
+}
+
+func (r routedLinks) MediaFolders(ctx context.Context, target domain.PeerTarget, secret string) ([]domain.PeerFolder, error) {
+	return r[target.Address].MediaFolders(ctx, target, secret)
+}
+
+// Each link has its own loop: two links connect on their own, a lost link leaves the other connected, and only
+// the lost one retries.
+func TestLinksConnectIndependently(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			secondID   = "0b9d3f1e-2c4a-4e6b-9d8c-7a6b5c4d3e2f"
+			secondPeer = "http://second.local:8080"
+		)
+		first := newStreamLink(watchStep{open: true}, watchStep{open: true})
+		second := newStreamLink(watchStep{open: true, changed: &domain.PeerChanged{GroupIDs: []int64{3}}})
+		second.node.ID = secondID
+		store := &fakePeerStore{}
+		ctx := context.Background()
+		for _, link := range []domain.PeerLink{
+			{NodeID: connectionPeerID, Name: "first", Address: connectionPeer, Secret: "vvp_first"},
+			{NodeID: secondID, Name: "second", Address: secondPeer, Secret: "vvp_second"},
+		} {
+			if _, err := store.AddLink(ctx, link); err != nil {
+				t.Fatal(err)
+			}
+		}
+		events := &peerEventLog{store: store}
+		pairing := NewPairing(PairingOptions{
+			Store: store, Client: routedLinks{connectionPeer: first, secondPeer: second}, Publisher: events,
+		})
+		events.pairing = pairing
+		runCtx, cancel := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			pairing.Run(runCtx)
+		}()
+		defer func() {
+			cancel()
+			<-done
+		}()
+		synctest.Wait()
+
+		states := func() []string {
+			state, err := pairing.State(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			names := make([]string, len(state.Links))
+			for i, link := range state.Links {
+				names[i] = link.Link.Name + ":" + string(link.State)
+			}
+			return names
+		}
+		if got := states(); !slices.Equal(got, []string{"first:connected", "second:connected"}) {
+			t.Fatalf("接続後の State = %v, want 両方 connected", got)
+		}
+		if _, _, changed := events.snapshot(); len(changed) != 1 || changed[0].GroupIDs[0] != domain.RemoteID(2, 3) {
+			t.Errorf("2 本目から転送されたイベント = %+v, want スロット 2 の 3", changed)
+		}
+
+		first.end <- &domain.PeerUnreachableError{Message: "connection reset"}
+		synctest.Wait()
+		if got := states(); !slices.Equal(got, []string{"first:unreachable", "second:connected"}) {
+			t.Errorf("1 本目が切れた後の State = %v, want 2 本目は connected のまま", got)
+		}
+		if _, _, ok, err := pairing.Connection(ctx, 2); err != nil || !ok {
+			t.Errorf("1 本目が切れた後の 2 本目の Connection = %v, %v, want ok", ok, err)
+		}
+
+		time.Sleep(domain.PeerRetryFirst)
+		synctest.Wait()
+		if got := states(); !slices.Equal(got, []string{"first:connected", "second:connected"}) {
+			t.Errorf("再接続後の State = %v, want 両方 connected", got)
+		}
+		if len(first.attemptTimes()) != 2 || len(second.attemptTimes()) != 1 {
+			t.Errorf("試行 = 1 本目 %d 回, 2 本目 %d 回, want 2 回と 1 回", len(first.attemptTimes()), len(second.attemptTimes()))
 		}
 	})
 }

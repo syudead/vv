@@ -10,8 +10,8 @@ import (
 
 // Fetch the cover and people's images with the execution HTTP client, outside the request-count limit;
 // unavailable, oversized, or non-2xx responses omit the image. Blocked addresses still fail execution; see
-// docs/design-docs/work-info-plugins.md.
-func (s *httpSession) image(ctx context.Context, rawURL string) []byte {
+// docs/design-docs/work-info-plugins.md. A non-empty referer is sent as Referer, for sites that refuse hotlinks.
+func (s *httpSession) image(ctx context.Context, rawURL, referer string) []byte {
 	if s.client == nil || rawURL == "" {
 		return nil
 	}
@@ -23,6 +23,9 @@ func (s *httpSession) image(ctx context.Context, rawURL string) []byte {
 	}
 	req.Header.Set("User-Agent", defaultUserAgent)
 	req.Header.Set("Accept", "image/png,image/jpeg,image/webp")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		s.failure(req, err)
@@ -45,20 +48,20 @@ func (s *httpSession) image(ctx context.Context, rawURL string) []byte {
 
 // images fetches urls, already capped by the result's parsing, one after another within ctx, and returns nil without
 // URLs.
-func (s *httpSession) images(ctx context.Context, urls []string) [][]byte {
+func (s *httpSession) images(ctx context.Context, urls []string, referer string) [][]byte {
 	if len(urls) == 0 {
 		return nil
 	}
 	out := make([][]byte, len(urls))
 	for i, url := range urls {
-		out[i] = s.image(ctx, url)
+		out[i] = s.image(ctx, url, referer)
 	}
 	return out
 }
 
 // personImages fetches the first WorkInfoPersonImagesMaxCount image URLs in result order, one after another within
 // ctx, and returns nil when no person has one.
-func (s *httpSession) personImages(ctx context.Context, people []domain.FetchedPerson) [][]byte {
+func (s *httpSession) personImages(ctx context.Context, people []domain.FetchedPerson, referer string) [][]byte {
 	var out [][]byte
 	fetched := 0
 	for i, person := range people {
@@ -72,7 +75,7 @@ func (s *httpSession) personImages(ctx context.Context, people []domain.FetchedP
 		if out == nil {
 			out = make([][]byte, len(people))
 		}
-		out[i] = s.image(ctx, person.ImageURL)
+		out[i] = s.image(ctx, person.ImageURL, referer)
 	}
 	return out
 }

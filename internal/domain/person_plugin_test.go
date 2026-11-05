@@ -156,8 +156,9 @@ func TestParsePersonResponsePutsTheRequestedIDFirst(t *testing.T) {
 
 func TestParsePersonResponseKeepsImagesAndProfileUnderTheCreditRules(t *testing.T) {
 	got, err := personFetch(t, `{"name":"N","images":["https://e.test/1.jpg","ftp://e.test/x",7,"https://e.test/1.jpg",`+
-		`"https://e.test/2.jpg"],"profile":{"heightCm":160,"cup":7}}`)
+		`"https://e.test/2.jpg"],"imageReferer":"https://e.test/p/1","profile":{"heightCm":160,"cup":7}}`)
 	if err != nil || !slices.Equal(got.ImageURLs, []string{"https://e.test/1.jpg", "https://e.test/2.jpg"}) ||
+		got.ImageReferer != "https://e.test/p/1" ||
 		got.Profile.HeightCm == nil || *got.Profile.HeightCm != 160 || got.Profile.Cup != "" {
 		t.Fatalf("person = %+v, %v; want the valid distinct images and the height, without the mistyped cup", got, err)
 	}
@@ -168,6 +169,15 @@ func TestParsePersonResponseKeepsImagesAndProfileUnderTheCreditRules(t *testing.
 	got, err = personFetch(t, `{"name":"N","images":[`+strings.Join(urls, ",")+`]}`)
 	if err != nil || len(got.ImageURLs) != PersonPluginImagesMaxCount || got.ImageURLs[0] != "https://e.test/0.jpg" {
 		t.Fatalf("images = %v, %v; want the first %d", got.ImageURLs, err, PersonPluginImagesMaxCount)
+	}
+}
+
+func TestParsePersonResponseMakesControlCharactersSavable(t *testing.T) {
+	got, err := personFetch(t, `{"name":"N\tM","aliases":[{"name":"A\r\nB","language":"ja"}],`+
+		`"profile":{"birthplace":"Tokyo\u0000","bio":"line 1\r\nline 2\tend"}}`)
+	if err != nil || got.Name != "N M" || got.Aliases[0].Name != "A  B" || got.Profile.Birthplace != "Tokyo" ||
+		got.Profile.Bio != "line 1\nline 2 end" {
+		t.Fatalf("person = %+v, %v; want control characters turned into spaces or line feeds", got, err)
 	}
 }
 

@@ -16,6 +16,7 @@ import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { RecordPageExample } from "./blocks/record-page-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
+import { SidePanelExample } from "./blocks/side-panel-example";
 import { StepsPageExample } from "./blocks/steps-page-example";
 
 const listStates: ListState[] = [
@@ -152,6 +153,13 @@ export default function Patterns() {
         items={["detail-page", "page-section", "fact-list", "detail-page-example"]}
       >
         <DetailPageExample />
+      </Pattern>
+      <Pattern
+        id="side-panel"
+        name={p.names.sidePanel}
+        items={["side-panel", "side-panel-example"]}
+      >
+        <SidePanelExample />
       </Pattern>
       <Pattern
         id="centered-form"

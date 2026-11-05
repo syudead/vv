@@ -172,7 +172,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: db.Ingest(), Generator: probeOnlyGenerator{}, Artifacts: artifacts.New(t.TempDir()),
-		Publisher: bus, Logger: logger,
+		Sources: app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()}, Publisher: bus, Logger: logger,
 	})
 	thumbnailStarted := make(chan domain.Job, 1)
 	queue := emptyClaims{Queue: db.Ingest(), kind: domain.JobThumbnail, empty: make(chan struct{}, 1)}

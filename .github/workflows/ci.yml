@@ -139,11 +139,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.web || matrix.tools
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
         with:
           install_args: "task"
 
@@ -279,11 +279,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.web || matrix.tools
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: ${{ matrix.web && 'web/package-lock.json' || 'tools/package-lock.json' }}
 
-      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
         with:
           install_args: "task"
 
@@ -353,7 +353,7 @@ jobs:
           key: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
-      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
         if: needs.changes.outputs.code == 'false'
         with:
           install_args: "task"
@@ -380,10 +380,15 @@ jobs:
             files: e2e/playback.e2e.ts
           - group: home
             files: e2e/home.e2e.ts e2e/onboarding.e2e.ts
+          # Its own server: the Ollama connection this spec saves cannot be removed again.
+          - group: assistant
+            files: e2e/assistant.e2e.ts
           - group: library
             files: e2e/folders.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
           - group: peer
             files: e2e/peer-library.e2e.ts
+          - group: peer-folders
+            files: e2e/peer-folders.e2e.ts
           - group: pages
             files: e2e/auth.e2e.ts e2e/drag-organize.e2e.ts e2e/history.e2e.ts e2e/scan-progress.e2e.ts e2e/video-tabs.e2e.ts e2e/work-info.e2e.ts
     steps:
@@ -411,11 +416,11 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
         with:
           install_args: "task"
 

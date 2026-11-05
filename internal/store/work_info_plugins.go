@@ -16,7 +16,7 @@ import (
 
 // Metadata reads omit module bytes and include the optional latest-run completion time.
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, domains, builtin,
+	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, domains, builtin, enabled,
 	(select count(*) from work_info_plugins r where r.link_rank is not null and work_info_plugins.link_rank is not null
 		and (r.link_rank < work_info_plugins.link_rank or r.link_rank = work_info_plugins.link_rank and r.id <= work_info_plugins.id)),
 	(select ran_at from work_info_plugin_runs where plugin_id = work_info_plugins.id)`
@@ -350,6 +350,19 @@ func (s *WorkInfoPluginStore) RevokeWorkInfoPlugin(ctx context.Context, id int64
 	})
 }
 
+// SetWorkInfoPluginEnabled switches the plugin on or off, keeping approval, settings and edit time. Switching it off
+// increments the generation, like revocation, so results fetched before cannot be applied.
+func (s *WorkInfoPluginStore) SetWorkInfoPluginEnabled(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPlugin, error) {
+	return s.changeWorkInfoPlugin(ctx, id, func(tx *sql.Tx, plugin domain.WorkInfoPlugin) error {
+		if plugin.Disabled != enabled {
+			return nil
+		}
+		_, err := tx.ExecContext(ctx, `update work_info_plugins
+			set enabled = ?, generation = generation + case when ? then 0 else 1 end where id = ?`, enabled, enabled, id)
+		return err
+	})
+}
+
 // SetWorkInfoPluginValues revalidates declarations, clears nil/empty values and preserves unspecified keys, approval and edit time.
 func (s *WorkInfoPluginStore) SetWorkInfoPluginValues(
 	ctx context.Context, id int64, values map[string]*string, now time.Time,
@@ -496,10 +509,11 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 		contract, lastRunAt                              sql.NullInt64
 		addedAt, updatedAt                               int64
 		kind                                             string
+		enabled                                          bool
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
 		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation,
-		&kind, &sources, &domains, &plugin.Builtin, &plugin.LinkRank, &lastRunAt)
+		&kind, &sources, &domains, &plugin.Builtin, &enabled, &plugin.LinkRank, &lastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}
@@ -533,6 +547,7 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 			return domain.WorkInfoPlugin{}, fmt.Errorf("cannot read the work-info plugin settings declaration: %w", err)
 		}
 	}
+	plugin.Disabled = !enabled
 	plugin.Problem = domain.WorkInfoPluginProblem(problem.String)
 	plugin.ApprovedDigest = approved.String
 	plugin.AddedAt = time.Unix(addedAt, 0)

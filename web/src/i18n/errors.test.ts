@@ -102,6 +102,32 @@ describe("errorText", () => {
     );
   });
 
+  it("names the read VVMDM in Error.peer, and keeps today's text without it", async () => {
+    const down = await toRequestFailed(
+      json(
+        { code: "conflict", message: "…", reason: "peer_unreachable", peer: "node-c" },
+        409,
+      ),
+    );
+    expect(errorText(down)).toBe("Couldn't reach node-c");
+    const refused = await toRequestFailed(
+      json(
+        {
+          code: "tag_name_taken",
+          message: "…",
+          reason: "name_is_tag",
+          tagName: "にゃん",
+          peer: "node-c",
+        },
+        409,
+      ),
+    );
+    expect(errorText(refused)).toBe('On node-c: A tag named "にゃん" already exists.');
+    expect(
+      errorText(new RequestFailed(409, "conflict", "…", { reason: "peer_unreachable" })),
+    ).toBe("Couldn't reach the other VVMDM");
+  });
+
   it("uses the code when there is no reason, and ignores the server message", () => {
     expect(errorText(new RequestFailed(401, "invalid_credentials", "Wrong."))).toBe(
       "The username or password is incorrect.",

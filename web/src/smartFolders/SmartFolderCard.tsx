@@ -27,7 +27,9 @@ import { RefusingDropCard } from "../videoList/cardDrag";
 import { ItemRemoteMark } from "../videoList/RemoteItemMark";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
+import { videoConditionChips } from "../library/videoConditions";
 import { useSmartFolderCardValue } from "./cardValues";
+import { NamedChip } from "./ConditionLines";
 import { smartFolderPagePath, videoInSmartFolderPath } from "./smartFolderPaths";
 
 /**
@@ -122,6 +124,23 @@ function SmartFolderAddToPlaylist({
   );
 }
 
+/** The rule's duration, added-day and watch-state conditions, after the tags. */
+function RuleConditionChips({
+  conditions,
+}: {
+  conditions: LibrarySmartFolder["conditions"];
+}) {
+  const chips = conditions === undefined ? [] : videoConditionChips(conditions);
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1">
+      {chips.map((chip) => (
+        <NamedChip key={chip.kind} text={chip.text} uncapped />
+      ))}
+    </div>
+  );
+}
+
 /** Smart folders cannot be dragged or added to groups; omitted value responses hide the card. */
 export const SmartFolderCard = memo(function SmartFolderCard(
   props: SmartFolderCardProps,
@@ -189,7 +208,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
           ratio={facts.ratio}
           face={
             <>
-              {remote && <ItemRemoteMark id={remoteId} />}
+              {remote && <ItemRemoteMark itemId={folder.id} id={remoteId} />}
               <SmartFolderMark />
               {values === undefined ? (
                 <Skeleton aria-hidden="true" className="h-3 w-16" />
@@ -207,6 +226,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags, folder.id)}</div>
       )}
+      <RuleConditionChips conditions={values?.conditions} />
     </article>
   );
   return refusesDrop ? (
@@ -228,7 +248,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
   if (gone) return null;
   const cover = values?.previews[0];
   const empty = values?.videoCount === 0;
-  // Favorites and playlists stay on each node; the empty cells keep the columns aligned.
+  // Playlists stay on each node; the empty cell keeps the columns aligned.
   const remote = isRemoteId(folder.id);
   return (
     <TableRow
@@ -282,9 +302,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          {!remote && (
-            <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
-          )}
+          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
         </TableCell>
       )}
       {owner && (
@@ -294,7 +312,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
       )}
       {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
-        remote={remote}
+        itemId={folder.id}
         state={facts.state}
         watchedCount={facts.watchedCount}
         videoCount={values?.videoCount ?? 0}

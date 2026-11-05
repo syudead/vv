@@ -22,6 +22,8 @@ function credit(overrides: Partial<Credit> & { id: number; name: string }): Cred
   return {
     aliases: [],
     externalIds: [],
+    profile: {},
+    favorite: false,
     videoCount: 0,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -158,6 +160,11 @@ function install() {
     const people = /^\/api\/people(.*)$/.exec(url.pathname);
     if (people !== null) {
       return Promise.resolve(handle("person", people[1]!, method, url, body));
+    }
+    if (url.pathname === "/api/favorites") {
+      return Promise.resolve(
+        jsonResponse({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 }),
+      );
     }
     const organizations = /^\/api\/organizations(.*)$/.exec(url.pathname);
     if (organizations !== null) {
@@ -569,6 +576,67 @@ describe("CreditsPage 団体の一覧", () => {
         aliases: [{ name: "Lbl" }],
       } as Partial<Credit> & { id: number; name: string }),
     ];
+  });
+
+  it("プロフィールは変えた項目だけを送り、field の示す欄を誤りとして示す", async () => {
+    const user = userEvent.setup();
+    server.organizations[0]!.profile = { foundedDate: "1990", location: "Tokyo" };
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+    server.nextError = {
+      status: 400,
+      body: {
+        code: "invalid_request",
+        reason: "work_info_out_of_range",
+        field: "organizationProfile.dissolvedDate",
+        message: "range",
+      },
+    };
+
+    await user.click(
+      within(rowOf("Studio")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Studio"' });
+    await user.clear(within(dialog).getByRole("textbox", { name: "Location" }));
+    const dissolved = within(dialog).getByRole("textbox", { name: "Dissolved" });
+    await user.type(dissolved, "1980");
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Links" }),
+      "https://s.test",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(dissolved.getAttribute("aria-invalid")).toBe("true"));
+    expect(
+      requests("PATCH", /^\/api\/organizations\/10$/).map((item) => item.body),
+    ).toEqual([
+      {
+        organizationProfile: {
+          location: null,
+          dissolvedDate: "1980",
+          links: ["https://s.test"],
+        },
+      },
+    ]);
+  });
+
+  it("お気に入りは organizationIds で送り、行の印を切り替える", async () => {
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+
+    await user.click(
+      within(rowOf("Studio")).getByRole("button", { name: "Add to favorites" }),
+    );
+
+    expect(
+      await within(rowOf("Studio")).findByRole("button", {
+        name: "Remove from favorites",
+      }),
+    ).toBeDefined();
+    expect(requests("PUT", /^\/api\/favorites$/).map((item) => item.body)).toEqual([
+      { videoIds: [], groupIds: [], organizationIds: [10], favorite: true },
+    ]);
   });
 
   it("親を名前の下の 1 行の先頭に出し、名前は organization の絞り込みへのリンク", async () => {

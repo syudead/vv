@@ -14,6 +14,9 @@ type KeyframeStore interface {
 
 // KeyframeBackfill samples the keyframe spacing of videos whose stored sample is missing or out of date. It never
 // changes playback eligibility.
-func KeyframeBackfill(store KeyframeStore, probe func(context.Context, string) domain.KeyframeProbe) Backfill {
-	return newBackfill(store.QueueKeyframeJobs, probe, store.SaveKeyframeProbe)
+func KeyframeBackfill(
+	store KeyframeStore, sources MediaFiles, probe func(context.Context, string) domain.KeyframeProbe,
+) Backfill {
+	unavailable := domain.KeyframeProbe{Version: domain.KeyframeProbeVersion, Spacing: domain.KeyframesUnknown}
+	return newBackfill(store.QueueKeyframeJobs, sources, probe, unavailable, store.SaveKeyframeProbe)
 }

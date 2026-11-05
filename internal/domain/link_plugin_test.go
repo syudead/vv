@@ -21,8 +21,8 @@ func pluginIDs(plugins []WorkInfoPlugin) []int64 {
 	return ids
 }
 
-// The owner's rank orders the matching plugins; an unapproved one, one missing a required setting, a person plugin
-// and a plugin for another site never run.
+// The owner's rank orders the matching plugins; an unapproved one, a switched-off one, one missing a required
+// setting, a person plugin and a plugin for another site never run.
 func TestLinkPluginsForKeepsUsableMatchesInRankOrder(t *testing.T) {
 	builtin := linkPlugin(1, 3, AnyLinkDomain)
 	site := linkPlugin(2, 1, "example.com")
@@ -34,7 +34,9 @@ func TestLinkPluginsForKeepsUsableMatchesInRankOrder(t *testing.T) {
 	person := linkPlugin(6, 0, "example.com")
 	person.Manifest.Kind = WorkInfoPluginKindPerson
 	other := linkPlugin(7, 0, "other.test")
-	all := []WorkInfoPlugin{builtin, site, later, unapproved, unset, person, other}
+	off := linkPlugin(8, 0, "example.com")
+	off.Disabled = true
+	all := []WorkInfoPlugin{builtin, site, later, unapproved, unset, person, other, off}
 
 	if got := pluginIDs(LinkPluginsFor(all, "https://www.example.com/v/1")); !slices.Equal(got, []int64{2, 3, 1}) {
 		t.Fatalf("plugins for an example.com link = %v; want [2 3 1]", got)

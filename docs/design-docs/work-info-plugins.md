@@ -44,6 +44,20 @@ sections from the bytes.
 | `_start` takes and returns nothing, and `memory` is exported                                                                                                                                         | `export_invalid`       |
 | Every table's minimum, and its declared maximum when it has one, is 100,000 elements or less, and so is the sum over all tables of each table's declared maximum, or 100,000 for a table without one | `table_too_large`      |
 
+## The owner's switch stops a plugin without removing it
+
+Each plugin row has a switch, `work_info_plugins.enabled`, which starts on for
+every plugin, the bundled one included. A plugin that is off keeps its module,
+approval, settings and place in the link order, so switching it on again needs
+no new review.
+
+| Rule                                                                                                               | Where                                                               | Why                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| A run of a plugin that is off returns `ErrWorkInfoPluginDisabled` (`409 plugin_disabled`) before the module starts | [`work_info_fetch.go`](../../internal/app/work_info_fetch.go)       | Every caller, the screens, the assistant and a peer's fetch, goes through the one check |
+| A link fetch skips a plugin that is off and tries the next one in link order                                       | [`link_plugin.go`](../../internal/domain/link_plugin.go)            | The owner turns a site's plugin off to fall back to the next one                        |
+| Switching off increments the generation; switching on leaves it                                                    | [`work_info_plugins.go`](../../internal/store/work_info_plugins.go) | A result fetched before the switch went off cannot be applied, as after revocation      |
+| The screens offer only plugins that are approved and on                                                            | [`fetchRules.ts`](../../web/src/player/workInfoFetch/fetchRules.ts) | The video and person pages never show a plugin that would refuse to run                 |
+
 ## Tables get a maximum before compiling
 
 A table without a declared maximum, as Go's `wasip1` linker writes the
@@ -270,8 +284,18 @@ result without people or organizations does not read the store.
 
 Sites hand descriptions over as HTML fragments, so the parse turns `<br>`,
 `<br/>` and `<br />` (any case) into line feeds and keeps any other markup as
-literal text; the page shows a description's line feeds as line breaks and
-never renders HTML. Every work-info save applies the same conversion, and the
+literal text. The page shows a description's line feeds as line breaks and
+never renders HTML.
+
+A fetched value is made savable rather than rejected, because site text often
+carries CR line ends, tabs or stray control characters that no saved value may
+hold. The parse turns CR line ends into line feeds in a description or a
+person's bio, turns any other whitespace control character into a space and
+drops the remaining control characters; this covers the title, tags, code,
+names, aliases, external IDs, links and profile texts of work and person
+plugins. A description or bio over its length limit is cut to the limit. A
+value that is still invalid, such as an overlong name or code, is skipped,
+since cutting it would change what it identifies. Every work-info save applies the same conversion, and the
 page converts once more on display for descriptions saved before it.
 
 The matches are only shown: the screen marks each entry as linked, `New` or
@@ -347,16 +371,16 @@ and the unnamed person's face for a person without one. An unnamed person
 holding external IDs is merged as a named one, without undo, because the undo
 snapshot keeps no external IDs.
 
-| Case | Result |
-| --- | --- |
-| The person is no longer an unnamed performer of the work, or the entry was skipped | Nothing is merged for the pair |
-| The merge is refused for good (the people's limits) | Rolled back alone and reported as skipped under the entry |
+| Case                                                                               | Result                                                    |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| The person is no longer an unnamed performer of the work, or the entry was skipped | Nothing is merged for the pair                            |
+| The merge is refused for good (the people's limits)                                | Rolled back alone and reported as skipped under the entry |
 
-| Rejected | Why |
-| --- | --- |
-| Matching on the person's faces page | The fetched person has no face from the video, so the pair is never offered as a candidate there |
-| Linking the entry to the unnamed person and naming them | A second write path beside the merge, and no undo |
-| Lowering the automatic merge thresholds | The automatic merges are already too inaccurate for the owner; a person decides the pairs |
+| Rejected                                                | Why                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Matching on the person's faces page                     | The fetched person has no face from the video, so the pair is never offered as a candidate there |
+| Linking the entry to the unnamed person and naming them | A second write path beside the merge, and no undo                                                |
+| Lowering the automatic merge thresholds                 | The automatic merges are already too inaccurate for the owner; a person decides the pairs        |
 
 ## VVMDM fetches the covers and applies one as an uploaded image
 
@@ -392,6 +416,12 @@ image's header only. The full decode is the apply's: the cover goes through
 ([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)), so it takes
 the upload gate, the 120-megapixel cap and the generation lock, and is stored
 with origin `uploaded`.
+
+A site may refuse an image request without one of its own pages as the
+`Referer`, so the result's `imageReferer`, an `http` or `https` URL under the
+image URL rules, goes out as the `Referer` of each cover and person image
+request of that result, person plugins' `images` included. An invalid value
+sends none and keeps the rest of the result, as an invalid cover URL does.
 
 The browser shows each cover from
 `GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}`, so it never
@@ -449,12 +479,14 @@ so the server fits it as above.
 | Send the fit with the apply and let the server compose | The preview and the result would come from two drawings, the reason uploads compose in the page |
 | Apply the cover the server fitted                      | A centre crop drops the part of a cover the owner wants, such as the front of a jacket scan     |
 
-| Rejected                                                      | Why                                                                                                           |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third                                       |
-| The browser loads the cover from the site                     | The site would see the viewer's address                                                                       |
-| Fetching the cover again for each view or at the apply        | The site could answer another image than the one the owner compared                                           |
-| Keeping `cover` beside `covers`                               | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
+| Rejected                                                      | Why                                                                                                             |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third                                         |
+| The browser loads the cover from the site                     | The site would see the viewer's address                                                                         |
+| Fetching the cover again for each view or at the apply        | The site could answer another image than the one the owner compared                                             |
+| Keeping `cover` beside `covers`                               | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins   |
+| A Referer per image URL                                       | `covers` and `images` would change from strings to objects, and one site's images share the page they appear on |
+| Sending the image's own origin as the Referer by default      | Some sites check a page path, and a header the plugin did not ask for changes what every existing plugin gets   |
 
 ## People's images are fetched like the cover and become faces after the commit
 
@@ -526,8 +558,8 @@ flowchart LR
   same --> commit[Commit, then events]
 ```
 
-1. The plugin row is read again, as before: a replaced, revoked or deleted
-   plugin answers `ErrWorkInfoFetchStale` and nothing is written.
+1. The plugin row is read again, as before: a replaced, revoked, switched-off
+   or deleted plugin answers `ErrWorkInfoFetchStale` and nothing is written.
 2. The fetched people and organizations are matched again with the same
    query as at fetch time (`matchCredits` in
    [`credit_match.go`](../../internal/store/credit_match.go)). An entity

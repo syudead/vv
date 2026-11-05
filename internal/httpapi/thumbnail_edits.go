@@ -24,6 +24,8 @@ const thumbnailEditMaxRunBody = thumbnailEditMaxMaskBytes + domain.ThumbnailEdit
 // Finished sessions return ErrThumbnailEditNotFound.
 type ThumbnailEdits interface {
 	Start(ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart) (domain.ThumbnailEdit, error)
+	// StartFrom starts from start.Image for a video this node does not hold; Apply hands the result to write.
+	StartFrom(ctx context.Context, video domain.Video, start domain.ThumbnailEditStart, write domain.ThumbnailImageWrite) (domain.ThumbnailEdit, error)
 	Get(ctx context.Context, id string) (domain.ThumbnailEdit, error)
 	Frame(ctx context.Context, id string) ([]byte, error)
 	Result(ctx context.Context, id string) ([]byte, error)
@@ -80,13 +82,19 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 		s.internalError(w, "Thumbnail editing is not configured.", nil)
 		return
 	}
+	start := domain.ThumbnailEditStart{Source: domain.ThumbnailEditSource(body.Source)}
+	if start.Source == domain.ThumbnailEditFromFrame {
+		start.PositionMs = body.PositionMs
+	}
+	if domain.IsRemoteID(id) {
+		s.startRemoteThumbnailEdit(w, r, id, start)
+		return
+	}
 	video, ok := s.lookupFrameVideo(w, r, id)
 	if !ok {
 		return
 	}
-	start := domain.ThumbnailEditStart{Source: domain.ThumbnailEditSource(body.Source)}
 	if start.Source == domain.ThumbnailEditFromFrame {
-		start.PositionMs = body.PositionMs
 		// Validate position before opening media, matching SetVideoThumbnailPosition.
 		if err := checkThumbnailEditPosition(video, body.PositionMs); err != nil {
 			s.thumbnailPositionError(w, video, err)
@@ -123,7 +131,12 @@ func (s *server) StartThumbnailEditFromImage(w http.ResponseWriter, r *http.Requ
 		s.internalError(w, "Thumbnail editing is not configured.", nil)
 		return
 	}
-	video, ok := s.lookupFrameVideo(w, r, id)
+	remote := domain.IsRemoteID(id)
+	lookup := s.lookupFrameVideo
+	if remote {
+		lookup = s.remoteFrameVideo
+	}
+	video, ok := lookup(w, r, id)
 	if !ok {
 		return
 	}
@@ -132,6 +145,10 @@ func (s *server) StartThumbnailEditFromImage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	start := domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromImage, Image: image}
+	if remote {
+		s.startFromPeerImage(w, r, video, start)
+		return
+	}
 	edit, err := s.thumbnailEdits.Start(r.Context(), video, "", start)
 	switch {
 	case errors.Is(err, domain.ErrThumbnailUploadInvalid):
@@ -251,11 +268,17 @@ func (s *server) ApplyThumbnailEdit(w http.ResponseWriter, r *http.Request, edit
 		return
 	}
 	video, err := s.thumbnailEdits.Apply(r.Context(), editID)
-	if err != nil {
-		s.thumbnailEditFailure(w, err)
-		return
+	switch {
+	case err != nil:
+		// A session for the peer's video fails with the peer's own error when its upload is refused.
+		if !s.thumbnailEditError(w, err) {
+			s.peerFailure(w, err, "Could not handle the thumbnail edit.")
+		}
+	case domain.IsRemoteID(video.ID):
+		s.writeAppliedRemoteVideo(w, r, video.ID)
+	default:
+		s.writeVideoDetail(w, r, video)
 	}
-	s.writeVideoDetail(w, r, video)
 }
 
 func (s *server) DiscardThumbnailEdit(w http.ResponseWriter, r *http.Request, editID gen.ThumbnailEditId) {

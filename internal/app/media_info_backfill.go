@@ -14,6 +14,8 @@ type MediaInfoStore interface {
 
 // MediaInfoBackfill re-reads files so videos imported before a MediaInfoVersion bump gain the new items without the
 // owner doing anything. It never changes the video's other probe results.
-func MediaInfoBackfill(store MediaInfoStore, probe func(context.Context, string) domain.MediaInfoProbe) Backfill {
-	return newBackfill(store.QueueMediaInfoJobs, probe, store.SaveMediaInfoProbe)
+func MediaInfoBackfill(
+	store MediaInfoStore, sources MediaFiles, probe func(context.Context, string) domain.MediaInfoProbe,
+) Backfill {
+	return newBackfill(store.QueueMediaInfoJobs, sources, probe, domain.MediaInfoProbe{}, store.SaveMediaInfoProbe)
 }

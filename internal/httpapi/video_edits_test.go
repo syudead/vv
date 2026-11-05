@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -143,5 +144,63 @@ func TestApplyVideoEditsEndsGuestStreamsOfVideosMadePrivate(t *testing.T) {
 	}
 	if stream.Err() == nil {
 		t.Error("the guest stream of the video made private is still running")
+	}
+}
+
+func (f videoEditsFunc) ProvisionalMatches(context.Context, []int64, []int64) ([]domain.ProvisionalMatch, error) {
+	return nil, nil
+}
+
+// Merges reach the store as sent, run on this node even without a local credit change, and come back with their
+// undo entries and skipped sources.
+func TestApplyVideoEditsPassesMergesAndReportsTheirResult(t *testing.T) {
+	var got domain.VideoEdit
+	srv := &server{
+		videoEdits: videoEditsFunc(func(_ context.Context, _ []int64, edit domain.VideoEdit) (domain.VideoEditResult, error) {
+			got = edit
+			return domain.VideoEditResult{
+				Merged:           []domain.PersonMerged{{PersonID: 3, Into: 9, UndoActivityID: 40}, {PersonID: 4, Into: 9}},
+				SkippedPersonIDs: []int64{5},
+			}, nil
+		}),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/video-edits",
+		strings.NewReader(`{"videoIds":[7],"merges":[{"into":9,"sourceIds":[3,4,5]}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ApplyVideoEdits(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if want := []domain.PersonMerge{{Into: 9, SourceIDs: []int64{3, 4, 5}}}; !reflect.DeepEqual(got.Merges, want) {
+		t.Errorf("merges = %+v, want %+v", got.Merges, want)
+	}
+	body := decode[gen.VideoEditResponse](t, rec)
+	merged := ptrValue(body.Merged)
+	if len(merged) != 2 || ptrValue(merged[0].UndoActivityId) != 40 || merged[1].UndoActivityId != nil ||
+		!reflect.DeepEqual(ptrValue(body.SkippedPersonIds), []int64{5}) {
+		t.Errorf("response = %+v, want two merges, one undoable, and 5 skipped", body)
+	}
+}
+
+func TestApplyVideoEditsRefusesAMergeOfThePeersPerson(t *testing.T) {
+	srv := &server{
+		videoEdits: videoEditsFunc(func(context.Context, []int64, domain.VideoEdit) (domain.VideoEditResult, error) {
+			t.Error("the edit reached the store")
+			return domain.VideoEditResult{}, nil
+		}),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/video-edits", strings.NewReader(jsonBody(map[string]any{
+		"videoIds": []int64{7}, "merges": []map[string]any{{"into": 9, "sourceIds": []int64{3, domain.RemoteID(1, 3)}}},
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ApplyVideoEdits(rec, req)
+	body := decodeErrorBody(t, rec.Body.Bytes())
+	if rec.Code != http.StatusBadRequest || ptrValue(body.Reason) != gen.ErrorReasonProvisionalPersonRemote ||
+		ptrValue(body.Field) != "merges[0].sourceIds[1]" {
+		t.Errorf("status = %d, error = %+v; want 400 provisional_person_remote at merges[0].sourceIds[1]", rec.Code, body)
 	}
 }

@@ -11,27 +11,43 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// A face is one JPEG row in person_images; people.image_revision changes with every change of the face.
+// An image is one JPEG row in person_images or organization_images; the entity's image_revision changes with every
+// change of the image.
 
 // personImageRevision reads a person's revision, or 0 when the person has no face; idExpr names the person's id column.
 func personImageRevision(idExpr string) string {
-	return `coalesce((select p.image_revision from people p join person_images i on i.person_id = p.id
-		 where p.id = ` + idExpr + `), 0)`
+	return creditTablesByKind[domain.CreditPerson].imageRevision(idExpr)
+}
+
+// imageRevision reads an entity's revision, or 0 when it has no image; idExpr names the entity's id column.
+func (t creditTables) imageRevision(idExpr string) string {
+	return t.q(`coalesce((select ir.image_revision from {entity} ir join {images} ii on ii.{id} = ir.id
+		 where ir.id = ` + idExpr + `), 0)`)
 }
 
 // PersonImage returns domain.ErrNotFound for a missing person and domain.ErrPersonImageNotFound for one without a face.
 func (s *CreditStore) PersonImage(ctx context.Context, id int64) (domain.PersonImage, error) {
+	return s.CreditImage(ctx, domain.CreditPerson, id)
+}
+
+// CreditImage returns domain.ErrNotFound for a missing entity and domain.ErrPersonImageNotFound for one without an
+// image.
+func (s *CreditStore) CreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.PersonImage, error) {
+	t, err := creditTablesFor(kind)
+	if err != nil {
+		return domain.PersonImage{}, err
+	}
 	var revision int64
 	var image []byte
 	var width, height sql.NullInt64
-	err := s.read.QueryRowContext(ctx, `select p.image_revision, i.image, i.width, i.height
-		 from people p left join person_images i on i.person_id = p.id where p.id = ?`, id).
+	err = s.read.QueryRowContext(ctx, t.q(`select e.image_revision, i.image, i.width, i.height
+		 from {entity} e left join {images} i on i.{id} = e.id where e.id = ?`), id).
 		Scan(&revision, &image, &width, &height)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return domain.PersonImage{}, domain.ErrNotFound
 	case err != nil:
-		return domain.PersonImage{}, fmt.Errorf("cannot read the image of person %d: %w", id, err)
+		return domain.PersonImage{}, fmt.Errorf("cannot read the image of %s %d: %w", kind, id, err)
 	case image == nil:
 		return domain.PersonImage{}, domain.ErrPersonImageNotFound
 	}
@@ -40,10 +56,15 @@ func (s *CreditStore) PersonImage(ctx context.Context, id int64) (domain.PersonI
 
 // SetPersonImage stores a fitted face, replacing any other, and returns the person with its new revision.
 func (s *CreditStore) SetPersonImage(ctx context.Context, id int64, image domain.PersonImage) (domain.Credit, error) {
-	return s.changePersonImage(ctx, id, func(tx *sql.Tx) (bool, error) {
-		_, err := tx.ExecContext(ctx, `insert into person_images (person_id, image, width, height, updated_at)
-			 values (?, ?, ?, ?, ?) on conflict (person_id) do update set
-			 image = excluded.image, width = excluded.width, height = excluded.height, updated_at = excluded.updated_at`,
+	return s.SetCreditImage(ctx, domain.CreditPerson, id, image)
+}
+
+// SetCreditImage stores a fitted image, replacing any other, and returns the entity with its new revision.
+func (s *CreditStore) SetCreditImage(ctx context.Context, kind domain.CreditKind, id int64, image domain.PersonImage) (domain.Credit, error) {
+	return s.changeCreditImage(ctx, kind, id, func(tx *sql.Tx, t creditTables) (bool, error) {
+		_, err := tx.ExecContext(ctx, t.q(`insert into {images} ({id}, image, width, height, updated_at)
+			 values (?, ?, ?, ?, ?) on conflict ({id}) do update set
+			 image = excluded.image, width = excluded.width, height = excluded.height, updated_at = excluded.updated_at`),
 			id, image.JPEG, image.Width, image.Height, time.Now().Unix())
 		return true, err
 	})
@@ -53,7 +74,7 @@ func (s *CreditStore) SetPersonImage(ctx context.Context, id int64, image domain
 // looked; it returns the new revision, or 0 when the person kept a face.
 func (s *CreditStore) AddPersonImage(ctx context.Context, id int64, image domain.PersonImage) (int64, error) {
 	added := false
-	person, err := s.changePersonImage(ctx, id, func(tx *sql.Tx) (bool, error) {
+	person, err := s.changeCreditImage(ctx, domain.CreditPerson, id, func(tx *sql.Tx, _ creditTables) (bool, error) {
 		res, err := tx.ExecContext(ctx, `insert into person_images (person_id, image, width, height, updated_at)
 			 values (?, ?, ?, ?, ?) on conflict (person_id) do nothing`,
 			id, image.JPEG, image.Width, image.Height, time.Now().Unix())
@@ -72,8 +93,13 @@ func (s *CreditStore) AddPersonImage(ctx context.Context, id int64, image domain
 
 // DeletePersonImage removes the face; a person without one is returned unchanged.
 func (s *CreditStore) DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error) {
-	return s.changePersonImage(ctx, id, func(tx *sql.Tx) (bool, error) {
-		res, err := tx.ExecContext(ctx, `delete from person_images where person_id = ?`, id)
+	return s.DeleteCreditImage(ctx, domain.CreditPerson, id)
+}
+
+// DeleteCreditImage removes the image; an entity without one is returned unchanged.
+func (s *CreditStore) DeleteCreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error) {
+	return s.changeCreditImage(ctx, kind, id, func(tx *sql.Tx, t creditTables) (bool, error) {
+		res, err := tx.ExecContext(ctx, t.q(`delete from {images} where {id} = ?`), id)
 		if err != nil {
 			return false, err
 		}
@@ -82,10 +108,15 @@ func (s *CreditStore) DeletePersonImage(ctx context.Context, id int64) (domain.C
 	})
 }
 
-// changePersonImage runs change for an existing person and bumps the revision when it reports a change.
-// Faces feed no smart rule or collection value, so the commit skips the match-change refresh.
-func (s *CreditStore) changePersonImage(ctx context.Context, id int64, change func(*sql.Tx) (bool, error)) (domain.Credit, error) {
-	t := creditTablesByKind[domain.CreditPerson]
+// changeCreditImage runs change for an existing entity and bumps the revision when it reports a change.
+// Images feed no smart rule or collection value, so the commit skips the match-change refresh.
+func (s *CreditStore) changeCreditImage(ctx context.Context, kind domain.CreditKind, id int64,
+	change func(*sql.Tx, creditTables) (bool, error),
+) (domain.Credit, error) {
+	t, err := creditTablesFor(kind)
+	if err != nil {
+		return domain.Credit{}, err
+	}
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Credit{}, err
@@ -98,12 +129,12 @@ func (s *CreditStore) changePersonImage(ctx context.Context, id int64, change fu
 	if !existing[id] {
 		return domain.Credit{}, domain.ErrNotFound
 	}
-	changed, err := change(tx)
+	changed, err := change(tx, t)
 	if err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot change the image of person %d: %w", id, err)
+		return domain.Credit{}, fmt.Errorf("cannot change the image of %s %d: %w", kind, id, err)
 	}
 	if changed {
-		if err := bumpPersonImageRevision(ctx, tx, id); err != nil {
+		if err := bumpImageRevision(ctx, tx, t, id); err != nil {
 			return domain.Credit{}, err
 		}
 	}
@@ -112,13 +143,13 @@ func (s *CreditStore) changePersonImage(ctx context.Context, id int64, change fu
 		return domain.Credit{}, err
 	}
 	var events []domain.Event
-	if changed {
+	if changed && kind == domain.CreditPerson {
 		if events, err = queuePersonFace(ctx, tx, domain.Credit{}, credit); err != nil {
 			return domain.Credit{}, err
 		}
 	}
 	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot change the image of person %d: %w", id, err)
+		return domain.Credit{}, fmt.Errorf("cannot change the image of %s %d: %w", kind, id, err)
 	}
 	return credit, nil
 }
@@ -137,57 +168,61 @@ func queuePersonFace(ctx context.Context, tx *sql.Tx, before, after domain.Credi
 }
 
 func bumpPersonImageRevision(ctx context.Context, tx *sql.Tx, id int64) error {
-	if _, err := tx.ExecContext(ctx, `update people set image_revision = image_revision + 1 where id = ?`, id); err != nil {
-		return fmt.Errorf("cannot change the image revision of person %d: %w", id, err)
+	return bumpImageRevision(ctx, tx, creditTablesByKind[domain.CreditPerson], id)
+}
+
+func bumpImageRevision(ctx context.Context, tx *sql.Tx, t creditTables, id int64) error {
+	if _, err := tx.ExecContext(ctx, t.q(`update {entity} set image_revision = image_revision + 1 where id = ?`), id); err != nil {
+		return fmt.Errorf("cannot change the image revision of %s %d: %w", t.kind, id, err)
 	}
 	return nil
 }
 
-// fillMergedPersonImage gives a target without a face the first face in sourceIDs order and returns that source, or
-// 0 when the target kept its face or no source had one; it must run before the sources are deleted.
-func fillMergedPersonImage(ctx context.Context, tx *sql.Tx, targetID int64, sourceIDs []int64) (int64, error) {
-	withFace, err := peopleWithImages(ctx, tx, append([]int64{targetID}, sourceIDs...))
+// fillMergedImage gives a target without an image the first image in sourceIDs order and returns that source, or
+// 0 when the target kept its image or no source had one; it must run before the sources are deleted.
+func fillMergedImage(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) (int64, error) {
+	withImage, err := creditsWithImages(ctx, tx, t, append([]int64{targetID}, sourceIDs...))
 	if err != nil {
 		return 0, err
 	}
-	if withFace[targetID] {
+	if withImage[targetID] {
 		return 0, nil
 	}
 	for _, sourceID := range sourceIDs {
-		if !withFace[sourceID] {
+		if !withImage[sourceID] {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `insert into person_images (person_id, image, width, height, updated_at)
-			 select ?, image, width, height, ? from person_images where person_id = ?`,
+		if _, err := tx.ExecContext(ctx, t.q(`insert into {images} ({id}, image, width, height, updated_at)
+			 select ?, image, width, height, ? from {images} where {id} = ?`),
 			targetID, time.Now().Unix(), sourceID); err != nil {
-			return 0, fmt.Errorf("cannot move the image to person %d: %w", targetID, err)
+			return 0, fmt.Errorf("cannot move the image to %s %d: %w", t.kind, targetID, err)
 		}
-		return sourceID, bumpPersonImageRevision(ctx, tx, targetID)
+		return sourceID, bumpImageRevision(ctx, tx, t, targetID)
 	}
 	return 0, nil
 }
 
-func peopleWithImages(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]bool, error) {
+func creditsWithImages(ctx context.Context, tx *sql.Tx, t creditTables, ids []int64) (map[int64]bool, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build person ids: %w", err)
+		return nil, fmt.Errorf("cannot build %s ids: %w", t.kind, err)
 	}
-	rows, err := tx.QueryContext(ctx, `select person_id from person_images where person_id in (select value from json_each(?))`,
+	rows, err := tx.QueryContext(ctx, t.q(`select {id} from {images} where {id} in (select value from json_each(?))`),
 		string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the images of people: %w", err)
+		return nil, fmt.Errorf("cannot read the images of %s entities: %w", t.kind, err)
 	}
 	defer func() { _ = rows.Close() }()
-	withFace := map[int64]bool{}
+	withImage := map[int64]bool{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("cannot read the images of people: %w", err)
+			return nil, fmt.Errorf("cannot read the images of %s entities: %w", t.kind, err)
 		}
-		withFace[id] = true
+		withImage[id] = true
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the images of people: %w", err)
+		return nil, fmt.Errorf("cannot read the images of %s entities: %w", t.kind, err)
 	}
-	return withFace, nil
+	return withImage, nil
 }

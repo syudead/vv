@@ -5,12 +5,22 @@ import {
   type Ref,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
-  useState,
+  useRef,
 } from "react";
 import { Link, useLocation, useParams } from "react-router";
 
-import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
+import type {
+  LibraryGroup,
+  LibraryItem,
+  TagRef,
+  Video,
+  VideoFolder,
+} from "../api/client";
+import { itemKey as libraryKey } from "../api/libraryItems";
 import type { GroupItem, GroupRef } from "../api/groups";
 import { useRootFolderName } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
@@ -20,21 +30,12 @@ import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 import { GroupCard } from "../library/GroupCard";
 import LibraryToolbar from "../library/LibraryToolbar";
-import {
-  emptySelection,
-  retainVideos,
-  type LibrarySelection,
-  selectedGroupOf,
-  isGroupSelected,
-  setGroup,
-  setVideo,
-  toggleGroup,
-  toggleVideo,
-} from "../library/selection";
+import { isGroupSelected } from "../library/selection";
 import SelectionBar from "../library/SelectionBar";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { useCardTagRows } from "../library/useCardTagRows";
-import { useEscapeClearsSelection } from "../library/useEscapeClearsSelection";
+import { MarqueeCard } from "../library/MarqueeBox";
+import { useListSelection } from "../library/useListSelection";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
 import { ErrorState } from "../ui/patterns/error-state";
@@ -42,7 +43,6 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
-import { isRemoteId } from "../lib/remoteId";
 import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { useCollectionCriteria } from "../videoList/useCollectionCriteria";
 import { NoMatches } from "../videoList/states";
@@ -163,8 +163,27 @@ function useGroupPageDrops({
   return { shownData, dropOnto, nameFieldFor: drops.nameFieldFor };
 }
 
-function useGroupSelection(data: GroupPageData | null, searching: boolean) {
-  const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
+/** A group item as the shared selection reads it; an item without its video or group is skipped. */
+function libraryItemOf(item: GroupItem): LibraryItem | null {
+  if (item.kind === "group") {
+    return item.group === undefined ? null : { kind: "group", group: item.group };
+  }
+  return item.video === undefined ? null : { kind: "video", video: item.video };
+}
+
+function useGroupSelection(
+  data: GroupPageData | null,
+  searching: boolean,
+  boxes: boolean,
+) {
+  // Group cards are keyed by item id, which drags need; boxes map them back to their items.
+  const cardKeys = useRef(new Map<string, string>());
+  const cardKeyOf = useCallback(
+    (item: LibraryItem) => cardKeys.current.get(libraryKey(item)) ?? libraryKey(item),
+    [],
+  );
+  const list = useListSelection({ boxes, cardKeyOf });
+  const { setSelection, show, changeVideo, changeGroup } = list;
   const videoIds = useMemo(() => {
     if (data === null) return [];
     return searching
@@ -178,27 +197,22 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
   useEffect(() => {
     if (data === null) return;
     setSelection((current) => reconcileGroupSelection(current, videoIds, data.items));
-  }, [data, videoIds]);
+  }, [data, setSelection, videoIds]);
 
-  const clear = useCallback(() => setSelection(emptySelection), []);
-  const changeVideo = useCallback(
-    (videoId: number, selected: boolean) =>
-      setSelection((current) => setVideo(current, videoId, selected)),
-    [],
-  );
-  const changeGroup = useCallback(
-    (group: LibraryGroup, selected: boolean) =>
-      setSelection((current) => setGroup(current, selectedGroupOf(group), selected)),
-    [],
-  );
-  const toggleVideoSelection = useCallback(
-    (videoId: number) => setSelection((current) => toggleVideo(current, videoId)),
-    [],
-  );
-  const toggleGroupSelection = useCallback(
-    (group: LibraryGroup) =>
-      setSelection((current) => toggleGroup(current, selectedGroupOf(group))),
-    [],
+  const showItems = useCallback(
+    (items: readonly GroupItem[]) => {
+      const keys = new Map<string, string>();
+      const shown: LibraryItem[] = [];
+      for (const item of items) {
+        const library = libraryItemOf(item);
+        if (library === null) continue;
+        keys.set(libraryKey(library), itemKey(item));
+        shown.push(library);
+      }
+      cardKeys.current = keys;
+      show(shown);
+    },
+    [show],
   );
   const changeItem = useCallback(
     (item: GroupItem, selected: boolean) => {
@@ -210,22 +224,8 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
     },
     [changeGroup, changeVideo],
   );
-  useEscapeClearsSelection(selection.ids.size > 0, clear);
-  const retain = useCallback(
-    (kept: ReadonlySet<number>) => setSelection((current) => retainVideos(current, kept)),
-    [],
-  );
 
-  return {
-    selection,
-    clear,
-    retain,
-    changeVideo,
-    changeGroup,
-    changeItem,
-    toggleVideoSelection,
-    toggleGroupSelection,
-  };
+  return { ...list, showItems, changeItem };
 }
 
 function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[] }) {
@@ -269,10 +269,16 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const preview = usePreviewCoordination();
   const { resetPreview } = preview;
   const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
-  const selection = useGroupSelection(data, controls.filtered);
+  const selection = useGroupSelection(
+    data,
+    controls.filtered,
+    owner && view === "grid" && data !== null,
+  );
   const listUrl = `${location.pathname}${location.search}`;
 
-  useDocumentTitle(data?.group.name);
+  const groupName = data?.group.name;
+  useDocumentTitle(groupName);
+  useAssistantScreen(selectionScreen(selection.selection, groupName));
   useEffect(() => {
     resetPreview();
   }, [data, resetPreview, view, zoom]);
@@ -302,6 +308,8 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     clear,
     undo,
   });
+  const { showItems } = selection;
+  useLayoutEffect(() => showItems(shownData?.items ?? noItems));
 
   const afterBulk = useCallback(() => {
     clear();
@@ -416,36 +424,39 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         )
       }
     >
-      <GroupBody
-        state={state}
-        more={more}
-        reload={reload}
-        loadMore={loadMore}
-        shownData={shownData}
-        searching={controls.filtered}
-        id={id}
-        listRef={listRef}
-        sentinel={sentinel}
-        items={{
-          view,
-          zoom,
-          listUrl,
-          owner,
-          selection,
-          selectionMode,
-          preview: preview.cardProps,
-          onPressTag: pressTag,
-          editing: editable
-            ? {
-                removing: edits.removing,
-                onRemove: edits.removeOne,
-                removeRef: edits.removeRef,
-              }
-            : undefined,
-          draggable: editable,
-          nameFieldFor,
-        }}
-      />
+      <div ref={selection.container} className="contents">
+        {selection.marqueeBox}
+        <GroupBody
+          state={state}
+          more={more}
+          reload={reload}
+          loadMore={loadMore}
+          shownData={shownData}
+          searching={controls.filtered}
+          id={id}
+          listRef={listRef}
+          sentinel={sentinel}
+          items={{
+            view,
+            zoom,
+            listUrl,
+            owner,
+            selection,
+            selectionMode,
+            preview: preview.cardProps,
+            onPressTag: pressTag,
+            editing: editable
+              ? {
+                  removing: edits.removing,
+                  onRemove: edits.removeOne,
+                  removeRef: edits.removeRef,
+                }
+              : undefined,
+            draggable: editable,
+            nameFieldFor,
+          }}
+        />
+      </div>
     </ListPage>
   );
 
@@ -583,7 +594,7 @@ function GroupHeader({
           </span>
         }
         count={
-          <RemoteCountLine remote={isRemoteId(id)}>
+          <RemoteCountLine itemId={id}>
             {t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
           </RemoteCountLine>
         }
@@ -676,7 +687,9 @@ function GroupItems({
   );
   const cell = (item: GroupItem, card: ReactNode) =>
     !draggable ? (
-      card
+      <MarqueeCard key={item.id} id={itemKey(item)}>
+        {card}
+      </MarqueeCard>
     ) : (
       <DraggableCard key={item.id} id={itemKey(item)}>
         {card}
@@ -685,8 +698,8 @@ function GroupItems({
   const { videoTags, groupTags } = useCardTagRows({
     selectionMode,
     onPressTag,
-    toggleVideo: selection.toggleVideoSelection,
-    toggleGroup: selection.toggleGroupSelection,
+    toggleVideo: selection.toggleVideo,
+    toggleGroup: selection.toggleGroup,
   });
 
   if (view === "list") {

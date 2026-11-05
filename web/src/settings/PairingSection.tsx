@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getPeer, type PeerState } from "../api/peer";
+import { getPeer, type PeerLinkState, type PeerState } from "../api/peer";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { ErrorState } from "../ui/patterns/error-state";
@@ -8,7 +8,8 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Skeleton } from "../ui/shadcn/skeleton";
 
 import { PairForm } from "./PairingSectionForm";
-import { LinkDetails } from "./PairingSectionLink";
+import { PEER_LINK_LIMIT } from "./pairing";
+import { LinkSection } from "./PairingSectionLink";
 import { ReadersSection } from "./PairingSectionReaders";
 
 type PeerView =
@@ -29,11 +30,17 @@ function usePeerState() {
     setView({ kind: "loaded", state });
   }, []);
 
-  // The state line moves only on a peer event, so an answer updates the link's details alone.
+  // The state lines move only on a peer event, so an answer updates the links' details alone.
   const updateLink = useCallback((answer: PeerState) => {
     setView((current) =>
-      current.kind === "loaded" && answer.link !== undefined
-        ? { kind: "loaded", state: { ...current.state, link: answer.link } }
+      current.kind === "loaded"
+        ? {
+            kind: "loaded",
+            state: {
+              ...current.state,
+              links: withDetails(current.state.links, answer.links),
+            },
+          }
         : current,
     );
   }, []);
@@ -63,33 +70,39 @@ function usePeerState() {
   return { view, apply, updateLink, retry: () => void load() };
 }
 
-/** The VVMDM this one reads: the pairing form until a link exists, then the link's face. */
+/** links with the details of each one answer holds, keeping the state each link last had. */
+function withDetails(links: PeerLinkState[], answer: PeerLinkState[]): PeerLinkState[] {
+  return links.map((link) => {
+    const answered = answer.find((other) => other.nodeId === link.nodeId);
+    if (answered === undefined) return link;
+    const { state, reason, fingerprint } = link;
+    return { ...answered, state, reason, fingerprint };
+  });
+}
+
+/** The pairing form while fewer than PEER_LINK_LIMIT links exist, then the limit line in its place. */
 function ReadSection({
-  state,
+  links,
   onPaired,
-  onLinkAnswer,
-  onUnpaired,
 }: {
-  state: PeerState;
+  links: number;
   onPaired: (state: PeerState) => void;
-  onLinkAnswer: (state: PeerState) => void;
-  onUnpaired: () => void;
 }) {
   const text = t.settings.pairing.read;
   return (
     <PageSection title={text.heading} description={text.description}>
-      {state.state === "unpaired" ? (
+      {links < PEER_LINK_LIMIT ? (
         <PairForm onPaired={onPaired} />
       ) : (
-        <LinkDetails state={state} onLinkAnswer={onLinkAnswer} onUnpaired={onUnpaired} />
+        <p className="text-muted-foreground">{text.limit}</p>
       )}
     </PageSection>
   );
 }
 
 /**
- * Two independent sections: the VVMDM this one reads, and the VVMDM that reads this one. Both follow
- * GET /api/peer and the peer event.
+ * The VVMDMs this one reads, one section per link in slot order, then the VVMDM that reads this one.
+ * Every section follows GET /api/peer and the peer event.
  */
 export default function PairingSection() {
   const text = t.settings.pairing;
@@ -99,14 +112,20 @@ export default function PairingSection() {
     const { state } = view;
     return (
       <>
-        <ReadSection
-          state={state}
-          onPaired={apply}
-          onLinkAnswer={updateLink}
-          onUnpaired={() =>
-            apply({ state: "unpaired", grant: state.grant, node: state.node })
-          }
-        />
+        <ReadSection links={state.links.length} onPaired={apply} />
+        {state.links.map((link) => (
+          <LinkSection
+            key={link.slot}
+            link={link}
+            onLinkAnswer={updateLink}
+            onUnpaired={() =>
+              apply({
+                ...state,
+                links: state.links.filter((other) => other.nodeId !== link.nodeId),
+              })
+            }
+          />
+        ))}
         <ReadersSection
           grant={state.grant}
           onRevoked={() => apply({ ...state, grant: undefined })}

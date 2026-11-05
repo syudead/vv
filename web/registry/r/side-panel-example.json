@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "side-panel-example",
+  "title": "Side panel example",
+  "description": "A working side panel: a button opens it, with a title and Close in the header, one exchange in the body and a composer in the footer.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/side-panel-example.tsx",
+      "content": "import { SendHorizontal, X } from \"lucide-react\";\nimport { useState } from \"react\";\n\nimport { t } from \"@/i18n\";\nimport { SidePanel } from \"@/ui/patterns/side-panel\";\nimport { Button } from \"@/ui/shadcn/button\";\nimport { Textarea } from \"@/ui/shadcn/textarea\";\n\n// registry:block side-panel-example. Real panels keep their open state above the routes; see\n// web/registry/rules/patterns.md, Side panel.\n\nexport function SidePanelExample() {\n  const p = t.designSystem.pattern;\n  const [open, setOpen] = useState(false);\n  const close = () => setOpen(false);\n  return (\n    <div className=\"flex flex-wrap gap-2 p-4\">\n      <Button\n        variant=\"outline\"\n        size=\"sm\"\n        aria-expanded={open}\n        onClick={() => setOpen((value) => !value)}\n      >\n        {p.sidePanel.open}\n      </Button>\n      {open && (\n        <SidePanel\n          label={p.sidePanel.title}\n          title={p.sidePanel.title}\n          onClose={close}\n          actions={\n            <Button\n              variant=\"ghost\"\n              size=\"icon-sm\"\n              aria-label={t.common.close}\n              onClick={close}\n            >\n              <X aria-hidden=\"true\" />\n            </Button>\n          }\n          footer={\n            <div className=\"flex items-end gap-2\">\n              <Textarea\n                aria-label={p.sidePanel.field}\n                placeholder={p.sidePanel.field}\n                className=\"max-h-assistant-composer min-h-8 resize-none py-1.5\"\n              />\n              <Button size=\"icon-sm\" aria-label={p.sidePanel.send}>\n                <SendHorizontal aria-hidden=\"true\" />\n              </Button>\n            </div>\n          }\n        >\n          <div className=\"flex flex-col gap-4\">\n            <div className=\"flex flex-col gap-2\">\n              <p className=\"max-w-5/6 self-end rounded-lg bg-secondary px-3 py-2 text-sm text-secondary-foreground\">\n                {p.sidePanel.request}\n              </p>\n              <p className=\"text-sm\">{p.sidePanel.reply}</p>\n            </div>\n          </div>\n        </SidePanel>\n      )}\n    </div>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#side-panel (item vv-rules).",
+  "type": "registry:block"
+}

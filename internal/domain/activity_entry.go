@@ -40,6 +40,8 @@ const (
 	ActivityPipeline ActivityKind = "pipeline"
 	// ActivityUndo inherits the feature of the entry it reverses.
 	ActivityUndo ActivityKind = "undo"
+	// ActivityAssistantRun records one approved assistant proposal and its counts.
+	ActivityAssistantRun ActivityKind = "assistant_run"
 )
 
 type ActivityFeature string
@@ -55,13 +57,14 @@ const (
 	ActivityFeatureMediaFolders    ActivityFeature = "media_folders"
 	ActivityFeatureOrganize        ActivityFeature = "organize"
 	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
+	ActivityFeatureAssistant       ActivityFeature = "assistant"
 )
 
 // ActivityFeatures follows the UI filter order.
 var ActivityFeatures = []ActivityFeature{
 	ActivityFeatureImport, ActivityFeatureScan, ActivityFeatureDuplicateCheck, ActivityFeatureAutoTagging,
 	ActivityFeatureWorkInfo, ActivityFeatureTags, ActivityFeatureVersions, ActivityFeatureMediaFolders,
-	ActivityFeatureOrganize, ActivityFeatureFaceRecognition,
+	ActivityFeatureOrganize, ActivityFeatureFaceRecognition, ActivityFeatureAssistant,
 }
 
 var activityKindFeatures = map[ActivityKind]ActivityFeature{
@@ -84,6 +87,7 @@ var activityKindFeatures = map[ActivityKind]ActivityFeature{
 	ActivityOrganizeUndo:       ActivityFeatureOrganize,
 	ActivityFaceAnalysis:       ActivityFeatureFaceRecognition,
 	ActivityFaceMerge:          ActivityFeatureFaceRecognition,
+	ActivityAssistantRun:       ActivityFeatureAssistant,
 }
 
 // Feature returns false for undo entries, whose feature comes from the reversed entry.
@@ -109,6 +113,8 @@ const (
 	ActivitySubjectFolder ActivitySubjectKind = "folder"
 	// ActivitySubjectPerson's key is a person id and its label the person's name, empty for a provisional person.
 	ActivitySubjectPerson ActivitySubjectKind = "person"
+	// ActivitySubjectProposal's key is an assistant proposal id and its label the owner's request.
+	ActivitySubjectProposal ActivitySubjectKind = "proposal"
 )
 
 type ActivityStatus string
@@ -153,6 +159,10 @@ const (
 	ActivityDecidedByOwner  ActivityOutcome = "decided_by_owner"
 	ActivityGone            ActivityOutcome = "gone"
 	ActivityAlreadyReverted ActivityOutcome = "already_reverted"
+	// ActivityPartial ends an assistant run whose batch failed after earlier ones applied.
+	ActivityPartial ActivityOutcome = "partial"
+	// ActivityStale ends an assistant run whose targets changed before its first call.
+	ActivityStale ActivityOutcome = "stale"
 )
 
 // ActivityDecider identifies the decision maker, or the initiator when no decision exists.

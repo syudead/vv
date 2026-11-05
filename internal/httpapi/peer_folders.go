@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -12,18 +11,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// withPeerRoots adds the peer's media-folder roots to local in name order, local first on equal names; a peer
-// that does not answer leaves the local roots alone.
+// withPeerRoots adds every connected link's media-folder roots to local in name order, local first on equal
+// names and then the links in slot order; a link that does not answer is left out.
 func (s *server) withPeerRoots(r *http.Request, local []gen.FolderSummary) []gen.FolderSummary {
-	var answer gen.RootFolderListing
-	if err := s.peerGet(r, "/api/folders", url.Values{}, &answer); err != nil {
-		s.logger.Info("the folder list leaves out the other VVMDM", slog.Any("error", err))
-		return local
+	folders := local
+	for _, answer := range linkAnswers[gen.RootFolderListing](s, r, "/api/folders", url.Values{}) {
+		join := domain.VocabularyJoin{Slot: answer.slot}
+		for i := range answer.value.Folders {
+			rewriteRemoteFolderSummary(&answer.value.Folders[i], join)
+		}
+		folders = append(folders, answer.value.Folders...)
 	}
-	for i := range answer.Folders {
-		rewriteRemoteFolderSummary(&answer.Folders[i])
-	}
-	folders := append(local, answer.Folders...)
 	slices.SortStableFunc(folders, func(a, b gen.FolderSummary) int {
 		if order := domain.CompareNatural(a.Name, b.Name); order != 0 {
 			return order
@@ -43,12 +41,13 @@ func (s *server) forwardRemoteFolder(
 		s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 		return
 	}
-	out, err := remoteRequest(r, "/api/folders/"+strconv.FormatInt(domain.FromRemoteID(rootID), 10)+suffix, query)
+	slot := domain.RemoteSlot(rootID)
+	out, err := remoteRequest(r, slot, "/api/folders/"+strconv.FormatInt(domain.FromRemoteID(rootID), 10)+suffix, query)
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
 		return
 	}
-	s.forward(w, r, out, remoteOperation{rewrite: rewrite})
+	s.forward(w, r, slot, out, remoteOperation{rewrite: rewrite})
 }
 
 // listRemoteFolderVideos forwards the videos of the peer's folder with the filters in the peer's terms and the
@@ -63,8 +62,7 @@ func (s *server) listRemoteFolderVideos(w http.ResponseWriter, r *http.Request, 
 		s.internalError(w, "Could not load the folder's videos.", err)
 		return
 	}
-	// Favorites stay with each node, so none of the peer's videos is this node's favorite.
-	if (filters.peerEmpty || query.FavoriteOnly) && !isPeerRequest(r.Context()) {
+	if filters.linkEmpty(domain.RemoteSlot(rootID)) && !isPeerRequest(r.Context()) {
 		w.Header().Set("Cache-Control", cacheNoStore)
 		writeJSON(w, http.StatusOK, gen.VideoPage{Items: []gen.Video{}}, s.logger)
 		return

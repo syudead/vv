@@ -21,14 +21,23 @@ type PersonImageStore interface {
 	DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error)
 }
 
-// PersonImages fits uploaded faces under the thumbnail uploads' gate, so the two kinds of upload never decode at once.
+// CreditImageStore keeps one fitted image per person (a face) or organization (a logo).
+type CreditImageStore interface {
+	PersonImageStore
+	CreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.PersonImage, error)
+	SetCreditImage(ctx context.Context, kind domain.CreditKind, id int64, image domain.PersonImage) (domain.Credit, error)
+	DeleteCreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
+}
+
+// PersonImages fits uploaded faces and logos under the thumbnail uploads' gate, so the two kinds of upload never
+// decode at once.
 type PersonImages struct {
-	store   PersonImageStore
+	store   CreditImageStore
 	uploads uploadGate
 }
 
 // NewPersonImages shares ingest's upload gate.
-func NewPersonImages(store PersonImageStore, ingest *Ingest) *PersonImages {
+func NewPersonImages(store CreditImageStore, ingest *Ingest) *PersonImages {
 	return &PersonImages{store: store, uploads: ingest.uploads}
 }
 
@@ -39,11 +48,16 @@ const personImageJPEGQuality = 92
 // limit returns ThumbnailUploadTooLargeError and any other unreadable image ErrPersonImageInvalid; nothing is written
 // on error.
 func (p *PersonImages) UploadPersonImage(ctx context.Context, id int64, data []byte) (domain.Credit, error) {
+	return p.UploadCreditImage(ctx, domain.CreditPerson, id, data)
+}
+
+// UploadCreditImage is UploadPersonImage for either kind.
+func (p *PersonImages) UploadCreditImage(ctx context.Context, kind domain.CreditKind, id int64, data []byte) (domain.Credit, error) {
 	fitted, err := p.fit(ctx, data)
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	return p.store.SetPersonImage(ctx, id, fitted)
+	return p.store.SetCreditImage(ctx, kind, id, fitted)
 }
 
 // fit runs fitPersonImage under the upload gate.
@@ -56,12 +70,12 @@ func (p *PersonImages) fit(ctx context.Context, data []byte) (domain.PersonImage
 	return fitPersonImage(data)
 }
 
-func (p *PersonImages) PersonImage(ctx context.Context, id int64) (domain.PersonImage, error) {
-	return p.store.PersonImage(ctx, id)
+func (p *PersonImages) CreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.PersonImage, error) {
+	return p.store.CreditImage(ctx, kind, id)
 }
 
-func (p *PersonImages) DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error) {
-	return p.store.DeletePersonImage(ctx, id)
+func (p *PersonImages) DeleteCreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error) {
+	return p.store.DeleteCreditImage(ctx, kind, id)
 }
 
 // fitPersonImage scales the image down to PersonImageMaxSide on its long side, never up, over black for transparency.

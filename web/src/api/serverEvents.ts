@@ -6,6 +6,7 @@ import {
   type VideoChanged,
 } from "./client";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
 
 type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
 type PeerState = components["schemas"]["PeerState"];
@@ -19,10 +20,14 @@ export interface ServerEventHandlers {
   candidates?: () => void;
   activity?: () => void;
   onboarding?: () => void;
+  /** Owner streams only: an assistant proposal changed; re-read the proposals shown. */
+  assistant?: () => void;
   /** The pairing state in the viewer's shape, on every change and once on connection. */
   peer?: (state: PeerState) => void;
   /** The peer's items entered or left the lists: the state moved to or from connected. */
   peerItems?: () => void;
+  /** A media folder was added, replaced, removed or switched; reread the folders and reload open lists. */
+  mediaFolders?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -36,8 +41,8 @@ interface Subscriber {
 const subscribers = new Set<Subscriber>();
 let source: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-/** Whether the last peer event said connected; undefined until the first one. */
-let peerListed: boolean | undefined;
+/** The connected slots the last peer event named; undefined until the first one. */
+let peerListed: string | undefined;
 
 function dispatch<K extends keyof ServerEventHandlers>(
   kind: K,
@@ -90,7 +95,11 @@ function connect(): void {
     const state = parse<PeerState>(event);
     if (state === undefined) return;
     dispatch("peer", state);
-    const listed = state.state === "connected";
+    // The connected slots, so a change of which links are listed reloads the lists.
+    const listed = state.links
+      .filter((link) => link.state === "connected")
+      .map((link) => link.slot)
+      .join(",");
     const changed = peerListed !== undefined && peerListed !== listed;
     peerListed = listed;
     if (changed) dispatch("peerItems");
@@ -98,6 +107,12 @@ function connect(): void {
   current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("onboarding", () => dispatch("onboarding"));
+  current.addEventListener("assistant", () => dispatch("assistant"));
+  current.addEventListener("mediaFolders", () => {
+    // A saved list may hold a switched-off folder's videos, and no open screen reloads it.
+    clearListSnapshot();
+    dispatch("mediaFolders");
+  });
   current.addEventListener("error", () => {
     // CLOSED means browser retries stopped; check audience explicitly because EventSource hides HTTP status.
     // Reload once after owner access expires; otherwise reconnect after a delay.

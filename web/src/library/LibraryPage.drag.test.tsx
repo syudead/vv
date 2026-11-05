@@ -18,13 +18,13 @@ import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import {
-  afterDrop,
   layoutCards,
   lift,
   mouse,
   moveTo,
   openedMenu,
   release,
+  releaseAndSettle,
 } from "../testing/cardDrag";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -316,14 +316,7 @@ describe("LibraryPage drag into a group", () => {
     await openLibrary();
     lift("Clip 1", 0);
     moveTo(1);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      release(1);
-      // dnd-kit suppresses document clicks for 50ms after a drop.
-      await act(() => vi.advanceTimersByTimeAsync(50));
-    } finally {
-      vi.useRealTimers();
-    }
+    await releaseAndSettle(() => release(1));
     await screen.findByText('Moved 1 item to "Trip"');
     await waitFor(() => expect(cardTitles()).toEqual(["Trip", "Clip 2", "Clip 3"]));
 
@@ -395,9 +388,8 @@ describe("LibraryPage drag into a group", () => {
     const open = held(server);
     lift("Clip 2", 1);
     moveTo(0);
-    release(0);
+    await releaseAndSettle(() => release(0));
     expect(cardTitles()).toEqual(["Trip", "Clip 3"]);
-    await afterDrop();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     await screen.findByText("Undone");
@@ -412,9 +404,8 @@ describe("LibraryPage drag into a group", () => {
     const open = held(server);
     lift("Clip 2", 2);
     moveTo(1);
-    release(1);
+    await releaseAndSettle(() => release(1));
     expect(cardTitles()).toEqual(["Clip 1", "Trip", "Clip 3"]);
-    await afterDrop();
 
     fireEvent.click(screen.getByRole("checkbox", { name: 'Select "Clip 1"' }));
     const last = screen.getByRole("checkbox", { name: 'Select "Clip 3"' });
@@ -431,9 +422,8 @@ describe("LibraryPage drag into a group", () => {
     const open = held(server);
     lift("Clip 1", 0);
     moveTo(1);
-    release(1);
+    await releaseAndSettle(() => release(1));
     await waitFor(() => expect(moves(server)).toHaveLength(1));
-    await afterDrop();
 
     fireEvent.click(screen.getByRole("link", { name: "Clip 3" }));
     await screen.findByText("Player");
@@ -529,7 +519,7 @@ describe("LibraryPage drop a group on a group", () => {
     lift(/^Trip/, 1);
     moveTo(2);
     expect(screen.getByText("Put in or merge…")).toBeDefined();
-    release(2);
+    await releaseAndSettle(() => release(2));
     const menu = await openedMenu();
     expect(within(menu).getByText('Dropped on "Beach"')).toBeDefined();
     return menu;

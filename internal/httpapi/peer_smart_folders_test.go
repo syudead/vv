@@ -115,7 +115,7 @@ func TestSmartFolderListsTheTaggedVideosOfBothNodes(t *testing.T) {
 	}
 
 	// a's folder appears in b's sidebar list and lists b's matches too, with the rule in b's ids.
-	remote := domain.ToRemoteID(createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫と犬","rule":{"tags":[%d]}}`, peerCat.ID)))
+	remote := domain.RemoteID(1, createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫と犬","rule":{"tags":[%d]}}`, peerCat.ID)))
 	list := decode[gen.SmartFolderList](t, owner("/api/smart-folders"))
 	var names []string
 	for _, folder := range list.SmartFolders {
@@ -140,7 +140,7 @@ func TestRemoteSmartFolderReadsThePeerAfterALocalFirstPage(t *testing.T) {
 	fa, fb, a, b, _ := smartFolderNodes(t)
 	tagOn(t, fb, "猫", "e", "d")
 	peerCat := tagOn(t, fa, "猫", "c", "b")
-	remote := domain.ToRemoteID(createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, peerCat.ID)))
+	remote := domain.RemoteID(1, createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, peerCat.ID)))
 	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
 
 	// b's matches are newer, so the first page of two takes none of a's.
@@ -175,7 +175,7 @@ func TestSmartFolderCardsCountBothNodes(t *testing.T) {
 	cat := tagOn(t, fb, "猫", "c", "e")
 	peerCat := tagOn(t, fa, "猫", "b", "d", "e")
 	local := createSmartFolder(t, b, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, cat.ID))
-	remote := domain.ToRemoteID(createSmartFolder(t, a, fmt.Sprintf(`{"name":"a の猫","rule":{"tags":[%d]}}`, peerCat.ID)))
+	remote := domain.RemoteID(1, createSmartFolder(t, a, fmt.Sprintf(`{"name":"a の猫","rule":{"tags":[%d]}}`, peerCat.ID)))
 	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
 
 	// Every video holds 4096 bytes and lasts 60 s, except d, whose probe failed.
@@ -187,8 +187,8 @@ func TestSmartFolderCardsCountBothNodes(t *testing.T) {
 				card.DurationMs, 5*4096, 4*60_000)
 		}
 	}
-	if card := cards[remote]; card.WatchState != nil || card.Favorite != nil {
-		t.Errorf("remote card carries the peer's watch values: %+v", card)
+	if card := cards[remote]; card.WatchState == nil || card.Favorite == nil {
+		t.Errorf("remote card lacks the peer's watch values: %+v", card)
 	}
 
 	stopA()
@@ -204,7 +204,8 @@ func TestSmartFolderCardsCountBothNodes(t *testing.T) {
 	}
 }
 
-func TestSmartFolderWithFavoriteListsTheLocalFavoritesOnly(t *testing.T) {
+// A favorite rule matches each node's videos by that node's own favorites, whichever node holds the folder.
+func TestSmartFolderWithFavoriteListsEachNodesFavorites(t *testing.T) {
 	fa, fb, a, b, _ := smartFolderNodes(t)
 	cat := tagOn(t, fb, "猫", "c", "e")
 	peerCat := tagOn(t, fa, "猫", "c", "e")
@@ -213,19 +214,18 @@ func TestSmartFolderWithFavoriteListsTheLocalFavoritesOnly(t *testing.T) {
 	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
 
 	local := createSmartFolder(t, b, fmt.Sprintf(`{"name":"好きな猫","rule":{"favorite":true,"tags":[%d]}}`, cat.ID))
-	if got := pageSmartFolder(t, fa, fb, owner, local); !slices.Equal(got, []string{"b:c"}) {
-		t.Errorf("b's favorite folder = %v, want b's favorite match only", got)
-	}
-	// a's favorite folder lists b's favorites matching its rule instead of a's favorites.
-	remote := domain.ToRemoteID(createSmartFolder(t, a,
+	remote := domain.RemoteID(1, createSmartFolder(t, a,
 		fmt.Sprintf(`{"name":"a の好きな猫","rule":{"favorite":true,"tags":[%d]}}`, peerCat.ID)))
-	if got := pageSmartFolder(t, fa, fb, owner, remote); !slices.Equal(got, []string{"b:c"}) {
-		t.Errorf("a's favorite folder = %v, want b's favorite match only", got)
+	want := []string{"a:e", "b:c"}
+	for _, id := range []int64{local, remote} {
+		if got := slices.Sorted(slices.Values(pageSmartFolder(t, fa, fb, owner, id))); !slices.Equal(got, want) {
+			t.Errorf("folder %d = %v, want %v", id, got, want)
+		}
 	}
 	cards := folderCards(t, owner, local, remote)
 	for _, id := range []int64{local, remote} {
-		if cards[id].VideoCount != 1 {
-			t.Errorf("card %d counts %d videos, want b's 1 favorite", id, cards[id].VideoCount)
+		if cards[id].VideoCount != 2 {
+			t.Errorf("card %d counts %d videos, want each node's 1 favorite", id, cards[id].VideoCount)
 		}
 	}
 }
@@ -234,7 +234,7 @@ func TestPeerSmartFolderEditsAreStoredOnThePeer(t *testing.T) {
 	fa, fb, a, b, _ := smartFolderNodes(t)
 	cat := tagOn(t, fb, "猫")
 	peerCat := tagOn(t, fa, "猫")
-	parent := domain.ToRemoteID(createSmartFolder(t, a, `{"name":"親","rule":{}}`))
+	parent := domain.RemoteID(1, createSmartFolder(t, a, `{"name":"親","rule":{}}`))
 
 	// A rule by b's tag reaches a as a's tag of the same name.
 	child := createSmartFolder(t, b, fmt.Sprintf(`{"name":"子","rule":{"tags":[%d]},"parentId":%d}`, cat.ID, parent))

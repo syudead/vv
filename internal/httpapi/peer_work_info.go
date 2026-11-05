@@ -38,7 +38,7 @@ func peerWorkInfoBody[T any](
 				s.invalidRequest(w, message)
 				return false
 			}
-			if err := translateWorkInfoCredits(info, s.peerEditVocabulary(r)); err != nil {
+			if err := translateWorkInfoCredits(info, s.peerEditVocabulary(r, s.requestSlot(r))); err != nil {
 				s.writeSplitEditError(w, err)
 				return false
 			}

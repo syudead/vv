@@ -3,34 +3,16 @@ package store
 import (
 	"context"
 	"database/sql"
-	"io/fs"
 	"reflect"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 )
 
 const jobSchedulingVersion = 84
 
 // Existing rows keep their state, attempts, error, activity and force flags across the jobs rebuild and back.
 func TestJobSchedulingMigrationRoundTripsExistingRows(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsys, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, jobSchedulingVersion-1)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, jobSchedulingVersion-1); err != nil {
-		t.Fatal(err)
-	}
 	execAll(t, db,
 		`insert into videos(id, content_key, probe_state, added_at, indexed_at) values (1, 'key-a', 'done', 1, 1)`,
 		`insert into jobs(id, kind, video_id, state, attempts, last_error, created_at, updated_at, location_id,

@@ -50,22 +50,24 @@ type Credit struct {
 	Parent *CreditRef
 	// Profile is empty for organizations.
 	Profile PersonProfile
-	// Favorite is false for organizations.
-	Favorite bool
-	// ImageRevision is zero unless the person has a face.
+	// OrganizationProfile is empty for people.
+	OrganizationProfile OrganizationProfile
+	Favorite            bool
+	// ImageRevision is zero unless the credit has an image: a person's face or an organization's logo.
 	ImageRevision int64
 	// VideoCount counts visible video user-data keys linked in any role.
 	VideoCount int
 	CreatedAt  time.Time
 }
 
-// ParentID is used only for organizations and Profile only for people.
+// ParentID and OrganizationProfile are used only for organizations and Profile only for people.
 type CreditInput struct {
-	Name        string
-	Aliases     []Alias
-	ExternalIDs []ExternalID
-	ParentID    *int64
-	Profile     PersonProfile
+	Name                string
+	Aliases             []Alias
+	ExternalIDs         []ExternalID
+	ParentID            *int64
+	Profile             PersonProfile
+	OrganizationProfile OrganizationProfile
 }
 
 // CreditPatch preserves nil fields and replaces whole lists; pointers to nil lists clear them, while ParentSet controls whether ParentID changes (nil removes the parent).
@@ -77,6 +79,8 @@ type CreditPatch struct {
 	ParentID    *int64
 	// Profile is nil when no profile property changes; people only.
 	Profile *PersonProfilePatch
+	// OrganizationProfile is nil when no profile property changes; organizations only.
+	OrganizationProfile *OrganizationProfilePatch
 }
 
 // People also sort by birth date; a partial date sorts as its first possible day and an unknown one comes last.
@@ -102,7 +106,7 @@ type CreditQuery struct {
 	Cursor string
 	// Limit is 1–MaxTagPageLimit; zero returns all results and ignores Cursor.
 	Limit int
-	// FavoriteOnly keeps only favorite people; storage rejects it for organizations.
+	// FavoriteOnly keeps only favorites.
 	FavoriteOnly bool
 	// Provisional, when set, keeps only provisional (true) or named (false) people; storage rejects it for organizations.
 	Provisional *bool
@@ -201,11 +205,19 @@ func normalizeCreditFields(name string, input CreditInput) (CreditInput, error) 
 	if err != nil {
 		return CreditInput{}, err
 	}
-	profile, err := NormalizePersonProfile(input.Profile, time.Now())
+	today := time.Now()
+	profile, err := NormalizePersonProfile(input.Profile, today)
 	if err != nil {
 		return CreditInput{}, err
 	}
-	return CreditInput{Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID, Profile: profile}, nil
+	organizationProfile, err := NormalizeOrganizationProfile(input.OrganizationProfile, today)
+	if err != nil {
+		return CreditInput{}, err
+	}
+	return CreditInput{
+		Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID, Profile: profile,
+		OrganizationProfile: organizationProfile,
+	}, nil
 }
 
 func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {

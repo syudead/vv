@@ -6,6 +6,8 @@ import AuthGate from "../auth/AuthGate";
 import { LIBRARY_PATH } from "../library/libraryPath";
 import LibraryPage from "../library/LibraryPage";
 import VideoPage from "../player/VideoPage";
+import AssistantPanel from "../assistant/AssistantPanel";
+import { AssistantProvider } from "../assistant/AssistantProvider";
 import AppShell from "../shell/AppShell";
 import PeerNotice, { usePeerNoticeShown } from "../shell/PeerNotice";
 import { PeerProvider } from "../shell/PeerProvider";
@@ -79,6 +81,10 @@ const ActivityDetailPage = await deferredRoute(
   () => import("../activity/ActivityDetailPage"),
   (pathname) => matchesBelowPath(pathname, "/activity"),
 );
+const ReviewPage = await deferredRoute(
+  () => import("../assistant/ReviewPage"),
+  "/assistant/reviews",
+);
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
   isVideoEditPath,
@@ -93,10 +99,17 @@ const DesignSystemPage = import.meta.env.DEV
   ? lazy(() => import("../designSystem/DesignSystemPage"))
   : null;
 
-/** A shell page with the peer notice above it while the peer cannot be reached. */
+/**
+ * A shell page with the peer notice above it while the peer cannot be reached, and the assistant's
+ * panel slot; the panel draws itself for owners only.
+ */
 function ShellPage({ children }: { children: ReactNode }) {
   const notice = usePeerNoticeShown();
-  return <AppShell notice={notice ? <PeerNotice /> : undefined}>{children}</AppShell>;
+  return (
+    <AppShell notice={notice ? <PeerNotice /> : undefined} panel={<AssistantPanel />}>
+      {children}
+    </AppShell>
+  );
 }
 
 function AppRoutes() {
@@ -246,6 +259,14 @@ function AppRoutes() {
               </ShellPage>
             }
           />
+          <Route
+            path="/assistant/reviews/:id"
+            element={
+              <ShellPage>
+                <ReviewPage />
+              </ShellPage>
+            }
+          />
           <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
           <Route path="/videos/:id" element={<VideoPage />} />
           <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
@@ -272,7 +293,9 @@ function LibraryApp() {
       <ScanProvider>
         <ScanNoticeProvider>
           <PeerProvider>
-            <AppRoutes />
+            <AssistantProvider>
+              <AppRoutes />
+            </AssistantProvider>
           </PeerProvider>
         </ScanNoticeProvider>
       </ScanProvider>

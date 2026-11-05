@@ -18,6 +18,8 @@ import {
   type SubtitleTrack,
 } from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
+import AssistantPanel from "../assistant/AssistantPanel";
+import { useAssistantScreen } from "../assistant/AssistantProvider";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { parsePlaylistQuery } from "../playlists/playlistPlayback";
@@ -80,9 +82,8 @@ export default function VideoPage() {
   //
   const audience = useAudience();
   const owner = audience === "owner";
-  // The paired VVMDM's video: no progress, favorites, playlists or file actions.
+  // The paired VVMDM's video keeps progress and favorites; playlists and file actions stay here.
   const remote = isRemoteId(id);
-  const localOwner = ownsLocalVideo(owner, id);
   //
   const playlistQuery = parsePlaylistQuery(location.search);
   const itemId = playlistQuery?.itemId ?? 0;
@@ -201,6 +202,7 @@ export default function VideoPage() {
   const close = useCallback(() => void navigate(backTo), [backTo, navigate]);
 
   const title = video?.title;
+  useAssistantScreen({ name: title });
   useEffect(() => {
     const previous = document.title;
     if (title !== undefined) document.title = t.player.documentTitle(title);
@@ -234,7 +236,7 @@ export default function VideoPage() {
   // Wait for positioning before the first identified save; release the watch ID after ended.
   const { rememberProgress, savePlayerProgress, markPlayed } = useProgressSaving(
     id,
-    localOwner,
+    owner,
     {
       positioned: status.positioned,
       ended: status.ended,
@@ -343,7 +345,7 @@ export default function VideoPage() {
     detail,
     failure,
     onRetryLoad: refresh,
-    onReprobe: localOwner ? reprobe : undefined,
+    onReprobe: owner && !remote ? reprobe : undefined,
     onRetryPlayback: retryPlayback,
   });
   const showPlayer = isPlayable(video) && detail.kind === "ready";
@@ -393,6 +395,7 @@ export default function VideoPage() {
     <div className={cn("min-h-dvh bg-background", pageClass(theater))}>
       <DetailPage
         theater={theater}
+        panel={<AssistantPanel />}
         // Center player and details at the media width, bounded by aspect ratio and original display size.
         style={videoSizeStyle(aspect, playerNativeWidth(video))}
         contentClassName="split:max-w-player-width-lg"
@@ -400,7 +403,8 @@ export default function VideoPage() {
           <VideoHeader
             folder={video?.folder}
             virtual={thumbnail.video !== undefined}
-            remote={remote}
+            videoId={id}
+            folderOff={video?.folderOff === true}
             onClose={close}
           />
         }
@@ -548,9 +552,4 @@ function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSPro
   const style: Record<string, string> = { "--vv-video-aspect": String(aspect) };
   if (nativeWidth !== undefined) style["--vv-video-width"] = `${String(nativeWidth)}px`;
   return style as CSSProperties;
-}
-
-/** Only the owner saves progress and rescans, and only for a video on this VVMDM. */
-function ownsLocalVideo(owner: boolean, id: number): boolean {
-  return owner && !isRemoteId(id);
 }

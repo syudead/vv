@@ -2,6 +2,7 @@ package wasmplugin
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -15,7 +16,8 @@ func TestPersonFetchReturnsThePersonAndItsImages(t *testing.T) {
 		Operation: domain.WorkInfoFetch, Kind: domain.WorkInfoPluginKindPerson, Source: "s", ID: "person",
 		Sources: []string{"s"},
 		Settings: map[string]string{"person": `{"name":"Someone",` +
-			`"images":["http://site.test/face/1","http://site.test/missing","http://site.test/face/2"]}`},
+			`"images":["http://site.test/face/1","http://site.test/missing","http://site.test/face/2"],` +
+			`"imageReferer":"https://site.test/people/1"}`},
 	}
 
 	got, _, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, domain.WorkInfoRunNetwork{}, nil)
@@ -27,6 +29,11 @@ func TestPersonFetchReturnsThePersonAndItsImages(t *testing.T) {
 	}
 	if ids := got.Person.ExternalIDs; len(ids) != 1 || ids[0] != (domain.ExternalID{Source: "s", Value: "person"}) {
 		t.Fatalf("external IDs = %v, want the requested s:person", ids)
+	}
+	site.mu.Lock()
+	defer site.mu.Unlock()
+	if !slices.Equal(site.referers, []string{"https://site.test/people/1", "https://site.test/people/1"}) {
+		t.Fatalf("site saw Referer %q, want the plugin's imageReferer on each face", site.referers)
 	}
 }
 

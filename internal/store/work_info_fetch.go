@@ -182,7 +182,7 @@ type appliedDetails struct {
 }
 
 // Rematch credits in the write transaction so entities created since fetch can be reused, then fill the linked
-// people's empty fields from the fetched profiles.
+// people's and organizations' empty fields from the fetched profiles.
 func applyFetchedDetails(
 	ctx context.Context, tx *sql.Tx, userKey string, apply domain.FetchedWorkInfoApply,
 ) (appliedDetails, error) {
@@ -204,6 +204,17 @@ func applyFetchedDetails(
 		}
 	}
 	profileSkipped, err := fillFetchedPersonProfiles(ctx, tx, apply.Details.People, out.personIDs)
+	if err != nil {
+		return appliedDetails{}, err
+	}
+	out.skipped = append(out.skipped, profileSkipped...)
+	organizationIDs := make([]int64, len(apply.Details.Organizations))
+	for i, at := range merge.OrganizationLinks {
+		if at >= 0 {
+			organizationIDs[i] = merge.Info.Organizations[at].Organization.ID
+		}
+	}
+	profileSkipped, err = fillFetchedOrganizationProfiles(ctx, tx, apply.Details.Organizations, organizationIDs)
 	if err != nil {
 		return appliedDetails{}, err
 	}
@@ -312,54 +323,74 @@ func unnamedPerformer(ctx context.Context, tx *sql.Tx, userKey string, personID 
 	return &person, nil
 }
 
-// fillFetchedPersonProfiles fills each linked person's empty profile fields in fetched order, so a person named twice
-// keeps the first valid value, and returns the values that would have made a profile invalid.
-func fillFetchedPersonProfiles(
-	ctx context.Context, tx *sql.Tx, fetched []domain.FetchedPerson, personIDs []int64,
+// fillFetchedProfiles fills each linked entity's empty profile fields in fetched order, so an entity named twice
+// keeps the first valid value, and returns the values that would have made a profile invalid. ids[i] is the entity
+// fetched entry i was linked to, or 0; fill fills a credit's profile from entry i.
+func fillFetchedProfiles(
+	ctx context.Context, tx *sql.Tx, t creditTables, ids []int64, hasProfile func(i int) bool,
+	fill func(i int, c *domain.Credit, today time.Time) []domain.SkippedWorkInfoValue,
 ) ([]domain.SkippedWorkInfoValue, error) {
 	index := map[int64]int{}
-	var ids []int64
-	for i, id := range personIDs {
-		if _, seen := index[id]; id != 0 && !seen && !fetched[i].Profile.Equal(domain.PersonProfile{}) {
-			index[id] = len(ids)
-			ids = append(ids, id)
+	var linked []int64
+	for i, id := range ids {
+		if _, seen := index[id]; id != 0 && !seen && hasProfile(i) {
+			index[id] = len(linked)
+			linked = append(linked, id)
 		}
 	}
-	if len(ids) == 0 {
+	if len(linked) == 0 {
 		return nil, nil
 	}
-	encoded, err := json.Marshal(ids)
+	encoded, err := json.Marshal(linked)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build person ids: %w", err)
+		return nil, fmt.Errorf("cannot build %s ids: %w", t.kind, err)
 	}
-	people := make([]domain.Credit, len(ids))
-	if err := addPersonProfiles(ctx, tx, people, index, string(encoded)); err != nil {
+	credits := make([]domain.Credit, len(linked))
+	if err := addCreditProfiles(ctx, tx, t, credits, index, string(encoded)); err != nil {
 		return nil, err
 	}
-	stored := make([]domain.PersonProfile, len(ids))
-	for i := range people {
-		stored[i] = people[i].Profile
-	}
+	stored := slices.Clone(credits)
 	var skipped []domain.SkippedWorkInfoValue
 	now := time.Now()
-	for i, id := range personIDs {
-		at, ok := index[id]
-		if !ok {
-			continue
-		}
-		var invalid []domain.SkippedWorkInfoValue
-		people[at].Profile, invalid = domain.FillFetchedPersonProfile(people[at].Profile, fetched[i], now)
-		skipped = append(skipped, invalid...)
-	}
 	for i, id := range ids {
-		if people[i].Profile.Equal(stored[i]) {
+		if at, ok := index[id]; ok {
+			skipped = append(skipped, fill(i, &credits[at], now)...)
+		}
+	}
+	for i, id := range linked {
+		next := domain.CreditInput{Profile: credits[i].Profile, OrganizationProfile: credits[i].OrganizationProfile}
+		if !t.profile().differs(stored[i], next) {
 			continue
 		}
-		if err := writePersonProfile(ctx, tx, id, people[i].Profile); err != nil {
+		if err := t.profile().write(ctx, tx, id, next); err != nil {
 			return nil, err
 		}
 	}
 	return skipped, nil
+}
+
+func fillFetchedPersonProfiles(
+	ctx context.Context, tx *sql.Tx, fetched []domain.FetchedPerson, personIDs []int64,
+) ([]domain.SkippedWorkInfoValue, error) {
+	return fillFetchedProfiles(ctx, tx, creditTablesByKind[domain.CreditPerson], personIDs,
+		func(i int) bool { return !fetched[i].Profile.Equal(domain.PersonProfile{}) },
+		func(i int, c *domain.Credit, today time.Time) []domain.SkippedWorkInfoValue {
+			var invalid []domain.SkippedWorkInfoValue
+			c.Profile, invalid = domain.FillFetchedPersonProfile(c.Profile, fetched[i], today)
+			return invalid
+		})
+}
+
+func fillFetchedOrganizationProfiles(
+	ctx context.Context, tx *sql.Tx, fetched []domain.FetchedOrganization, organizationIDs []int64,
+) ([]domain.SkippedWorkInfoValue, error) {
+	return fillFetchedProfiles(ctx, tx, creditTablesByKind[domain.CreditOrganization], organizationIDs,
+		func(i int) bool { return !fetched[i].Profile.Equal(domain.OrganizationProfile{}) },
+		func(i int, c *domain.Credit, today time.Time) []domain.SkippedWorkInfoValue {
+			var invalid []domain.SkippedWorkInfoValue
+			c.OrganizationProfile, invalid = domain.FillFetchedOrganizationProfile(c.OrganizationProfile, fetched[i], today)
+			return invalid
+		})
 }
 
 // Names and external IDs are normalized and ownership checked before creating retained merged credits.

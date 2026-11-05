@@ -66,7 +66,9 @@ type smartFolderTarget struct {
 	summary domain.SmartFolderSummary
 	sort    domain.VideoSort
 	spec    listSpec
-	rules   []domain.SmartRule
+	// conditions come from the folder's own rule, without its ancestors'.
+	conditions domain.VideoConditions
+	rules      []domain.SmartRule
 	// A missing referenced entity makes the folder match nothing.
 	missing bool
 }
@@ -74,10 +76,11 @@ type smartFolderTarget struct {
 // Only owners see smart folders.
 func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule) (smartFolderTarget, bool, error) {
 	target := smartFolderTarget{
-		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
-		sort:    folder.Sort,
-		spec:    smartFolderSpec(audience, rules, folder.Sort),
-		rules:   rules,
+		summary:    domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
+		sort:       folder.Sort,
+		spec:       smartFolderSpec(audience, rules, folder.Sort),
+		conditions: folder.Rule.VideoConditions,
+		rules:      rules,
 	}
 	missing, err := missingSmartRuleRefs(ctx, tx, rules)
 	if err != nil {

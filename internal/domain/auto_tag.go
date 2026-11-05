@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -182,6 +183,62 @@ func AutoTagQuestionFor(candidate AutoTagCandidate) ClassifierQuestion {
 	}
 	b.WriteString(" The images are the thumbnail and frames taken from across the video; a tag applies if it fits any of them, or the title, file name or folder.")
 	return ClassifierQuestion{Key: AutoTagQuestionKey(candidate.ID), Text: b.String()}
+}
+
+// Shortlisting asks one choice question over many candidates before the yes/no questions, so the number of
+// requests no longer grows with the size of the tag vocabulary; see docs/design-docs/auto-tagging.md.
+const (
+	// AutoTagShortlistAbove is the candidate count above which the candidates are shortlisted first.
+	AutoTagShortlistAbove = 64
+	// AutoTagShortlistSize caps the candidates asked the yes/no question after shortlisting.
+	AutoTagShortlistSize = 48
+	// AutoTagShortlistFloor is the least choice probability that keeps a candidate; a choice among a provider's
+	// 254 options gives each option about 0.004 by chance.
+	AutoTagShortlistFloor = 0.02
+)
+
+// AutoTagChoiceFor asks which candidate appears in the video, with the same reading of the images as the yes/no
+// question.
+func AutoTagChoiceFor(input ClassifierInput, candidates []AutoTagCandidate) ClassifierChoiceRequest {
+	options := make([]ClassifierQuestion, len(candidates))
+	for i, candidate := range candidates {
+		text := candidate.Name
+		if len(candidate.Synonyms) > 0 {
+			text += " (also known as " + strings.Join(candidate.Synonyms, ", ") + ")"
+		}
+		options[i] = ClassifierQuestion{Key: AutoTagQuestionKey(candidate.ID), Text: text}
+	}
+	return ClassifierChoiceRequest{
+		Input: input,
+		Instructions: "Which of these tags appears in or applies to any part of this video? The images are the " +
+			"thumbnail and frames taken from across the video; a tag applies if it fits any of them, or the title, " +
+			"file name or folder.",
+		Options: options,
+		None:    "None of these tags appears in or applies to any part of this video",
+	}
+}
+
+// ShortlistAutoTags keeps the candidates whose choice probability reaches AutoTagShortlistFloor, the most probable
+// AutoTagShortlistSize of them, in candidate order.
+func ShortlistAutoTags(candidates []AutoTagCandidate, probabilities map[string]float64) []AutoTagCandidate {
+	var kept []AutoTagCandidate
+	for _, candidate := range candidates {
+		if p := probabilities[AutoTagQuestionKey(candidate.ID)]; p >= AutoTagShortlistFloor {
+			kept = append(kept, candidate)
+		}
+	}
+	if len(kept) <= AutoTagShortlistSize {
+		return kept
+	}
+	ranked := slices.Clone(kept)
+	slices.SortStableFunc(ranked, func(a, b AutoTagCandidate) int {
+		return cmp.Compare(probabilities[AutoTagQuestionKey(b.ID)], probabilities[AutoTagQuestionKey(a.ID)])
+	})
+	top := map[int64]bool{}
+	for _, candidate := range ranked[:AutoTagShortlistSize] {
+		top[candidate.ID] = true
+	}
+	return slices.DeleteFunc(kept, func(c AutoTagCandidate) bool { return !top[c.ID] })
 }
 
 type AutoTagSelection struct {

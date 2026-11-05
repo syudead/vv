@@ -47,6 +47,8 @@ type WorkInfoMerge struct {
 	// PersonLinks gives, for each fetched person, the position in Info.People of the link it resolved to, or -1 when
 	// its role was not selected or the entry was skipped.
 	PersonLinks []int
+	// OrganizationLinks is PersonLinks for the fetched organizations.
+	OrganizationLinks []int
 }
 
 // MergeFetchedWorkInfo ignores absent selected values and title/tags, validating individual values with NormalizeWorkInfo.
@@ -88,6 +90,7 @@ func MergeFetchedWorkInfo(in WorkInfoMergeInput) WorkInfoMerge {
 		m.out.Info.Organizations[i] = WorkOrganization{Role: link.role, Organization: link.ref}
 	}
 	m.out.NewOrganizations = organizations.created
+	m.out.OrganizationLinks = organizations.positions
 	m.out.Skipped = append(m.out.Skipped, organizations.skipped...)
 
 	m.appendURLs(in.Fetched.URLs)

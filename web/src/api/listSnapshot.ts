@@ -1,11 +1,19 @@
-import type { FolderListing, LibraryItem, Progress, TagRef, VideoSort } from "./client";
+import {
+  type FolderListing,
+  type LibraryItem,
+  type Progress,
+  type TagRef,
+  type VideoConditionParams,
+  videoConditionNames,
+  type VideoSort,
+} from "./client";
 import { groupsIn, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
 /** Normalize omitted/default sort equally so / and /?sort=addedDesc restore the same snapshot. */
 const defaultSort: VideoSort = "addedDesc";
 
-export interface ListKey {
+export interface ListKey extends VideoConditionParams {
   /** Normalize by trimming surrounding whitespace. */
   query: string;
   /** Omitted equals false; filtered and unfiltered snapshots remain distinct. */
@@ -55,6 +63,7 @@ function normalize(key: ListKey): string {
     key.person === undefined ? "" : String(key.person),
     key.organization === undefined ? "" : String(key.organization),
     key.tagKind === undefined ? "" : String(key.tagKind),
+    ...videoConditionNames.map((name) => String(key[name] ?? "")),
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }

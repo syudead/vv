@@ -24,6 +24,12 @@ type sseEvent struct {
 
 func openEvents(t *testing.T, handler http.Handler) (<-chan sseEvent, *http.Response) {
 	t.Helper()
+	return openEventsWith(t, handler, nil)
+}
+
+// openEventsWith opens the stream with header, such as a peer credential.
+func openEventsWith(t *testing.T, handler http.Handler, header http.Header) (<-chan sseEvent, *http.Response) {
+	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
@@ -32,6 +38,9 @@ func openEvents(t *testing.T, handler http.Handler) (<-chan sseEvent, *http.Resp
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/events", nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for name, values := range header {
+		req.Header[name] = values
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -218,7 +227,7 @@ func TestOnboardingEventsAreOwnerOnly(t *testing.T) {
 	for _, guest := range []bool{false, true} {
 		events.Handle(domain.OnboardingChanged{})
 		response := httptest.NewRecorder()
-		if err := server.writePendingEvents(context.Background(), response, sub, guest); err != nil {
+		if err := server.writePendingEvents(context.Background(), response, sub, guest, false); err != nil {
 			t.Fatal(err)
 		}
 		want := "event: onboarding\ndata: {}\n\n"
@@ -347,16 +356,25 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if pending := sub.take(); !slices.Equal(pending.smartFolders, []int64{2, 4, 5}) || len(pending.groups) != 0 {
 		t.Fatalf("SmartFoldersChanged: %+v, want smartFolders [2 4 5]", pending)
 	}
-	events.Handle(domain.PeerChanged{VideoIDs: []int64{domain.ToRemoteID(1)}, GroupIDs: []int64{domain.ToRemoteID(2)},
-		SmartFolderIDs: []int64{domain.ToRemoteID(3)}})
-	if pending := sub.take(); !slices.Equal(pending.videos, []int64{domain.ToRemoteID(1)}) ||
-		!slices.Equal(pending.groups, []int64{domain.ToRemoteID(2)}) ||
-		!slices.Equal(pending.smartFolders, []int64{domain.ToRemoteID(3)}) || pending.peer {
+	events.Handle(domain.PeerChanged{VideoIDs: []int64{domain.RemoteID(1, 1)}, GroupIDs: []int64{domain.RemoteID(1, 2)},
+		SmartFolderIDs: []int64{domain.RemoteID(1, 3)}})
+	if pending := sub.take(); !slices.Equal(pending.videos, []int64{domain.RemoteID(1, 1)}) ||
+		!slices.Equal(pending.groups, []int64{domain.RemoteID(1, 2)}) ||
+		!slices.Equal(pending.smartFolders, []int64{domain.RemoteID(1, 3)}) || pending.peer {
 		t.Fatalf("PeerChanged: %+v, want 相手の video, group, smartFolder", pending)
 	}
 	events.Handle(domain.PeerStateChanged{})
 	if pending := sub.take(); !pending.peer || pending.scan || len(pending.videos) != 0 {
 		t.Fatalf("PeerStateChanged: %+v, want peer only", pending)
+	}
+	events.Handle(domain.MediaFoldersChanged{ViewOnly: true})
+	if pending := sub.take().mediaFolders; !pending.forViewer(false) || pending.forViewer(true) {
+		t.Fatalf("switch: %+v, want viewers only, not the peer credential", pending)
+	}
+	events.Handle(domain.MediaFoldersChanged{})
+	events.Handle(domain.MediaFoldersChanged{ViewOnly: true})
+	if pending := sub.take().mediaFolders; !pending.forViewer(false) || !pending.forViewer(true) {
+		t.Fatalf("folder change: %+v, want viewers and the peer credential", pending)
 	}
 	// Drain prior readiness before asserting that empty-ID changes do not signal.
 	select {

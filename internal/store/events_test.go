@@ -107,6 +107,7 @@ func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 		domain.ContentUnreferenced{ContentKeys: []string{"key-a", "key-b"}},
 		domain.JobsQueued{Kinds: domain.JobKinds},
 		domain.ProcessingChanged{},
+		domain.MediaFoldersChanged{},
 	}
 	if !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("発行 = %#v, want %#v", recorder.events, want)

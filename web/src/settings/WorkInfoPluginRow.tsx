@@ -14,6 +14,7 @@ import { RowMoreMenu } from "../tags/TagRow";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { DropdownMenuItem } from "../ui/shadcn/dropdown-menu";
+import { FolderSwitch } from "./FolderSwitch";
 import {
   acceptsLinksText,
   missingRequired,
@@ -24,7 +25,7 @@ import {
   unixDate,
 } from "./workInfoPluginRows";
 
-export type RowWork = "revoke" | "delete" | "move";
+export type RowWork = "revoke" | "delete" | "move" | "toggle";
 
 /** A handler is absent at an end of the order or while another move is saving. */
 export interface LinkMove {
@@ -36,6 +37,7 @@ const workText = {
   revoke: () => t.settings.workInfoPlugins.revoking,
   delete: () => t.settings.workInfoPlugins.deleting,
   move: () => t.settings.workInfoPlugins.moving,
+  toggle: () => t.settings.workInfoPlugins.switching,
 } satisfies Record<RowWork, () => UiText>;
 
 const badgeVariant = {
@@ -213,6 +215,7 @@ export default function WorkInfoPluginRow({
   onSettings,
   onLastRun,
   onRevoke,
+  onToggle,
   onDelete,
 }: {
   plugin: WorkInfoPlugin;
@@ -224,6 +227,7 @@ export default function WorkInfoPluginRow({
   onSettings: () => void;
   onLastRun: () => void;
   onRevoke: () => void;
+  onToggle: () => void;
   onDelete: () => void;
 }) {
   const text = t.settings.workInfoPlugins;
@@ -255,6 +259,12 @@ export default function WorkInfoPluginRow({
             {text.settings}
           </Button>
         )}
+        <FolderSwitch
+          enabled={plugin.enabled}
+          saving={busy}
+          label={text.switchLabel(name)}
+          onToggle={onToggle}
+        />
         <RowMenu
           plugin={plugin}
           label={text.more(name)}
