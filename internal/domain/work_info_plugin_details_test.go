@@ -26,7 +26,12 @@ func TestParseWorkInfoResponseReadsEveryWorkDetailInOrder(t *testing.T) {
 			{"role": "performer", "name": " Hanako ", "externalIds": [{"source": " site ", "value": " p1 "}]},
 			{"role": "director", "name": "Taro"}
 		],
-		"organizations": [{"role": "maker", "name": "Studio", "externalIds": []}, {"role": "label", "name": "Label"}],
+		"organizations": [
+			{"role": "maker", "name": "Studio", "externalIds": [], "profile": {
+				"foundedDate": " 1990-04 ", "location": 3, "bio": "a\r\nb", "links": [" https://s.test ", ""]
+			}},
+			{"role": "label", "name": "Label"}
+		],
 		"urls": [" https://e.test/b ", "https://e.test/a"],
 		"externalIds": [{"source": "site", "value": "w1"}, {"source": "other", "value": "w2"}]
 	}`)
@@ -41,8 +46,10 @@ func TestParseWorkInfoResponseReadsEveryWorkDetailInOrder(t *testing.T) {
 			{Role: PersonDirector, Name: "Taro"},
 		},
 		Organizations: []FetchedOrganization{
-			{OrganizationMaker, "Studio", nil},
-			{OrganizationLabel, "Label", nil},
+			{Role: OrganizationMaker, Name: "Studio", Profile: OrganizationProfile{
+				FoundedDate: "1990-04", Bio: "a\nb", Links: []string{"https://s.test"},
+			}},
+			{Role: OrganizationLabel, Name: "Label"},
 		},
 		URLs:        []string{"https://e.test/b", "https://e.test/a"},
 		ExternalIDs: []ExternalID{{"site", "w1"}, {"other", "w2"}},

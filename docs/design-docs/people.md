@@ -23,8 +23,10 @@ flowchart LR
 Each field is a nullable column on `people`, and links are rows in
 `people_links` ordered by position and deleted with their person. The field
 set is fixed, so typed columns keep each check in one function and a list or a
-person page reads the profile without a join. Organizations have no profile;
-`profile` sent for an organization is `400 invalid_request`.
+person page reads the profile without a join. Organizations keep their own,
+smaller profile the same way ([Organizations](#organizations-share-the-profile-image-and-favorite-shapes));
+`profile` sent for an organization, or `organizationProfile` for a person, is
+`400 invalid_request`.
 
 | Rejected                                      | Why                                                            |
 | --------------------------------------------- | -------------------------------------------------------------- |
@@ -132,9 +134,9 @@ A favorite person is a row in `person_favorites`, set and cleared through
 folders. The IDs count toward the same 1–20,000 limit, missing people are
 ignored, and setting a favorite again keeps its time. `Person.favorite` is
 always present, and `GET /api/people?favorite=true` keeps only favorites, with
-`total` counting them; an organization list answers `favorite` with
-`400 invalid_request`. No smart rule reads a person favorite, so setting one
-queues no smart-folder refresh.
+`total` counting them. Organizations take the same shape through
+`organizationIds` and `organization_favorites`. No smart rule reads a person or
+organization favorite, so setting one queues no smart-folder refresh.
 
 A merge makes the target a favorite when any source is one, so merging a
 duplicate never drops the mark. Deleting a person deletes its row.
@@ -499,3 +501,40 @@ The `Performers` picker of the details editor lists provisional people under
 Choosing one while a name is typed adds a chip with that name, and `Save`
 sends that name by `PATCH /api/people/{id}` before it creates new people or
 writes the credits, so a refused name stops the save before the video changes.
+
+## Organizations share the profile, image and favorite shapes
+
+An organization keeps a profile, one image (its logo) and an owner favorite,
+stored and merged as a person's are. `CreditStore` reaches both kinds through
+the table names in `creditTables` and a profile codec per kind
+([`credit_profiles.go`](../../internal/store/credit_profiles.go)), and the
+field-wise patch and merge fill run through one `profileSchema`
+([`profile_schema.go`](../../internal/domain/profile_schema.go)).
+
+| Property        | Storage                                   | Rule                                                              |
+| --------------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| `foundedDate`   | `organizations.founded_date`              | Work-date format, not after today                                 |
+| `dissolvedDate` | `organizations.dissolved_date`            | As `foundedDate`, not before it at the precision both have        |
+| `location`      | `organizations.location`                  | 1-200 code points                                                 |
+| `bio`           | `organizations.bio`                       | 1-5,000 code points, line breaks kept                             |
+| `links`         | `organization_links` rows, by position    | The person's link rules                                           |
+| Logo            | `organization_images`, `image_revision`   | The face's upload, fitting and revision rules; no face recognition |
+| Favorite        | `organization_favorites`                  | The person's favorite rules                                       |
+
+The API sends the profile as `Organization.profile` and takes it as
+`organizationProfile` on `CreditInput` and `CreditPatch`, with errors under
+`organizationProfile.<name>`. The logo is served, uploaded and removed at
+`/api/organizations/{id}/image` with the face's reasons, so the screens reuse
+one error mapping. A work-info plugin's `profile` on an organization fills the
+linked organization's empty fields, as a person's does; a plugin's organization
+`image` is not fetched yet.
+
+The organizations table shows a favorite toggle on each row, and the details
+dialog edits the logo, which saves at once, and the profile, which saves with
+the dialog.
+
+| Rejected                                         | Why                                                                     |
+| ------------------------------------------------ | ----------------------------------------------------------------------- |
+| One profile type with person and organization fields | Every person rule would have to skip the organization fields and back |
+| Copy the person profile, image and favorite code | Two copies of the same SQL and patch rules drift                        |
+| `profile` in requests for both kinds             | One request schema cannot hold both profiles without a union per kind   |

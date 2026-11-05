@@ -649,6 +649,36 @@
                     "name": {
                       "type": "string"
                     },
+                    "profile": {
+                      "additionalProperties": false,
+                      "description": "An organization's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field organizationProfile.<name>.",
+                      "properties": {
+                        "bio": {
+                          "description": "1-5,000 code points; line breaks are kept.",
+                          "type": "string"
+                        },
+                        "dissolvedDate": {
+                          "description": "Same format as foundedDate; not before it at the precision both share.",
+                          "type": "string"
+                        },
+                        "foundedDate": {
+                          "description": "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.",
+                          "type": "string"
+                        },
+                        "links": {
+                          "description": "HTTP(S) URLs in order, at most 100 and unique; omitted when empty.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "location": {
+                          "description": "1-200 code points.",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
                     "role": {
                       "description": "Organization role in a video.",
                       "enum": [
@@ -2650,7 +2680,7 @@
         "properties": {
           "body": {
             "additionalProperties": false,
-            "description": "Person or organization creation body; parentId is organization-only and profile person-only.",
+            "description": "Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.",
             "properties": {
               "aliases": {
                 "items": {
@@ -2694,6 +2724,36 @@
               },
               "name": {
                 "type": "string"
+              },
+              "organizationProfile": {
+                "additionalProperties": false,
+                "description": "Organization-only profile; sending it for a person returns 400 invalid_request.",
+                "properties": {
+                  "bio": {
+                    "description": "1-5,000 code points; line breaks are kept.",
+                    "type": "string"
+                  },
+                  "dissolvedDate": {
+                    "description": "Same format as foundedDate; not before it at the precision both share.",
+                    "type": "string"
+                  },
+                  "foundedDate": {
+                    "description": "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.",
+                    "type": "string"
+                  },
+                  "links": {
+                    "description": "HTTP(S) URLs in order, at most 100 and unique; omitted when empty.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "location": {
+                    "description": "1-200 code points.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               },
               "parentId": {
                 "description": "Parent organization ID; sending it for a person returns 400 invalid_request.",
@@ -2809,7 +2869,7 @@
         "properties": {
           "body": {
             "additionalProperties": false,
-            "description": "Person or organization creation body; parentId is organization-only and profile person-only.",
+            "description": "Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.",
             "properties": {
               "aliases": {
                 "items": {
@@ -2853,6 +2913,36 @@
               },
               "name": {
                 "type": "string"
+              },
+              "organizationProfile": {
+                "additionalProperties": false,
+                "description": "Organization-only profile; sending it for a person returns 400 invalid_request.",
+                "properties": {
+                  "bio": {
+                    "description": "1-5,000 code points; line breaks are kept.",
+                    "type": "string"
+                  },
+                  "dissolvedDate": {
+                    "description": "Same format as foundedDate; not before it at the precision both share.",
+                    "type": "string"
+                  },
+                  "foundedDate": {
+                    "description": "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.",
+                    "type": "string"
+                  },
+                  "links": {
+                    "description": "HTTP(S) URLs in order, at most 100 and unique; omitted when empty.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "location": {
+                    "description": "1-200 code points.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               },
               "parentId": {
                 "description": "Parent organization ID; sending it for a person returns 400 invalid_request.",
@@ -3365,6 +3455,39 @@
       "description": "Owner-only; removes video associations. Missing organization returns 404 organization_not_found.",
       "owner": true,
       "response": "none",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "id": {
+            "description": "Organization ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "organization"
+        }
+      ]
+    },
+    {
+      "operationId": "deleteOrganizationImage",
+      "method": "DELETE",
+      "path": "/api/organizations/{id}/image",
+      "summary": "Remove an organization's logo",
+      "description": "Owner-only; no body. Removes the logo and returns Organization without imageRevision; one without a logo is returned unchanged. Missing organization returns 404 organization_not_found.",
+      "owner": true,
+      "response": "json",
       "pathParams": [
         "id"
       ],
@@ -4689,6 +4812,49 @@
             "format": "int64",
             "minimum": 1,
             "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "organization"
+        }
+      ]
+    },
+    {
+      "operationId": "getOrganizationImage",
+      "method": "GET",
+      "path": "/api/organizations/{id}/image",
+      "summary": "Return an organization's logo",
+      "description": "Owner-only. Served as getPersonImage serves a face, with the organization's imageRevision as `ETag`. Missing organization returns 404 organization_not_found; one without a logo returns 404 person_image_not_found.",
+      "owner": true,
+      "response": "image",
+      "pathParams": [
+        "id"
+      ],
+      "query": [
+        {
+          "name": "v",
+          "explode": true
+        }
+      ],
+      "parameters": {
+        "properties": {
+          "id": {
+            "description": "Organization ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "v": {
+            "description": "imageRevision from Organization; ignored by the server",
+            "type": "string"
           }
         },
         "required": [
@@ -6752,7 +6918,7 @@
       "method": "GET",
       "path": "/api/organizations",
       "summary": "List organizations",
-      "description": "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request.",
+      "description": "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.",
       "owner": true,
       "response": "json",
       "query": [
@@ -6789,7 +6955,7 @@
           },
           "favorite": {
             "default": false,
-            "description": "People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.",
+            "description": "True keeps favorites, combined with q by AND, and total counts them.",
             "type": "boolean"
           },
           "limit": {
@@ -6911,7 +7077,7 @@
           },
           "favorite": {
             "default": false,
-            "description": "People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.",
+            "description": "True keeps favorites, combined with q by AND, and total counts them.",
             "type": "boolean"
           },
           "limit": {
@@ -12341,6 +12507,14 @@
                 },
                 "type": "array"
               },
+              "organizationIds": {
+                "description": "Organization IDs whose favorite state changes; missing organizations are ignored.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "type": "array"
+              },
               "personIds": {
                 "description": "Person IDs whose favorite state changes; missing people are ignored.",
                 "items": {
@@ -12383,6 +12557,11 @@
         {
           "in": "body",
           "field": "/groupIds",
+          "kind": ""
+        },
+        {
+          "in": "body",
+          "field": "/organizationIds",
           "kind": ""
         },
         {
@@ -12631,6 +12810,51 @@
               },
               "name": {
                 "type": "string"
+              },
+              "organizationProfile": {
+                "additionalProperties": false,
+                "description": "Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing.",
+                "properties": {
+                  "bio": {
+                    "description": "1-5,000 code points; line breaks are kept.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "dissolvedDate": {
+                    "description": "Same format as foundedDate; not before it at the precision both share.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "foundedDate": {
+                    "description": "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "links": {
+                    "description": "HTTP(S) URLs in order, at most 100 and unique.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "location": {
+                    "description": "1-200 code points.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
               },
               "parentId": {
                 "description": "Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.",
@@ -12890,6 +13114,51 @@
               },
               "name": {
                 "type": "string"
+              },
+              "organizationProfile": {
+                "additionalProperties": false,
+                "description": "Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing.",
+                "properties": {
+                  "bio": {
+                    "description": "1-5,000 code points; line breaks are kept.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "dissolvedDate": {
+                    "description": "Same format as foundedDate; not before it at the precision both share.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "foundedDate": {
+                    "description": "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "links": {
+                    "description": "HTTP(S) URLs in order, at most 100 and unique.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "location": {
+                    "description": "1-200 code points.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
               },
               "parentId": {
                 "description": "Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.",
@@ -13288,6 +13557,39 @@
           "in": "body",
           "field": "/videoIds",
           "kind": ""
+        }
+      ]
+    },
+    {
+      "operationId": "uploadOrganizationImage",
+      "method": "PUT",
+      "path": "/api/organizations/{id}/image",
+      "summary": "Set an organization's logo from an uploaded image",
+      "description": "Owner-only. Takes, fits and stores the image as uploadPersonImage does, with the same limits and errors, and returns Organization with a new imageRevision. No face recognition runs on a logo. Missing organization returns 404 organization_not_found.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "id": {
+            "description": "Organization ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "organization"
         }
       ]
     },

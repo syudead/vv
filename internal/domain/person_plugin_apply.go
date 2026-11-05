@@ -57,7 +57,7 @@ func (p FetchedPluginPerson) HasItem(item PersonPluginItem) bool {
 		return len(p.ExternalIDs) > 0
 	}
 	field, ok := item.ProfileField()
-	return ok && !profileFieldEmpty(p.Profile, personProfileCopies[field])
+	return ok && !personProfiles.fieldEmpty(p.Profile, field)
 }
 
 // PersonPluginSelection is what an apply takes from a fetched person: profile fields and the image as Items, and the

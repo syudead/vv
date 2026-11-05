@@ -12,26 +12,35 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// Person images are owner-only; uploads share the thumbnail upload's body budget, limits and detached timeout.
+// Person faces and organization logos are owner-only; uploads share the thumbnail upload's body budget, limits and
+// detached timeout.
 
 type PersonImages interface {
-	// UploadPersonImage returns ThumbnailUploadTooLargeError for a body over the byte limit and ErrPersonImageInvalid
+	// UploadCreditImage returns ThumbnailUploadTooLargeError for a body over the byte limit and ErrPersonImageInvalid
 	// for any other unreadable image, writing nothing.
-	UploadPersonImage(ctx context.Context, id int64, image []byte) (domain.Credit, error)
-	PersonImage(ctx context.Context, id int64) (domain.PersonImage, error)
-	DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error)
+	UploadCreditImage(ctx context.Context, kind domain.CreditKind, id int64, image []byte) (domain.Credit, error)
+	CreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.PersonImage, error)
+	DeleteCreditImage(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
 }
 
 func (s *server) GetPersonImage(w http.ResponseWriter, r *http.Request, id gen.PersonId, _ gen.GetPersonImageParams) {
+	s.getCreditImage(w, r, peopleAPI, id)
+}
+
+func (s *server) GetOrganizationImage(w http.ResponseWriter, r *http.Request, id gen.OrganizationId, _ gen.GetOrganizationImageParams) {
+	s.getCreditImage(w, r, organizationsAPI, id)
+}
+
+func (s *server) getCreditImage(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	if !s.personImagesConfigured(w) {
 		return
 	}
-	image, err := s.personImages.PersonImage(r.Context(), id)
+	image, err := s.personImages.CreditImage(r.Context(), api.kind, id)
 	if err != nil {
-		s.personImageError(w, err)
+		s.creditImageError(w, api, err)
 		return
 	}
-	// The revision never repeats for one person, so it identifies the bytes without hashing them.
+	// The revision never repeats for one entity, so it identifies the bytes without hashing them.
 	etag := `"` + strconv.FormatInt(image.Revision, 10) + `"`
 	setRevalidate(w, etag)
 	if etagMatches(r.Header.Get("If-None-Match"), etag) {
@@ -42,12 +51,21 @@ func (s *server) GetPersonImage(w http.ResponseWriter, r *http.Request, id gen.P
 	w.Header().Set("Content-Length", strconv.Itoa(len(image.JPEG)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(image.JPEG); err != nil {
-		s.logger.Debug("could not write the person image", slog.Int64("person", id), slog.Any("error", err))
+		s.logger.Debug("could not write the image", slog.String("kind", string(api.kind)), slog.Int64("id", id),
+			slog.Any("error", err))
 	}
 }
 
-// UploadPersonImage returns only after the fitted face is stored.
 func (s *server) UploadPersonImage(w http.ResponseWriter, r *http.Request, id gen.PersonId) {
+	s.uploadCreditImage(w, r, peopleAPI, id)
+}
+
+func (s *server) UploadOrganizationImage(w http.ResponseWriter, r *http.Request, id gen.OrganizationId) {
+	s.uploadCreditImage(w, r, organizationsAPI, id)
+}
+
+// uploadCreditImage returns only after the fitted image is stored.
+func (s *server) uploadCreditImage(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	if !s.personImagesConfigured(w) {
 		return
 	}
@@ -62,24 +80,32 @@ func (s *server) UploadPersonImage(w http.ResponseWriter, r *http.Request, id ge
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), thumbnailUploadTimeout)
 	defer cancel()
-	credit, err := s.personImages.UploadPersonImage(ctx, id, image)
+	credit, err := s.personImages.UploadCreditImage(ctx, api.kind, id, image)
 	if err != nil {
-		s.personImageError(w, err)
+		s.creditImageError(w, api, err)
 		return
 	}
-	s.writeCreditBody(w, http.StatusOK, toAPIPerson(credit))
+	s.writeCreditBody(w, http.StatusOK, api.one(credit))
 }
 
 func (s *server) DeletePersonImage(w http.ResponseWriter, r *http.Request, id gen.PersonId) {
+	s.deleteCreditImage(w, r, peopleAPI, id)
+}
+
+func (s *server) DeleteOrganizationImage(w http.ResponseWriter, r *http.Request, id gen.OrganizationId) {
+	s.deleteCreditImage(w, r, organizationsAPI, id)
+}
+
+func (s *server) deleteCreditImage(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	if !s.personImagesConfigured(w) {
 		return
 	}
-	credit, err := s.personImages.DeletePersonImage(r.Context(), id)
+	credit, err := s.personImages.DeleteCreditImage(r.Context(), api.kind, id)
 	if err != nil {
-		s.personImageError(w, err)
+		s.creditImageError(w, api, err)
 		return
 	}
-	s.writeCreditBody(w, http.StatusOK, toAPIPerson(credit))
+	s.writeCreditBody(w, http.StatusOK, api.one(credit))
 }
 
 func (s *server) readPersonImageUpload(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
@@ -106,7 +132,13 @@ func (s *server) readPersonImageUpload(w http.ResponseWriter, r *http.Request) (
 	return image, true
 }
 
+// personImageError maps the upload's errors, which name no entity.
 func (s *server) personImageError(w http.ResponseWriter, err error) {
+	s.creditImageError(w, peopleAPI, err)
+}
+
+// creditImageError maps image errors; the image reasons are shared by both kinds, the missing entity is api's.
+func (s *server) creditImageError(w http.ResponseWriter, api creditKindAPI, err error) {
 	var tooLarge *domain.ThumbnailUploadTooLargeError
 	switch {
 	case errors.As(err, &tooLarge):
@@ -119,11 +151,11 @@ func (s *server) personImageError(w http.ResponseWriter, err error) {
 		s.invalidRequestReason(w, reasonPersonImageInvalid,
 			"The image must be a readable PNG, JPEG or still WebP of at most 120 megapixels.")
 	case errors.Is(err, domain.ErrPersonImageNotFound):
-		s.notFoundReason(w, reasonPersonImageNotFound, "The person has no image.")
+		s.notFoundReason(w, reasonPersonImageNotFound, "The "+string(api.kind)+" has no image.")
 	case errors.Is(err, domain.ErrNotFound):
-		s.notFoundReason(w, peopleAPI.notFound, "The person was not found.")
+		s.notFoundReason(w, api.notFound, "The "+string(api.kind)+" was not found.")
 	default:
-		s.internalError(w, "Could not change the person image.", err)
+		s.internalError(w, "Could not change the "+string(api.kind)+" image.", err)
 	}
 }
 

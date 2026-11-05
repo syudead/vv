@@ -28,11 +28,12 @@ func (s *server) favoriteBodyLimit() int64 {
 func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	// Track required favorite presence so omission cannot silently clear favorites.
 	var body struct {
-		VideoIds       []int64 `json:"videoIds"`
-		GroupIds       []int64 `json:"groupIds"`
-		SmartFolderIds []int64 `json:"smartFolderIds"`
-		PersonIds      []int64 `json:"personIds"`
-		Favorite       *bool   `json:"favorite"`
+		VideoIds        []int64 `json:"videoIds"`
+		GroupIds        []int64 `json:"groupIds"`
+		SmartFolderIds  []int64 `json:"smartFolderIds"`
+		PersonIds       []int64 `json:"personIds"`
+		OrganizationIds []int64 `json:"organizationIds"`
+		Favorite        *bool   `json:"favorite"`
 	}
 	if !s.readLargeJSONBody(w, r, s.favoriteBodyLimit(), &body) {
 		return
@@ -41,9 +42,12 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	groupIDs := uniqueInt64s(body.GroupIds)
 	smartFolderIDs := uniqueInt64s(body.SmartFolderIds)
 	personIDs := uniqueInt64s(body.PersonIds)
-	if total := len(videoIDs) + len(groupIDs) + len(smartFolderIDs) + len(personIDs); total < 1 || total > maxVideoTagsIDs {
-		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
-			fmt.Sprintf("videoIds, groupIds, smartFolderIds and personIds must contain between 1 and %d items in total.", maxVideoTagsIDs))
+	organizationIDs := uniqueInt64s(body.OrganizationIds)
+	total := len(videoIDs) + len(groupIDs) + len(smartFolderIDs) + len(personIDs) + len(organizationIDs)
+	if total < 1 || total > maxVideoTagsIDs {
+		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs, fmt.Sprintf(
+			"videoIds, groupIds, smartFolderIds, personIds and organizationIds must contain between 1 and %d items in total.",
+			maxVideoTagsIDs))
 		return
 	}
 	if body.Favorite == nil {
@@ -57,7 +61,7 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 
 	change := domain.FavoriteChange{
 		VideoIDs: videoIDs, GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs, PersonIDs: personIDs,
-		Favorite: *body.Favorite,
+		OrganizationIDs: organizationIDs, Favorite: *body.Favorite,
 	}
 	// The peer's own request names this node's entities only; a remote id there is missing and ignored.
 	local, links := change, map[int64]domain.FavoriteChange{}
@@ -109,6 +113,7 @@ func splitFavoriteChange(change domain.FavoriteChange) (domain.FavoriteChange, m
 		{change.GroupIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.GroupIDs }},
 		{change.SmartFolderIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.SmartFolderIDs }},
 		{change.PersonIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.PersonIDs }},
+		{change.OrganizationIDs, func(c *domain.FavoriteChange) *[]int64 { return &c.OrganizationIDs }},
 	} {
 		own, bySlot := domain.SlotIDs(field.ids)
 		*field.pick(&local) = own

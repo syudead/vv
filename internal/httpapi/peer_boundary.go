@@ -89,6 +89,7 @@ var slowRemoteOperations = map[string]bool{
 	"POST /api/videos/{id}/thumbnail-image":   true,
 	"DELETE /api/videos/{id}/thumbnail-image": true,
 	"PUT /api/people/{id}/image":              true,
+	"PUT /api/organizations/{id}/image":       true,
 }
 
 // remoteRewrites turn a forwarded answer into this node's ids by its response schema; a nil entry keeps an answer

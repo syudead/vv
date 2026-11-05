@@ -106,78 +106,31 @@ type PersonProfilePatch struct {
 }
 
 func (p PersonProfilePatch) Apply(current PersonProfile) PersonProfile {
-	next := current
-	for _, field := range p.Fields {
-		if copyField, ok := personProfileCopies[field]; ok {
-			copyField(&next, p.Values)
-		}
-	}
-	return next
+	return personProfiles.apply(current, p.Fields, p.Values)
+}
+
+var personProfiles = profileSchema[PersonProfile, PersonProfileField]{
+	fields: PersonProfileFields, copies: personProfileCopies, equal: PersonProfile.Equal, normalize: NormalizePersonProfile,
 }
 
 // FillPersonProfile fills each empty target field from the first source whose value keeps the profile valid,
 // so a merge never pairs a death date before the birth date or a career end before its start.
 func FillPersonProfile(target PersonProfile, sources []PersonProfile, today time.Time) PersonProfile {
-	out := target
-	for _, field := range PersonProfileFields {
-		for _, source := range sources {
-			next, fill := fillProfileField(out, source, field, today)
-			if fill == profileFilled {
-				out = next
-				break
-			}
-		}
-	}
-	return out
+	return personProfiles.fill(target, sources, today)
 }
 
 // RevertFilledProfile clears each field a merge filled, from before to filled, while current still holds the filled
 // value, so an undo keeps every field the owner changed since.
 func RevertFilledProfile(current, before, filled PersonProfile) PersonProfile {
-	out := current
-	for _, field := range PersonProfileFields {
-		copyField := personProfileCopies[field]
-		if profileFieldEqual(before, filled, copyField) || !profileFieldEqual(current, filled, copyField) {
-			continue
-		}
-		copyField(&out, before)
-	}
-	return out
+	return personProfiles.revertFilled(current, before, filled)
 }
 
-func profileFieldEqual(a, b PersonProfile, copyField func(*PersonProfile, PersonProfile)) bool {
-	var onlyA, onlyB PersonProfile
-	copyField(&onlyA, a)
-	copyField(&onlyB, b)
-	return onlyA.Equal(onlyB)
-}
-
-type profileFill int
-
-const (
-	profileFillNone profileFill = iota
-	profileFilled
-	profileFillInvalid
-)
-
-// fillProfileField copies field from source when it is empty in target and set in source, and returns the
-// normalized result, or target unchanged when the copy would make the profile invalid.
 func fillProfileField(target, source PersonProfile, field PersonProfileField, today time.Time) (PersonProfile, profileFill) {
-	copyField := personProfileCopies[field]
-	if !profileFieldEmpty(target, copyField) || profileFieldEmpty(source, copyField) {
-		return target, profileFillNone
-	}
-	return copyProfileField(target, source, copyField, today)
+	return personProfiles.fillField(target, source, field, today)
 }
 
-// replaceProfileField copies field from source when it is set there and differs in target, with fillProfileField's
-// results.
 func replaceProfileField(target, source PersonProfile, field PersonProfileField, today time.Time) (PersonProfile, profileFill) {
-	copyField := personProfileCopies[field]
-	if profileFieldEmpty(source, copyField) || profileFieldEqual(target, source, copyField) {
-		return target, profileFillNone
-	}
-	return copyProfileField(target, source, copyField, today)
+	return personProfiles.replaceField(target, source, field, today)
 }
 
 // replaceProfileFields copies every field of fields that source sets, and reports false when the result together is
@@ -187,30 +140,12 @@ func replaceProfileFields(
 ) (PersonProfile, bool) {
 	candidate := target
 	for _, field := range fields {
-		if copyField := personProfileCopies[field]; !profileFieldEmpty(source, copyField) {
-			copyField(&candidate, source)
+		if !personProfiles.fieldEmpty(source, field) {
+			personProfileCopies[field](&candidate, source)
 		}
 	}
 	normalized, err := NormalizePersonProfile(candidate, today)
 	return normalized, err == nil
-}
-
-func copyProfileField(
-	target, source PersonProfile, copyField func(*PersonProfile, PersonProfile), today time.Time,
-) (PersonProfile, profileFill) {
-	candidate := target
-	copyField(&candidate, source)
-	normalized, err := NormalizePersonProfile(candidate, today)
-	if err != nil {
-		return target, profileFillInvalid
-	}
-	return normalized, profileFilled
-}
-
-func profileFieldEmpty(p PersonProfile, copyField func(*PersonProfile, PersonProfile)) bool {
-	var only PersonProfile
-	copyField(&only, p)
-	return only.Equal(PersonProfile{})
 }
 
 // NormalizePersonProfile trims text, clears empty values and returns the first InvalidWorkInfoError with a profile.<name> field.
@@ -284,27 +219,34 @@ func normalizeProfileCup(input string) (string, error) {
 
 // Dates share the work-date format; a death date may not precede the birth date at the precision both have.
 func normalizeProfileDates(p PersonProfile, today time.Time) (PersonProfile, error) {
-	todayText := today.UTC().Format(time.DateOnly)
 	var err error
-	for _, entry := range []struct {
-		name  PersonProfileField
-		value *string
-	}{{ProfileBirthDate, &p.BirthDate}, {ProfileDeathDate, &p.DeathDate}} {
-		field := profileField(entry.name)
-		if *entry.value, err = normalizeWorkDate(field, *entry.value); err != nil {
-			return p, err
+	p.BirthDate, p.DeathDate, err = normalizeDateSpan(profileField(ProfileBirthDate), profileField(ProfileDeathDate),
+		p.BirthDate, p.DeathDate, today)
+	return p, err
+}
+
+// normalizeDateSpan normalizes two work-format dates not after today, the end not before the start at the
+// precision both have.
+func normalizeDateSpan(startField, endField, start, end string, today time.Time) (string, string, error) {
+	todayText := today.UTC().Format(time.DateOnly)
+	dates := [2]string{start, end}
+	for i, field := range [2]string{startField, endField} {
+		date, err := normalizeWorkDate(field, dates[i])
+		if err != nil {
+			return start, end, err
 		}
-		if date := *entry.value; date != "" && date > todayText[:len(date)] {
-			return p, invalidWorkInfo(field, WorkInfoOutOfRange, 0)
+		if date != "" && date > todayText[:len(date)] {
+			return start, end, invalidWorkInfo(field, WorkInfoOutOfRange, 0)
+		}
+		dates[i] = date
+	}
+	if dates[0] != "" && dates[1] != "" {
+		shared := min(len(dates[0]), len(dates[1]))
+		if dates[1][:shared] < dates[0][:shared] {
+			return start, end, invalidWorkInfo(endField, WorkInfoOutOfRange, 0)
 		}
 	}
-	if p.BirthDate != "" && p.DeathDate != "" {
-		shared := min(len(p.BirthDate), len(p.DeathDate))
-		if p.DeathDate[:shared] < p.BirthDate[:shared] {
-			return p, invalidWorkInfo(profileField(ProfileDeathDate), WorkInfoOutOfRange, 0)
-		}
-	}
-	return p, nil
+	return dates[0], dates[1], nil
 }
 
 func checkProfileNumbers(p PersonProfile) error {

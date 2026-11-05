@@ -22,6 +22,8 @@ type creditTables struct {
 	// The entity reference column shared by name, external-ID and link tables.
 	idColumn   string
 	cursorKind string
+	// Profile links, images and favorites, each keyed by idColumn.
+	profileLinks, images, favorites string
 	// Organizations have parent_id; people do not.
 	hasParent bool
 	smartRef  domain.SmartRuleRefKind
@@ -31,11 +33,13 @@ var creditTablesByKind = map[domain.CreditKind]creditTables{
 	domain.CreditPerson: {
 		kind: domain.CreditPerson, entity: "people", names: "people_names", externalIDs: "people_external_ids",
 		links: "video_work_people", idColumn: "person_id", cursorKind: "people", smartRef: domain.SmartRefPerson,
+		profileLinks: "people_links", images: "person_images", favorites: "person_favorites",
 	},
 	domain.CreditOrganization: {
 		kind: domain.CreditOrganization, entity: "organizations", names: "organization_names",
 		externalIDs: "organization_external_ids", links: "video_work_organizations",
 		idColumn: "organization_id", cursorKind: "organizations", hasParent: true,
+		profileLinks: "organization_links", images: "organization_images", favorites: "organization_favorites",
 		smartRef: domain.SmartRefOrganization,
 	},
 }
@@ -51,7 +55,16 @@ func creditTablesFor(kind domain.CreditKind) (creditTables, error) {
 func (t creditTables) q(statement string) string {
 	return strings.NewReplacer(
 		"{entity}", t.entity, "{names}", t.names, "{ext}", t.externalIDs, "{links}", t.links, "{id}", t.idColumn,
+		"{profileLinks}", t.profileLinks, "{images}", t.images, "{favorites}", t.favorites,
 	).Replace(statement)
+}
+
+// profile is a method rather than a field because the codecs' writes read creditTablesByKind.
+func (t creditTables) profile() profileCodec {
+	if t.kind == domain.CreditPerson {
+		return personProfileCodec
+	}
+	return organizationProfileCodec
 }
 
 // People expose a null parent in the common listed relation.
@@ -175,8 +188,8 @@ func insertCredit(ctx context.Context, tx *sql.Tx, t creditTables, input domain.
 	if err := writeCreditExternalIDs(ctx, tx, t, id, input.ExternalIDs); err != nil {
 		return 0, err
 	}
-	if t.kind == domain.CreditPerson && !input.Profile.Equal(domain.PersonProfile{}) {
-		if err := writePersonProfile(ctx, tx, id, input.Profile); err != nil {
+	if t.profile().set(input) {
+		if err := t.profile().write(ctx, tx, id, input); err != nil {
 			return 0, err
 		}
 	}
@@ -238,6 +251,7 @@ func updateCreditInTx(ctx context.Context, tx *sql.Tx, t creditTables, id int64,
 func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.CreditInput, error) {
 	merged := domain.CreditInput{
 		Name: current.Name, Aliases: current.Aliases, ExternalIDs: current.ExternalIDs, Profile: current.Profile,
+		OrganizationProfile: current.OrganizationProfile,
 	}
 	if current.Parent != nil {
 		parent := current.Parent.ID
@@ -257,6 +271,9 @@ func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.Cred
 	}
 	if patch.Profile != nil {
 		merged.Profile = patch.Profile.Apply(current.Profile)
+	}
+	if patch.OrganizationProfile != nil {
+		merged.OrganizationProfile = patch.OrganizationProfile.Apply(current.OrganizationProfile)
 	}
 	if current.Provisional && patch.Name == nil {
 		return domain.NormalizeProvisionalCredit(merged)
@@ -299,7 +316,7 @@ func creditChanges(t creditTables, current domain.Credit, next domain.CreditInpu
 		}
 		changes.parent = currentParent != nextParent
 	}
-	changes.profile = t.kind == domain.CreditPerson && !current.Profile.Equal(next.Profile)
+	changes.profile = t.profile().differs(current, next)
 	return changes
 }
 
@@ -340,7 +357,7 @@ func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int6
 		}
 	}
 	if changes.profile {
-		return writePersonProfile(ctx, tx, id, next.Profile)
+		return t.profile().write(ctx, tx, id, next)
 	}
 	return nil
 }
@@ -486,28 +503,24 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	if err != nil {
 		return fmt.Errorf("cannot build %s ids: %w", t.kind, err)
 	}
+	if err := fillMergedProfile(ctx, tx, t, targetID, sourceIDs); err != nil {
+		return err
+	}
+	imageFrom, err := fillMergedImage(ctx, tx, t, targetID, sourceIDs)
+	if err != nil {
+		return err
+	}
+	if err := mergeFavorites(ctx, tx, t, targetID, string(encoded)); err != nil {
+		return err
+	}
 	if t.kind == domain.CreditPerson {
-		if err := fillMergedPersonProfile(ctx, tx, targetID, sourceIDs); err != nil {
-			return err
-		}
-		faceFrom, err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs)
-		if err != nil {
-			return err
-		}
-		if faceFrom != 0 {
-			if err := moveFaceVector(ctx, tx, targetID, faceFrom); err != nil {
+		if imageFrom != 0 {
+			if err := moveFaceVector(ctx, tx, targetID, imageFrom); err != nil {
 				return err
 			}
 		}
 		if err := mergePersonFaceData(ctx, tx, targetID, string(encoded)); err != nil {
 			return err
-		}
-		// A target that is not yet a favorite takes the earliest source favorite time; the sources' rows cascade below.
-		if _, err := tx.ExecContext(ctx, `insert or ignore into person_favorites (person_id, favorited_at)
-			select ?1, min(favorited_at) from person_favorites
-			 where person_id in (select value from json_each(?2)) having count(*) > 0`,
-			targetID, string(encoded)); err != nil {
-			return fmt.Errorf("cannot keep the favorite of person %d: %w", targetID, err)
 		}
 	}
 	affected, err := creditLinkLists(ctx, tx, t, sourceIDs)

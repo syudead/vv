@@ -13,6 +13,8 @@ function organization(id: number, name: string, parent?: ReturnType<typeof ref>)
     name,
     aliases: [],
     externalIds: [],
+    profile: {},
+    favorite: false,
     videoCount: 0,
     createdAt: "2026-01-01T00:00:00Z",
   };

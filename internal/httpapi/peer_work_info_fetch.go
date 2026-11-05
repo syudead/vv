@@ -193,10 +193,14 @@ func toPeerFetchedWorkInfo(apply domain.FetchedWorkInfoApply) gen.PeerFetchedWor
 		body.People = append(body.People, out)
 	}
 	for _, organization := range details.Organizations {
-		body.Organizations = append(body.Organizations, gen.PeerFetchedOrganization{
+		out := gen.PeerFetchedOrganization{
 			Role: gen.WorkOrganizationRole(organization.Role), Name: organization.Name,
 			ExternalIds: toAPIExternalIDs(organization.ExternalIDs),
-		})
+		}
+		if !organization.Profile.Equal(domain.OrganizationProfile{}) {
+			out.Profile = new(toAPIOrganizationProfile(organization.Profile))
+		}
+		body.Organizations = append(body.Organizations, out)
 	}
 	for _, field := range apply.DetailFields {
 		body.DetailFields = append(body.DetailFields, gen.WorkInfoField(field))
@@ -224,10 +228,14 @@ func fromPeerFetchedWorkInfo(body gen.PeerFetchedWorkInfo) (domain.FetchedWorkIn
 		details.People = append(details.People, fetched)
 	}
 	for _, organization := range body.Organizations {
-		details.Organizations = append(details.Organizations, domain.FetchedOrganization{
+		fetched := domain.FetchedOrganization{
 			Role: domain.OrganizationRole(organization.Role), Name: organization.Name,
 			ExternalIDs: fromAPIExternalIDs(&organization.ExternalIds),
-		})
+		}
+		if organization.Profile != nil {
+			fetched.Profile = fromAPIOrganizationProfile(*organization.Profile)
+		}
+		details.Organizations = append(details.Organizations, fetched)
 	}
 	for _, field := range body.DetailFields {
 		if !field.Valid() {
