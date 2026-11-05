@@ -389,12 +389,16 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 			return false
 		}
 		restoreBody(r, raw)
-		if body.Name == nil {
+		name := body.Name
+		if body.Names != nil && len(*body.Names) > 0 {
+			name = &(*body.Names)[0].Name
+		}
+		if name == nil {
 			return true
 		}
-		normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: *body.Name})
-		return err != nil || (s.creditNameFree(w, r.Context(), kind, 0, normalized.Name) &&
-			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized.Name))
+		normalized, err := domain.NormalizeCreditName(*name)
+		return err != nil || (s.creditNameFree(w, r.Context(), kind, 0, normalized) &&
+			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized))
 	}
 }
 
@@ -479,7 +483,7 @@ func (s *server) renameCreditOnPeer(w http.ResponseWriter, r *http.Request, kind
 	if name == nil {
 		return true
 	}
-	normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: *name})
+	normalized, err := domain.NormalizeCreditName(*name)
 	if err != nil {
 		return true
 	}
@@ -488,18 +492,18 @@ func (s *server) renameCreditOnPeer(w http.ResponseWriter, r *http.Request, kind
 		return ok
 	}
 	current, err := s.credits.Get(r.Context(), kind, id)
-	if err != nil || current.Name == normalized.Name {
+	if err != nil || current.Name == normalized {
 		return true
 	}
-	if !s.creditNameFree(w, r.Context(), kind, id, normalized.Name) ||
-		!s.renameFreeOnLinks(w, r, vocabularyKindOf(kind), current.Name, normalized.Name, 0) {
+	if !s.creditNameFree(w, r.Context(), kind, id, normalized) ||
+		!s.renameFreeOnLinks(w, r, vocabularyKindOf(kind), current.Name, normalized, 0) {
 		return false
 	}
 	if current.Name == "" {
 		return true
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
-		Kind: vocabularyKindOf(kind), Action: domain.VocabularyRename, Name: current.Name, NewName: normalized.Name,
+		Kind: vocabularyKindOf(kind), Action: domain.VocabularyRename, Name: current.Name, NewName: normalized,
 	})
 	return ok
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
+	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
 func assertExternalField(t *testing.T, label string, rec *httptest.ResponseRecorder, want string) {
@@ -41,8 +42,8 @@ func (f externalOverridesFixture) createCredit(t *testing.T, kind domain.CreditK
 
 func TestExternalVideoWorkInfoAppliesAndRepeats(t *testing.T) {
 	f := newExternalOverridesFixture(t)
-	performer := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: "出演者"})
-	maker := f.createCredit(t, domain.CreditOrganization, domain.CreditInput{Name: "メーカー"})
+	performer := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Names: namesOf("出演者")})
+	maker := f.createCredit(t, domain.CreditOrganization, domain.CreditInput{Names: namesOf("メーカー")})
 
 	body := map[string]any{"items": []any{
 		map[string]any{"video": map[string]any{"id": f.ids["a"]}, "workInfo": map[string]any{
@@ -129,7 +130,7 @@ func TestExternalVideoWorkInfoRejectsAndChangesNothing(t *testing.T) {
 	first := map[string]any{"video": map[string]any{"id": f.ids["a"]}, "workInfo": map[string]any{"code": "KEEP-1"}}
 	people := make([]any, 0, 101)
 	for i := range 101 {
-		id := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: fmt.Sprintf("人物 %d", i)})
+		id := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Names: namesOf(fmt.Sprintf("人物 %d", i))})
 		people = append(people, map[string]any{"role": "performer", "person": map[string]any{"id": id}})
 	}
 
@@ -181,7 +182,7 @@ func TestExternalVideoWorkInfoRejectsAndChangesNothing(t *testing.T) {
 func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	created := f.post(t, "/api/v1/people", map[string]any{
-		"name": "山田 花子", "aliases": []any{map[string]any{"name": "Hanako", "language": "en"}},
+		"names":       []any{map[string]any{"name": "山田 花子"}, map[string]any{"name": "Hanako", "language": "en"}},
 		"externalIds": []any{map[string]any{"source": "example", "value": "42"}},
 	})
 	if created.Code != http.StatusOK {
@@ -205,20 +206,20 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	assertExternalError(t, "source だけ", half, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
 
 	taken := f.post(t, "/api/v1/people", map[string]any{
-		"name": "別人", "externalIds": []any{map[string]any{"source": "example", "value": "42"}},
+		"names": []map[string]string{{"name": "別人"}}, "externalIds": []any{map[string]any{"source": "example", "value": "42"}},
 	})
 	assertExternalError(t, "使われた外部 ID", taken, wantExternalError{
 		status: http.StatusConflict, code: extgen.ErrorCodeConflict, reason: extgen.ExternalIdTaken, index: -1,
 	})
 	assertExternalField(t, "使われた外部 ID", taken, "externalIds[0]")
-	withParent := f.post(t, "/api/v1/people", map[string]any{"name": "親つき", "parentId": nil})
+	withParent := f.post(t, "/api/v1/people", map[string]any{"names": []map[string]string{{"name": "親つき"}}, "parentId": nil})
 	assertExternalError(t, "人物の parentId", withParent, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
 
-	updated := f.post(t, "/api/v1/people/update", map[string]any{"id": person.Id, "name": "山田 花子（新）", "aliases": nil})
+	updated := f.post(t, "/api/v1/people/update", map[string]any{"id": person.Id, "name": "山田 花子（新）"})
 	if updated.Code != http.StatusOK {
 		t.Fatalf("書き換え: status = %d: %s", updated.Code, updated.Body)
 	}
-	if got := decode[extgen.Person](t, updated); got.Name != "山田 花子（新）" || len(got.Aliases) != 0 || got.Aliases == nil ||
+	if got := decode[extgen.Person](t, updated); got.Name != "山田 花子（新）" || len(got.Names) != 2 ||
 		len(got.ExternalIds) != 1 {
 		t.Errorf("書き換えの結果 = %+v", got)
 	}
@@ -232,13 +233,13 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	})
 	assertExternalField(t, "空の名前", emptyName, "name")
 
-	source := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: "旧名"})
+	source := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Names: namesOf("旧名")})
 	merged := f.post(t, "/api/v1/people/merge", map[string]any{"targetId": person.Id, "sourceIds": []int64{source, 888888}})
 	if merged.Code != http.StatusOK {
 		t.Fatalf("統合: status = %d: %s", merged.Code, merged.Body)
 	}
-	if got := decode[extgen.PersonMergeResponse](t, merged); len(got.Person.Aliases) != 1 ||
-		got.Person.Aliases[0].Name != "旧名" || !slices.Equal(got.NotFoundIds, []int64{888888}) {
+	if got := decode[extgen.PersonMergeResponse](t, merged); len(got.Person.Names) != 3 ||
+		got.Person.Names[2].Name != "旧名" || !slices.Equal(got.NotFoundIds, []int64{888888}) {
 		t.Errorf("統合の結果 = %+v", got)
 	}
 	same := f.post(t, "/api/v1/people/merge", map[string]any{"targetId": person.Id, "sourceIds": []int64{person.Id}})
@@ -251,7 +252,7 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	})
 	assertExternalField(t, "統合元が空", noSources, "sourceIds")
 
-	other := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: "消す人"})
+	other := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Names: namesOf("消す人")})
 	deleted := f.post(t, "/api/v1/people/delete", map[string]any{"ids": []int64{777777, other, person.Id, other}})
 	if deleted.Code != http.StatusOK {
 		t.Fatalf("削除: status = %d: %s", deleted.Code, deleted.Body)
@@ -267,8 +268,8 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 
 func TestExternalOrganizationsCarryParent(t *testing.T) {
 	f := newExternalOverridesFixture(t)
-	root := decode[extgen.Organization](t, f.post(t, "/api/v1/organizations", map[string]any{"name": "親会社"}))
-	child := f.post(t, "/api/v1/organizations", map[string]any{"name": "レーベル", "parentId": root.Id})
+	root := decode[extgen.Organization](t, f.post(t, "/api/v1/organizations", map[string]any{"names": []map[string]string{{"name": "親会社"}}}))
+	child := f.post(t, "/api/v1/organizations", map[string]any{"names": []map[string]string{{"name": "レーベル"}}, "parentId": root.Id})
 	if child.Code != http.StatusOK {
 		t.Fatalf("子の作成: status = %d: %s", child.Code, child.Body)
 	}
@@ -294,7 +295,7 @@ func TestExternalOrganizationsCarryParent(t *testing.T) {
 	if got := decode[extgen.Organization](t, detached); detached.Code != http.StatusOK || got.Parent != nil {
 		t.Errorf("親を外す: %d %+v", detached.Code, got)
 	}
-	noParent := f.post(t, "/api/v1/organizations", map[string]any{"name": "孤児", "parentId": 999999})
+	noParent := f.post(t, "/api/v1/organizations", map[string]any{"names": []map[string]string{{"name": "孤児"}}, "parentId": 999999})
 	assertExternalError(t, "無い親", noParent, wantExternalError{
 		status: http.StatusNotFound, code: extgen.ErrorCodeNotFound, reason: extgen.OrganizationNotFound, index: -1,
 	})
@@ -316,15 +317,19 @@ func TestExternalOrganizationsCarryParent(t *testing.T) {
 func TestExternalCreditsRejectMalformedBodiesAndIgnoreLookupLimit(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	id := f.createCredit(t, domain.CreditPerson, domain.CreditInput{
-		Name: "山田 花子", ExternalIDs: []domain.ExternalID{{Source: "example", Value: "42"}},
+		Names: namesOf("山田 花子"), ExternalIDs: []domain.ExternalID{{Source: "example", Value: "42"}},
 	})
 	malformed := wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1}
 	for label, request := range map[string]struct {
 		target string
 		body   any
 	}{
-		"作成の name が null":     {"/api/v1/people", map[string]any{"name": nil}},
-		"作成の name が無い":        {"/api/v1/organizations", map[string]any{"aliases": []any{}}},
+		"作成の names が null":    {"/api/v1/people", map[string]any{"names": nil}},
+		"作成の names が無い":       {"/api/v1/organizations", map[string]any{"externalIds": []any{}}},
+		"作成の name":            {"/api/v1/people", map[string]any{"name": "x", "names": []any{}}},
+		"作成の aliases":         {"/api/v1/people", map[string]any{"names": []any{}, "aliases": []any{}}},
+		"書き換えの aliases":       {"/api/v1/people/update", map[string]any{"id": id, "aliases": []any{}}},
+		"書き換えの name と names":  {"/api/v1/people/update", map[string]any{"id": id, "name": "x", "names": []any{}}},
 		"統合の targetId が null": {"/api/v1/people/merge", map[string]any{"targetId": nil, "sourceIds": []int64{id}}},
 		"統合の targetId が無い":    {"/api/v1/organizations/merge", map[string]any{"sourceIds": []int64{id}}},
 		"書き換えの id が null":     {"/api/v1/people/update", map[string]any{"id": nil, "name": "x"}},
@@ -346,4 +351,43 @@ func TestExternalCreditsRejectMalformedBodiesAndIgnoreLookupLimit(t *testing.T) 
 	if page := decode[extgen.PersonList](t, f.get(t, "/api/v1/people?limit=1")); len(page.Items) != 1 {
 		t.Errorf("limit=1 の一覧 = %+v", page)
 	}
+}
+
+// Both APIs answer a person and an organization with name and names, the display name first, and no aliases.
+func TestCreditBodiesCarryNamesAndNoAliases(t *testing.T) {
+	f := newExternalOverridesFixture(t)
+	names := []domain.CreditName{{Name: "表示名", Language: "ja"}, {Name: "Other"}}
+	person := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Names: names})
+	organization := f.createCredit(t, domain.CreditOrganization, domain.CreditInput{Names: names})
+	bodies := map[string][]byte{
+		"external people":        f.get(t, "/api/v1/people").Body.Bytes(),
+		"external organizations": f.get(t, "/api/v1/organizations").Body.Bytes(),
+		"screen people":          f.env.get("/api/people", f.owner).Body.Bytes(),
+		"screen organizations":   f.env.get("/api/organizations", f.owner).Body.Bytes(),
+	}
+	for label, raw := range bodies {
+		var page struct {
+			Items []map[string]json.RawMessage `json:"items"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil || len(page.Items) != 1 {
+			t.Fatalf("%s: %s", label, raw)
+		}
+		item := page.Items[0]
+		if _, aliases := item["aliases"]; aliases || string(item["name"]) != `"表示名"` ||
+			!reflect.DeepEqual(decodeNames(t, item["names"]), names) {
+			t.Errorf("%s = %s", label, raw)
+		}
+	}
+	if person == 0 || organization == 0 {
+		t.Fatal("作成できない")
+	}
+}
+
+func decodeNames(t *testing.T, raw json.RawMessage) []domain.CreditName {
+	t.Helper()
+	var names []gen.CreditName
+	if err := json.Unmarshal(raw, &names); err != nil {
+		t.Fatal(err)
+	}
+	return fromAPINames(&names)
 }

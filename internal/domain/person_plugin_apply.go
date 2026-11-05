@@ -71,13 +71,13 @@ type PersonPluginSelection struct {
 
 // AliasChoices are the names an apply may add as aliases: the fetched name first, then the fetched aliases, each name
 // once.
-func (p FetchedPluginPerson) AliasChoices() []Alias {
-	var out []Alias
+func (p FetchedPluginPerson) AliasChoices() []CreditName {
+	var out []CreditName
 	if p.Name != "" {
-		out = append(out, Alias{Name: p.Name})
+		out = append(out, CreditName{Name: p.Name})
 	}
 	for _, alias := range p.Aliases {
-		if !slices.ContainsFunc(out, func(a Alias) bool { return a.Name == alias.Name }) {
+		if !slices.ContainsFunc(out, func(a CreditName) bool { return a.Name == alias.Name }) {
 			out = append(out, alias)
 		}
 	}
@@ -91,7 +91,7 @@ func (p FetchedPluginPerson) Select(sel PersonPluginSelection, hasImage bool) (F
 	if slices.ContainsFunc(sel.Items, isListItem) {
 		return FetchedPluginPerson{}, nil, false
 	}
-	aliases, okAliases := pick(p.AliasChoices(), sel.Aliases, func(a Alias) string { return a.Name })
+	aliases, okAliases := pick(p.AliasChoices(), sel.Aliases, func(a CreditName) string { return a.Name })
 	ids, okIDs := pick(p.ExternalIDs, sel.ExternalIDs, func(id ExternalID) ExternalID { return id })
 	links, okLinks := pick(p.Profile.Links, sel.Links, func(link string) string { return link })
 	if !okAliases || !okIDs || !okLinks {
@@ -169,9 +169,9 @@ type PersonItemFill struct {
 	Replace bool
 }
 
-// PersonItemFilled is the person's next aliases, external IDs and profile, with the values left out in item order.
+// PersonItemFilled is the person's next names, external IDs and profile, with the values left out in item order.
 type PersonItemFilled struct {
-	Aliases     []Alias
+	Names       []CreditName
 	ExternalIDs []ExternalID
 	Profile     PersonProfile
 	Skipped     []SkippedPersonValue
@@ -181,7 +181,7 @@ type PersonItemFilled struct {
 // value that breaks a rule is skipped as invalid, and an ID another person holds as taken.
 func FillPersonItems(in PersonItemFill) PersonItemFilled {
 	out := PersonItemFilled{
-		Aliases: slices.Clone(in.Current.Aliases), ExternalIDs: slices.Clone(in.Current.ExternalIDs),
+		Names: slices.Clone(in.Current.Names), ExternalIDs: slices.Clone(in.Current.ExternalIDs),
 		Profile: in.Current.Profile,
 	}
 	selected := func(item PersonPluginItem) bool { return slices.Contains(in.Items, item) }
@@ -190,7 +190,7 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 		out.appendLinks(in.Fetched.Profile.Links)
 	}
 	if selected(PersonItemAliases) {
-		out.appendAliases(in.Current.Name, in.Fetched.Aliases)
+		out.appendAliases(in.Fetched.Aliases)
 	}
 	if selected(PersonItemExternalIDs) {
 		out.appendExternalIDs(in.Fetched.ExternalIDs, in.Holders)
@@ -228,20 +228,18 @@ func (f *PersonItemFilled) skip(item PersonPluginItem, value string, reason Skip
 	f.Skipped = append(f.Skipped, SkippedPersonValue{Item: item, Value: value, Reason: reason, HolderName: holder})
 }
 
-// An alias equal to the name or a stored alias is already on the person and is neither added nor reported.
-func (f *PersonItemFilled) appendAliases(name string, fetched []Alias) {
+// An alias already among the person's names is neither added nor reported; the limit counts every name.
+func (f *PersonItemFilled) appendAliases(fetched []CreditName) {
 	for _, alias := range fetched {
-		normalized, err := normalizeAliases(name, []Alias{alias})
-		var invalid *InvalidWorkInfoError
+		normalized, err := normalizeCreditNameEntry("names[0]", alias)
 		switch {
-		case errors.As(err, &invalid) && invalid.Problem == WorkInfoDuplicate:
-		case err != nil || len(normalized) != 1:
+		case err != nil:
 			f.skip(PersonItemAliases, alias.Name, SkippedWorkInfoInvalid, "")
-		case slices.ContainsFunc(f.Aliases, func(a Alias) bool { return a.Name == normalized[0].Name }):
-		case len(f.Aliases) >= CreditAliasesMaxCount:
+		case slices.ContainsFunc(f.Names, func(a CreditName) bool { return a.Name == normalized.Name }):
+		case len(f.Names) >= CreditNamesMaxCount:
 			f.skip(PersonItemAliases, alias.Name, SkippedWorkInfoTooMany, "")
 		default:
-			f.Aliases = append(f.Aliases, normalized[0])
+			f.Names = append(f.Names, normalized)
 		}
 	}
 }

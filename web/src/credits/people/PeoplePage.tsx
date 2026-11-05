@@ -2,7 +2,7 @@ import { Cake, CakeSlice, Heart, Plus, ScanFace, SearchX, Users } from "lucide-r
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { createCredit, type Person } from "../../api/credits";
+import { createNamedCredit, type Person } from "../../api/credits";
 import { updateFavorites } from "../../api/favorites";
 import { t } from "../../i18n";
 import { creditNameReason } from "../../lib/creditName";
@@ -275,7 +275,7 @@ export default function PeoplePage() {
           nameLabel={t.credits.create.label}
           nameRule={t.creditName.required}
           validate={validateName}
-          send={(name) => createCredit("person", { name })}
+          send={(name) => createNamedCredit("person", name)}
           onClose={() => setCreating(false)}
           onDone={(created) => void navigate(`/people/${String(created.id)}`)}
         />

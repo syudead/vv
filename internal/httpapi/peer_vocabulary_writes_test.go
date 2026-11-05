@@ -129,7 +129,7 @@ func TestDeleteAPersonAndARemoteOnlyTagOnBothNodes(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()
 	create := func(f *guestFixture, name string) domain.Credit {
-		credit, err := f.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: name})
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf(name)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,11 +165,11 @@ func TestDeleteAPersonAndARemoteOnlyTagOnBothNodes(t *testing.T) {
 func TestMergeARemoteOnlyPersonCreatesTheDestinationOnThePeer(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()
-	sato, err := fb.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "佐藤"})
+	sato, err := fb.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf("佐藤")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	suzuki, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "鈴木"})
+	suzuki, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf("鈴木")})
 	if err != nil {
 		t.Fatal(err)
 	}

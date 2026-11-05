@@ -13,7 +13,7 @@ func intPtr(v int) *int { return &v }
 func TestUpdatePersonProfileReplacesAndClearsSingleFields(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田花子", Profile: domain.PersonProfile{
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("山田花子"), Profile: domain.PersonProfile{
 		Gender: "female", BirthDate: "1990-05", HeightCm: intPtr(160), Links: []string{"https://a.example", "https://b.example"},
 	}})
 	if got, err := db.Credits().Get(ctx, domain.CreditPerson, person.ID); err != nil || !reflect.DeepEqual(got.Profile, person.Profile) ||
@@ -43,13 +43,13 @@ func TestUpdatePersonProfileReplacesAndClearsSingleFields(t *testing.T) {
 func TestMergePeopleFillsOnlyEmptyProfileFieldsFromTheFirstSource(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T", Profile: domain.PersonProfile{
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("T"), Profile: domain.PersonProfile{
 		HeightCm: intPtr(160),
 	}})
-	first := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S1", Profile: domain.PersonProfile{
+	first := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S1"), Profile: domain.PersonProfile{
 		HeightCm: intPtr(170), Cup: "C",
 	}})
-	second := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S2", Profile: domain.PersonProfile{
+	second := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S2"), Profile: domain.PersonProfile{
 		Cup: "D", BirthDate: "1990", Links: []string{"https://s2.example/1", "https://s2.example/2"},
 	}})
 
@@ -66,7 +66,7 @@ func TestMergePeopleFillsOnlyEmptyProfileFieldsFromTheFirstSource(t *testing.T) 
 	}
 
 	// A target with links keeps them instead of taking a source's.
-	keeper := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "K", Profile: domain.PersonProfile{
+	keeper := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("K"), Profile: domain.PersonProfile{
 		Links: []string{"https://k.example"},
 	}})
 	outcome, err = db.Credits().Merge(ctx, domain.CreditPerson, keeper.ID, []int64{target.ID})
@@ -82,13 +82,13 @@ func TestMergePeopleFillsOnlyEmptyProfileFieldsFromTheFirstSource(t *testing.T) 
 func TestMergePeopleSkipsSourceValuesThatContradictTheTargetProfile(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T", Profile: domain.PersonProfile{
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("T"), Profile: domain.PersonProfile{
 		BirthDate: "2000", CareerEndYear: intPtr(2010),
 	}})
-	contradicting := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S1", Profile: domain.PersonProfile{
+	contradicting := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S1"), Profile: domain.PersonProfile{
 		DeathDate: "1990", CareerStartYear: intPtr(2020), HeightCm: intPtr(150),
 	}})
-	fitting := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S2", Profile: domain.PersonProfile{
+	fitting := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S2"), Profile: domain.PersonProfile{
 		DeathDate: "2005", CareerStartYear: intPtr(2001),
 	}})
 
@@ -108,7 +108,7 @@ func TestListPeopleByAgePagesUnknownBirthDatesLast(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	born := func(name, date string) domain.Credit {
-		return createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: name, Profile: domain.PersonProfile{BirthDate: date}})
+		return createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf(name), Profile: domain.PersonProfile{BirthDate: date}})
 	}
 	day := born("A", "2001-03-04")
 	month := born("B", "1980")

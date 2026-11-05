@@ -1,13 +1,14 @@
-import type { CreditPatch, Person } from "../../../api/credits";
+import type { CreditName, CreditPatch, Person } from "../../../api/credits";
 import type { components } from "../../../api/gen/openapi";
 import type { IdRow, LinkRow } from "../../../player/detailsEditor/draft";
 import { newRowKey } from "../../../player/detailsEditor/draft";
+import { otherNames } from "../../../api/credits";
 import {
   type AliasRow,
-  aliasesToSend,
   aliasRowsOf,
   idRowsOf,
   idsToSend,
+  namesToSend,
   type Sent,
 } from "../../CreditDetailsDialog";
 
@@ -39,6 +40,8 @@ export type ProfileField = TextField | NumberField;
 /** Every input as typed; an empty string is a field left unset. */
 export interface PersonDraft {
   name: string;
+  /** The display name's language, which the page keeps without showing it. */
+  nameLanguage: string;
   aliases: AliasRow[];
   externalIds: IdRow[];
   links: LinkRow[];
@@ -54,7 +57,8 @@ export function draftFromPerson(person: Person): PersonDraft {
   }
   return {
     name: person.name,
-    aliases: aliasRowsOf(person.aliases),
+    nameLanguage: person.names[0]?.language ?? "",
+    aliases: aliasRowsOf(otherNames(person)),
     externalIds: idRowsOf(person.externalIds),
     links: (person.profile.links ?? []).map((url) => ({ key: newRowKey("u"), url })),
     profile,
@@ -73,6 +77,18 @@ export function digitsOnly(value: string): string {
 function sentLinks(rows: readonly LinkRow[]): { values: string[]; keys: string[] } {
   const kept = rows.filter((row) => row.url.trim() !== "");
   return { values: kept.map((row) => row.url.trim()), keys: kept.map((row) => row.key) };
+}
+
+/** The names list: the name field first, then the rows; a blank name with no rows is the provisional person's []. */
+function personNamesToSend(draft: PersonDraft): { values: CreditName[]; keys: string[] } {
+  const name = draft.name.trim();
+  if (name === "" && noOtherNames(draft.aliases)) return { values: [], keys: [] };
+  const language = draft.nameLanguage.trim();
+  return namesToSend(language === "" ? { name } : { name, language }, draft.aliases);
+}
+
+function noOtherNames(rows: readonly AliasRow[]): boolean {
+  return namesToSend(undefined, rows).values.length === 0;
 }
 
 function sameJson(a: unknown, b: unknown): boolean {
@@ -110,11 +126,9 @@ export function buildPersonPatch(
   loaded: PersonDraft,
 ): { patch: CreditPatch; sent: SentTargets } {
   const patch: CreditPatch = {};
-  const name = draft.name.trim();
-  if (name !== loaded.name.trim()) patch.name = name;
-  const aliases = aliasesToSend(draft.aliases);
-  if (!sameJson(aliases.values, aliasesToSend(loaded.aliases).values))
-    patch.aliases = aliases.values;
+  const names = personNamesToSend(draft);
+  if (!sameJson(names.values, personNamesToSend(loaded).values))
+    patch.names = names.values;
   const ids = idsToSend(draft.externalIds);
   if (!sameJson(ids.values, idsToSend(loaded.externalIds).values))
     patch.externalIds = ids.values;
@@ -123,7 +137,7 @@ export function buildPersonPatch(
   return {
     patch,
     sent: {
-      aliasKeys: aliases.keys,
+      nameKeys: names.keys,
       idKeys: ids.keys,
       linkKeys: sentLinks(draft.links).keys,
     },
@@ -134,9 +148,9 @@ export function draftChanged(draft: PersonDraft, loaded: PersonDraft): boolean {
   return Object.keys(buildPersonPatch(draft, loaded).patch).length > 0;
 }
 
-/** The control a profile or name path names; aliases and IDs are the dialog's mapping. */
+/** The control a profile or name path names; the other names and IDs are the dialog's mapping. */
 export function profileControl(field: string, sent: SentTargets): string | undefined {
-  if (field === "name") return "name";
+  if (field === "name" || field === "names[0].name") return "name";
   if (field === "profile.links") return "links";
   const link = /^profile\.links\[(\d+)\]$/.exec(field);
   if (link !== null) {

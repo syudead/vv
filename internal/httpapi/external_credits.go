@@ -164,10 +164,10 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body gen.CreditInput
 	fields, ok := e.readJSONBodyFields(w, r, &body)
-	if !ok || !e.requireProperties(w, fields, "name") {
+	if !ok {
 		return
 	}
-	input, message, ok := creditInputOf(body, fields.has, api.kind)
+	input, message, ok := creditInputOf(body, fields, api.kind)
 	if !ok {
 		e.invalidRequest(w, nil, message)
 		return
@@ -353,7 +353,7 @@ func mapCredits[T any](credits []domain.Credit, convert func(domain.Credit) T) [
 
 func toExternalPerson(credit domain.Credit) extgen.Person {
 	return extgen.Person{
-		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Aliases: toExternalAliases(credit.Aliases),
+		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Names: toExternalNames(credit.Names),
 		ExternalIds: toExternalExternalIDs(credit.ExternalIDs), Profile: toExternalProfile(credit.Profile),
 		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
@@ -363,7 +363,7 @@ func toExternalPerson(credit domain.Credit) extgen.Person {
 func toExternalOrganization(credit domain.Credit) extgen.Organization {
 	person := toExternalPerson(credit)
 	out := extgen.Organization{
-		Id: person.Id, Name: person.Name, Aliases: person.Aliases, ExternalIds: person.ExternalIds,
+		Id: person.Id, Name: person.Name, Names: person.Names, ExternalIds: person.ExternalIds,
 		VideoCount: person.VideoCount, CreatedAt: person.CreatedAt,
 	}
 	if credit.Parent != nil {
@@ -375,10 +375,10 @@ func toExternalOrganization(credit domain.Credit) extgen.Organization {
 	return out
 }
 
-func toExternalAliases(aliases []domain.Alias) []extgen.Alias {
-	out := make([]extgen.Alias, 0, len(aliases))
-	for _, alias := range aliases {
-		out = append(out, extgen.Alias{Name: alias.Name, Language: optionalString(alias.Language)})
+func toExternalNames(names []domain.CreditName) []extgen.CreditName {
+	out := make([]extgen.CreditName, 0, len(names))
+	for _, name := range names {
+		out = append(out, extgen.CreditName{Name: name.Name, Language: optionalString(name.Language)})
 	}
 	return out
 }

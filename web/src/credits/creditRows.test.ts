@@ -11,7 +11,7 @@ function organization(id: number, name: string, parent?: ReturnType<typeof ref>)
   const row: Credit = {
     id,
     name,
-    aliases: [],
+    names: [{ name }],
     externalIds: [],
     profile: {},
     favorite: false,

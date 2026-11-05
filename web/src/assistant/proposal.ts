@@ -274,7 +274,7 @@ export function valueParts(step: StepFields, change: Change): ValuePart[] {
   return [{ kind: "text", text: itemText(value) }];
 }
 
-/** Strings a change names: one, or each of a list such as aliases. */
+/** Strings a change names: one, or each of a list such as names. */
 export function valueStrings(value: unknown): string[] {
   if (typeof value === "string") return value === "" ? [] : [value];
   if (Array.isArray(value)) return value.filter((item) => typeof item === "string");

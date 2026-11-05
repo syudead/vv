@@ -595,7 +595,7 @@ func assertSmartFolderInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// Check canonical names, acyclic parents, limits, external-ID uniqueness, contiguous link positions and current name keys.
+// Check name positions, acyclic parents, limits, external-ID uniqueness, contiguous link positions and current name keys.
 func assertCreditInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -611,19 +611,16 @@ func assertCreditInvariant(t *testing.T, db *DB) {
 
 	var checks []string
 	for _, tables := range creditTablesByKind {
-		// A provisional person has no names at all; every other credit has exactly one canonical name.
-		minCanonical := `1`
-		if tables.kind == domain.CreditPerson {
-			minCanonical = `(case when count(n.name) = 0 and not exists (select 1 from {names} a where a.{id} = e.id) then 0 else 1 end)`
+		// A provisional person has no names; every organization has at least one. A list may exceed the limit, since a
+		// patch without names keeps a migrated list over it.
+		if tables.kind == domain.CreditOrganization {
+			checks = append(checks, tables.q(`select '{entity} ' || e.id || ' に名前が無い' from {entity} e
+				 where not exists (select 1 from {names} n where n.{id} = e.id)`))
 		}
 		checks = append(checks, tables.q(`
-			select '{entity} ' || e.id || ' の正規の名前の行が ' || count(n.name) || ' 行'
-			  from {entity} e left join {names} n on n.{id} = e.id and n.canonical = 1
-			 group by e.id having count(n.name) not between `+minCanonical+` and 1`),
-			tables.q(`select '{names} の正規の行 ' || {id} || ' に language がある' from {names}
-			 where canonical = 1 and language is not null`),
-			tables.q(`select '{entity} ' || {id} || ' の別名が ' || count(*) || ' 件' from {names}
-			 where canonical = 0 group by {id} having count(*) > 50`),
+			select '{names} の ' || {id} || ' の位置が詰まっていない' from {names}
+			 group by {id}
+			having min(position) <> 0 or max(position) <> count(*) - 1 or count(distinct position) <> count(*)`),
 			tables.q(`select '{entity} ' || {id} || ' の外部 ID が ' || count(*) || ' 件' from {ext}
 			 group by {id} having count(*) > 20`),
 			tables.q(`select '{ext} の ' || source || ':' || value || ' を ' || count(*) || ' 実体が持つ' from {ext}

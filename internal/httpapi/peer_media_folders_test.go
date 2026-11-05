@@ -86,7 +86,7 @@ func TestTheReadNodeCountsTheVocabularyUnderTheReadersScope(t *testing.T) {
 	fa, _, b, _ := mergedNodes(t)
 	ctx := context.Background()
 	tag := tagOn(t, fa, "犬", "c", "e")
-	person, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "山田"})
+	person, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf("山田")})
 	if err != nil {
 		t.Fatal(err)
 	}

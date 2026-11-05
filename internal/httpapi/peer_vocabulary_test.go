@@ -116,7 +116,7 @@ func TestMergedPeopleListAndARemotePersonsPageAndImage(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()
 	person := func(f *guestFixture, kind domain.CreditKind, name string) domain.Credit {
-		credit, err := f.env.db.Credits().Create(ctx, kind, domain.CreditInput{Name: name})
+		credit, err := f.env.db.Credits().Create(ctx, kind, domain.CreditInput{Names: namesOf(name)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,8 +165,8 @@ func TestMergedPeopleListAndARemotePersonsPageAndImage(t *testing.T) {
 		t.Errorf("organizations = %+v, want スタジオ as %d", organizations.Items, remoteStudio)
 	}
 	rec := b.owner(http.MethodPatch, "/api/organizations/"+strconv.FormatInt(remoteStudio, 10),
-		`{"aliases":[{"name":"別名"}]}`)
-	if edited := decode[gen.Organization](t, rec); rec.Code != http.StatusOK || edited.Id != remoteStudio || len(edited.Aliases) != 1 {
+		`{"names":[{"name":"スタジオ"},{"name":"別名"}]}`)
+	if edited := decode[gen.Organization](t, rec); rec.Code != http.StatusOK || edited.Id != remoteStudio || len(edited.Names) != 2 {
 		t.Errorf("forwarded organization edit: status = %d: %s", rec.Code, rec.Body)
 	}
 }
@@ -175,7 +175,7 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()
 	organization := func(f *guestFixture, name string) int64 {
-		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Name: name})
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf(name)})
 		if err != nil {
 			t.Fatal(err)
 		}

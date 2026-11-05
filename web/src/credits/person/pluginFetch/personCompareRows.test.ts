@@ -10,7 +10,7 @@ import {
 
 const current: PersonCompareCurrent = {
   name: "Aoi",
-  aliases: [{ name: "Sora" }],
+  names: [{ name: "Aoi" }, { name: "Sora" }],
   externalIds: [{ source: "fanza", value: "a1" }],
   profile: { heightCm: 160, links: ["https://a.test"] },
   imageRevision: 2,
@@ -69,7 +69,7 @@ describe("initialSelection", () => {
   });
 
   it("starts a person without a face on the first image, and a created person without the fetched name", () => {
-    const created = { aliases: [], externalIds: [], profile: {} };
+    const created = { names: [], externalIds: [], profile: {} };
 
     const selection = initialSelection(created, fetched);
 

@@ -120,7 +120,7 @@ func fetchIDOf(t *testing.T, body []byte) string {
 func TestWorkInfoFetchAnswersTheDetailsWithMatches(t *testing.T) {
 	e := newDetailsEnv(t)
 	aoi, err := e.db.Credits().Create(context.Background(), domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi Sora", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+		Names: namesOf("Aoi Sora"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
 	})
 	if err != nil {
 		t.Fatal(err)

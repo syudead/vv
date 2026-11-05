@@ -132,7 +132,7 @@ func (s *CreditStore) Create(ctx context.Context, kind domain.CreditKind, input 
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	normalized, err := domain.NormalizeCredit(input)
+	normalized, err := domain.NormalizeCredit(kind, input)
 	if err != nil {
 		return domain.Credit{}, err
 	}
@@ -182,7 +182,7 @@ func insertCredit(ctx context.Context, tx *sql.Tx, t creditTables, input domain.
 	if err != nil {
 		return 0, fmt.Errorf("cannot create the %s: %w", t.kind, err)
 	}
-	if err := writeCreditNames(ctx, tx, t, id, input.Name, input.Aliases); err != nil {
+	if err := writeCreditNames(ctx, tx, t, id, input.Names); err != nil {
 		return 0, err
 	}
 	if err := writeCreditExternalIDs(ctx, tx, t, id, input.ExternalIDs); err != nil {
@@ -233,7 +233,7 @@ func updateCreditInTx(ctx context.Context, tx *sql.Tx, t creditTables, id int64,
 	if current, err = creditByID(ctx, tx, t, id); err != nil {
 		return domain.Credit{}, domain.Credit{}, creditChangeSet{}, err
 	}
-	next, err := patchedCredit(current, patch)
+	next, err := domain.PatchCredit(current, patch)
 	if err != nil {
 		return domain.Credit{}, domain.Credit{}, creditChangeSet{}, err
 	}
@@ -247,46 +247,6 @@ func updateCreditInTx(ctx context.Context, tx *sql.Tx, t creditTables, id int64,
 	return current, updated, changes, err
 }
 
-// When aliases are unchanged, a duplicate can only come from the new name; report it against the submitted name field.
-func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.CreditInput, error) {
-	merged := domain.CreditInput{
-		Name: current.Name, Aliases: current.Aliases, ExternalIDs: current.ExternalIDs, Profile: current.Profile,
-		OrganizationProfile: current.OrganizationProfile,
-	}
-	if current.Parent != nil {
-		parent := current.Parent.ID
-		merged.ParentID = &parent
-	}
-	if patch.Name != nil {
-		merged.Name = *patch.Name
-	}
-	if patch.Aliases != nil {
-		merged.Aliases = *patch.Aliases
-	}
-	if patch.ExternalIDs != nil {
-		merged.ExternalIDs = *patch.ExternalIDs
-	}
-	if patch.ParentSet {
-		merged.ParentID = patch.ParentID
-	}
-	if patch.Profile != nil {
-		merged.Profile = patch.Profile.Apply(current.Profile)
-	}
-	if patch.OrganizationProfile != nil {
-		merged.OrganizationProfile = patch.OrganizationProfile.Apply(current.OrganizationProfile)
-	}
-	if current.Provisional && patch.Name == nil {
-		return domain.NormalizeProvisionalCredit(merged)
-	}
-	normalized, err := domain.NormalizeCredit(merged)
-	var invalid *domain.InvalidWorkInfoError
-	if patch.Aliases == nil && errors.As(err, &invalid) && invalid.Problem == domain.WorkInfoDuplicate &&
-		strings.HasPrefix(invalid.Field, "aliases[") {
-		return domain.CreditInput{}, &domain.InvalidWorkInfoError{Field: "name", Problem: domain.WorkInfoDuplicate}
-	}
-	return normalized, err
-}
-
 type creditChangeSet struct {
 	names, externalIDs, parent, profile bool
 }
@@ -296,14 +256,12 @@ func (c creditChangeSet) any() bool { return c.matched() || c.profile }
 // matched reports changes that can alter smart-folder matches.
 func (c creditChangeSet) matched() bool { return c.names || c.externalIDs || c.parent }
 
-// Compare aliases and external IDs in read order; people have no parent to compare.
+// Compare names in the owner's order and external IDs in read order; people have no parent to compare.
 func creditChanges(t creditTables, current domain.Credit, next domain.CreditInput) creditChangeSet {
-	aliases := slices.Clone(next.Aliases)
-	domain.SortAliases(aliases)
 	externalIDs := slices.Clone(next.ExternalIDs)
 	domain.SortExternalIDs(externalIDs)
 	var changes creditChangeSet
-	changes.names = current.Name != next.Name || !slices.Equal(current.Aliases, aliases)
+	changes.names = !slices.Equal(current.Names, next.Names)
 	changes.externalIDs = !slices.Equal(current.ExternalIDs, externalIDs)
 	if t.hasParent {
 		var currentParent int64
@@ -344,7 +302,7 @@ func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int6
 		if _, err := tx.ExecContext(ctx, t.q(`delete from {names} where {id} = ?`), id); err != nil {
 			return fmt.Errorf("cannot replace the names of %s %d: %w", t.kind, id, err)
 		}
-		if err := writeCreditNames(ctx, tx, t, id, next.Name, next.Aliases); err != nil {
+		if err := writeCreditNames(ctx, tx, t, id, next.Names); err != nil {
 			return err
 		}
 	}
@@ -407,7 +365,7 @@ func deleteCreditInTx(ctx context.Context, tx *sql.Tx, t creditTables, id int64)
 	return renumberCreditLinks(ctx, tx, t, affected)
 }
 
-// Merge transfers links, aliases, external IDs, children and face data and fills empty profile fields, a missing face and a missing canonical name atomically; reject self-merges, parent cycles and merged limits.
+// Merge transfers links, names, external IDs, children and face data and fills empty profile fields and a missing face atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -528,19 +486,12 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		return err
 	}
 	statements := []struct{ what, statement string }{
-		// A target without a canonical name takes the first named source's, before the rest become aliases.
-		{"name the target", `insert into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
-			select ?1, n.name, 1, null, n.search_key, n.sort_key, n.search_version
-			  from json_each(?2) s join {names} n on n.{id} = s.value and n.canonical = 1
-			 where not exists (select 1 from {names} where {id} = ?1 and canonical = 1)
-			 order by s.key limit 1`},
 		// Preserve link positions; uniqueness leaves conflicting source rows for the following delete.
 		{"move the links", `update or ignore {links} set {id} = ?1 where {id} in (select value from json_each(?2))`},
 		{"drop the links", `delete from {links} where {id} in (select value from json_each(?2))`},
-		// Insert source names as aliases, deduplicating through the primary key.
-		{"move the names", `insert or ignore into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
-			select ?1, name, 0, language, search_key, sort_key, search_version from {names}
-			 where {id} in (select value from json_each(?2))`},
+		// Append each source's names after the target's in source order, each spelling once; a target without names
+		// therefore takes the first named source's display name.
+		{"append the names", mergedNamesStatement},
 		// External IDs are unique per kind, so the target cannot already own a source ID.
 		{"move the external IDs", `update {ext} set {id} = ?1 where {id} in (select value from json_each(?2))`},
 	}
@@ -563,16 +514,31 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	return rewriteSmartRuleRefs(ctx, tx, t.smartRef, targetID, sourceIDs)
 }
 
+// mergedNamesStatement takes the target as ?1 and the source ids as the JSON array ?2.
+const mergedNamesStatement = `with sources as (
+		select n.name, n.language, n.search_key, n.sort_key, n.search_version, s.key as source, n.position,
+		       row_number() over (partition by n.name order by s.key, n.position) as copy
+		  from json_each(?2) s join {names} n on n.{id} = s.value
+		 where n.name not in (select name from {names} where {id} = ?1)
+	), base as (
+		select coalesce(max(position) + 1, 0) as next from {names} where {id} = ?1
+	)
+	insert into {names} ({id}, name, position, language, search_key, sort_key, search_version)
+	select ?1, name, base.next + row_number() over (order by source, position) - 1, language, search_key, sort_key,
+	       search_version
+	  from sources, base
+	 where copy = 1`
+
 // Reject merged limits before commit so the caller can roll back the entire merge.
 func checkMergedCreditLimits(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64) error {
-	var aliases, externalIDs int
+	var names, externalIDs int
 	if err := tx.QueryRowContext(ctx, t.q(`select
-		(select count(*) from {names} where {id} = ?1 and canonical = 0),
-		(select count(*) from {ext} where {id} = ?1)`), targetID).Scan(&aliases, &externalIDs); err != nil {
+		(select count(*) from {names} where {id} = ?1),
+		(select count(*) from {ext} where {id} = ?1)`), targetID).Scan(&names, &externalIDs); err != nil {
 		return fmt.Errorf("cannot count the names of %s %d: %w", t.kind, targetID, err)
 	}
-	if aliases > domain.CreditAliasesMaxCount {
-		return &domain.InvalidWorkInfoError{Field: "aliases", Problem: domain.WorkInfoTooMany, Limit: domain.CreditAliasesMaxCount}
+	if names > domain.CreditNamesMaxCount {
+		return &domain.InvalidWorkInfoError{Field: "names", Problem: domain.WorkInfoTooMany, Limit: domain.CreditNamesMaxCount}
 	}
 	if externalIDs > domain.ExternalIDsMaxCount {
 		return &domain.InvalidWorkInfoError{Field: "externalIds", Problem: domain.WorkInfoTooMany, Limit: domain.ExternalIDsMaxCount}
@@ -676,26 +642,18 @@ func checkExternalIDsFree(ctx context.Context, tx *sql.Tx, t creditTables, selfI
 	return nil
 }
 
-func writeCreditNames(ctx context.Context, tx *sql.Tx, t creditTables, id int64, name string, aliases []domain.Alias) error {
-	statement := t.q(`insert into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
+// writeCreditNames numbers names from 0 in the given order; the caller removes the entity's previous names first.
+func writeCreditNames(ctx context.Context, tx *sql.Tx, t creditTables, id int64, names []domain.CreditName) error {
+	statement := t.q(`insert into {names} ({id}, name, position, language, search_key, sort_key, search_version)
 		values (?, ?, ?, ?, ?, ?, ?)`)
-	write := func(name string, canonical bool, language string) error {
-		var lang any
-		if language != "" {
-			lang = language
+	for position, name := range names {
+		var language any
+		if name.Language != "" {
+			language = name.Language
 		}
-		if _, err := tx.ExecContext(ctx, statement, id, name, boolToInt(canonical), lang,
-			domain.FoldForMatch(name), domain.NaturalSortKey(name), domain.SearchKeyVersion); err != nil {
+		if _, err := tx.ExecContext(ctx, statement, id, name.Name, position, language,
+			domain.FoldForMatch(name.Name), domain.NaturalSortKey(name.Name), domain.SearchKeyVersion); err != nil {
 			return fmt.Errorf("cannot save the names of %s %d: %w", t.kind, id, err)
-		}
-		return nil
-	}
-	if err := write(name, true, ""); err != nil {
-		return err
-	}
-	for _, alias := range aliases {
-		if err := write(alias.Name, false, alias.Language); err != nil {
-			return err
 		}
 	}
 	return nil

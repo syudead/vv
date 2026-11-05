@@ -208,11 +208,11 @@ func (s *server) getCredit(w http.ResponseWriter, r *http.Request, api creditKin
 
 func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI) {
 	var body gen.CreditInput
-	present, ok := s.readJSONBodyFields(w, r, &body)
+	fields, ok := s.readJSONBodyProperties(w, r, &body)
 	if !ok {
 		return
 	}
-	input, message, ok := creditInputOf(body, present, api.kind)
+	input, message, ok := creditInputOf(body, fields, api.kind)
 	if !ok {
 		s.invalidRequest(w, message)
 		return
@@ -228,9 +228,17 @@ func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api credit
 	s.writeCreditBody(w, http.StatusCreated, api.one(credit))
 }
 
-// creditInputOf is shared with external create requests; parentId, profile and organizationProfile are rejected for
-// the other kind even when null.
-func creditInputOf(body gen.CreditInput, present func(name string) bool, kind domain.CreditKind) (domain.CreditInput, string, bool) {
+// creditInputOf is shared with external create requests; names is required, and parentId, profile and
+// organizationProfile are rejected for the other kind even when null.
+func creditInputOf(body gen.CreditInput, fields bodyFields, kind domain.CreditKind) (domain.CreditInput, string, bool) {
+	present := fields.has
+	if !fields.given("names") {
+		return domain.CreditInput{}, "names is required and cannot be null.", false
+	}
+	names, message, ok := requestNames(fields, &body.Names)
+	if !ok {
+		return domain.CreditInput{}, message, false
+	}
 	if present("parentId") && kind != domain.CreditOrganization {
 		return domain.CreditInput{}, "parentId applies to organizations only.", false
 	}
@@ -241,8 +249,7 @@ func creditInputOf(body gen.CreditInput, present func(name string) bool, kind do
 		return domain.CreditInput{}, "organizationProfile applies to organizations only.", false
 	}
 	input := domain.CreditInput{
-		Name: body.Name, Aliases: fromAPIAliases(body.Aliases), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
-		ParentID: body.ParentId,
+		Names: names, ExternalIDs: fromAPIExternalIDs(body.ExternalIds), ParentID: body.ParentId,
 	}
 	if body.Profile != nil {
 		input.Profile = fromAPIProfile(*body.Profile)
@@ -255,7 +262,7 @@ func creditInputOf(body gen.CreditInput, present func(name string) bool, kind do
 
 func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	patch, ok := s.readCreditPatch(w, r, api.kind)
-	if !ok || !s.creditsConfigured(w) || !s.renameCreditOnPeer(w, r, api.kind, id, patch.Name) {
+	if !ok || !s.creditsConfigured(w) || !s.renameCreditOnPeer(w, r, api.kind, id, patchDisplayName(patch)) {
 		return
 	}
 	credit, err := s.credits.Update(r.Context(), api.kind, id, patch)
@@ -266,7 +273,8 @@ func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api credit
 	s.writeCreditBody(w, http.StatusOK, api.one(credit))
 }
 
-// PATCH distinguishes omitted fields from null: null lists clear, null parentId removes the parent, and null name is invalid.
+// PATCH distinguishes omitted fields from null: null lists clear, null parentId removes the parent, and null name or
+// name with names is invalid.
 func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind domain.CreditKind) (domain.CreditPatch, bool) {
 	var body gen.CreditPatch
 	fields, ok := s.readJSONBodyProperties(w, r, &body)
@@ -287,9 +295,15 @@ func creditPatchOf(body gen.CreditPatch, fields bodyFields, kind domain.CreditKi
 	if present("name") && body.Name == nil {
 		return domain.CreditPatch{}, "name cannot be null.", false
 	}
-	if present("aliases") {
-		aliases := fromAPIAliases(body.Aliases)
-		patch.Aliases = &aliases
+	if present("names") {
+		if present("name") {
+			return domain.CreditPatch{}, "name and names cannot be sent together.", false
+		}
+		names, message, ok := requestNames(fields, body.Names)
+		if !ok {
+			return domain.CreditPatch{}, message, false
+		}
+		patch.Names = &names
 	}
 	if present("externalIds") {
 		ids := fromAPIExternalIDs(body.ExternalIds)
@@ -497,7 +511,7 @@ func (s *server) writeCreditBody(w http.ResponseWriter, status int, body any) {
 
 func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
-		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Aliases: toAPIAliases(credit.Aliases),
+		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Names: toAPINames(credit.Names),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
 		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
 		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
@@ -506,7 +520,7 @@ func toAPIPerson(credit domain.Credit) gen.Person {
 
 func toAPIOrganization(credit domain.Credit) gen.Organization {
 	out := gen.Organization{
-		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
+		Id: credit.ID, Name: credit.Name, Names: toAPINames(credit.Names),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIOrganizationProfile(credit.OrganizationProfile),
 		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
 		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
@@ -517,10 +531,10 @@ func toAPIOrganization(credit domain.Credit) gen.Organization {
 	return out
 }
 
-func toAPIAliases(aliases []domain.Alias) []gen.Alias {
-	out := make([]gen.Alias, 0, len(aliases))
-	for _, alias := range aliases {
-		out = append(out, gen.Alias{Name: alias.Name, Language: optionalString(alias.Language)})
+func toAPINames(names []domain.CreditName) []gen.CreditName {
+	out := make([]gen.CreditName, 0, len(names))
+	for _, name := range names {
+		out = append(out, gen.CreditName{Name: name.Name, Language: optionalString(name.Language)})
 	}
 	return out
 }
@@ -533,19 +547,41 @@ func toAPIExternalIDs(ids []domain.ExternalID) []gen.ExternalId {
 	return out
 }
 
-func fromAPIAliases(aliases *[]gen.Alias) []domain.Alias {
-	if aliases == nil {
-		return []domain.Alias{}
+func fromAPINames(names *[]gen.CreditName) []domain.CreditName {
+	if names == nil {
+		return []domain.CreditName{}
 	}
-	out := make([]domain.Alias, 0, len(*aliases))
-	for _, alias := range *aliases {
-		entry := domain.Alias{Name: alias.Name}
-		if alias.Language != nil {
-			entry.Language = *alias.Language
+	out := make([]domain.CreditName, 0, len(*names))
+	for _, name := range *names {
+		entry := domain.CreditName{Name: name.Name}
+		if name.Language != nil {
+			entry.Language = *name.Language
 		}
 		out = append(out, entry)
 	}
 	return out
+}
+
+// requestNames converts the body's names, refusing an entry without a name, which the generated type reads as "".
+func requestNames(fields bodyFields, names *[]gen.CreditName) ([]domain.CreditName, string, bool) {
+	raw, _ := jsonProperty(fields, "names")
+	var entries []bodyFields
+	if json.Unmarshal(raw, &entries) == nil {
+		for i, entry := range entries {
+			if !entry.given("name") {
+				return nil, fmt.Sprintf("names[%d].name is required and cannot be null.", i), false
+			}
+		}
+	}
+	return fromAPINames(names), "", true
+}
+
+// patchDisplayName is the display name a patch sets, or nil when it keeps the current one or empties the list.
+func patchDisplayName(patch domain.CreditPatch) *string {
+	if patch.Names != nil && len(*patch.Names) > 0 {
+		return &(*patch.Names)[0].Name
+	}
+	return patch.Name
 }
 
 func fromAPIExternalIDs(ids *[]gen.ExternalId) []domain.ExternalID {

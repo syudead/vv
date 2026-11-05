@@ -2,7 +2,7 @@ import { FolderSearch, Layers, Plus } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { undoActivity } from "../../api/activity";
-import { createCredit } from "../../api/credits";
+import { createNamedCredit } from "../../api/credits";
 import { currentTags, revalidateTags, subscribeTags, type Tag } from "../../api/tags";
 import {
   applyVideoEdits,
@@ -168,7 +168,7 @@ export default function BulkEditor({
   async function send(current: VideoEditSummary) {
     for (const entry of newCredits(draft)) {
       if (created.current.has(entry.key)) continue;
-      const credit = await createCredit(entry.kind, { name: entry.name });
+      const credit = await createNamedCredit(entry.kind, entry.name);
       created.current.set(entry.key, credit.id);
     }
     const { changes, removedTags } = buildChanges(

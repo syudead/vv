@@ -249,7 +249,7 @@ func (s *server) creditMergeSide(api creditKindAPI) mergeSide {
 			if id, found := holders[name]; found {
 				return id, nil
 			}
-			credit, err := s.credits.Create(ctx, api.kind, domain.CreditInput{Name: name})
+			credit, err := s.credits.Create(ctx, api.kind, domain.CreditInput{Names: []domain.CreditName{{Name: name}}})
 			return credit.ID, err
 		},
 		merge: func(w http.ResponseWriter, r *http.Request, target int64, sources, missing []int64) {

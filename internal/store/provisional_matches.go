@@ -44,7 +44,7 @@ func provisionalPerformersByKey(ctx context.Context, tx *sql.Tx, keys []string) 
 	}
 	rows, err := tx.QueryContext(ctx, `select w.content_key, w.person_id from video_work_people w
 		 where w.role = ? and w.content_key in (select value from json_each(?))
-		   and not exists (select 1 from people_names n where n.person_id = w.person_id and n.canonical = 1)
+		   and not exists (select 1 from people_names n where n.person_id = w.person_id and n.position = 0)
 		 order by w.content_key, w.person_id`, string(domain.PersonPerformer), string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the provisional performers: %w", err)

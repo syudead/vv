@@ -15,7 +15,7 @@ func face(label string) domain.PersonImage {
 func TestDeletingAPersonRemovesItsFace(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田"})
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("山田")})
 	if _, err := db.Credits().SetPersonImage(ctx, person.ID, face("a")); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestDeletingAPersonRemovesItsFace(t *testing.T) {
 func TestAddPersonImageKeepsAFaceAlreadySet(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田"})
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("山田")})
 	if revision, err := db.Credits().AddPersonImage(ctx, person.ID, face("first")); err != nil || revision != 1 {
 		t.Fatalf("AddPersonImage(faceless) = rev %d, %v; want stored at rev 1", revision, err)
 	}
@@ -47,10 +47,10 @@ func TestAddPersonImageKeepsAFaceAlreadySet(t *testing.T) {
 func TestMergeGivesAFacelessTargetTheFirstSourceFace(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T"})
-	faceless := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S0"})
-	second := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S2"})
-	first := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S1"})
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("T")})
+	faceless := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S0")})
+	second := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S2")})
+	first := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S1")})
 	for _, source := range []struct {
 		id    int64
 		label string
@@ -77,8 +77,8 @@ func TestMergeGivesAFacelessTargetTheFirstSourceFace(t *testing.T) {
 func TestMergeKeepsTheTargetFace(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T"})
-	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S"})
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("T")})
+	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S")})
 	before, err := db.Credits().SetPersonImage(ctx, target.ID, face("target"))
 	if err != nil {
 		t.Fatal(err)

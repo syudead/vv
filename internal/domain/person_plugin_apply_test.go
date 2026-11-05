@@ -79,24 +79,24 @@ func TestFillPersonItemsReplacesDependentFieldsTogether(t *testing.T) {
 
 func TestFillPersonItemsAppliesOnlySelectedItems(t *testing.T) {
 	fetched := FetchedPluginPerson{
-		Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},
+		Name: "Hanako", Aliases: []CreditName{{Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},
 		Profile: PersonProfile{Birthplace: "Tokyo"},
 	}
 	got := FillPersonItems(PersonItemFill{
-		Current: Credit{Name: "Hanako"}, Fetched: fetched, Items: []PersonPluginItem{PersonItemAliases},
+		Current: Credit{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}}}, Fetched: fetched, Items: []PersonPluginItem{PersonItemAliases},
 		Today: personFillToday,
 	})
-	if len(got.Aliases) != 1 || len(got.ExternalIDs) != 0 || got.Profile.Birthplace != "" {
+	if len(got.Names) != 2 || len(got.ExternalIDs) != 0 || got.Profile.Birthplace != "" {
 		t.Fatalf("filled = %+v; want only the aliases", got)
 	}
 }
 
 func TestFillPersonItemsAppendsAliasesUpToTheLimit(t *testing.T) {
-	current := Credit{Name: "Hanako"}
-	for i := range CreditAliasesMaxCount - 1 {
-		current.Aliases = append(current.Aliases, Alias{Name: fmt.Sprintf("stored %d", i)})
+	current := Credit{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}}}
+	for i := range CreditNamesMaxCount - 2 {
+		current.Names = append(current.Names, CreditName{Name: fmt.Sprintf("stored %d", i)})
 	}
-	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []Alias{
+	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []CreditName{
 		{Name: "Hanako"}, {Name: "stored 0"}, {Name: "bad", Language: "not a tag"}, {Name: "Hana", Language: "ja"},
 		{Name: "Hanachan"},
 	}}
@@ -105,8 +105,8 @@ func TestFillPersonItemsAppendsAliasesUpToTheLimit(t *testing.T) {
 		Current: current, Fetched: fetched, Items: []PersonPluginItem{PersonItemAliases}, Today: personFillToday,
 	})
 
-	if len(got.Aliases) != CreditAliasesMaxCount || got.Aliases[CreditAliasesMaxCount-1] != (Alias{Name: "Hana", Language: "ja"}) {
-		t.Fatalf("aliases end with %+v (%d); want Hana appended as the 50th", got.Aliases[len(got.Aliases)-1], len(got.Aliases))
+	if len(got.Names) != CreditNamesMaxCount || got.Names[CreditNamesMaxCount-1] != (CreditName{Name: "Hana", Language: "ja"}) {
+		t.Fatalf("aliases end with %+v (%d); want Hana appended as the 50th", got.Names[len(got.Names)-1], len(got.Names))
 	}
 	want := []SkippedPersonValue{
 		{Item: PersonItemAliases, Value: "bad", Reason: SkippedWorkInfoInvalid},
@@ -118,7 +118,7 @@ func TestFillPersonItemsAppendsAliasesUpToTheLimit(t *testing.T) {
 }
 
 func TestFillPersonItemsAppendsFreeExternalIDsUpToTheLimit(t *testing.T) {
-	current := Credit{Name: "Hanako"}
+	current := Credit{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}}}
 	for i := range ExternalIDsMaxCount - 1 {
 		current.ExternalIDs = append(current.ExternalIDs, ExternalID{Source: "stored", Value: fmt.Sprint(i)})
 	}
@@ -168,7 +168,7 @@ func TestPersonPluginItemValid(t *testing.T) {
 
 func TestSelectNarrowsTheFetchedPersonToTheChosenValues(t *testing.T) {
 	fetched := FetchedPluginPerson{
-		Name: "Hanako Yamada", Aliases: []Alias{{Name: "Hana"}, {Name: "Hanachan"}},
+		Name: "Hanako Yamada", Aliases: []CreditName{{Name: "Hana"}, {Name: "Hanachan"}},
 		ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}, {Source: "site", Value: "2"}},
 		Profile:     PersonProfile{Birthplace: "Tokyo", Links: []string{"https://a.test", "https://b.test"}},
 	}
@@ -185,7 +185,7 @@ func TestSelectNarrowsTheFetchedPersonToTheChosenValues(t *testing.T) {
 		t.Fatalf("items = %v, %v; want %v", items, ok, wantItems)
 	}
 	// The fetched name is an alias choice, and chosen values keep the fetched order.
-	if !slices.Equal(got.Aliases, []Alias{{Name: "Hanako Yamada"}, {Name: "Hanachan"}}) ||
+	if !slices.Equal(got.Aliases, []CreditName{{Name: "Hanako Yamada"}, {Name: "Hanachan"}}) ||
 		!slices.Equal(got.ExternalIDs, []ExternalID{{Source: "site", Value: "2"}}) ||
 		!slices.Equal(got.Profile.Links, []string{"https://b.test"}) || got.Profile.Birthplace != "Tokyo" {
 		t.Fatalf("narrowed = %+v", got)
@@ -193,7 +193,7 @@ func TestSelectNarrowsTheFetchedPersonToTheChosenValues(t *testing.T) {
 }
 
 func TestSelectRefusesASelectionTheResultCannotGive(t *testing.T) {
-	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}}
+	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []CreditName{{Name: "Hana"}}}
 	for _, tc := range []struct {
 		name      string
 		selection PersonPluginSelection

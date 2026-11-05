@@ -300,14 +300,15 @@ func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) 
 		}
 		link.ref = *match.Credit
 	default:
-		input, err := NormalizeCredit(CreditInput{Name: entry.name, ExternalIDs: entry.ids})
+		// One entry is never an empty list, so either kind applies the same rules.
+		input, err := NormalizeCredit(CreditPerson, CreditInput{Names: []CreditName{{Name: entry.name}}, ExternalIDs: entry.ids})
 		if err != nil {
 			return link, SkippedWorkInfoInvalid, -1
 		}
-		link.ref = CreditRef{Name: input.Name}
+		link.ref = CreditRef{Name: input.DisplayName()}
 		link.created = m.createdIndex(input)
 		if link.created >= 0 {
-			link.ref.Name = m.created[link.created].Input.Name
+			link.ref.Name = m.created[link.created].Input.DisplayName()
 			link.absorb = input.ExternalIDs
 		} else {
 			// Create only when appending so skipped entries leave no orphan entity.
@@ -326,8 +327,8 @@ func (m *creditRoleMerge[R]) createdIndex(input CreditInput) int {
 			}
 		}
 	}
-	key := FoldForMatch(input.Name)
-	return slices.IndexFunc(m.created, func(c NewCredit) bool { return FoldForMatch(c.Input.Name) == key })
+	key := FoldForMatch(input.DisplayName())
+	return slices.IndexFunc(m.created, func(c NewCredit) bool { return FoldForMatch(c.Input.DisplayName()) == key })
 }
 
 // mergeIDs skips IDs owned by another planned entity as ambiguous and excess IDs as too_many.

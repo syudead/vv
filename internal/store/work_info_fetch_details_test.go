@@ -66,7 +66,7 @@ func TestApplyFetchedDetailsLinksAndCreatesPeople(t *testing.T) {
 	alpha := ids[fixturePath("/media/alpha.mp4")]
 	stored := createPerson(t, db, "Stored")
 	holder := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+		Names: namesOf("Aoi"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
 	})
 	setWorkInfo(t, db, alpha, domain.WorkInfo{People: []domain.WorkPerson{
 		{Role: domain.PersonPerformer, Person: domain.CreditRef{ID: stored.ID}},
@@ -238,7 +238,7 @@ func TestApplyFetchedDetailsFillsOnlyTheEmptyProfileFieldsOfLinkedPeople(t *test
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
 	existing := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi", Profile: domain.PersonProfile{BirthDate: "1990-05-17"},
+		Names: namesOf("Aoi"), Profile: domain.PersonProfile{BirthDate: "1990-05-17"},
 	})
 	height, tooTall := 160, 1000
 	aoi := fetchedPerformer("Aoi")
@@ -349,7 +349,7 @@ func TestApplyFetchedDetailsFillsTheProfilesOfLinkedOrganizations(t *testing.T) 
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
 	existing := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{
-		Name: "Studio", OrganizationProfile: domain.OrganizationProfile{Location: "Tokyo"},
+		Names: namesOf("Studio"), OrganizationProfile: domain.OrganizationProfile{Location: "Tokyo"},
 	})
 	makerField := domain.OrganizationField(domain.OrganizationMaker)
 	fetched := []domain.FetchedOrganization{

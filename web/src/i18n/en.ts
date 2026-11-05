@@ -1843,8 +1843,8 @@ export const en = {
     },
     row: {
       open: (name: string) => `Open the library filtered by ${name}`,
-      aliases: (list: string) => `Aliases: ${list}`,
-      aliasWithLanguage: (alias: string, language: string) => `${alias} (${language})`,
+      otherNames: (list: string) => `Also known as ${list}`,
+      nameWithLanguage: (name: string, language: string) => `${name} (${language})`,
       partOf: (parent: string) => `Part of ${parent}`,
       secondLine: (parts: readonly string[]) => parts.join(" · "),
       videoCount: videos,
@@ -1911,12 +1911,12 @@ export const en = {
     },
     mergeDialog: {
       title: (name: string) => `Merge "${name}"`,
-      aliasHint: (alias: string) => `Alias: ${alias}`,
+      otherNameHint: (name: string) => `Also known as ${name}`,
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         count === 0
-          ? `"${source}" isn't on any videos. Its name, aliases and IDs become aliases and IDs of "${target}", and it leaves the list. This can't be undone.`
-          : `The ${videos(count)} with "${source}" get "${target}" instead. "${source}"'s name, aliases and IDs become aliases and IDs of "${target}", and "${source}" leaves the list. This can't be undone.`,
+          ? `"${source}" isn't on any videos. Its names and IDs join "${target}"'s, and it leaves the list. This can't be undone.`
+          : `The ${videos(count)} with "${source}" get "${target}" instead. "${source}"'s names and IDs join "${target}"'s, and "${source}" leaves the list. This can't be undone.`,
       submit: "Merge",
       submitting: "Merging…",
     },
@@ -2958,7 +2958,7 @@ export const en = {
       addMaker: "Add a maker",
       addLabel: "Add a label",
       create: (name: string) => `Create "${name}"`,
-      alias: (alias: string) => `Alias: ${alias}`,
+      otherName: (name: string) => `Also known as ${name}`,
       videoCount: videos,
       remove: (name: string) => `Remove ${name}`,
       newMark: "New",
@@ -4427,7 +4427,6 @@ export const en = {
         organizationNames: "Organizations",
         role: "Role",
         synonym: "Synonym",
-        aliases: "Aliases",
         code: "Work code",
         url: "URL",
         dateKind: "Date",

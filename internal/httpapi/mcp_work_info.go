@@ -73,8 +73,8 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.list,
-		Description: "List " + kind.many + " with their aliases, external IDs and video count, one page at a time " +
-			"(GET /api/v1" + kind.path + "). q matches a name or alias ignoring width, case and kana; sort is name, " +
+		Description: "List " + kind.many + " with their names, external IDs and video count, one page at a time " +
+			"(GET /api/v1" + kind.path + "). q matches any of the names ignoring width, case and kana; sort is name, " +
 			"countDesc, countAsc, createdDesc or createdAsc" + ageSorts + "; limit is 1 to 200 and defaults to 100 here. Pass nextCursor " +
 			"back as cursor, with the same q and sort, until it is absent. Give source and externalId together instead " +
 			"to look up the one " + kind.one + " holding that external ID: items is empty when there is none. Look up " +
@@ -87,7 +87,8 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.create,
-		Description: "Create one " + kind.one + " with a name, aliases and external IDs (POST /api/v1" + kind.path + ")." +
+		Description: "Create one " + kind.one + " with its names and external IDs (POST /api/v1" + kind.path + "). names lists " +
+			"every name in order, the display name first." +
 			parent + profile + " An external ID held by another " + kind.one + " is a conflict with reason external_id_taken; " +
 			"look that " + kind.one + " up by the external ID and use its id instead. Each call creates a new " + kind.one + ".",
 		InputSchema: inputSchemaFor[extgen.CreditInput](kind.create),
@@ -97,8 +98,9 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.update,
 		Description: "Change the " + kind.one + " named by id (POST /api/v1" + kind.path + "/update). Only the properties given " +
-			"change; a given list replaces the stored one and null empties it." + parent + profileUpdate +
-			" Up to 50 aliases and 20 external IDs.",
+			"change; a given list replaces the stored one and null empties it. names replaces the whole list, the " +
+			"display name first; name respells only the display name; send one of them, not both." + parent +
+			profileUpdate + " Up to 50 names and 20 external IDs.",
 		InputSchema: inputSchemaFor[extgen.CreditUpdateRequest](kind.update),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: destructive, IdempotentHint: true},
 	}, t.post(kind.path+"/update"))
@@ -106,7 +108,8 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.merge,
 		Description: "Merge source " + kind.many + " into a target in one transaction (POST /api/v1" + kind.path + "/merge). " +
-			"Each source's videos, names (as aliases) and external IDs move to the target and the source is deleted. " +
+			"Each source's videos and external IDs move to the target, its names are appended after the target's, " +
+			"each spelling once, and the source is deleted. " +
 			"sourceIds holds 1 to 20000 ids and must not contain targetId; missing sources are returned in notFoundIds.",
 		InputSchema: inputSchemaFor[extgen.CreditMergeRequest](kind.merge),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: destructive, IdempotentHint: true},

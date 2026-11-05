@@ -21,7 +21,7 @@ const aoi: Person = {
   id: 7,
   name: "Aoi",
   provisional: false,
-  aliases: [{ name: "あおい", language: "ja" }],
+  names: [{ name: "Aoi" }, { name: "あおい", language: "ja" }],
   externalIds: [{ source: "fanza", value: "123" }],
   profile: { birthDate: "1990-05-01", birthplace: "Tokyo", cup: "C", heightCm: 158 },
   favorite: false,
@@ -102,7 +102,7 @@ describe("PersonEditPage", () => {
     expect(where()).toBe("/people/7");
     expect(server.patch).toHaveBeenCalledTimes(1);
     expect(server.patch.mock.calls[0]![0]).toEqual({
-      name: "Aoi Sora",
+      names: [{ name: "Aoi Sora" }, { name: "あおい", language: "ja" }],
       profile: { birthplace: null, waistCm: 58 },
     });
   });
@@ -155,7 +155,7 @@ describe("PersonEditPage", () => {
   });
 
   describe("仮の人物", () => {
-    const unnamed: Person = { ...aoi, name: "", provisional: true, aliases: [] };
+    const unnamed: Person = { ...aoi, name: "", provisional: true, names: [] };
 
     beforeEach(() => {
       server.person = () => json(unnamed);
@@ -176,14 +176,14 @@ describe("PersonEditPage", () => {
       expect(server.patch).not.toHaveBeenCalled();
     });
 
-    it("入力した名前を PATCH の name で送る", async () => {
+    it("入力した名前を PATCH の 1 件の names で送る", async () => {
       const name = await opened();
       const user = userEvent.setup();
       await user.type(name, "Mio");
       await user.click(screen.getByRole("button", { name: "Save" }));
 
       expect(await screen.findByText("person page Mio")).toBeDefined();
-      expect(server.patch.mock.calls[0]![0]).toEqual({ name: "Mio" });
+      expect(server.patch.mock.calls[0]![0]).toEqual({ names: [{ name: "Mio" }] });
     });
   });
 

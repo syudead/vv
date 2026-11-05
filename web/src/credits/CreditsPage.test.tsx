@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Credit, CreditKind } from "../api/credits";
+import type { Credit, CreditKind, CreditName } from "../api/credits";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "../tags/tagPageRows";
 import { stubRowHeights } from "../testing/virtualRows";
@@ -18,9 +18,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function credit(overrides: Partial<Credit> & { id: number; name: string }): Credit {
+/** others are the names after the display name. */
+function credit({
+  others = [],
+  ...overrides
+}: Partial<Credit> & { id: number; name: string; others?: CreditName[] }): Credit {
   return {
-    aliases: [],
+    names: [{ name: overrides.name }, ...others],
     externalIds: [],
     profile: {},
     favorite: false,
@@ -59,9 +63,7 @@ function pageOf(items: readonly Credit[], params: URLSearchParams) {
   const matched = items
     .filter(
       (item) =>
-        q === "" ||
-        foldForMatch(item.name).includes(q) ||
-        item.aliases.some((alias) => foldForMatch(alias.name).includes(q)),
+        q === "" || item.names.some((entry) => foldForMatch(entry.name).includes(q)),
     )
     .sort((a, b) => compareTagsForSort(a, b, sort));
   const limit = params.get("limit");
@@ -83,7 +85,7 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
   if (rest === "" && method === "POST") {
     const created = credit({
       id: server.nextId++,
-      name: (body as { name: string }).name,
+      name: (body as { names: CreditName[] }).names[0]!.name,
     });
     items.push(created);
     return jsonResponse(created, 201);
@@ -108,7 +110,10 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
     const sources = items.filter((item) => sourceIds.includes(item.id));
     for (const source of sources) {
       target.videoCount += source.videoCount;
-      target.aliases.push({ name: source.name });
+      for (const entry of source.names) {
+        if (!target.names.some((held) => held.name === entry.name))
+          target.names.push(entry);
+      }
       items.splice(items.indexOf(source), 1);
       for (const child of items) {
         if ((child as { parent?: { id: number } }).parent?.id === source.id)
@@ -123,8 +128,14 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
   }
   if (method === "PATCH") {
     const patch = body as Partial<Credit> & { parentId?: number | null };
-    if (patch.name !== undefined) target.name = patch.name;
-    if (patch.aliases !== undefined) target.aliases = patch.aliases ?? [];
+    if (patch.name !== undefined) {
+      target.name = patch.name;
+      target.names[0] = { ...target.names[0], name: patch.name };
+    }
+    if (patch.names !== undefined) {
+      target.names = patch.names ?? [];
+      target.name = target.names[0]?.name ?? "";
+    }
     if (patch.externalIds !== undefined) target.externalIds = patch.externalIds ?? [];
     if (patch.parentId !== undefined) {
       const parent = items.find((item) => item.id === patch.parentId);
@@ -216,7 +227,7 @@ beforeEach(() => {
     credit({
       id: 1,
       name: "Alice",
-      aliases: [{ name: "アリス", language: "ja" }, { name: "Ali" }],
+      others: [{ name: "アリス", language: "ja" }, { name: "Ali" }],
       videoCount: 3,
     }),
     credit({ id: 2, name: "Bob", videoCount: 2 }),
@@ -245,7 +256,7 @@ describe("CreditsPage 人物の一覧", () => {
     expect(screen.getByRole("heading", { level: 1, name: "People" })).toBeDefined();
     expect(count()).toBe("3 people");
     const alice = rowOf("Alice");
-    expect(within(alice).getByText("Aliases: アリス (ja) · Ali")).toBeDefined();
+    expect(within(alice).getByText("Also known as アリス (ja) · Ali")).toBeDefined();
     expect(within(alice).getByText("3 videos")).toBeDefined();
     expect(
       within(alice)
@@ -309,7 +320,7 @@ describe("CreditsPage 人物の一覧", () => {
     }
   });
 
-  it("作成は POST { name } を送り、同じ名前でも警告せずに作る", async () => {
+  it("作成は 1 件の POST { names } を送り、同じ名前でも警告せずに作る", async () => {
     const user = userEvent.setup();
     renderPage("person");
     await screen.findByTitle("Alice");
@@ -319,7 +330,7 @@ describe("CreditsPage 人物の一覧", () => {
 
     await waitFor(() => expect(screen.getAllByTitle("Alice")).toHaveLength(2));
     expect(requests("POST", /^\/api\/people$/).map((item) => item.body)).toEqual([
-      { name: "Alice" },
+      { names: [{ name: "Alice" }] },
     ]);
     expect(count()).toBe("4 people");
   });
@@ -340,7 +351,7 @@ describe("CreditsPage 人物の一覧", () => {
     ]);
   });
 
-  it("詳細の窓は言語つきの別名と外部 ID の一覧を丸ごと送る", async () => {
+  it("詳細の窓は代表名を先頭に、言語つきの名前と外部 ID の一覧を丸ごと送る", async () => {
     const user = userEvent.setup();
     renderPage("person");
     await screen.findByTitle("Alice");
@@ -363,7 +374,8 @@ describe("CreditsPage 人物の一覧", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(requests("PATCH", /^\/api\/people\/1$/).map((item) => item.body)).toEqual([
       {
-        aliases: [
+        names: [
+          { name: "Alice" },
           { name: "アリス", language: "ja" },
           { name: "Alicia", language: "es" },
         ],
@@ -371,7 +383,7 @@ describe("CreditsPage 人物の一覧", () => {
       },
     ]);
     expect(
-      within(rowOf("Alice")).getByText("Aliases: アリス (ja) · Alicia (es)"),
+      within(rowOf("Alice")).getByText("Also known as アリス (ja) · Alicia (es)"),
     ).toBeDefined();
   });
 
@@ -392,7 +404,7 @@ describe("CreditsPage 人物の一覧", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(requests("PATCH", /^\/api\/people\/1$/).map((item) => item.body)).toEqual([
-      { aliases: [{ name: "アリス", language: "ja" }] },
+      { names: [{ name: "Alice" }, { name: "アリス", language: "ja" }] },
     ]);
     expect(server.people[0]!.externalIds).toEqual([
       { source: "imdb", value: "nm1" },
@@ -431,7 +443,7 @@ describe("CreditsPage 人物の一覧", () => {
       body: {
         code: "invalid_request",
         reason: "work_info_invalid_language",
-        field: "aliases[0].language",
+        field: "names[1].language",
         message: "bad",
       },
     };
@@ -497,7 +509,7 @@ describe("CreditsPage 人物の一覧", () => {
     await user.click(within(dialog).getByRole("option", { name: /Alice/ }));
     expect(
       within(dialog).getByText(
-        'The 2 videos with "Bob" get "Alice" instead. "Bob"\'s name, aliases and IDs become aliases and IDs of "Alice", and "Bob" leaves the list. This can\'t be undone.',
+        'The 2 videos with "Bob" get "Alice" instead. "Bob"\'s names and IDs join "Alice"\'s, and "Bob" leaves the list. This can\'t be undone.',
       ),
     ).toBeDefined();
     await user.click(merge);
@@ -573,8 +585,8 @@ describe("CreditsPage 団体の一覧", () => {
         id: 11,
         name: "Label",
         parent: { id: 10, name: "Studio" },
-        aliases: [{ name: "Lbl" }],
-      } as Partial<Credit> & { id: number; name: string }),
+        others: [{ name: "Lbl" }],
+      } as Partial<Credit> & { id: number; name: string; others: CreditName[] }),
     ];
   });
 
@@ -647,7 +659,7 @@ describe("CreditsPage 団体の一覧", () => {
       screen.getByRole("heading", { level: 1, name: "Organizations" }),
     ).toBeDefined();
     expect(
-      within(rowOf("Label")).getByText("Part of Studio · Aliases: Lbl"),
+      within(rowOf("Label")).getByText("Part of Studio · Also known as Lbl"),
     ).toBeDefined();
     expect(
       within(rowOf("Label"))
@@ -706,7 +718,7 @@ describe("CreditsPage 団体の一覧", () => {
 
     await screen.findByTitle("New Studio");
     expect(
-      within(rowOf("Label")).getByText("Part of New Studio · Aliases: Lbl"),
+      within(rowOf("Label")).getByText("Part of New Studio · Also known as Lbl"),
     ).toBeDefined();
   });
 
@@ -729,7 +741,7 @@ describe("CreditsPage 団体の一覧", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.queryByTitle("Studio")).toBeNull();
     expect(
-      within(rowOf("Label")).getByText("Part of Agency · Aliases: Lbl"),
+      within(rowOf("Label")).getByText("Part of Agency · Also known as Lbl"),
     ).toBeDefined();
   });
 
@@ -746,7 +758,7 @@ describe("CreditsPage 団体の一覧", () => {
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(screen.queryByTitle("Studio")).toBeNull());
-    expect(within(rowOf("Label")).getByText("Aliases: Lbl")).toBeDefined();
+    expect(within(rowOf("Label")).getByText("Also known as Lbl")).toBeDefined();
   });
 
   it("削除の確認は、中の団体が親を失うことも書く", async () => {
