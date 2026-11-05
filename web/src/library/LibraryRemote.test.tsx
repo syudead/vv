@@ -19,16 +19,17 @@ import LibraryPage from "./LibraryPage";
 
 const remoteId = remoteIdOffset + 5;
 const peerInfo = {
+  slot: 1,
+  nodeId: "n1",
   name: "studio-pc",
   address: "http://192.168.1.20:8080",
   version: "1",
   pinned: false,
 };
-const connected: PeerState = { state: "connected", link: peerInfo };
+const secondInfo = { ...peerInfo, slot: 2, nodeId: "n2", name: "den-pc" };
+const connected: PeerState = { links: [{ ...peerInfo, state: "connected" }] };
 const unreachable: PeerState = {
-  state: "unreachable",
-  reason: "network",
-  link: peerInfo,
+  links: [{ ...peerInfo, state: "unreachable", reason: "network" }],
 };
 
 function video(id: number, title: string): Video {
@@ -66,10 +67,13 @@ function json(body: unknown, status = 200): Response {
 
 /** The library lists the peer's video only while it is connected, as the server does. */
 const server = {
+  peer: connected,
+  extra: [] as Video[],
   peerListed: true,
   libraryReads: 0,
   codeAnswer: { applied: 1 } as unknown,
   groupRequests: [] as string[],
+  favoriteBodies: [] as unknown[],
 };
 
 function install() {
@@ -84,10 +88,10 @@ function install() {
       );
     }
     if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
-    if (url.pathname === "/api/peer") return Promise.resolve(json(connected));
+    if (url.pathname === "/api/peer") return Promise.resolve(json(server.peer));
     if (url.pathname === "/api/library") {
       server.libraryReads += 1;
-      const shown = server.peerListed ? [local, remote] : [local];
+      const shown = [...(server.peerListed ? [local, remote] : [local]), ...server.extra];
       const items = shown.map((item) => ({ kind: "video", video: item }));
       return Promise.resolve(json({ items, total: items.length }));
     }
@@ -97,6 +101,12 @@ function install() {
     }
     if (url.pathname === "/api/video-code-edits/summary" && method === "POST") {
       return Promise.resolve(json({ rows: [{ video: local }, { video: remote }] }));
+    }
+    if (url.pathname === "/api/favorites" && method === "PUT") {
+      server.favoriteBodies.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(
+        json({ appliedVideos: 2, appliedGroups: 0, appliedSmartFolders: 0 }),
+      );
     }
     if (url.pathname === "/api/video-code-edits" && method === "POST") {
       return Promise.resolve(json(server.codeAnswer));
@@ -147,10 +157,13 @@ beforeEach(() => {
   clearListSnapshot();
   localStorage.clear();
   installFakeEventSource();
+  server.peer = connected;
+  server.extra = [];
   server.peerListed = true;
   server.libraryReads = 0;
   server.codeAnswer = { applied: 1 };
   server.groupRequests = [];
+  server.favoriteBodies = [];
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -194,14 +207,50 @@ describe("The library of two paired VVMDMs", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("offers fill but no favorite, playlist or group picker for a mixed selection, and the peer's groups for a remote one", async () => {
+  it("names each item's link by its id's slot, and counts the links down in the notice", async () => {
+    install();
+    server.peer = {
+      links: [
+        { ...peerInfo, state: "connected" },
+        { ...secondInfo, state: "connected" },
+      ],
+    };
+    server.extra = [video(2 * remoteIdOffset + 5, "二台目の動画")];
+    renderLibrary();
+
+    const second = await screen.findByRole("link", { name: "二台目の動画" });
+    const mark = document.getElementById(second.getAttribute("aria-describedby") ?? "");
+    expect(mark?.textContent).toBe("On den-pc");
+    const first = screen.getByRole("link", { name: "リモートの動画" });
+    expect(
+      document.getElementById(first.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toBe("On studio-pc");
+
+    await emitServerEvent("peer", {
+      links: [
+        { ...peerInfo, state: "unreachable", reason: "network" },
+        { ...secondInfo, state: "revoked" },
+      ],
+    });
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByText("2 VVMDMs aren't connected")).toBeDefined();
+  });
+
+  it("offers fill and favorites but no playlist or group picker for a mixed selection, and the peer's groups for a remote one", async () => {
     install();
     const user = userEvent.setup();
     renderLibrary();
     await selectBoth(user);
     const bar = screen.getByRole("region", { name: "Selection actions" });
-    expect(within(bar).queryByRole("button", { name: /Favorite/ })).toBeNull();
     expect(within(bar).queryByRole("button", { name: "Add to playlist" })).toBeNull();
+    // The server splits the ids by node, so one request favorites both videos.
+    await user.click(within(bar).getByRole("button", { name: /Favorite/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add to favorites" }));
+    await waitFor(() =>
+      expect(server.favoriteBodies).toEqual([
+        expect.objectContaining({ favorite: true, videoIds: [1, remoteId] }),
+      ]),
+    );
     expect(within(bar).getByRole("button", { name: "Fill info…" })).toBeDefined();
     const add = within(bar).getByRole("button", { name: "Add to group" });
     expect(add.hasAttribute("disabled")).toBe(true);

@@ -9,6 +9,7 @@ import {
   isCreditGone,
   updateCredit,
 } from "../api/credits";
+import { updateFavorites } from "../api/favorites";
 import { errorText, t, type UiText } from "../i18n";
 import { writeListSortPreferences } from "../preferences/tagListPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
@@ -409,6 +410,11 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
         setDeleting(target);
       },
       onDraftChange: () => setRenameError(null),
+      onToggleFavorite: async (target) => {
+        const favorite = !target.favorite;
+        await updateFavorites([], [], favorite, { organizationIds: [target.id] });
+        replaceLoaded({ ...target, favorite }, target);
+      },
     };
   });
   const rowHandlers = useMemo<CreditRowHandlers>(
@@ -421,6 +427,8 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
       onOpenMerge: (credit) => rowHandlersRef.current?.onOpenMerge(credit),
       onDelete: (credit) => rowHandlersRef.current?.onDelete(credit),
       onDraftChange: () => rowHandlersRef.current?.onDraftChange(),
+      onToggleFavorite: async (credit) =>
+        rowHandlersRef.current?.onToggleFavorite(credit),
     }),
     [],
   );
@@ -567,6 +575,10 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
           onClose={closeDetails}
           onSaved={savedDetails}
           onStale={staleDetails}
+          onLogoChanged={(updated) => {
+            replaceLoaded(updated, details);
+            setDetails(updated);
+          }}
         />
       )}
       {merging !== null && (

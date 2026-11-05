@@ -508,6 +508,8 @@ type FetchedWorkInfo struct {
 	ExternalIDs   []ExternalID
 	// CoverURLs are the first WorkInfoCoversMaxCount distinct valid cover URLs in result order.
 	CoverURLs []string
+	// ImageReferer is the Referer VVMDM sends with each cover and person image request, empty for none.
+	ImageReferer string
 }
 
 type WorkInfoRunResult struct {
@@ -609,7 +611,7 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 		return parseCandidates(raw)
 	case op == WorkInfoFetch && raw.WorkInfo != nil:
 		info := FetchedWorkInfo{
-			Title: raw.WorkInfo.Title,
+			Title: fetchedControls(raw.WorkInfo.Title),
 			Tags:  firstUniqueTags(raw.WorkInfo.Tags),
 		}
 		parseWorkDetails(raw.WorkInfo.workDetailsJSON, &info)
@@ -638,6 +640,7 @@ func firstUniqueTags(tags []string) []string {
 		if len(out) == WorkInfoPluginMaxTags {
 			break
 		}
+		t = fetchedControls(t)
 		if !seen[t] {
 			seen[t] = true
 			out = append(out, t)

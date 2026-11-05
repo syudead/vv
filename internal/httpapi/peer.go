@@ -18,19 +18,21 @@ const (
 	maxPeerBodyBytes   = 8 << 10
 )
 
-// Pairing is app.Pairing: the pairing code, the outgoing link this node reads with its state, and the
+// Pairing is app.Pairing: the pairing code, the outgoing links this node reads with their states, and the
 // incoming grant of the node that reads this one.
 type Pairing interface {
 	State(ctx context.Context) (domain.PeerState, error)
 	// IssueCode answers domain.ErrAlreadyPaired on a node another VVMDM reads.
 	IssueCode(ctx context.Context) (domain.PairingCode, error)
+	// Pair answers domain.ErrPeerLimit for a ninth link and domain.ErrAlreadyPaired for a node already read.
 	Pair(ctx context.Context, input domain.PairInput) (domain.PeerState, error)
-	// ChangeAddress answers domain.ErrNotFound without a link.
-	ChangeAddress(ctx context.Context, address string) (domain.PeerState, error)
-	// ConfirmCertificate answers domain.ErrFingerprintChanged unless fingerprint is the one waiting.
-	ConfirmCertificate(ctx context.Context, fingerprint string) (domain.PeerState, error)
-	// Unpair removes the link; RevokeGrant removes the grant. Each does nothing without one.
-	Unpair(ctx context.Context) error
+	// ChangeAddress answers domain.ErrNotFound without the link of nodeID.
+	ChangeAddress(ctx context.Context, nodeID, address string) (domain.PeerState, error)
+	// ConfirmCertificate answers domain.ErrFingerprintChanged unless fingerprint is the one the link of nodeID
+	// waits on, and domain.ErrNotFound without that link.
+	ConfirmCertificate(ctx context.Context, nodeID, fingerprint string) (domain.PeerState, error)
+	// Unpair removes the link of nodeID; RevokeGrant removes the grant. Each does nothing without one.
+	Unpair(ctx context.Context, nodeID string) error
 	RevokeGrant(ctx context.Context) error
 	Accept(ctx context.Context, req domain.PairingRequest) (domain.PairingAnswer, error)
 	// Handshake answers domain.ErrPeerUnknown for a secret that is not the grant's credential.
@@ -38,6 +40,11 @@ type Pairing interface {
 	Forget(ctx context.Context, nodeID string) error
 	// Authenticate reports whether secret is the grant's credential.
 	Authenticate(ctx context.Context, secret string) (bool, error)
+	// LinkFolders answers the snapshot of the link's media folders with its state, or domain.ErrNotFound
+	// without the link of nodeID.
+	LinkFolders(ctx context.Context, nodeID string) (domain.PeerLinkFolders, error)
+	// SetLinkFolderEnabled switches a snapshot row on this node only; domain.ErrNotFound without it.
+	SetLinkFolderEnabled(ctx context.Context, nodeID string, folderID int64, enabled bool) (domain.PeerMediaFolder, error)
 }
 
 type peerRequestKey struct{}
@@ -117,12 +124,19 @@ func (s *server) peerBoundary(
 		s.invalidRequest(w, "X-VV-Peer-Audience must be guest when present.")
 		return
 	}
+	// The reader's switches replace this node's own, which never apply to a peer request.
+	excluded, ok := peerExcludedFolders(r)
+	if !ok {
+		s.invalidRequest(w, "X-VV-Peer-Excluded-Folders must be comma-separated positive ids when present.")
+		return
+	}
+	audience = audience.WithExcludedFolders(excluded)
 	if !peerAllowed(r) {
 		s.writeReasonError(w, http.StatusForbidden, codeForbidden, gen.ErrorReasonPeerNotAllowed,
 			"The paired VVMDM cannot use this operation.")
 		return
 	}
-	if audience == domain.AudienceGuest && class == accessOwner {
+	if !audience.IsOwner() && class == accessOwner {
 		s.unauthenticated(w)
 		return
 	}
@@ -157,29 +171,40 @@ func (s *server) GetPeer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, peerStateBody(state, audienceFrom(r.Context())), s.logger)
 }
 
-// peerStateBody gives guests the state and reason only.
+// peerStateBody gives guests each link's slot, state and reason only.
 func peerStateBody(state domain.PeerState, audience domain.Audience) gen.PeerState {
-	body := gen.PeerState{State: gen.PeerStateState(state.State)}
-	if state.Reason != "" {
-		reason := gen.PeerStateReason(state.Reason)
-		body.Reason = &reason
+	owner := audience.IsOwner()
+	body := gen.PeerState{Links: make([]gen.PeerLinkState, len(state.Links))}
+	for i, link := range state.Links {
+		body.Links[i] = peerLinkBody(link, owner)
 	}
-	if audience != domain.AudienceOwner {
+	if !owner {
 		return body
 	}
 	node := peerNodeBody(state.Node)
 	body.Node = &node
-	if state.Link != nil {
-		body.Link = &gen.PeerLink{Name: state.Link.Name, Address: state.Link.Address, Pinned: state.Link.PinnedSPKI != ""}
-		if state.PeerVersion != "" {
-			body.Link.Version = &state.PeerVersion
-		}
-	}
 	if state.Grant != nil {
 		body.Grant = &gen.PeerGrant{Name: state.Grant.Name, PairedAt: state.Grant.PairedAt}
 	}
-	if state.Fingerprint != "" {
-		body.Fingerprint = &state.Fingerprint
+	return body
+}
+
+func peerLinkBody(link domain.PeerLinkState, owner bool) gen.PeerLinkState {
+	body := gen.PeerLinkState{Slot: link.Link.Slot, State: gen.PeerLinkStateState(link.State)}
+	if link.Reason != "" {
+		reason := gen.PeerLinkStateReason(link.Reason)
+		body.Reason = &reason
+	}
+	if !owner {
+		return body
+	}
+	pinned := link.Link.PinnedSPKI != ""
+	body.NodeId, body.Name, body.Address, body.Pinned = &link.Link.NodeID, &link.Link.Name, &link.Link.Address, &pinned
+	if link.PeerVersion != "" {
+		body.Version = &link.PeerVersion
+	}
+	if link.Fingerprint != "" {
+		body.Fingerprint = &link.Fingerprint
 	}
 	return body
 }
@@ -188,12 +213,12 @@ func peerNodeBody(node domain.PeerNode) gen.PeerNode {
 	return gen.PeerNode{Id: node.ID, Name: node.Name, Version: node.Version}
 }
 
-// UnpairPeer removes the link; the grant's credential stays valid, so no peer request is canceled.
-func (s *server) UnpairPeer(w http.ResponseWriter, r *http.Request) {
+// UnpairPeer removes the link of nodeID; the grant's credential stays valid, so no peer request is canceled.
+func (s *server) UnpairPeer(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if !s.requirePairing(w) {
 		return
 	}
-	if err := s.pairing.Unpair(r.Context()); err != nil {
+	if err := s.pairing.Unpair(r.Context(), nodeID); err != nil {
 		s.internalError(w, "Could not unpair.", err)
 		return
 	}
@@ -251,7 +276,7 @@ func (s *server) PairPeer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, peerStateBody(state, domain.AudienceOwner), s.logger)
 }
 
-func (s *server) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
+func (s *server) UpdatePeerAddress(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if !s.requirePairing(w) {
 		return
 	}
@@ -260,9 +285,9 @@ func (s *server) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	state, err := s.pairing.ChangeAddress(r.Context(), body.Address)
+	state, err := s.pairing.ChangeAddress(r.Context(), nodeID, body.Address)
 	if errors.Is(err, domain.ErrNotFound) {
-		s.notFound(w, "This VVMDM is not paired.")
+		s.notFound(w, "This VVMDM does not read that one.")
 		return
 	}
 	if err != nil {
@@ -273,7 +298,7 @@ func (s *server) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, peerStateBody(state, domain.AudienceOwner), s.logger)
 }
 
-func (s *server) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) {
+func (s *server) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if !s.requirePairing(w) {
 		return
 	}
@@ -282,13 +307,13 @@ func (s *server) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) 
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	state, err := s.pairing.ConfirmCertificate(r.Context(), body.Fingerprint)
+	state, err := s.pairing.ConfirmCertificate(r.Context(), nodeID, body.Fingerprint)
 	switch {
 	case errors.Is(err, domain.ErrFingerprintChanged):
-		s.fingerprintChanged(w, r)
+		s.fingerprintChanged(w, r, nodeID)
 		return
 	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, "This VVMDM is not paired.")
+		s.notFound(w, "This VVMDM does not read that one.")
 		return
 	case err != nil:
 		s.internalError(w, "Could not trust the certificate.", err)
@@ -298,14 +323,19 @@ func (s *server) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, peerStateBody(state, domain.AudienceOwner), s.logger)
 }
 
-// fingerprintChanged names the fingerprint now waiting, so the page can show it in place of the old one.
-func (s *server) fingerprintChanged(w http.ResponseWriter, r *http.Request) {
+// fingerprintChanged names the fingerprint the link of nodeID now waits on, so the page can show it in place of
+// the old one.
+func (s *server) fingerprintChanged(w http.ResponseWriter, r *http.Request, nodeID string) {
 	body := gen.Error{
 		Code: codeConflict, Reason: reasonRef(gen.ErrorReasonFingerprintChanged),
 		Message: "The certificate of the other VVMDM changed again.",
 	}
-	if state, err := s.pairing.State(r.Context()); err == nil && state.Fingerprint != "" {
-		body.Fingerprint = &state.Fingerprint
+	if state, err := s.pairing.State(r.Context()); err == nil {
+		for _, link := range state.Links {
+			if link.Link.NodeID == nodeID && link.Fingerprint != "" {
+				body.Fingerprint = &link.Fingerprint
+			}
+		}
 	}
 	s.writeErrorBody(w, http.StatusConflict, body)
 }
@@ -382,7 +412,9 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 	case errors.Is(err, domain.ErrInvalidPairingInput):
 		s.invalidRequest(w, "The pairing request has invalid values.")
 	case errors.Is(err, domain.ErrAlreadyPaired):
-		s.conflictReason(w, gen.ErrorReasonAlreadyPaired, "This VVMDM already reads one, or the other VVMDM is already read by one.")
+		s.conflictReason(w, gen.ErrorReasonAlreadyPaired, "This VVMDM already reads that one, or the other VVMDM is already read by one.")
+	case errors.Is(err, domain.ErrPeerLimit):
+		s.conflictReason(w, gen.ErrorReasonPeerLimit, "This VVMDM already reads the most VVMDMs it can.")
 	case errors.As(err, &untrusted):
 		s.writeErrorBody(w, http.StatusConflict, gen.Error{
 			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonCertificateUntrusted), Fingerprint: &untrusted.Fingerprint,

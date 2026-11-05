@@ -29,11 +29,15 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		tagKind: params.TagKind, tagName: params.TagName, tagKindName: params.TagKindName,
 		personName: params.PersonName, organizationName: params.OrganizationName,
+		conditions: conditionParams{
+			minDurationMs: params.MinDurationMs, maxDurationMs: params.MaxDurationMs,
+			addedFrom: params.AddedFrom, addedTo: params.AddedTo, watchState: params.WatchState,
+		},
 	})
 	if !ok {
 		return
 	}
-	if s.mergesLists(r.Context(), query) {
+	if s.readsPeer(r.Context()) {
 		s.listMergedLibrary(w, r, query)
 		return
 	}
@@ -47,7 +51,10 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		s.internalError(w, "Could not load the list.", err)
 		return
 	}
-	payload := gen.LibraryPage{Items: items, Total: page.Total, PeerItems: peerItemsFor(r.Context(), page.ItemCursors)}
+	payload := gen.LibraryPage{
+		Items: items, Total: page.Total, PeerItems: peerItemsFor(r.Context(), page.ItemCursors),
+		EmptyReason: apiEmptyReason(page.EmptyReason),
+	}
 	if page.NextCursor != "" {
 		next := page.NextCursor
 		payload.NextCursor = &next
@@ -58,6 +65,15 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// apiEmptyReason omits an empty reason, which the store leaves unset on a page with items.
+func apiEmptyReason(reason domain.EmptyReason) *gen.EmptyReason {
+	if reason == "" {
+		return nil
+	}
+	out := gen.EmptyReason(reason)
+	return &out
 }
 
 // libraryItems is page's items in the viewer's shape.

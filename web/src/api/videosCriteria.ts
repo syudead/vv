@@ -1,4 +1,10 @@
-import type { FolderRef, FolderScope, VideoSort } from "./client";
+import {
+  type FolderRef,
+  type FolderScope,
+  type VideoConditionParams,
+  videoConditionNames,
+  type VideoSort,
+} from "./client";
 import type { components } from "./gen/openapi";
 
 type WorkPersonRole = components["schemas"]["WorkPersonRole"];
@@ -6,7 +12,8 @@ type WorkPersonRole = components["schemas"]["WorkPersonRole"];
 /** Select individual-video, mixed-library, or folder-video endpoints while sharing pagination. */
 export type VideosSource = "videos" | "library" | FolderRef;
 
-export interface VideosCriteria {
+/** Folder sources ignore the video conditions. */
+export interface VideosCriteria extends VideoConditionParams {
   query?: string;
   favorite?: boolean;
   sort: VideoSort;
@@ -34,6 +41,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.personRole ?? null,
     criteria.organization ?? null,
     criteria.tagKind ?? null,
+    ...videoConditionNames.map((name) => criteria[name] ?? null),
   ]);
 }
 
@@ -44,6 +52,13 @@ export function listsSmartFolders(criteria: VideosCriteria): boolean {
     (criteria.tag ?? []).length === 0 &&
     criteria.person === undefined &&
     criteria.organization === undefined &&
-    criteria.tagKind === undefined
+    criteria.tagKind === undefined &&
+    videoConditionNames.every((name) => criteria[name] === undefined)
   );
+}
+
+/** The video conditions alone, for the library and video endpoints. */
+export function videoConditions(criteria: VideoConditionParams): VideoConditionParams {
+  const { minDurationMs, maxDurationMs, addedFrom, addedTo, watchState } = criteria;
+  return { minDurationMs, maxDurationMs, addedFrom, addedTo, watchState };
 }

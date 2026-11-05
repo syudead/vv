@@ -24,14 +24,14 @@ func TestMergeVocabularyJoinsExactNamesIntoTheLowestLocalID(t *testing.T) {
 		{ID: 9, Provisional: true, Count: 1},
 	}
 	peer := []VocabularyEntry[string]{
-		vocabularyEntry(ToRemoteID(1), "佐藤", 4),
+		vocabularyEntry(RemoteID(1, 1), "佐藤", 4),
 		// Today a name differing only by width is another name, so it does not join.
-		vocabularyEntry(ToRemoteID(2), "ＡＢＣ", 1),
-		{ID: ToRemoteID(3), Provisional: true, Count: 1},
+		vocabularyEntry(RemoteID(1, 2), "ＡＢＣ", 1),
+		{ID: RemoteID(1, 3), Provisional: true, Count: 1},
 	}
 	merged := MergeVocabulary(local, peer, func(local, peer string) string { return local + "+" + peer })
 
-	if want := []int64{7, 3, 5, 9, ToRemoteID(2), ToRemoteID(3)}; !slices.Equal(vocabularyIDs(merged), want) {
+	if want := []int64{7, 3, 5, 9, RemoteID(1, 2), RemoteID(1, 3)}; !slices.Equal(vocabularyIDs(merged), want) {
 		t.Fatalf("ids = %v, want %v", vocabularyIDs(merged), want)
 	}
 	joined := merged[1]
@@ -45,11 +45,11 @@ func TestMergeVocabularyJoinsExactNamesIntoTheLowestLocalID(t *testing.T) {
 
 func TestSortVocabularyBreaksTiesByNameThenLocalFirst(t *testing.T) {
 	entries := []VocabularyEntry[string]{
-		vocabularyEntry(ToRemoteID(1), "b", 2), vocabularyEntry(4, "a10", 2), vocabularyEntry(2, "b", 2),
+		vocabularyEntry(RemoteID(1, 1), "b", 2), vocabularyEntry(4, "a10", 2), vocabularyEntry(2, "b", 2),
 		vocabularyEntry(3, "a9", 2), {ID: 1, Provisional: true, Count: 2}, vocabularyEntry(5, "z", 3),
 	}
 	SortVocabulary(entries, TagSortCountDesc)
-	if want := []int64{5, 3, 4, 2, ToRemoteID(1), 1}; !slices.Equal(vocabularyIDs(entries), want) {
+	if want := []int64{5, 3, 4, 2, RemoteID(1, 1), 1}; !slices.Equal(vocabularyIDs(entries), want) {
 		t.Errorf("countDesc = %v, want %v", vocabularyIDs(entries), want)
 	}
 }

@@ -81,7 +81,7 @@ export default function PlaylistItemRow({
             {title}
           </Link>
         )}
-        <ItemTitleExtras facts={facts} />
+        <ItemTitleExtras facts={facts} video={item.video} />
       </TableCell>
       <ItemWatchedAndDurationCells item={item} facts={facts} />
       <TableCell className="w-0 pr-1 pl-0 sm:pr-3">

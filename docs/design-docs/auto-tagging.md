@@ -78,8 +78,53 @@ frames, before Ollama capped a request at 8 images):
 Asking whether a tag describes the video makes the model weigh the whole
 video, so a tag that fits one scene falls below the threshold.
 
-Time per video grows with the number of candidates; the Ollama provider's
-batches and measured times are in [ai-layer.md](ai-layer.md#ollama-provider).
+### Shortlist for a large vocabulary
+
+Each yes/no request carries at most 16 questions and sends the images again
+([ai-layer.md](ai-layer.md#ollama-provider)), so asking every candidate makes
+the requests per video grow with the vocabulary: 2,000 tags take 125 requests,
+and importing several videos keeps the GPU busy for hours. With more than 64
+candidates, the tagger first asks one `choice` question whose options are the
+candidates, with the same images, facts and reading of the video, and an extra
+option for none of them. The candidates whose probability is at least 0.02
+are kept, the 48 most probable when more reach it, and only they are asked the
+yes/no question. With 64 candidates or fewer, every candidate is asked
+directly, since shortlisting would not save a request.
+
+```mermaid
+flowchart LR
+  c[Candidates] --> many{More than 64?}
+  many -->|no| yesno[Yes/no question per candidate]
+  many -->|yes| choice[Choice question over all candidates]
+  choice -->|probability 0.02 or more, at most 48| yesno
+  yesno --> thresholds[Probabilities to add and suggest]
+```
+
+A choice spreads one probability over its options, so it ranks candidates but
+cannot add a tag on its own: several right tags share the probability, and a
+wrong tag in a question with no right one can take much of it. The yes/no
+question still decides every tag. Clef takes 255 options per choice; a
+provider question holds 254 candidates and the none option. The 0.02 floor is
+five times the 1/254 share an option gets by chance.
+
+Measured with Clef-flash on Workers AI, on a photograph of an astronaut in
+front of a flag and a space shuttle model, with 1,018 tags (the 1,000 ImageNet
+labels and 18 others):
+
+| Method | Requests | Input tokens | Right tags kept |
+| --- | --- | --- | --- |
+| Yes/no for every tag, 64 per request | 16 | 135,118 | — |
+| Choice over every tag, 254 per question | 1, with 5 questions | 23,272 | Every tag the yes/no method scored 0.5 or more, within the top 11, except `tank suit` (0.504) |
+
+With 2,036 tags (those and a variant of each), the shortlist kept 17, and the
+run took 11 requests instead of 128, and it added the flag, the astronaut,
+the spacesuit, the space shuttle, the rocket and NASA.
+
+| Rejected | Why |
+| --- | --- |
+| Ask more yes/no questions per request | Ollama takes 64, still 32 requests for 2,000 tags, and 64 questions with images ran a CPU host out of memory |
+| Add tags from the choice probabilities alone | A choice's probabilities are shared between its options, so several right tags each get a small share |
+| A text-embedding prefilter | Needs a second model and an index of tag embeddings, while the decision model already ranks the tags with the images |
 
 | Rejected | Why |
 | --- | --- |

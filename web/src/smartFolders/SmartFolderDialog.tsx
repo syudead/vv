@@ -12,6 +12,7 @@ import {
   type SmartRuleRef,
 } from "../api/smartFolders";
 import { errorText, t, type UiText } from "../i18n";
+import { hasVideoConditions } from "../library/videoConditions";
 import { cn } from "../lib/cn";
 import { playlistName } from "../playlists/playlistName";
 import { FormDialog } from "../ui/patterns/form-dialog";
@@ -87,10 +88,14 @@ interface FieldErrors {
 
 const noErrors: FieldErrors = { name: false, parent: null, conditions: null };
 
-function failureErrors(error: unknown): FieldErrors | null {
+/** The client checks every other condition before sending, so a rejected rule with video conditions is about them. */
+function failureErrors(error: unknown, rule: SmartRule): FieldErrors | null {
   if (!(error instanceof RequestFailed)) return null;
   if (error.status === 400 && error.code === "invalid_smart_rule") {
-    return { ...noErrors, conditions: t.errors.code.invalid_smart_rule };
+    const conditions = hasVideoConditions(rule)
+      ? t.library.conditions.outOfOrder
+      : t.errors.code.invalid_smart_rule;
+    return { ...noErrors, conditions };
   }
   if (error.status === 400) return { ...noErrors, name: true };
   if (error.status === 404 && error.code === "smart_folder_not_found") {
@@ -302,7 +307,7 @@ export default function SmartFolderDialog({
       onGone();
       return;
     }
-    const fieldErrors = failureErrors(error);
+    const fieldErrors = failureErrors(error, cleaned);
     if (fieldErrors === null) {
       setFailure(
         (target.kind === "create"

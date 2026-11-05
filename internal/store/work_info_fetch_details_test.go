@@ -344,3 +344,43 @@ func TestApplyFetchedDetailsMergesNoPersonOutsideTheWorksUnnamedPerformers(t *te
 		t.Fatalf("face_merge entries = %+v, want none", entries)
 	}
 }
+
+func TestApplyFetchedDetailsFillsTheProfilesOfLinkedOrganizations(t *testing.T) {
+	db, ids := overrideFixture(t)
+	alpha := ids[fixturePath("/media/alpha.mp4")]
+	existing := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{
+		Name: "Studio", OrganizationProfile: domain.OrganizationProfile{Location: "Tokyo"},
+	})
+	makerField := domain.OrganizationField(domain.OrganizationMaker)
+	fetched := []domain.FetchedOrganization{
+		{Role: domain.OrganizationMaker, Name: "Studio", Profile: domain.OrganizationProfile{Location: "Osaka", Bio: "b"}},
+		{Role: domain.OrganizationMaker, Name: "New", Profile: domain.OrganizationProfile{FoundedDate: "1990", DissolvedDate: "1980"}},
+	}
+
+	applied := applyDetails(t, db, alpha, domain.FetchedWorkInfo{Organizations: fetched}, makerField)
+
+	orgs := applied.Video.WorkInfo.Organizations
+	if len(orgs) != 2 || orgs[0].Organization.ID != existing.ID {
+		t.Fatalf("organizations = %+v; want Studio, then a new one", orgs)
+	}
+	stored, err := db.Credits().Get(context.Background(), domain.CreditOrganization, existing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (domain.OrganizationProfile{Location: "Tokyo", Bio: "b"}); !stored.OrganizationProfile.Equal(want) {
+		t.Errorf("Studio's profile = %+v, want the bio filled and the location kept", stored.OrganizationProfile)
+	}
+	created, err := db.Credits().Get(context.Background(), domain.CreditOrganization, orgs[1].Organization.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (domain.OrganizationProfile{FoundedDate: "1990"}); !created.OrganizationProfile.Equal(want) {
+		t.Errorf("New's profile = %+v, want the founding alone", created.OrganizationProfile)
+	}
+	wantSkipped := []domain.SkippedWorkInfoValue{
+		{Field: makerField, Value: "New: dissolvedDate 1980", Reason: domain.SkippedWorkInfoInvalid},
+	}
+	if !reflect.DeepEqual(applied.Skipped, wantSkipped) {
+		t.Errorf("skipped = %+v, want %+v", applied.Skipped, wantSkipped)
+	}
+}

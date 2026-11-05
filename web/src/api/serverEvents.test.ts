@@ -7,6 +7,7 @@ import {
   FakeEventSource,
   installFakeEventSource,
 } from "./fakeEventSource";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import { subscribeServerEvents } from "./serverEvents";
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
@@ -94,6 +95,39 @@ describe("subscribeServerEvents の smartFolder", () => {
     currentEventSource().dispatch("smartFolder", { ids: [3, 7] });
 
     expect(smartFolder).toHaveBeenCalledWith([3, 7]);
+    unsubscribe();
+  });
+});
+
+describe("subscribeServerEvents の assistant", () => {
+  beforeEach(() => installFakeEventSource());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("assistant の知らせを、中身を読まずに購読者へ渡す", () => {
+    const assistant = vi.fn();
+    const unsubscribe = subscribeServerEvents({ assistant });
+
+    currentEventSource().dispatch("assistant", {});
+
+    expect(assistant).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+});
+
+describe("subscribeServerEvents の mediaFolders", () => {
+  beforeEach(() => installFakeEventSource());
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A tab that did not switch the folder would otherwise restore its saved list with the off folder's videos.
+  it("保存済みの一覧を捨ててから購読者へ渡す", () => {
+    saveListSnapshot({ query: "" }, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const mediaFolders = vi.fn();
+    const unsubscribe = subscribeServerEvents({ mediaFolders });
+
+    currentEventSource().dispatch("mediaFolders", {});
+
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    expect(mediaFolders).toHaveBeenCalledOnce();
     unsubscribe();
   });
 });

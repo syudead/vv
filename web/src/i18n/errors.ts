@@ -28,20 +28,27 @@ function render(entry: Entry, details: ErrorDetails): UiText {
  */
 export function errorText(error: unknown): UiText {
   if (error instanceof RequestFailed) {
-    const details: ErrorDetails = {
-      limit: error.limit,
-      tagName: error.tagName,
-      host: error.host,
-    };
-    const entry =
-      lookup(t.errors.reason, error.reason) ?? lookup(t.errors.code, error.code);
-    if (entry !== undefined) return render(entry, details);
-    // Show server messages only as a fallback for unknown codes.
-    if (error.code !== "" && error.message !== "") return asUiText(error.message);
-    return t.errors.requestFailed(error.status);
+    if (error.peer === undefined) return requestText(error);
+    // A read VVMDM's failure names that VVMDM where the error shows (Error.peer).
+    if (error.reason === "peer_unreachable") return t.errors.peerUnreachable(error.peer);
+    return t.errors.onPeer(error.peer, requestText(error));
   }
   if (error instanceof NetworkFailed) return t.errors.unreachable;
   return t.errors.unexpected;
+}
+
+function requestText(error: RequestFailed): UiText {
+  const details: ErrorDetails = {
+    limit: error.limit,
+    tagName: error.tagName,
+    host: error.host,
+  };
+  const entry =
+    lookup(t.errors.reason, error.reason) ?? lookup(t.errors.code, error.code);
+  if (entry !== undefined) return render(entry, details);
+  // Show server messages only as a fallback for unknown codes.
+  if (error.code !== "" && error.message !== "") return asUiText(error.message);
+  return t.errors.requestFailed(error.status);
 }
 
 /** A reason reported inside a successful answer, such as an operation's remote part. */

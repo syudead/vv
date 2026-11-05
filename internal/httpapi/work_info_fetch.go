@@ -125,7 +125,8 @@ func (s *server) fetchWorkInfo(
 }
 
 // ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key: this node's first,
-// then the peer's in their remote ids, which the dialog fetches for and applies to like any remote video.
+// then each link's in slot order in their remote ids, which the dialog fetches for and applies to like any remote
+// video.
 func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request) {
 	var body gen.WorkInfoFillTargetsRequest
 	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
@@ -146,10 +147,10 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			targets = append(targets, gen.WorkInfoFillTarget{VideoId: q.VideoID, Title: q.Title, Query: q.Query})
 		}
 	}
-	if sel.hasPeer() {
-		ids, folders := sel.peerTargets()
+	for _, link := range sel.links {
+		ids, folders := link.peerTargets()
 		var answer gen.WorkInfoFillTargetList
-		err := s.peerCall(r, http.MethodPost, "/api/work-info-fill-targets", nil,
+		err := s.peerCall(r, link.slot, http.MethodPost, "/api/work-info-fill-targets", nil,
 			gen.WorkInfoFillTargetsRequest{VideoIds: ids, SmartFolderIds: folders}, &answer)
 		if err != nil {
 			s.logger.Info("could not list the other VVMDM's videos to fill", slog.Any("error", err))
@@ -157,7 +158,7 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		for _, target := range answer.Targets {
-			target.VideoId = domain.ToRemoteID(target.VideoId)
+			target.VideoId = domain.RemoteID(link.slot, target.VideoId)
 			targets = append(targets, target)
 		}
 	}
@@ -189,10 +190,14 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	}
 	organizations := make([]gen.WorkInfoFetchedOrganization, 0, len(details.Organizations))
 	for i, o := range details.Organizations {
-		organizations = append(organizations, gen.WorkInfoFetchedOrganization{
+		organization := gen.WorkInfoFetchedOrganization{
 			Role: gen.WorkOrganizationRole(o.Role), Name: o.Name, ExternalIds: toAPIExternalIDs(o.ExternalIDs),
 			Match: toAPIWorkInfoMatch(fetch.OrganizationMatches, i),
-		})
+		}
+		if profile := domain.ShownFetchedOrganizationProfile(o.Profile, today); !profile.Equal(domain.OrganizationProfile{}) {
+			organization.Profile = new(toAPIOrganizationProfile(profile))
+		}
+		organizations = append(organizations, organization)
 	}
 	urls := details.URLs
 	if urls == nil {
@@ -406,6 +411,8 @@ func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound str
 		s.writePluginKindMismatch(w)
 	case errors.Is(err, domain.ErrWorkInfoPluginNotApproved):
 		s.writeError(w, http.StatusConflict, codePluginNotApproved, "The plugin is not approved.")
+	case errors.Is(err, domain.ErrWorkInfoPluginDisabled):
+		s.writeError(w, http.StatusConflict, codePluginDisabled, "The plugin is switched off.")
 	case errors.Is(err, domain.ErrWorkInfoOperationUnsupported):
 		s.writeError(w, http.StatusConflict, codeOperationUnsupported, "The plugin does not support this operation.")
 	case errors.As(err, &missing):

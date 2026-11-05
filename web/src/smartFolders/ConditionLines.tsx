@@ -12,6 +12,7 @@ import {
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
 import { useCreditName, useTagNames } from "../library/filterNames";
+import { cn } from "../lib/cn";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
@@ -47,9 +48,17 @@ interface Names {
   kinds: ReadonlyMap<number, TagKind>;
 }
 
-const chipClassName = "max-w-chip-label text-xs font-normal text-muted-foreground";
-
-function NamedChip({ text }: { text: string | undefined }) {
+/**
+ * A condition chip; undefined text shows a placeholder while a name loads. Uncapped chips hold
+ * short texts built here, such as a date range, which the name cap would cut.
+ */
+export function NamedChip({
+  text,
+  uncapped = false,
+}: {
+  text: string | undefined;
+  uncapped?: boolean;
+}) {
   if (text === undefined) {
     return (
       <Badge variant="outline">
@@ -61,7 +70,14 @@ function NamedChip({ text }: { text: string | undefined }) {
     );
   }
   return (
-    <Badge variant="outline" title={text} className={chipClassName}>
+    <Badge
+      variant="outline"
+      title={text}
+      className={cn(
+        "max-w-full text-xs font-normal text-muted-foreground",
+        !uncapped && "max-w-chip-label",
+      )}
+    >
       <span className="truncate">{text}</span>
     </Badge>
   );
@@ -73,7 +89,8 @@ function CreditChip({ kind, id }: { kind: "person" | "organization"; id: number 
 }
 
 function Chip({ chip, names }: { chip: ConditionChip; names: Names }) {
-  if (chip.kind === "text") return <NamedChip text={chip.text} />;
+  if (chip.kind === "text")
+    return <NamedChip text={chip.text} uncapped={chip.uncapped} />;
   if (chip.missing) {
     return (
       <Badge variant="warning" className="max-w-chip-label text-xs font-normal">

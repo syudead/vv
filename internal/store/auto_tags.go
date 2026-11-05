@@ -21,6 +21,8 @@ const (
 
 	ollamaEndpointKey = "ollama.endpoint"
 	ollamaModelKey    = "ollama.model"
+	// Absent or empty until the owner saves a generation model.
+	ollamaGenerationModelKey = "ollama.generation_model"
 	// Read legacy connection keys only when the current keys are absent.
 	legacyOllamaEndpointKey = "auto_tag.endpoint"
 	legacyOllamaModelKey    = "auto_tag.model"
@@ -98,6 +100,7 @@ func ollamaConnection(ctx context.Context, q rowQueryer) (domain.OllamaSettings,
 	}{
 		{[]string{ollamaEndpointKey, legacyOllamaEndpointKey}, &settings.Endpoint, true},
 		{[]string{ollamaModelKey, legacyOllamaModelKey}, &settings.Model, false},
+		{[]string{ollamaGenerationModelKey}, &settings.GenerationModel, false},
 	} {
 		for _, key := range item.keys {
 			value, found, err := readSetting(ctx, q, key)
@@ -119,6 +122,7 @@ func (s *SettingsStore) SaveOllamaSettings(ctx context.Context, settings domain.
 	return writeSettings(ctx, s.db.sql, []settingValue{
 		{ollamaEndpointKey, settings.Endpoint},
 		{ollamaModelKey, settings.Model},
+		{ollamaGenerationModelKey, settings.GenerationModel},
 	})
 }
 

@@ -3,6 +3,8 @@ package domain
 import (
 	"encoding/json"
 	"slices"
+	"strings"
+	"unicode"
 )
 
 // Trim and drop empty/unknown detail entries before enforcing limits; malformed fields are ignored under contract 1, while semantic validation is deferred to apply.
@@ -18,10 +20,12 @@ type FetchedPerson struct {
 	Image       *WorkInfoCover
 }
 
+// Profile keeps the plugin's values without the apply's validation.
 type FetchedOrganization struct {
 	Role        OrganizationRole
 	Name        string
 	ExternalIDs []ExternalID
+	Profile     OrganizationProfile
 }
 
 // Keep raw JSON so malformed fields can be discarded independently.
@@ -34,6 +38,7 @@ type workDetailsJSON struct {
 	URLs          json.RawMessage `json:"urls"`
 	ExternalIDs   json.RawMessage `json:"externalIds"`
 	Covers        json.RawMessage `json:"covers"`
+	ImageReferer  json.RawMessage `json:"imageReferer"`
 }
 
 type fetchedDateJSON struct {
@@ -57,7 +62,7 @@ type fetchedExternalIDJSON struct {
 func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	limits := WorkInfoLimits
 	out.Code = lenientString(raw.Code)
-	out.Description = trimWorkInfoText(DescriptionLineBreaks(lenientString(raw.Description)))
+	out.Description = fetchedMultiline(rawString(raw.Description), limits.DescriptionMaxLength)
 	out.Dates = parseFetchedDates(lenientList[fetchedDateJSON](raw.Dates))
 	out.People = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.People), PersonRoles,
 		limits.PeoplePerRoleMaxCount, func(role PersonRole, name string, ids []ExternalID, raw fetchedCreditJSON) FetchedPerson {
@@ -66,23 +71,64 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 				ImageURL: fetchedImageURL(lenientString(raw.Image)), Profile: parseFetchedProfile(raw.Profile),
 			}
 		})
-	// Organizations take neither an image nor a profile.
+	// Organizations take a profile but not yet an image.
 	out.Organizations = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.Organizations), OrganizationRoles,
-		limits.OrganizationsPerRoleMaxCount, func(role OrganizationRole, name string, ids []ExternalID, _ fetchedCreditJSON) FetchedOrganization {
-			return FetchedOrganization{Role: role, Name: name, ExternalIDs: ids}
+		limits.OrganizationsPerRoleMaxCount, func(role OrganizationRole, name string, ids []ExternalID, raw fetchedCreditJSON) FetchedOrganization {
+			return FetchedOrganization{Role: role, Name: name, ExternalIDs: ids, Profile: parseFetchedOrganizationProfile(raw.Profile)}
 		})
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)
 	out.CoverURLs = parseFetchedImageURLs(raw.Covers, WorkInfoCoversMaxCount)
+	out.ImageReferer = fetchedImageURL(lenientString(raw.ImageReferer))
 }
 
-// Missing/nonstring values become empty strings.
-func lenientString(raw json.RawMessage) string {
+var crLineEnd = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
+// Fetched values are made savable rather than rejected: a site's text often carries CR line ends, tabs or stray
+// control characters, which a saved value cannot hold.
+
+// fetchedText turns a single-line value's whitespace control characters into spaces, drops any other control
+// character and trims the result.
+func fetchedText(input string) string {
+	return trimWorkInfoText(fetchedControls(input))
+}
+
+// fetchedControls is fetchedText without the trim, for values the apply normalizes itself.
+func fetchedControls(input string) string {
+	return strings.Map(fetchedRune(false), input)
+}
+
+// fetchedMultiline keeps a free text's line breaks as line feeds (HTML breaks and CR line ends included), handles
+// other control characters as fetchedText does and cuts the text to maxRunes.
+func fetchedMultiline(input string, maxRunes int) string {
+	text := strings.Map(fetchedRune(true), crLineEnd.Replace(DescriptionLineBreaks(input)))
+	return trimWorkInfoText(TruncateRunes(trimWorkInfoText(text), maxRunes))
+}
+
+func fetchedRune(keepLineFeed bool) func(rune) rune {
+	return func(r rune) rune {
+		switch {
+		case !unicode.Is(unicode.Cc, r), keepLineFeed && r == '\n':
+			return r
+		case unicode.IsSpace(r):
+			return ' '
+		default:
+			return -1
+		}
+	}
+}
+
+// rawString reads a JSON string; missing/nonstring values become empty strings.
+func rawString(raw json.RawMessage) string {
 	var s string
 	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
 		return ""
 	}
-	return trimWorkInfoText(s)
+	return s
+}
+
+func lenientString(raw json.RawMessage) string {
+	return fetchedText(rawString(raw))
 }
 
 // Keep decodable array entries in order; missing/nonarray input yields nil.
@@ -105,8 +151,8 @@ func lenientList[T any](raw json.RawMessage) []T {
 func parseFetchedDates(raw []fetchedDateJSON) []WorkDate {
 	var out []WorkDate
 	for _, d := range raw {
-		kind := DateKind(trimWorkInfoText(d.Kind))
-		date := trimWorkInfoText(d.Date)
+		kind := DateKind(fetchedText(d.Kind))
+		date := fetchedText(d.Date)
 		if !kind.Valid() || date == "" ||
 			slices.ContainsFunc(out, func(kept WorkDate) bool { return kept.Kind == kind }) {
 			continue
@@ -129,8 +175,8 @@ func parseFetchedCredits[R ~string, C any](
 	seen := map[key]bool{}
 	counts := map[R]int{}
 	for _, c := range raw {
-		role := R(trimWorkInfoText(c.Role))
-		name := trimWorkInfoText(c.Name)
+		role := R(fetchedText(c.Role))
+		name := fetchedText(c.Name)
 		if !slices.Contains(roles, role) || name == "" || counts[role] == limit {
 			continue
 		}
@@ -153,7 +199,7 @@ func parseFetchedCredits[R ~string, C any](
 func parseFetchedURLs(raw []string, limit int) []string {
 	var out []string
 	for _, u := range raw {
-		u = trimWorkInfoText(u)
+		u = fetchedText(u)
 		if u == "" || slices.Contains(out, u) {
 			continue
 		}
@@ -173,7 +219,7 @@ func parseFetchedExternalIDs(raw json.RawMessage) []ExternalID {
 // appendFetchedExternalIDs appends raw's IDs that out lacks until out holds ExternalIDsMaxCount.
 func appendFetchedExternalIDs(out []ExternalID, raw json.RawMessage) []ExternalID {
 	for _, e := range lenientList[fetchedExternalIDJSON](raw) {
-		id := ExternalID{Source: trimWorkInfoText(e.Source), Value: trimWorkInfoText(e.Value)}
+		id := ExternalID{Source: fetchedText(e.Source), Value: fetchedText(e.Value)}
 		if id.Source == "" || id.Value == "" || slices.Contains(out, id) {
 			continue
 		}

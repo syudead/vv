@@ -34,6 +34,8 @@ type VideoEdit struct {
 	Credits    []CreditEdit
 	Dates      []DateEdit
 	Public     *bool
+	// Merges run after the other parts and only on the local node.
+	Merges []PersonMerge
 }
 
 // ChangesWorkInfo reports whether the edit has credit or date parts.
@@ -46,8 +48,11 @@ func (e VideoEdit) ChangesMatches() bool {
 
 // NormalizeVideoEdit validates the whole edit before any video is read, normalizing tag names and dates.
 func NormalizeVideoEdit(edit VideoEdit) (VideoEdit, error) {
-	if !edit.ChangesWorkInfo() && !edit.ChangesMatches() {
+	if !edit.ChangesWorkInfo() && !edit.ChangesMatches() && len(edit.Merges) == 0 {
 		return VideoEdit{}, ErrNoVideoEdit
+	}
+	if err := ValidatePersonMerges(edit.Merges); err != nil {
+		return VideoEdit{}, err
 	}
 	out := edit
 	var err error
@@ -180,6 +185,9 @@ type VideoEditResult struct {
 	Applied     int
 	Tags        []TagRef
 	ContentKeys []string
+	Merged      []PersonMerged
+	// SkippedPersonIDs are merge sources that no longer existed or had been named.
+	SkippedPersonIDs []int64
 }
 
 type VideoEditPersonCount struct {

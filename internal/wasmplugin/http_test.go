@@ -32,6 +32,7 @@ type testSite struct {
 	mu        sync.Mutex
 	hosts     []string
 	userAgent []string
+	referers  []string
 }
 
 func newTestSite(t *testing.T) *testSite {
@@ -42,6 +43,7 @@ func newTestSite(t *testing.T) *testSite {
 		s.mu.Lock()
 		s.hosts = append(s.hosts, r.Host)
 		s.userAgent = append(s.userAgent, r.UserAgent())
+		s.referers = append(s.referers, r.Referer())
 		s.mu.Unlock()
 		w.Header().Set("X-Site", "yes")
 		_, _ = w.Write([]byte("hello"))
@@ -49,6 +51,7 @@ func newTestSite(t *testing.T) *testSite {
 	mux.HandleFunc("/face/{n}", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.hosts = append(s.hosts, r.Host)
+		s.referers = append(s.referers, r.Referer())
 		s.mu.Unlock()
 		_, _ = w.Write([]byte("face " + r.PathValue("n")))
 	})

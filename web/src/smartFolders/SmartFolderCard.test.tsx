@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
 import { type Audience, AudienceProvider } from "../auth/audience";
+import { remoteIdOffset } from "../lib/remoteId";
 import {
   folderCard,
   revealCards,
@@ -75,6 +76,28 @@ describe("スマートフォルダのカード", () => {
       await screen.findByRole("link", { name: "猫, smart folder of 3 videos" }),
     ).toBeTruthy();
     expect(server.cardRequests).toEqual([[1], [1]]);
+  });
+
+  it("ルールの長さ・追加日・視聴状態をカードのチップに出し、無いカードには出さない", async () => {
+    server.cards.set(
+      1,
+      folderCard(1, "猫", {
+        conditions: { maxDurationMs: 0, addedFrom: "2025-03-01", watchState: "watched" },
+      }),
+    );
+    server.cards.set(2, folderCard(2, "犬"));
+    renderCards();
+    await revealCards([1, 2]);
+    await screen.findByRole("link", { name: "猫, smart folder of 2 videos" });
+
+    const chips = Array.from(card("猫").querySelectorAll('[data-slot="badge"]'));
+    expect(chips.map((chip) => chip.textContent)).toEqual([
+      "Up to 0 min",
+      "Added since Mar 1, 2025",
+      "Watched",
+    ]);
+    await screen.findByRole("link", { name: "犬, smart folder of 2 videos" });
+    expect(card("犬").querySelector('[data-slot="badge"]')).toBeNull();
   });
 
   it("答えに入らなかったフォルダのカードは消える", async () => {
@@ -305,6 +328,37 @@ describe("スマートフォルダのカード", () => {
       expect(
         screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
       ).toBeDefined();
+    });
+
+    it("相手の台のフォルダの行もハートを出し、プレイリストへの追加は出さない", () => {
+      const remote = remoteIdOffset + 4;
+      render(
+        <MemoryRouter>
+          <TooltipProvider>
+            <ToastProvider>
+              <AudienceProvider audience="owner">
+                <SmartFolderCardsProvider>
+                  <table>
+                    <tbody>
+                      <SmartFolderRow
+                        folder={{ id: remote, name: "鳥" }}
+                        backTo="/"
+                        owner
+                      />
+                    </tbody>
+                  </table>
+                </SmartFolderCardsProvider>
+              </AudienceProvider>
+            </ToastProvider>
+          </TooltipProvider>
+        </MemoryRouter>,
+      );
+      expect(
+        screen.getByRole("button", { name: 'Favorite smart folder "鳥"' }),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: 'Add smart folder "鳥" to a playlist' }),
+      ).toBeNull();
     });
 
     it("ハートはフォルダの id を smartFolderIds で送り、成功したら塗りを変える", async () => {

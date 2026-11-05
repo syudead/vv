@@ -29,12 +29,12 @@ func TestRemoteVideoWorkInfoIsSavedOnThePeerInItsIDs(t *testing.T) {
 	onlyOnA := credit(fa, domain.CreditPerson, "山田")
 	sharedOnA, sharedOnB := credit(fa, domain.CreditPerson, "佐藤"), credit(fb, domain.CreditPerson, "佐藤")
 	studioOnA, studioOnB := credit(fa, domain.CreditOrganization, "スタジオ"), credit(fb, domain.CreditOrganization, "スタジオ")
-	remote := domain.ToRemoteID(fa.ids["a"])
+	remote := domain.RemoteID(1, fa.ids["a"])
 	path := fmt.Sprintf("/api/videos/%d", remote)
 
 	rec := b.owner(http.MethodPut, path+"/details", fmt.Sprintf(
 		`{"displayName":"遠くの名前","workInfo":{"people":[{"role":"performer","person":{"id":%d}},{"role":"director","person":{"id":%d}}]}}`,
-		sharedOnB, domain.ToRemoteID(onlyOnA)))
+		sharedOnB, domain.RemoteID(1, onlyOnA)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("details: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -68,7 +68,7 @@ func TestRemoteVideoWorkInfoIsSavedOnThePeerInItsIDs(t *testing.T) {
 func TestRemoteVideoCreditByNameIsCreatedOnlyOnThePeer(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()
-	remote := domain.ToRemoteID(fa.ids["a"])
+	remote := domain.RemoteID(1, fa.ids["a"])
 	rec := b.owner(http.MethodPut, fmt.Sprintf("/api/videos/%d/details", remote),
 		`{"displayName":"x","workInfo":{"people":[{"role":"performer","person":{"name":"新人"}},`+
 			`{"role":"director","person":{"name":"新人"}}],"organizations":[{"role":"maker","organization":{"name":"新スタジオ"}}]}}`)
@@ -76,7 +76,7 @@ func TestRemoteVideoCreditByNameIsCreatedOnlyOnThePeer(t *testing.T) {
 		t.Fatalf("details: status = %d: %s", rec.Code, rec.Body)
 	}
 	names := func(f *guestFixture, kind domain.CreditKind) map[int64]string {
-		page, err := f.env.db.Credits().List(ctx, kind, domain.CreditQuery{})
+		page, err := f.env.db.Credits().List(ctx, domain.AudienceOwner, kind, domain.CreditQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func TestRemoteWorkInfoMissingARequiredFieldIsNotForwarded(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/videos/1", strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
-		forward := remoteVideoOperations[tc.operation].request(&server{logger: discardLogger()}, rec, req)
+		forward := remoteRoutes.routes[tc.operation].op.request(&server{logger: discardLogger()}, rec, req)
 		if forward || rec.Code != http.StatusBadRequest || decode[gen.Error](t, rec).Message != tc.want {
 			t.Errorf("%s: forward = %v, status = %d, body = %s, want 400 and %q",
 				tc.operation, forward, rec.Code, rec.Body, tc.want)

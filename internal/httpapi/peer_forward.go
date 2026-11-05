@@ -7,7 +7,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -15,12 +14,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// PeerLink forwards a screen request for one of the peer's entities; internal/peer implements it.
+// PeerLink forwards a screen request for one of a link's entities; internal/peer implements it.
 type PeerLink interface {
-	// Forward sends req, whose URL holds the peer's path and query only, as the guest when guest is set; media
-	// has no response timeout. A peer that is not connected or gives no response answers
-	// domain.ErrPeerUnreachable; any response, whatever its status, is the caller's to close.
-	Forward(req *http.Request, guest, media bool) (*http.Response, error)
+	// Forward sends req, whose URL holds the peer's path and query only, to the node of the link in slot, as the
+	// guest when guest is set; media has no response timeout. A slot without a link answers domain.ErrNotFound;
+	// a node that is not connected or gives no response answers domain.ErrPeerUnreachable; any response,
+	// whatever its status, is the caller's to close.
+	Forward(req *http.Request, slot int64, guest, media bool) (*http.Response, error)
 }
 
 const (
@@ -42,168 +42,19 @@ var forwardedResponseHeaders = []string{
 // the peer.
 var remoteContextParams = []string{"group", "smartFolder"}
 
-// remoteCollection is a collection whose path id names the peer's entity when it carries the offset.
-type remoteCollection struct {
-	prefix     string
-	noun       string
-	operations map[string]remoteOperation
-	// merged are the operations for a remote id that this node answers itself, from both nodes.
-	merged map[string]bool
-	mux    *http.ServeMux
-}
-
-var remoteCollections = []remoteCollection{
-	newRemoteCollection(remoteVideoPrefix, "video", remoteVideoOperations, map[string]bool{
-		"GET /api/videos/{id}/related": true,
-		// Plugins and their kept results are this node's; the peer is reached for the video and the writes.
-		"POST /api/videos/{id}/work-info-fetches":                               true,
-		"POST /api/videos/{id}/work-info-fetches/{fetchId}/apply":               true,
-		"GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}":       true,
-		"GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image": true,
-	}),
-	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations, vocabularyWrites("tags")),
-	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, peopleAnswered()),
-	newRemoteCollection("/api/organizations/", "organization", remoteVocabularyOperations, vocabularyWrites("organizations")),
-}
-
-// vocabularyWrites are the deletion and merge of a collection's entry, which this node applies on both nodes by
-// name whichever node the id names.
-func vocabularyWrites(collection string) map[string]bool {
-	return map[string]bool{
-		"DELETE /api/" + collection + "/{id}":     true,
-		"POST /api/" + collection + "/{id}/merge": true,
-	}
-}
-
-// peopleAnswered adds the person page's plugin fetches to the people's writes: like a remote video's work-info fetch,
-// the plugin and its kept result are this node's, and the peer is reached for the person and the writes.
-func peopleAnswered() map[string]bool {
-	answered := vocabularyWrites("people")
-	answered["POST /api/people/{id}/plugin-fetches"] = true
-	answered["GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index}"] = true
-	answered["POST /api/people/{id}/plugin-fetches/{fetchId}/apply"] = true
-	return answered
-}
-
-func newRemoteCollection(prefix, noun string, operations map[string]remoteOperation, merged map[string]bool) remoteCollection {
-	own := map[string]remoteOperation{}
-	for pattern, op := range operations {
-		if strings.Contains(pattern, " "+prefix) {
-			own[pattern] = op
-		}
-	}
-	return remoteCollection{prefix: prefix, noun: noun, operations: own, merged: merged, mux: operationMux(own, merged)}
-}
-
-// operationMux matches the patterns of operations and of answered, the operations this node answers itself.
-func operationMux(operations map[string]remoteOperation, answered map[string]bool) *http.ServeMux {
-	mux := http.NewServeMux()
-	for pattern := range operations {
-		mux.Handle(pattern, http.NotFoundHandler())
-	}
-	for pattern := range answered {
-		mux.Handle(pattern, http.NotFoundHandler())
-	}
-	return mux
-}
-
-// remoteBoundary forwards a request whose path id names the peer's entity to the peer; any other request,
-// and a merged operation from the screens, goes to next. An unclean path also goes to next, whose redirect
-// brings it back cleaned.
-func (s *server) remoteBoundary(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		escaped := r.URL.EscapedPath()
-		if path.Clean(escaped) == escaped {
-			for _, collection := range remoteCollections {
-				id, rest, ok := remotePath(escaped, collection.prefix)
-				if ok && (!collection.merged[routePattern(collection.mux, r)] || isPeerRequest(r.Context())) {
-					s.forwardRemoteEntity(w, r, collection, id, rest)
-					return
-				}
-			}
-			if id, rest, ok := remotePath(escaped, remoteGroupPrefix); ok {
-				s.forwardRemoteGroup(w, r, id, rest)
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// remotePath splits prefix{id}... into a remote id and the escaped rest of the path.
-func remotePath(path, prefix string) (id int64, rest string, ok bool) {
-	tail, found := strings.CutPrefix(path, prefix)
-	if !found {
-		return 0, "", false
-	}
-	segment, rest := tail, ""
-	if slash := strings.IndexByte(tail, '/'); slash >= 0 {
-		segment, rest = tail[:slash], tail[slash:]
-	}
-	id, err := strconv.ParseInt(segment, 10, 64)
-	return id, rest, err == nil && domain.IsRemoteID(id)
-}
-
-func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, collection remoteCollection, id int64, rest string) {
-	op, offered := collection.operations[routePattern(collection.mux, r)]
-	// The peer's own request with a remote id names this node's entity; forwarding it back would bounce.
-	if !offered || isPeerRequest(r.Context()) {
-		s.notFound(w, "This operation is not available for a "+collection.noun+" of the other VVMDM.")
-		return
-	}
-	if op.request != nil && !op.request(s, w, r) {
-		return
-	}
-	if op.path != nil {
-		peerRest, ok := op.path(s, w, r, rest)
-		if !ok {
-			return
-		}
-		rest = peerRest
-	}
-	out, err := remoteRequest(r, collection.prefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
-	if err != nil {
-		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
-		return
-	}
-	if op.body != nil && !s.forwardedBody(w, r, out, op.body) {
-		return
-	}
-	s.forward(w, r, out, op)
-}
-
-// peerVideoTagPath turns the tag id of /tags/{tagId}/{action} into the peer's: a remote tag drops the offset,
-// and a local tag goes by name, since the screens show a same-named tag of the peer under the local id.
-func (s *server) peerVideoTagPath(w http.ResponseWriter, r *http.Request, rest string) (string, bool) {
-	parts := strings.Split(rest, "/")
-	id, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		s.invalidRequest(w, "The tag id is not a number.")
-		return "", false
-	}
-	peerID, err := translateID(s.peerEditVocabulary(r), domain.VocabularyTag, id, "", false)
-	switch {
-	case errors.Is(err, domain.ErrTagNotFound) || (err == nil && peerID == 0):
-		s.notFound(w, "This tag is not tentatively attached to the video.")
-		return "", false
-	case err != nil:
-		s.writeSplitEditError(w, err)
-		return "", false
-	}
-	parts[2] = strconv.FormatInt(peerID, 10)
-	return strings.Join(parts, "/"), true
-}
-
-// forward sends out, made from r, to the peer as r's viewer and answers with the peer's answer, rewritten by op
-// when it succeeded.
-func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Request, op remoteOperation) {
+// forward sends out, made from r, to the node of the link in slot as r's viewer and answers with that node's
+// answer, rewritten by op when it succeeded. A slot without a link answers 404 not_found.
+func (s *server) forward(w http.ResponseWriter, r *http.Request, slot int64, out *http.Request, op remoteOperation) {
 	if s.peerLink == nil {
 		s.peerUnreachable(w)
 		return
 	}
-	guest := audienceFrom(r.Context()) != domain.AudienceOwner
-	resp, err := s.peerLink.Forward(out, guest, op.media)
+	guest := !audienceFrom(r.Context()).IsOwner()
+	resp, err := s.peerLink.Forward(out, slot, guest, op.media)
 	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFound(w, "This VVMDM does not read the VVMDM that this id names.")
+		return
 	case errors.Is(err, domain.ErrPeerUnreachable):
 		s.peerUnreachable(w)
 		return
@@ -218,13 +69,13 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 	case r.Method == http.MethodHead:
 		writeRewrittenHead(w, resp)
 	default:
-		s.writeRewritten(w, r, resp, op.rewrite)
+		s.writeRewritten(w, r, slot, resp, op.rewrite)
 	}
 }
 
-// remoteRequest is r for the peer at path with query, keeping only the remote context ids.
-func remoteRequest(r *http.Request, path string, query url.Values) (*http.Request, error) {
-	keepRemoteContext(query, query)
+// remoteRequest is r for the node of the link in slot at path with query, keeping only that link's context ids.
+func remoteRequest(r *http.Request, slot int64, path string, query url.Values) (*http.Request, error) {
+	keepRemoteContext(slot, query, query)
 	target, err := url.Parse(path)
 	if err != nil {
 		return nil, err
@@ -247,15 +98,15 @@ func remoteRequest(r *http.Request, path string, query url.Values) (*http.Reques
 	return out, nil
 }
 
-// keepRemoteContext sets in out the context ids of query that name the peer's group or smart folder, as the
-// peer's ids, and deletes the others from out.
-func keepRemoteContext(query, out url.Values) {
+// keepRemoteContext sets in out the context ids of query that name a group or smart folder of the link in slot,
+// as that link's ids, and deletes the others from out.
+func keepRemoteContext(slot int64, query, out url.Values) {
 	for _, name := range remoteContextParams {
 		if !query.Has(name) {
 			continue
 		}
 		id, err := strconv.ParseInt(query.Get(name), 10, 64)
-		if err != nil || !domain.IsRemoteID(id) {
+		if err != nil || !domain.IsRemoteID(id) || domain.RemoteSlot(id) != slot {
 			out.Del(name)
 			continue
 		}
@@ -321,7 +172,7 @@ func writeRewrittenHead(w http.ResponseWriter, resp *http.Response) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *http.Response, rewrite remoteRewrite) {
+func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, slot int64, resp *http.Response, rewrite remoteRewrite) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
 		s.peerUnreachable(w)
@@ -331,7 +182,7 @@ func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *ht
 		s.internalError(w, "The answer of the other VVMDM is too large.", nil)
 		return
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
 		return

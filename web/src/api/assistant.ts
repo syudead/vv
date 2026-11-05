@@ -1,0 +1,196 @@
+import { apiFetch, request, toRequestFailed } from "./client";
+import type { components } from "./gen/openapi";
+
+// The only caller of the /api/assistant operations; every one is owner-only.
+
+export type AssistantReadiness = components["schemas"]["AssistantReadiness"];
+export type AssistantReadinessReason = NonNullable<AssistantReadiness["reason"]>;
+export type AssistantTurnRequest = components["schemas"]["AssistantTurnRequest"];
+export type AssistantTurn = components["schemas"]["AssistantTurn"];
+export type AssistantTurnStop = components["schemas"]["AssistantTurnStop"];
+export type AssistantTurnContext = components["schemas"]["AssistantTurnContext"];
+export type AssistantRoute = components["schemas"]["AssistantRoute"];
+export type AssistantPin = components["schemas"]["AssistantPin"];
+export type AssistantProgressItem = components["schemas"]["AssistantProgressItem"];
+export type AssistantDirective = components["schemas"]["AssistantDirective"];
+export type AssistantCriteria = components["schemas"]["AssistantCriteria"];
+export type AssistantDestination = components["schemas"]["AssistantDestination"];
+export type AssistantCandidate = components["schemas"]["AssistantCandidate"];
+export type AssistantLabel = components["schemas"]["AssistantLabel"];
+export type AssistantLabelKind = components["schemas"]["AssistantLabelKind"];
+export type AssistantProposal = components["schemas"]["AssistantProposal"];
+export type AssistantProposalStep = components["schemas"]["AssistantProposalStep"];
+
+/** Sends no request to Ollama; the panel reads it each time it opens. */
+export function getAssistantReadiness(signal?: AbortSignal): Promise<AssistantReadiness> {
+  return request<AssistantReadiness>("/api/assistant/readiness", { signal });
+}
+
+/** What sending a request led to: a turn started, or another one is still running (409 assistant_busy). */
+export type StartTurnResult =
+  { kind: "started"; turn: AssistantTurn } | { kind: "busy"; turnId: number };
+
+/**
+ * Starts one request as a running turn (202). 400 too_many_videos and 409 assistant_not_ready reject
+ * with RequestFailed.
+ */
+export async function createAssistantTurn(
+  body: AssistantTurnRequest,
+  signal?: AbortSignal,
+): Promise<StartTurnResult> {
+  const response = await apiFetch("/api/assistant/turns", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (response.ok) {
+    return { kind: "started", turn: (await response.json()) as AssistantTurn };
+  }
+  if (response.status === 409) {
+    const failure = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as { code?: string; turnId?: number } | null;
+    if (failure?.code === "assistant_busy" && typeof failure.turnId === "number") {
+      return { kind: "busy", turnId: failure.turnId };
+    }
+  }
+  throw await toRequestFailed(response);
+}
+
+/** The running turn and those finished within the last hour, newest first. */
+export async function listActiveAssistantTurns(
+  signal?: AbortSignal,
+): Promise<AssistantTurn[]> {
+  const list = await request<components["schemas"]["AssistantTurnList"]>(
+    "/api/assistant/turns?active=true",
+    { signal },
+  );
+  return list.items;
+}
+
+/** The panel reads a running turn again on each assistant event; 404 once it expired. */
+export function getAssistantTurn(
+  id: number,
+  signal?: AbortSignal,
+): Promise<AssistantTurn> {
+  return request<AssistantTurn>(`/api/assistant/turns/${String(id)}`, { signal });
+}
+
+/** Stops the running turn; 409 once it already ended, which the next read shows. */
+export async function stopAssistantTurn(id: number): Promise<void> {
+  const response = await apiFetch(`/api/assistant/turns/${String(id)}/stop`, {
+    method: "POST",
+  });
+  if (!response.ok && response.status !== 409) throw await toRequestFailed(response);
+}
+
+export type AssistantProposalStatus = AssistantProposal["status"];
+
+/** What Execute led to: approved now, already past proposed (the 409 body), or gone (404). */
+export type ExecuteResult =
+  | { kind: "approved"; proposal: AssistantProposal }
+  | { kind: "notPending"; proposal: AssistantProposal }
+  | { kind: "expired" };
+
+/**
+ * Approves the kept steps, by index. Other failures, such as 409 step_needs_skipped, reject
+ * with RequestFailed; the card keeps its buttons then.
+ */
+export async function executeAssistantProposal(
+  id: number,
+  steps: readonly number[],
+): Promise<ExecuteResult> {
+  const response = await apiFetch(`/api/assistant/proposals/${String(id)}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ steps }),
+  });
+  if (response.ok) {
+    return { kind: "approved", proposal: (await response.json()) as AssistantProposal };
+  }
+  if (response.status === 404) return { kind: "expired" };
+  if (response.status === 409) {
+    const body = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as {
+      proposal?: AssistantProposal;
+    } | null;
+    if (body?.proposal !== undefined)
+      return { kind: "notPending", proposal: body.proposal };
+  }
+  throw await toRequestFailed(response);
+}
+
+/** The panel re-reads a shown proposal on each assistant event. */
+export function getAssistantProposal(
+  id: number,
+  signal?: AbortSignal,
+): Promise<AssistantProposal> {
+  return request<AssistantProposal>(`/api/assistant/proposals/${String(id)}`, { signal });
+}
+
+/** Approved and running proposals, and those finished within the last hour, newest first. */
+export async function listActiveAssistantProposals(
+  signal?: AbortSignal,
+): Promise<AssistantProposal[]> {
+  const list = await request<components["schemas"]["AssistantProposalList"]>(
+    "/api/assistant/proposals?active=true",
+    { signal },
+  );
+  return list.items;
+}
+
+export type AssistantReviewRun = components["schemas"]["AssistantReviewRun"];
+export type AssistantReviewKind = AssistantReviewRun["kind"];
+export type AssistantReviewCandidate = components["schemas"]["AssistantReviewCandidate"];
+export type AssistantReviewMember = components["schemas"]["AssistantReviewMember"];
+export type AssistantReviewRunPage = components["schemas"]["AssistantReviewRunPage"];
+export type AssistantReviewAdoption = components["schemas"]["AssistantReviewAdoption"];
+export type AssistantReviewRejection = components["schemas"]["AssistantReviewRejection"];
+
+/** The run and one page of its candidates, most probable first; 404 when the run is gone. */
+export function getAssistantReviewRun(
+  id: number,
+  page: { cursor?: string; limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<AssistantReviewRunPage> {
+  const query = new URLSearchParams();
+  if (page.cursor !== undefined) query.set("cursor", page.cursor);
+  if (page.limit !== undefined) query.set("limit", String(page.limit));
+  const search = query.toString();
+  return request<AssistantReviewRunPage>(
+    `/api/assistant/review-runs/${String(id)}${search === "" ? "" : `?${search}`}`,
+    { signal },
+  );
+}
+
+function postCandidates<T>(
+  id: number,
+  action: "adopt" | "reject",
+  ids: readonly number[],
+): Promise<T> {
+  return request<T>(`/api/assistant/review-runs/${String(id)}/candidates/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+/** One approved proposal per adopted candidate, in the order of ids, without the skipped ones. */
+export function adoptAssistantReviewCandidates(
+  id: number,
+  ids: readonly number[],
+): Promise<AssistantReviewAdoption> {
+  return postCandidates(id, "adopt", ids);
+}
+
+/** Rejected candidates are remembered, so a later run of the kind does not list them. */
+export function rejectAssistantReviewCandidates(
+  id: number,
+  ids: readonly number[],
+): Promise<AssistantReviewRejection> {
+  return postCandidates(id, "reject", ids);
+}

@@ -26,7 +26,7 @@ func (s *LibraryStore) RelatedCandidates(ctx context.Context, audience domain.Au
 		from videos`+representativeJoin(audience)+`
 		left join video_fingerprints f on f.content_key = videos.content_key and videos.content_key <> ''
 		where `+visibleVideoCondition("videos", audience)+`
-		  and (videos.id = ?1 or (`+shownVideoCondition("videos", audience)+`
+		  and (videos.id = ?1 or (`+listedVideoCondition("videos", audience)+` and `+listedShownVideoCondition("videos", audience)+`
 		  and not exists (select 1 from videos self
 		       join video_bundle_members sm on sm.content_key = self.content_key and self.content_key <> ''
 		       join video_bundle_members om on om.bundle_id = sm.bundle_id
@@ -101,7 +101,8 @@ func scanRelatedCandidates(rows *sql.Rows) ([]domain.RelatedCandidate, map[int64
 	return candidates, byID, nil
 }
 
-// VideosByIDs preserves input order while omitting hidden videos and nonrepresentative versions.
+// VideosByIDs preserves input order while omitting hidden videos and nonrepresentative versions; a bundle's listed
+// representative, chosen under the folder scope as related candidates are, counts as representative too.
 func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error) {
 	if len(ids) == 0 {
 		return []domain.Video{}, nil
@@ -113,7 +114,8 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 	}
 
 	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+` where videos.id in (`+
-		placeholders+`) and `+visibleVideoCondition("videos", audience)+` and `+shownVideoCondition("videos", audience), args...)
+		placeholders+`) and `+visibleVideoCondition("videos", audience)+` and (`+shownVideoCondition("videos", audience)+
+		` or `+listedShownVideoCondition("videos", audience)+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read related videos: %w", err)
 	}
@@ -207,7 +209,7 @@ func firstGroupOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, id 
 	var groupID sql.NullInt64
 	err := tx.QueryRowContext(ctx, `select min(gi.group_id) from group_items gi
 		where gi.content_key = (select `+userKeyExpr("videos")+` from videos where videos.id = ?1 and videos.content_key <> '')
-		and `+shownVideoForKeyExpr("gi.content_key", audience)+` = ?1`, id).Scan(&groupID)
+		and `+listedVideoForKeyExpr("gi.content_key", audience)+` = ?1`, id).Scan(&groupID)
 	if err != nil {
 		return 0, false, fmt.Errorf("cannot read the video's group: %w", err)
 	}

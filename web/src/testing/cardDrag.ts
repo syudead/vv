@@ -49,20 +49,28 @@ export function release(index: number, ratio = 0.5) {
   fireEvent.pointerUp(document, { ...mouse, ...pointOn(index, ratio) });
 }
 
-export function dropOn(name: string | RegExp, from: number, to: number) {
+// dnd-kit stops every document click for this long after a drop.
+const dropClickGuardMs = 50;
+
+/** Drop on fake timers and pass dnd-kit's post-drop click guard, so the next click reaches the page. */
+export async function releaseAndSettle(drop: () => void) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    drop();
+    await act(() => vi.advanceTimersByTimeAsync(dropClickGuardMs));
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+/** Drag a card onto another and pass the post-drop click guard. */
+export async function dropOn(name: string | RegExp, from: number, to: number) {
   lift(name, from);
   moveTo(to);
-  release(to);
+  await releaseAndSettle(() => release(to));
 }
 
-/** Wait 50ms for dnd-kit's document click suppression before selecting the drop menu. */
-export async function afterDrop() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 60));
-  });
-}
-
-export async function openedMenu(): Promise<HTMLElement> {
-  await afterDrop();
+/** Find the drop menu; settle the drop with releaseAndSettle or dropOn first. */
+export function openedMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }

@@ -54,10 +54,6 @@ func TestPersonFavoritesSetFilterAndClear(t *testing.T) {
 func TestPersonFavoritesRefusals(t *testing.T) {
 	f := newCreditFixture(t)
 	person := f.createPerson(t, map[string]any{"name": "人"})
-	for _, target := range []string{"/api/organizations?favorite=true", "/api/organizations?favorite=false"} {
-		assertFieldError(t, target, f.env.get(target, f.owner),
-			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
-	}
 	assertUnauthenticated(t, "ゲストの favorite=true", f.env.get("/api/people?favorite=true"))
 	assertUnauthenticated(t, "ゲストの personIds",
 		f.request(http.MethodPut, "/api/favorites", jsonBody(map[string]any{"personIds": []int64{person.Id}, "favorite": true})))

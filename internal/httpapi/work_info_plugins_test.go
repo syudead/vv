@@ -138,6 +138,18 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 	assertErrorBody(t, "古いダイジェストの承認", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusConflict, code: gen.ErrorCodePluginChanged})
 
+	if !approved.Enabled {
+		t.Fatal("a new plugin is listed switched off; want on")
+	}
+	off := decodePlugin(t, "スイッチオフ", e.json(http.MethodPut, pluginPath(added.Id, "/enabled"), `{"enabled":false}`, e.owner),
+		http.StatusOK)
+	if off.Enabled {
+		t.Fatalf("after switching off = %+v; want enabled false", off)
+	}
+	rec = e.json(http.MethodPut, pluginPath(added.Id, "/enabled"), `{}`, e.owner)
+	assertErrorBody(t, "enabled なしのスイッチ", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+
 	revoked := decodePlugin(t, "取り消し", e.json(http.MethodDelete, pluginPath(added.Id, "/approval"), "", e.owner), http.StatusOK)
 	if revoked.State != gen.WorkInfoPluginStateUnapproved {
 		t.Fatalf("revoked state = %s", revoked.State)
@@ -150,6 +162,7 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 		{http.MethodDelete, "/approval", ""},
 		{http.MethodPut, "/approval", `{"digest":"x"}`},
 		{http.MethodPut, "/settings", `{"values":{}}`},
+		{http.MethodPut, "/enabled", `{"enabled":true}`},
 	} {
 		rec := e.json(req.method, pluginPath(added.Id, req.rest), req.body, e.owner)
 		assertErrorBody(t, req.method+" "+req.rest+" of a deleted plugin", rec.Code, rec.Body.Bytes(),

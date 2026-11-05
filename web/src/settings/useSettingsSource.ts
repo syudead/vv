@@ -12,6 +12,8 @@ export interface SettingsSource<S> {
   /** Call immediately before saving to invalidate old reads and pause reloads. */
   beginSave: () => void;
   saved: (settings: S) => void;
+  /** Apply a saved part to the latest settings, for saves that each change one item; no-op before a read. */
+  update: (change: (settings: S) => S) => void;
   /** Call after both successful and failed saves. */
   endSave: () => void;
 }
@@ -28,13 +30,13 @@ export function useSettingsSource<S>(
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const revision = useRef(0);
   const controller = useRef<AbortController | null>(null);
-  // Pause reads during a save so stale responses cannot overwrite or invalidate it.
-  const saveInFlight = useRef(false);
+  // Pause reads while any save runs so stale responses cannot overwrite or invalidate it.
+  const savesInFlight = useRef(0);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
   const load = useCallback(async () => {
-    if (saveInFlight.current) return;
+    if (savesInFlight.current > 0) return;
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
@@ -67,11 +69,15 @@ export function useSettingsSource<S>(
     // Discard reads started before the save.
     controller.current?.abort();
     revision.current += 1;
-    saveInFlight.current = true;
+    savesInFlight.current += 1;
   }, []);
   const endSave = useCallback(() => {
-    saveInFlight.current = false;
+    savesInFlight.current -= 1;
   }, []);
 
-  return { settings, loadError, load, beginSave, saved: setSettings, endSave };
+  const update = useCallback((change: (settings: S) => S) => {
+    setSettings((current) => (current === null ? current : change(current)));
+  }, []);
+
+  return { settings, loadError, load, beginSave, saved: setSettings, update, endSave };
 }

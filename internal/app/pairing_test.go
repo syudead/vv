@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -12,13 +14,58 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakePeerStore keeps one link and one grant, hashing the grant's secret like the SQLite role.
+// fakePeerStore keeps links in slot order and one grant, hashing the grant's secret like the SQLite role.
 type fakePeerStore struct {
 	mu        sync.Mutex
 	nodeID    string
-	link      *domain.PeerLink
+	links     []domain.PeerLink
+	nextSlot  int64
 	grant     *domain.PeerGrant
 	grantHash [32]byte
+	// folders is each link's snapshot by node id; listings records every listing ReplacePeerFolders received.
+	folders  map[string][]domain.PeerMediaFolder
+	listings [][]domain.PeerFolder
+}
+
+func (f *fakePeerStore) PeerFolders(_ context.Context, nodeID string) ([]domain.PeerMediaFolder, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.folders[nodeID]), nil
+}
+
+func (f *fakePeerStore) ReplacePeerFolders(
+	_ context.Context, nodeID string, listed []domain.PeerFolder, now time.Time,
+) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listings = append(f.listings, listed)
+	next, changed := domain.ReconcilePeerFolders(f.folders[nodeID], listed, now)
+	if f.folders == nil {
+		f.folders = map[string][]domain.PeerMediaFolder{}
+	}
+	f.folders[nodeID] = next
+	return changed, nil
+}
+
+func (f *fakePeerStore) SetPeerFolderEnabled(
+	_ context.Context, nodeID string, folderID int64, enabled bool,
+) (domain.PeerMediaFolder, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rows := f.folders[nodeID]
+	i := slices.IndexFunc(rows, func(row domain.PeerMediaFolder) bool { return row.FolderID == folderID })
+	if i < 0 {
+		return domain.PeerMediaFolder{}, false, domain.ErrNotFound
+	}
+	changed := rows[i].Enabled != enabled
+	rows[i].Enabled = enabled
+	return rows[i], changed, nil
+}
+
+func (f *fakePeerStore) storedListings() [][]domain.PeerFolder {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.listings)
 }
 
 func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (string, error) {
@@ -30,62 +77,56 @@ func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (strin
 	return f.nodeID, nil
 }
 
-func (f *fakePeerStore) Link(context.Context) (domain.PeerLink, bool, error) {
+func (f *fakePeerStore) Links(context.Context) ([]domain.PeerLink, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.link == nil {
-		return domain.PeerLink{}, false, nil
-	}
-	return *f.link, true, nil
+	return slices.Clone(f.links), nil
 }
 
-func (f *fakePeerStore) AddLink(_ context.Context, link domain.PeerLink) error {
+func (f *fakePeerStore) AddLink(_ context.Context, link domain.PeerLink) (domain.PeerLink, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.link != nil {
-		return domain.ErrAlreadyPaired
+	if err := domain.CheckNewLink(f.links, link.NodeID); err != nil {
+		return domain.PeerLink{}, err
 	}
-	f.link = &link
-	return nil
+	f.nextSlot++
+	link.Slot = f.nextSlot
+	f.links = append(f.links, link)
+	return link, nil
 }
 
-func (f *fakePeerStore) UpdateLinkAddress(_ context.Context, address string) (domain.PeerLink, error) {
+// update applies change to the link of nodeID and answers it, or domain.ErrNotFound.
+func (f *fakePeerStore) update(nodeID string, change func(*domain.PeerLink)) (domain.PeerLink, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.link == nil {
+	i := slices.IndexFunc(f.links, func(link domain.PeerLink) bool { return link.NodeID == nodeID })
+	if i < 0 {
 		return domain.PeerLink{}, domain.ErrNotFound
 	}
-	f.link.Address = address
-	return *f.link, nil
+	change(&f.links[i])
+	return f.links[i], nil
+}
+
+func (f *fakePeerStore) UpdateLinkAddress(_ context.Context, nodeID, address string) (domain.PeerLink, error) {
+	return f.update(nodeID, func(link *domain.PeerLink) { link.Address = address })
 }
 
 func (f *fakePeerStore) PinLinkCertificate(_ context.Context, nodeID, spki string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.link == nil || f.link.NodeID != nodeID {
-		return domain.ErrNotFound
-	}
-	f.link.PinnedSPKI = spki
-	return nil
+	_, err := f.update(nodeID, func(link *domain.PeerLink) { link.PinnedSPKI = spki })
+	return err
 }
 
 func (f *fakePeerStore) MarkLinkRevoked(_ context.Context, nodeID string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.link != nil && f.link.NodeID == nodeID {
-		f.link.Revoked = true
-	}
+	_, _ = f.update(nodeID, func(link *domain.PeerLink) { link.Revoked = true })
 	return nil
 }
 
 func (f *fakePeerStore) DeleteLink(_ context.Context, nodeID string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.link == nil || f.link.NodeID != nodeID {
-		return false, nil
-	}
-	f.link = nil
-	return true, nil
+	before := len(f.links)
+	f.links = slices.DeleteFunc(f.links, func(link domain.PeerLink) bool { return link.NodeID == nodeID })
+	return len(f.links) < before, nil
 }
 
 func (f *fakePeerStore) Grant(context.Context) (domain.PeerGrant, bool, error) {
@@ -126,10 +167,15 @@ func (f *fakePeerStore) DeleteGrant(_ context.Context, nodeID string) (bool, err
 	return true, nil
 }
 
+// storedLink is the first link, nil without one.
 func (f *fakePeerStore) storedLink() *domain.PeerLink {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.link
+	if len(f.links) == 0 {
+		return nil
+	}
+	link := f.links[0]
+	return &link
 }
 
 func (f *fakePeerStore) storedGrant() *domain.PeerGrant {
@@ -183,6 +229,10 @@ func (l *directLink) Handshake(ctx context.Context, target domain.PeerTarget, se
 func (l *directLink) Watch(ctx context.Context, _ domain.PeerTarget, _ string, _ func(), _ func(domain.PeerChanged)) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (l *directLink) MediaFolders(context.Context, domain.PeerTarget, string) ([]domain.PeerFolder, error) {
+	return nil, nil
 }
 
 func (l *directLink) Forget(ctx context.Context, target domain.PeerTarget, _, nodeID string) error {
@@ -242,11 +292,20 @@ func (n *pairingNodes) assertNothingStored(t *testing.T) {
 	}
 }
 
+// assertState checks the state of node's one link.
 func assertState(t *testing.T, label string, node *Pairing, want domain.PeerConnection, peerVersion string) {
 	t.Helper()
 	state, err := node.State(context.Background())
-	if err != nil || state.State != want || state.PeerVersion != peerVersion {
-		t.Errorf("%s の State = %+v, %v, want %s と PeerVersion %q", label, state, err, want, peerVersion)
+	if err != nil || len(state.Links) != 1 || state.Links[0].State != want || state.Links[0].PeerVersion != peerVersion {
+		t.Errorf("%s の State = %+v, %v, want リンク 1 本で %s と PeerVersion %q", label, state, err, want, peerVersion)
+	}
+}
+
+// assertNoLinks checks that node reads nothing.
+func assertNoLinks(t *testing.T, label string, node *Pairing) {
+	t.Helper()
+	if state, err := node.State(context.Background()); err != nil || len(state.Links) != 0 {
+		t.Errorf("%s の State = %+v, %v, want リンク無し", label, state, err)
 	}
 }
 
@@ -279,18 +338,15 @@ func TestPairingGrantsOneDirection(t *testing.T) {
 		t.Errorf("ペアリング中に handshake が呼ばれた: %v", n.link.handshakes)
 	}
 	assertState(t, "B", n.b, domain.PeerConnected, "1.2.0")
-	assertState(t, "A", n.a, domain.PeerUnpaired, "")
-	if state, _ := n.a.State(ctx); state.Grant == nil || state.Grant.Name != "b" || state.Link != nil {
+	assertNoLinks(t, "A", n.a)
+	if state, _ := n.a.State(ctx); state.Grant == nil || state.Grant.Name != "b" {
 		t.Errorf("A の State = %+v, want grant だけ", state)
 	}
 
-	// The code is used up, each direction holds one row, and A's code is refused while B reads it.
+	// The code is used up, and A's code is refused while B reads it.
 	secondB := NewPairing(PairingOptions{Store: &fakePeerStore{}, Client: n.link, Version: "1.2.0", NodeName: "b2"})
 	if _, err := secondB.Pair(ctx, domain.PairInput{Address: addressA, Code: code}); !errors.Is(err, domain.ErrInvalidPairingCode) {
 		t.Errorf("使ったコードでの Pair err = %v, want ErrInvalidPairingCode", err)
-	}
-	if err := n.pairFromB("ANYCODE2"); !errors.Is(err, domain.ErrAlreadyPaired) {
-		t.Errorf("読む相手がある B の Pair err = %v, want ErrAlreadyPaired", err)
 	}
 	if _, err := n.a.IssueCode(ctx); !errors.Is(err, domain.ErrAlreadyPaired) {
 		t.Errorf("読まれている A の IssueCode err = %v, want ErrAlreadyPaired", err)
@@ -443,16 +499,15 @@ func TestUnpairClearsTheLinkAndTheGrant(t *testing.T) {
 	if err := n.pairFromB(n.issueCode(t, n.a)); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.b.Unpair(ctx); err != nil {
+	nodeA, _ := n.a.Node(ctx)
+	if err := n.b.Unpair(ctx, nodeA.ID); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := n.b.State(ctx); err != nil || state.State != domain.PeerUnpaired || state.Link != nil {
-		t.Errorf("解除後の B の State = %+v, %v", state, err)
-	}
+	assertNoLinks(t, "解除後の B", n.b)
 	if n.storeA.storedGrant() != nil {
 		t.Errorf("解除後も A に grant が残る: %+v", n.storeA.storedGrant())
 	}
-	if _, err := n.b.ChangeAddress(ctx, addressA); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := n.b.ChangeAddress(ctx, nodeA.ID, addressA); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("解除後の ChangeAddress err = %v, want ErrNotFound", err)
 	}
 }
@@ -485,4 +540,43 @@ func TestPairingPinsTheReadNodesCertificate(t *testing.T) {
 	if link := n.storeB.storedLink(); link == nil || link.PinnedSPKI != spkiA {
 		t.Errorf("B の link = %+v, want 指紋 %s を固定", link, spkiA)
 	}
+}
+
+// A ninth pairing is refused before the other node is called, and a node this one already reads is refused
+// after its answer, which then withdraws the grant it gave.
+func TestPairingRefusesTheNinthLinkAndANodeReadTwice(t *testing.T) {
+	t.Run("9 本目", func(t *testing.T) {
+		n := newPairingNodes(t, "1.2.0", "1.2.0")
+		for i := range domain.MaxPeerLinks {
+			id := fmt.Sprintf("00000000-0000-4000-8000-%012d", i)
+			if _, err := n.storeB.AddLink(context.Background(), domain.PeerLink{NodeID: id, Name: "n", Address: addressA}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := n.pairFromB(n.issueCode(t, n.a)); !errors.Is(err, domain.ErrPeerLimit) {
+			t.Fatalf("9 本目の Pair err = %v, want ErrPeerLimit", err)
+		}
+		if n.storeA.storedGrant() != nil {
+			t.Errorf("断ったペアリングで A に grant が残る: %+v", n.storeA.storedGrant())
+		}
+	})
+	t.Run("同じノード", func(t *testing.T) {
+		n := newPairingNodes(t, "1.2.0", "1.2.0")
+		if err := n.pairFromB(n.issueCode(t, n.a)); err != nil {
+			t.Fatal(err)
+		}
+		// A withdrew B's access, so it gives B a code again while B still holds its link to A.
+		if err := n.a.RevokeGrant(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if err := n.pairFromB(n.issueCode(t, n.a)); !errors.Is(err, domain.ErrAlreadyPaired) {
+			t.Fatalf("同じノードへの Pair err = %v, want ErrAlreadyPaired", err)
+		}
+		if links, _ := n.storeB.Links(context.Background()); len(links) != 1 {
+			t.Errorf("B のリンク = %+v, want 1 本のまま", links)
+		}
+		if n.storeA.storedGrant() != nil {
+			t.Errorf("断ったペアリングで A に grant が残る: %+v", n.storeA.storedGrant())
+		}
+	})
 }

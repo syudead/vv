@@ -182,7 +182,8 @@ func linkFetchFailure(plugin string, err error) string {
 		return fmt.Sprintf("%s could not read the link (%s).", plugin, runErr.Failure)
 	case errors.As(err, &missing):
 		return plugin + " needs its settings filled in."
-	case errors.Is(err, domain.ErrWorkInfoFetchStale), errors.Is(err, domain.ErrWorkInfoPluginNotApproved):
+	case errors.Is(err, domain.ErrWorkInfoFetchStale), errors.Is(err, domain.ErrWorkInfoPluginNotApproved),
+		errors.Is(err, domain.ErrWorkInfoPluginDisabled):
 		return plugin + " changed while it read the link."
 	}
 	return plugin + " could not read the link."

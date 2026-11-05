@@ -27,7 +27,7 @@ export interface PresentValue {
 
 /** A value picked in the editor that no selected video has yet; it is always added. */
 export type PickedValue =
-  | { key: string; label: string; id: number }
+  | { key: string; label: string; id: number; provisional?: true }
   | { key: string; label: string; newName: string };
 
 export interface FieldDraft {
@@ -42,9 +42,11 @@ export interface BulkDraft {
   dates: Partial<Record<WorkDateKind, DateDraft>>;
   /** True makes every target public, false private; undefined keeps each video's visibility. */
   public?: boolean;
+  /** The owner's choice per unnamed performer: the target key to merge into, or null to keep apart. */
+  merges: ReadonlyMap<number, string | null>;
 }
 
-export const emptyDraft: BulkDraft = { fields: new Map(), dates: {} };
+export const emptyDraft: BulkDraft = { fields: new Map(), dates: {}, merges: new Map() };
 
 const emptyField: FieldDraft = { choices: new Map(), picked: [] };
 
@@ -175,7 +177,9 @@ export function presentCredits(
 export interface ChangeLine {
   field: FieldId | WorkDateKind | "public";
   label: string;
-  action: Choice | "set" | "clear" | "public" | "private";
+  action: Choice | "set" | "clear" | "public" | "private" | "merge";
+  /** The person a merge line merges into. */
+  target?: string;
   /** Videos the line changes, as far as the summary tells. */
   videos: number;
 }

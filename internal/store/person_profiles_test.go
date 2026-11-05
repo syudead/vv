@@ -136,7 +136,7 @@ func TestListPeopleByAgePagesUnknownBirthDatesLast(t *testing.T) {
 			if pages == 3 {
 				t.Fatalf("%s: more than 3 pages of 2 for 5 people", tc.sort)
 			}
-			page, err := db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Sort: tc.sort, Limit: 2, Cursor: cursor})
+			page, err := db.Credits().List(ctx, owner, domain.CreditPerson, domain.CreditQuery{Sort: tc.sort, Limit: 2, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("%s: %v", tc.sort, err)
 			}
@@ -150,7 +150,7 @@ func TestListPeopleByAgePagesUnknownBirthDatesLast(t *testing.T) {
 		}
 	}
 
-	if _, err := db.Credits().List(ctx, domain.CreditOrganization, domain.CreditQuery{Sort: domain.CreditSortAgeAsc}); err == nil {
+	if _, err := db.Credits().List(ctx, owner, domain.CreditOrganization, domain.CreditQuery{Sort: domain.CreditSortAgeAsc}); err == nil {
 		t.Error("団体の ageAsc がエラーにならない")
 	}
 }

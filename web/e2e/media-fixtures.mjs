@@ -394,8 +394,16 @@ export function generateVideoTabsFixtures(root) {
   generateHueClips(root, VIDEO_TABS_VIDEOS, 12);
 }
 
-/** Two-second silent clips, one per title, each in its own hue. */
-function generateHueClips(root, titles, rate) {
+/** Four clips for assistant.e2e.ts, which marks two of them in progress. */
+export const ASSISTANT_VIDEOS = ["助手確認A", "助手確認B", "助手確認C", "助手確認D"];
+
+export function generateAssistantFixtures(root) {
+  // No other fixture uses this frame rate, so no content key matches another suite's video.
+  generateHueClips(root, ASSISTANT_VIDEOS, 9);
+}
+
+/** Two-second silent clips, one per title, each in its own hue from firstHue on. */
+function generateHueClips(root, titles, rate, firstHue = 40) {
   mkdirSync(root, { recursive: true });
   titles.forEach((title, index) =>
     ffmpeg([
@@ -404,7 +412,7 @@ function generateHueClips(root, titles, rate) {
       "-i",
       `testsrc2=size=320x180:rate=${String(rate)}:duration=2`,
       "-vf",
-      `hue=h=${String(40 + index * 80)}`,
+      `hue=h=${String(firstHue + index * 80)}`,
       ...h264,
       "-an",
       path.join(root, `${title}.mp4`),
@@ -657,5 +665,24 @@ export function generatePeerFixtures(root) {
   writeFileSync(
     path.join(remote, "pairing-remote.vtt"),
     "WEBVTT\n\n00:00:00.500 --> 00:00:30.000\nRemote subtitle cue\n",
+  );
+}
+
+/**
+ * One clip per media folder for peer-folders.e2e.ts, in a directory named after its title: two local
+ * folders for the main node, two for the second node and one for the third.
+ */
+export const MULTI_PEER_FOLDERS = [
+  "multipeer-local-a",
+  "multipeer-local-b",
+  "multipeer-b-kept",
+  "multipeer-b-off",
+  "multipeer-c",
+];
+
+export function generateMultiPeerFixtures(root) {
+  // No other fixture uses this frame rate, so no content key matches another suite's video.
+  MULTI_PEER_FOLDERS.forEach((title, index) =>
+    generateHueClips(path.join(root, title), [title], 7, 20 + index * 70),
   );
 }

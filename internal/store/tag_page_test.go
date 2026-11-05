@@ -44,7 +44,7 @@ func readAllTagPages(t *testing.T, db *DB, query domain.TagListQuery) []domain.T
 	t.Helper()
 	var pages []domain.TagPage
 	for {
-		page, err := db.Tags().ListTags(context.Background(), query)
+		page, err := db.Tags().ListTags(context.Background(), owner, query)
 		if err != nil {
 			t.Fatalf("ListTags(%+v) error = %v", query, err)
 		}
@@ -118,7 +118,7 @@ func TestListTagsSearchMatchesFoldedNameOrSynonym(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Search: "  ＡＣＴＩＯＮ "})
+	page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Search: "  ＡＣＴＩＯＮ "})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestListTagsSearchMatchesFoldedNameOrSynonym(t *testing.T) {
 		t.Errorf("映画のシノニム = %v", page.Items[1].Synonyms)
 	}
 
-	page, err = db.Tags().ListTags(ctx, domain.TagListQuery{Search: "　 "})
+	page, err = db.Tags().ListTags(ctx, owner, domain.TagListQuery{Search: "　 "})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestListTagsReturnsTheExactSpellingOutsideThePage(t *testing.T) {
 	keys := addLibraryVideos(t, db, 1)
 	attachTag(t, db, keys[0], ids["cat"])
 
-	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Search: " cat ", Limit: 2})
+	page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Search: " cat ", Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestListTagsReturnsTheExactSpellingOutsideThePage(t *testing.T) {
 		{domain.TagListQuery{Search: "neko", Limit: 2, UnusedOnly: true}, ids["猫"]},
 	}
 	for _, tc := range cases {
-		page, err := db.Tags().ListTags(ctx, tc.query)
+		page, err := db.Tags().ListTags(ctx, owner, tc.query)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +214,7 @@ func TestListTagsFiltersCombineWithAnd(t *testing.T) {
 		{domain.TagListQuery{TentativeOnly: true, Search: "cat", UnusedOnly: true, Limit: 1}, []string{"cat tentative unused"}},
 	}
 	for _, tc := range cases {
-		page, err := db.Tags().ListTags(ctx, tc.query)
+		page, err := db.Tags().ListTags(ctx, owner, tc.query)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -287,7 +287,7 @@ func TestListTagsSortsByCountAndCreatedAcrossPages(t *testing.T) {
 	if desc[0] != "a" || desc[1] != "tag 2" || desc[len(desc)-1] != "tag 10" {
 		t.Errorf("countDesc = %v", desc)
 	}
-	page, err := db.Tags().ListTags(context.Background(), domain.TagListQuery{Sort: domain.TagSortCreatedDesc, Limit: 1})
+	page, err := db.Tags().ListTags(context.Background(), owner, domain.TagListQuery{Sort: domain.TagSortCreatedDesc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestListTagsRejectsCursorOfAnotherSortOrUnreadable(t *testing.T) {
 	ctx := context.Background()
 	createTagsNamed(t, db, "a", "b", "c")
 
-	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Sort: domain.TagSortCountDesc, Limit: 1})
+	page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Sort: domain.TagSortCountDesc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestListTagsRejectsCursorOfAnotherSortOrUnreadable(t *testing.T) {
 		{Sort: domain.TagSortCountDesc, Limit: 1, Cursor: packCursor("addedDesc", "", "0", "1", "x")},
 		{Sort: domain.TagSortCountDesc, Limit: 1, Cursor: packCursor(tagCursorKind, "countDesc", "x", "1", "a")},
 	} {
-		if _, err := db.Tags().ListTags(ctx, query); !errors.Is(err, domain.ErrInvalidCursor) {
+		if _, err := db.Tags().ListTags(ctx, owner, query); !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("%+v: err = %v, want ErrInvalidCursor", query, err)
 		}
 	}
@@ -335,7 +335,7 @@ func TestListTagsWithoutLimitReturnsEverythingWithoutCursor(t *testing.T) {
 	}
 	ids := createTagsNamed(t, db, names...)
 
-	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Cursor: "ignored"})
+	page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Cursor: "ignored"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,14 +355,14 @@ func TestListTagsKeepsTotalWhenThePageAfterTheCursorIsEmpty(t *testing.T) {
 	ctx := context.Background()
 	ids := createTagsNamed(t, db, "a", "b", "c")
 
-	first, err := db.Tags().ListTags(ctx, domain.TagListQuery{Limit: 2})
+	first, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Tags().DeleteTag(ctx, ids["c"]); err != nil {
 		t.Fatal(err)
 	}
-	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Limit: 2, Cursor: first.NextCursor})
+	page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Limit: 2, Cursor: first.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestListTagsDoesNotWaitForTheWriter(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Limit: 1})
+		page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Limit: 1})
 		if err == nil && page.Total != 2 {
 			err = fmt.Errorf("Total = %d, want 2", page.Total)
 		}

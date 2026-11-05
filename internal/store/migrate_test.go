@@ -15,22 +15,7 @@ import (
 )
 
 func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(context.Background(), 2); err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 2)
 	res, err := db.sql.Exec(`insert into videos(path, title, size_bytes, mtime, content_key, added_at, updated_at)
 		values (?, 'a', 10, 20, 'key-a', 30, 40)`, fixturePath("/media/a.mp4"))
 	if err != nil {
@@ -70,22 +55,7 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 }
 
 func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(context.Background(), 3); err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 3)
 	if _, ok := tableColumns(t, db, "videos")["location_generation"]; ok {
 		t.Fatal("version 3 unexpectedly contains location_generation")
 	}
@@ -115,22 +85,7 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 }
 
 func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(context.Background(), 5); err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 5)
 	for _, item := range []struct {
 		key, state string
 	}{
@@ -694,23 +649,8 @@ func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
 
 // Preserve legacy error text exactly and leave new reason codes NULL; rollback removes only the added columns.
 func TestFailureCodesMigrationKeepsExistingReasons(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 15)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 15); err != nil {
-		t.Fatal(err)
-	}
 	const probeReason = "ffprobe が失敗しました (/media/a.mp4): moov atom not found"
 	const scanReason = "メディアフォルダを読めません (/media): permission denied"
 	res, err := db.sql.Exec(`insert into videos(content_key, probe_state, probe_error, added_at, updated_at)

@@ -158,7 +158,7 @@ function CardDuration({
     return null;
   return (
     <VideoThumbnailDuration>
-      {remote && <ItemRemoteMark id={remoteId} />}
+      {remote && <ItemRemoteMark itemId={video.id} id={remoteId} />}
       {versions !== null && <VersionsMark count={versions} id={versionsId} />}
       {publicMark && <PublicMark />}
       {video.virtual && <VirtualMark id={virtualId} />}
@@ -459,7 +459,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const publicMark = usePublicMark(video);
   const versions = shownVersionsCount(video);
   const owner = useAudience() === "owner";
-  // Favorites and playlists stay on each node; a remote row keeps the cells empty so columns align.
+  // Playlists stay on each node; a remote row keeps that cell empty so columns align.
   const remote = isRemoteId(video.id);
 
   return (
@@ -529,7 +529,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          {!remote && <VideoFavorite video={video} />}
+          <VideoFavorite video={video} />
         </TableCell>
       )}
       {owner && (
@@ -552,7 +552,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
         <span className="inline-flex items-center justify-end gap-1.5">
-          {remote && <ItemRemoteMark />}
+          {remote && <ItemRemoteMark itemId={video.id} />}
           {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}
           {video.virtual && <VirtualMark />}

@@ -24,7 +24,10 @@ interface Options {
   /** The fixed element drawn as the box; hidden while no box is drawn. */
   box: RefObject<HTMLElement | null>;
   enabled: boolean;
-  items: readonly LibraryItem[];
+  /** The items as displayed; read when the box changes, so it may be set after rendering. */
+  items: RefObject<readonly LibraryItem[]>;
+  /** The `data-card-key` of an item's card; pages whose cards use another key pass it. */
+  cardKeyOf?: (item: LibraryItem) => string;
   selection: LibrarySelection;
   setSelection: Dispatch<SetStateAction<LibrarySelection>>;
 }
@@ -128,11 +131,11 @@ function trackBox(
     const signature = [...keys].join("\n");
     if (signature !== hit) {
       hit = signature;
-      const { items, setSelection } = latest.current;
+      const { items, cardKeyOf = itemKey, setSelection } = latest.current;
       setSelection(
         setItems(
           base,
-          items.filter((item) => keys.has(itemKey(item))),
+          items.current.filter((item) => keys.has(cardKeyOf(item))),
           true,
         ),
       );

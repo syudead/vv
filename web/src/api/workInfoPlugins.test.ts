@@ -35,6 +35,7 @@ const plugin: WorkInfoPlugin = {
   sources: [],
   domains: [],
   builtin: false,
+  enabled: true,
   name: "example.works",
   fileName: "example.wasm",
   operations: ["search", "fetch"],

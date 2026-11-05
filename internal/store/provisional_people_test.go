@@ -42,7 +42,7 @@ func TestProvisionalPeopleListAfterNamedPeople(t *testing.T) {
 	var names []int64
 	query := domain.CreditQuery{Limit: 1}
 	for {
-		page, err := db.Credits().List(ctx, domain.CreditPerson, query)
+		page, err := db.Credits().List(ctx, owner, domain.CreditPerson, query)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestProvisionalPeopleListAfterNamedPeople(t *testing.T) {
 		t.Errorf("名前順 = %v, want %v", names, want)
 	}
 	// Equal video counts fall back to name order, which also puts the provisional person last.
-	tie, err := db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Sort: domain.TagSortCountDesc})
+	tie, err := db.Credits().List(ctx, owner, domain.CreditPerson, domain.CreditQuery{Sort: domain.TagSortCountDesc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestProvisionalPeopleListAfterNamedPeople(t *testing.T) {
 	}
 
 	yes, no := true, false
-	only, err := db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Provisional: &yes})
+	only, err := db.Credits().List(ctx, owner, domain.CreditPerson, domain.CreditQuery{Provisional: &yes})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,14 +75,14 @@ func TestProvisionalPeopleListAfterNamedPeople(t *testing.T) {
 	if got := only.Items[0]; got.ID != provisional || !got.Provisional || got.Name != "" {
 		t.Errorf("仮の人物 = %+v", got)
 	}
-	named, err := db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Provisional: &no})
+	named, err := db.Credits().List(ctx, owner, domain.CreditPerson, domain.CreditQuery{Provisional: &no})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := []int64{a.ID, b.ID}; !slices.Equal(creditPageIDs(named), want) || named.Total != 2 || named.Items[0].Provisional {
 		t.Errorf("provisional=false = %+v", named)
 	}
-	if _, err := db.Credits().List(ctx, domain.CreditOrganization, domain.CreditQuery{Provisional: &no}); err == nil {
+	if _, err := db.Credits().List(ctx, owner, domain.CreditOrganization, domain.CreditQuery{Provisional: &no}); err == nil {
 		t.Error("団体の provisional 絞り込みが通った")
 	}
 }

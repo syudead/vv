@@ -2,7 +2,14 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { layoutCards, lift, moveTo, openedMenu, release } from "../testing/cardDrag";
+import {
+  layoutCards,
+  lift,
+  moveTo,
+  openedMenu,
+  release,
+  releaseAndSettle,
+} from "../testing/cardDrag";
 import {
   group,
   renderPage,
@@ -41,7 +48,7 @@ async function dropClipsOnExtras() {
   lift(/^Clips/, 3);
   moveTo(1);
   expect(screen.getByText("Put in or merge…")).toBeDefined();
-  release(1);
+  await releaseAndSettle(() => release(1));
   const menu = await openedMenu();
   expect(within(menu).getByText('Dropped on "Extras"')).toBeDefined();
   return menu;

@@ -66,16 +66,27 @@ func OpenMigratedForTest(dataDir string) (*DB, error) {
 	return Open(dataDir)
 }
 
-// Checkpoint WAL before reading the migrated database image.
 func buildMigratedImage() ([]byte, error) {
+	return snapshotImage(func(db *DB) error {
+		_, err := Migrate(context.Background(), db)
+		return err
+	})
+}
+
+// snapshotImage returns the bytes of a fresh database after prepare, checkpointing WAL so the file alone holds the schema.
+func snapshotImage(prepare func(*DB) error) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "mdm-migrated-")
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	db, err := openAndMigrate(dir)
+	db, err := Open(dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := prepare(db); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	if _, err := db.sql.Exec(`pragma wal_checkpoint(truncate)`); err != nil {
@@ -116,4 +127,13 @@ func RecordActivityForTest(ctx context.Context, db *DB, entry domain.ActivityEnt
 		return 0, err
 	}
 	return id, nil
+}
+
+// SetPlayedAtForTest saves a position for contentKey last updated at playedAt, the value the played sorts order by.
+func SetPlayedAtForTest(ctx context.Context, db *DB, contentKey string, playedAt time.Time) error {
+	_, err := db.sql.ExecContext(ctx, `
+		insert into playback_progress (content_key, position_ms, duration_ms, completed, updated_at)
+		values (?, 1000, 60000, 0, ?)
+		on conflict (content_key) do update set updated_at = excluded.updated_at`, contentKey, playedAt.Unix())
+	return err
 }

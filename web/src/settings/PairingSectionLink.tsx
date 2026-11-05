@@ -1,83 +1,42 @@
-import { Link, type LucideIcon, ShieldAlert, Unlink, Unplug } from "lucide-react";
 import { useId, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import {
   confirmPeerCertificate,
+  type PeerLinkState,
   type PeerState,
   unpairPeer,
   updatePeerAddress,
 } from "../api/peer";
 import { errorText, t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
 import { FactList } from "../ui/patterns/fact-list";
+import { PageSection } from "../ui/patterns/page-section";
 import { Button } from "../ui/shadcn/button";
 
 import { PairingRemoveDialog } from "./PairingRemoveDialog";
+import { PeerLinkBadge } from "./PeerLinkBadge";
 import { FingerprintAlert } from "./PairingSectionFingerprint";
 import { FailureAlert } from "./SaveStatus";
 import { TextSettingRow, useTextSettingSave } from "./TextSettingRow";
 
-interface StateLine {
-  icon: LucideIcon;
-  word: UiText;
-  detail?: UiText;
-  tone: "success" | "warning";
-}
-
-function stateLine(state: PeerState): StateLine {
+/** Why a link is not connected and what to do; a connected link needs no line. */
+function stateDetail(link: PeerLinkState): UiText | undefined {
   const text = t.settings.pairing.state;
-  if (state.state === "connected")
-    return { icon: Link, word: text.connected, tone: "success" };
-  if (state.state === "revoked")
-    return {
-      icon: Unlink,
-      word: text.revoked,
-      detail: text.revokedDetail,
-      tone: "warning",
-    };
+  if (link.state === "connected") return undefined;
+  if (link.state === "revoked") return text.revokedDetail;
   // Without a pinned certificate nothing was trusted before, so nothing "changed".
-  if (state.reason === "certificate")
-    return {
-      icon: ShieldAlert,
-      word: state.link?.pinned === true ? text.certificate : text.untrusted,
-      detail: state.link?.pinned === true ? text.certificateDetail : text.untrustedDetail,
-      tone: "warning",
-    };
-  return {
-    icon: Unplug,
-    word: text.network,
-    detail: text.networkDetail,
-    tone: "warning",
-  };
-}
-
-function StateRow({ state }: { state: PeerState }) {
-  const line = stateLine(state);
-  const Icon = line.icon;
-  return (
-    <p className="flex flex-col gap-1">
-      <span
-        className={cn(
-          "flex items-center gap-2 text-sm font-medium",
-          line.tone === "success" ? "text-success" : "text-warning",
-        )}
-      >
-        <Icon aria-hidden="true" className="size-4" />
-        {line.word}
-      </span>
-      {line.detail !== undefined && (
-        <span className="text-sm text-muted-foreground">{line.detail}</span>
-      )}
-    </p>
-  );
+  if (link.reason === "certificate")
+    return link.pinned === true ? text.certificateDetail : text.untrustedDetail;
+  return text.networkDetail;
 }
 
 /** Saved on blur or Enter; the answer updates the link's details, the next peer event the state. */
 function AddressRow({
+  nodeId,
   address,
   onSaved,
 }: {
+  nodeId: string;
   address: string;
   onSaved: (state: PeerState) => void;
 }) {
@@ -86,9 +45,9 @@ function AddressRow({
   const setting = useTextSettingSave({
     initial: address,
     save: async (next) => {
-      const answer = await updatePeerAddress(next);
+      const answer = await updatePeerAddress(nodeId, next);
       onSaved(answer);
-      return answer.link?.address ?? next;
+      return answer.links.find((link) => link.nodeId === nodeId)?.address ?? next;
     },
     isInvalid: (failure) =>
       failure instanceof RequestFailed && failure.reason === "invalid_address",
@@ -113,10 +72,12 @@ function AddressRow({
  * unpinned link gets the first-trust wording that pairing uses.
  */
 function CertificateRow({
+  nodeId,
   address,
   fingerprint,
   pinned,
 }: {
+  nodeId: string;
   address: string;
   fingerprint: string;
   pinned: boolean;
@@ -131,7 +92,7 @@ function CertificateRow({
     setPending(true);
     setFailure(null);
     try {
-      await confirmPeerCertificate(shown);
+      await confirmPeerCertificate(nodeId, shown);
     } catch (error) {
       if (
         error instanceof RequestFailed &&
@@ -170,7 +131,15 @@ function CertificateRow({
   );
 }
 
-function UnpairAction({ name, onUnpaired }: { name: string; onUnpaired: () => void }) {
+function UnpairAction({
+  nodeId,
+  name,
+  onUnpaired,
+}: {
+  nodeId: string;
+  name: string;
+  onUnpaired: () => void;
+}) {
   const text = t.settings.pairing.unpairDialog;
   return (
     <PairingRemoveDialog
@@ -183,14 +152,14 @@ function UnpairAction({ name, onUnpaired }: { name: string; onUnpaired: () => vo
         done: text.done(name),
         failed: text.failed,
       }}
-      remove={() => unpairPeer()}
+      remove={() => unpairPeer(nodeId)}
       onRemoved={onUnpaired}
     />
   );
 }
 
 /** Revoked needs no confirmation: the other side already withdrew the access. */
-function RemoveAction({ onRemoved }: { onRemoved: () => void }) {
+function RemoveAction({ nodeId, onRemoved }: { nodeId: string; onRemoved: () => void }) {
   const text = t.settings.pairing.link;
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
@@ -198,7 +167,7 @@ function RemoveAction({ onRemoved }: { onRemoved: () => void }) {
     setPending(true);
     setFailure(null);
     try {
-      await unpairPeer();
+      await unpairPeer(nodeId);
       onRemoved();
     } catch (error) {
       setFailure(text.removeFailed(errorText(error)));
@@ -220,54 +189,58 @@ function RemoveAction({ onRemoved }: { onRemoved: () => void }) {
   );
 }
 
-/** The face of the VVMDM this one reads: its state, details, address, certificate and removal. */
-export function LinkDetails({
-  state,
+/**
+ * The section of one VVMDM this one reads, titled with its name: the state's detail while it is not
+ * connected, its version, address, certificate and removal. The description says what a connected
+ * link shows; the detail takes its place otherwise, so the header never contradicts the state.
+ */
+export function LinkSection({
+  link,
   onLinkAnswer,
   onUnpaired,
 }: {
-  state: PeerState;
+  link: PeerLinkState;
   onLinkAnswer: (state: PeerState) => void;
   onUnpaired: () => void;
 }) {
   const text = t.settings.pairing.link;
-  const link = state.link;
-  const name = link?.name ?? "";
-  const revoked = state.state === "revoked";
+  const name = link.name ?? "";
+  const nodeId = link.nodeId ?? "";
+  const revoked = link.state === "revoked";
+  const detail = stateDetail(link);
   const certificate =
-    state.state === "unreachable" && state.reason === "certificate"
-      ? state.fingerprint
+    link.state === "unreachable" && link.reason === "certificate"
+      ? link.fingerprint
       : undefined;
   return (
-    <>
-      <div className="flex flex-col gap-3">
-        <StateRow state={state} />
-        <p className="text-sm text-muted-foreground">{text.description}</p>
-      </div>
+    <PageSection
+      title={name}
+      description={detail === undefined ? text.description : undefined}
+      actions={<PeerLinkBadge state={link.state} />}
+    >
+      {detail !== undefined && <p className="text-muted-foreground">{detail}</p>}
       <FactList
-        facts={[
-          { id: "name", term: text.name, value: name },
-          { id: "version", term: text.version, value: link?.version ?? "" },
-        ]}
+        facts={[{ id: "version", term: text.version, value: link.version ?? "" }]}
       />
-      {!revoked && link !== undefined && (
-        <AddressRow address={link.address} onSaved={onLinkAnswer} />
+      {!revoked && link.address !== undefined && (
+        <AddressRow nodeId={nodeId} address={link.address} onSaved={onLinkAnswer} />
       )}
       {certificate !== undefined && (
         <CertificateRow
           key={certificate}
-          address={link?.address ?? ""}
+          nodeId={nodeId}
+          address={link.address ?? ""}
           fingerprint={certificate}
-          pinned={link?.pinned === true}
+          pinned={link.pinned === true}
         />
       )}
       <div>
         {revoked ? (
-          <RemoveAction onRemoved={onUnpaired} />
+          <RemoveAction nodeId={nodeId} onRemoved={onUnpaired} />
         ) : (
-          <UnpairAction name={name} onUnpaired={onUnpaired} />
+          <UnpairAction nodeId={nodeId} name={name} onUnpaired={onUnpaired} />
         )}
       </div>
-    </>
+    </PageSection>
   );
 }

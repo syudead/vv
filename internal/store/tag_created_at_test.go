@@ -32,7 +32,7 @@ func TestCreateTagReturnsCreatedAtMatchingListTags(t *testing.T) {
 		t.Errorf("CreatedAt = %d, tags.created_at = %d", tag.CreatedAt.Unix(), stored)
 	}
 
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestTagOperationsReturnCreatedAt(t *testing.T) {
 		return time.Unix(sec, 0)
 	}
 
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -131,7 +131,7 @@ func TestCreditsWithTheSameNameAreDifferentPeople(t *testing.T) {
 	if a.ID == b.ID {
 		t.Fatalf("同じ名前の 2 人が同じ id %d を持つ", a.ID)
 	}
-	page, err := db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{})
+	page, err := db.Credits().List(context.Background(), owner, domain.CreditPerson, domain.CreditQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 	createPerson(t, db, "別の人", "Taro")
 
 	query := domain.CreditQuery{Q: "ＨＡＮＡＫＯ", Limit: 2}
-	first, err := db.Credits().List(context.Background(), domain.CreditPerson, query)
+	first, err := db.Credits().List(context.Background(), owner, domain.CreditPerson, query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 		t.Errorf("先頭 = %+v", first.Items[0])
 	}
 	query.Cursor = first.NextCursor
-	second, err := db.Credits().List(context.Background(), domain.CreditPerson, query)
+	second, err := db.Credits().List(context.Background(), owner, domain.CreditPerson, query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 		t.Fatalf("2 ページ目 = %d 件、total %d、nextCursor %q", len(second.Items), second.Total, second.NextCursor)
 	}
 
-	if _, err := db.Credits().List(context.Background(), domain.CreditOrganization,
+	if _, err := db.Credits().List(context.Background(), owner, domain.CreditOrganization,
 		domain.CreditQuery{Limit: 2, Cursor: first.NextCursor}); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("団体の一覧に人物のカーソル: err = %v", err)
 	}
@@ -187,7 +187,7 @@ func TestListCreditsCountsShownVideosAndSortsByCount(t *testing.T) {
 	linkPeople(t, db, keys[1], "director", many.ID)
 	linkPeople(t, db, "no-such-video", "performer", few.ID)
 
-	page, err := db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{Sort: domain.TagSortCountDesc, Limit: 2})
+	page, err := db.Credits().List(context.Background(), owner, domain.CreditPerson, domain.CreditQuery{Sort: domain.TagSortCountDesc, Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestListCreditsCountsShownVideosAndSortsByCount(t *testing.T) {
 		page.Items[1].ID != few.ID || page.Items[1].VideoCount != 1 {
 		t.Fatalf("本数の多い順 = %+v", page.Items)
 	}
-	rest, err := db.Credits().List(context.Background(), domain.CreditPerson,
+	rest, err := db.Credits().List(context.Background(), owner, domain.CreditPerson,
 		domain.CreditQuery{Sort: domain.TagSortCountDesc, Limit: 2, Cursor: page.NextCursor})
 	if err != nil {
 		t.Fatal(err)
@@ -206,6 +206,19 @@ func TestListCreditsCountsShownVideosAndSortsByCount(t *testing.T) {
 	got, err := db.Credits().Get(context.Background(), domain.CreditPerson, many.ID)
 	if err != nil || got.VideoCount != 2 {
 		t.Fatalf("Get = %+v, %v", got, err)
+	}
+}
+
+func TestGetCreditCountsABundleOnce(t *testing.T) {
+	db, ids := versionFixture(t)
+	person := createPerson(t, db, "A")
+	bundle(t, db, ids["a"], ids["a"], ids["b"])
+	setWorkInfo(t, db, ids["a"], domain.WorkInfo{People: []domain.WorkPerson{performer(person.ID)}})
+	setWorkInfo(t, db, ids["c"], domain.WorkInfo{People: []domain.WorkPerson{performer(person.ID)}})
+
+	got, err := db.Credits().Get(context.Background(), domain.CreditPerson, person.ID)
+	if err != nil || got.VideoCount != 2 {
+		t.Fatalf("Get = %+v, %v; want the bundle and c counted once each", got, err)
 	}
 }
 
@@ -530,11 +543,11 @@ func TestRefreshCreditSearchKeysFillsStaleRows(t *testing.T) {
 	if refreshed != 4 {
 		t.Errorf("作り直した行 = %d, want 4", refreshed)
 	}
-	page, err := db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Q: "hanako"})
+	page, err := db.Credits().List(ctx, owner, domain.CreditPerson, domain.CreditQuery{Q: "hanako"})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != person.ID {
 		t.Errorf("作り直した鍵で引く = %+v, %v", page, err)
 	}
-	if page, err := db.Credits().List(ctx, domain.CreditOrganization, domain.CreditQuery{Q: "めーかー"}); err != nil || len(page.Items) != 1 || page.Items[0].ID != org.ID {
+	if page, err := db.Credits().List(ctx, owner, domain.CreditOrganization, domain.CreditQuery{Q: "めーかー"}); err != nil || len(page.Items) != 1 || page.Items[0].ID != org.ID {
 		t.Errorf("団体 = %+v, %v", page, err)
 	}
 	var codeKey string

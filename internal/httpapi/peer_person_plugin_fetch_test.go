@@ -43,7 +43,7 @@ func remotePersonFetch(
 		Contract: 1, Kind: domain.WorkInfoPluginKindPerson, Name: "example.people", Version: "1.0.0",
 		Operations: []domain.WorkInfoOperation{domain.WorkInfoSearch, domain.WorkInfoFetch}, Sources: []string{"wiki"},
 	})
-	path = fmt.Sprintf("/api/people/%d/plugin-fetches", domain.ToRemoteID(person.ID))
+	path = fmt.Sprintf("/api/people/%d/plugin-fetches", domain.RemoteID(1, person.ID))
 	rec := b.owner(http.MethodPost, path, fmt.Sprintf(`{"pluginId":%d}`, pluginID))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("fetch: status = %d: %s", rec.Code, rec.Body)
@@ -63,7 +63,7 @@ func TestRemotePersonPluginFetchAppliesOnThePeer(t *testing.T) {
 	}}
 	fa, fb, b, person, path, fetched := remotePersonFetch(t, runtime)
 	ctx := context.Background()
-	remote := domain.ToRemoteID(person.ID)
+	remote := domain.RemoteID(1, person.ID)
 	if rec := b.owner(http.MethodGet, fmt.Sprintf("%s/%s/images/0", path, fetched.FetchId), ""); rec.Code != http.StatusOK {
 		t.Errorf("image: status = %d: %s", rec.Code, rec.Body)
 	}

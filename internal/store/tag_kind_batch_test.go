@@ -191,7 +191,7 @@ func TestListTagsFiltersByKind(t *testing.T) {
 		{domain.TagListQuery{}, []string{"action", "adventure", "plain", "series"}, 4},
 	}
 	for _, tc := range cases {
-		page, err := db.Tags().ListTags(ctx, tc.query)
+		page, err := db.Tags().ListTags(ctx, owner, tc.query)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +207,7 @@ func TestListTagsFiltersByKind(t *testing.T) {
 		kind domain.TagKindFilter
 		want bool
 	}{{domain.TagKindFilter{ID: genre}, true}, {domain.TagKindFilter{None: true}, false}, {domain.TagKindFilter{ID: work}, false}} {
-		page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Search: "action", Kind: tc.kind, Limit: 10})
+		page, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{Search: "action", Kind: tc.kind, Limit: 10})
 		if err != nil {
 			t.Fatal(err)
 		}

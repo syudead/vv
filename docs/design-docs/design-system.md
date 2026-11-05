@@ -313,7 +313,7 @@ to pick, what goes in each slot and what must not is in
 
 | Layer          | What it is                                                                                                                                                                                                                                                                             | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `SidePanel`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
 | Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `Shelf`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                            | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                                                          | `registry:ui`, one item each |
 
@@ -372,6 +372,21 @@ in `page-column.tsx` and used by both skeletons, at library density.
 values to change, so neither fits a record the reader only reads and leaves.
 `DataTable` is built on the shadcn/ui `Table`, which this tier adds as the
 `table` item.
+
+`SidePanel` is a column at the viewport's right edge under the top bar, the
+named step `assistant-panel` wide, for a tool that works on the page beside
+it, such as the assistant. `AppShell` and `DetailPage` take it through a
+`panel` slot after their content. From `lg` a spacer of the panel's width in
+the page's row narrows the page while the panel itself is fixed, so the window
+keeps scrolling the page and only the panel's body scrolls; below `lg` it is a
+layer without a scrim, so the page stays pressable. Its composer grows to the
+named step `assistant-composer`, four `text-sm` lines.
+
+| Rejected                                 | Why                                                                                      |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| A `Sheet`                                | Its scrim and focus trap make the page behind it unusable, and the sheet is the drawer's |
+| A sticky column in the page's row        | It needs a height step for the viewport under the top bar; the spacer needs none         |
+| A floating window at the bottom right    | It covers the cards it talks about and the scan indicator in the same corner             |
 
 `EditorDialog` is a `Dialog` that fills the viewport for a task on one image,
 such as painting over a video frame and comparing the result with it: a header

@@ -48,7 +48,7 @@ func (s *server) ListSmartFolders(w http.ResponseWriter, r *http.Request) {
 	for _, folder := range folders {
 		out.SmartFolders = append(out.SmartFolders, toAPISmartFolderSummary(audience, folder))
 	}
-	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+	if s.readsPeer(r.Context()) {
 		out.SmartFolders = s.withPeerSmartFolders(r, out.SmartFolders)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -244,7 +244,7 @@ func (s *server) ListSmartFolderCards(w http.ResponseWriter, r *http.Request, pa
 	if !s.smartFoldersConfigured(w) {
 		return
 	}
-	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+	if s.readsPeer(r.Context()) {
 		s.listMergedSmartFolderCards(w, r, params.Ids)
 		return
 	}
@@ -410,11 +410,32 @@ func (s *server) toAPISmartFolderCard(ctx context.Context, audience domain.Audie
 		for _, tag := range card.Tags {
 			out.Tags = append(out.Tags, toAPIVideoTag(tag))
 		}
+		out.Conditions = toAPISmartFolderConditions(card.Conditions)
 	}
 	smartFolderOwnerValues{
 		state: card.WatchState, watched: card.WatchedCount, lastPlayedAt: card.LastPlayedAt, favorite: card.Favorite,
 	}.apply(audience, &out)
 	return out
+}
+
+// toAPISmartFolderConditions returns nil when the rule sets none of the conditions.
+func toAPISmartFolderConditions(c domain.VideoConditions) *gen.SmartFolderConditions {
+	if !c.HasCondition() {
+		return nil
+	}
+	return &gen.SmartFolderConditions{
+		MinDurationMs: c.MinDurationMs, MaxDurationMs: c.MaxDurationMs,
+		AddedFrom: optionalString(string(c.AddedFrom)), AddedTo: optionalString(string(c.AddedTo)),
+		WatchState: optionalWatchState(c.WatchState),
+	}
+}
+
+func optionalWatchState(state domain.WatchState) *gen.WatchState {
+	if state == "" {
+		return nil
+	}
+	out := gen.WatchState(state)
+	return &out
 }
 
 type smartFolderOwnerValues struct {

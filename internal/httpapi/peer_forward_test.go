@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,9 +24,18 @@ import (
 // stopA stops a's server.
 func remoteVideoNodes(t *testing.T) (f *guestFixture, a, b *peerNode, stopA func()) {
 	t.Helper()
+	return remoteVideoNodesWith(t, nil)
+}
+
+// remoteVideoNodesWith is remoteVideoNodes with a's options extended.
+func remoteVideoNodesWith(t *testing.T, extend func(opts *Options)) (f *guestFixture, a, b *peerNode, stopA func()) {
+	t.Helper()
 	var pairing *app.Pairing
 	f = newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
 		pairing = withTestPairing(db, "node-a", nil, opts)
+		if extend != nil {
+			extend(opts)
+		}
 	})
 	server := httptest.NewServer(f.env.handler)
 	t.Cleanup(server.Close)
@@ -36,7 +46,7 @@ func remoteVideoNodes(t *testing.T) (f *guestFixture, a, b *peerNode, stopA func
 }
 
 func (f *guestFixture) remotePath(name, suffix string) string {
-	return "/api/videos/" + strconv.FormatInt(domain.ToRemoteID(f.ids[name]), 10) + suffix
+	return "/api/videos/" + strconv.FormatInt(domain.RemoteID(1, f.ids[name]), 10) + suffix
 }
 
 // settleRecorder records the tentative tags a node confirms or rejects.
@@ -91,7 +101,7 @@ func TestRemoteTentativeTagIsSettledOnThePeerInItsIDs(t *testing.T) {
 		want int
 	}{
 		{tagPath(catB.ID, "confirm"), http.StatusNoContent},
-		{tagPath(domain.ToRemoteID(dogA.ID), "reject"), http.StatusNoContent},
+		{tagPath(domain.RemoteID(1, dogA.ID), "reject"), http.StatusNoContent},
 		{tagPath(birdB.ID, "confirm"), http.StatusNotFound},
 	} {
 		if rec := b.owner(http.MethodPost, tc.path, ""); rec.Code != tc.want {
@@ -125,7 +135,7 @@ func TestRemoteVideoIsForwardedWithRemoteIDsAndURLs(t *testing.T) {
 		t.Fatalf("リモートの詳細: status = %d: %s", rec.Code, rec.Body)
 	}
 	video := decode[gen.Video](t, rec)
-	remote := domain.ToRemoteID(f.ids["a"])
+	remote := domain.RemoteID(1, f.ids["a"])
 	if video.Id != remote || video.Title != "a" {
 		t.Errorf("id = %d, title = %q, want %d と a", video.Id, video.Title, remote)
 	}
@@ -139,21 +149,16 @@ func TestRemoteVideoIsForwardedWithRemoteIDsAndURLs(t *testing.T) {
 			t.Errorf("%s = %s, want %s で始まる", label, *url, prefix)
 		}
 	}
-	if video.Folder == nil || video.Folder.RootId != domain.ToRemoteID(f.rootID) {
-		t.Errorf("folder = %+v, want rootId %d", video.Folder, domain.ToRemoteID(f.rootID))
+	if video.Folder == nil || video.Folder.RootId != domain.RemoteID(1, f.rootID) {
+		t.Errorf("folder = %+v, want rootId %d", video.Folder, domain.RemoteID(1, f.rootID))
 	}
 	// b holds no tag of that name, so the peer's tag takes the offset.
-	if len(video.Tags) != 1 || video.Tags[0].Id != domain.ToRemoteID(f.tagID) || video.Tags[0].Name != guestSecretTag {
-		t.Errorf("tags = %+v, want id %d の %s", video.Tags, domain.ToRemoteID(f.tagID), guestSecretTag)
+	if len(video.Tags) != 1 || video.Tags[0].Id != domain.RemoteID(1, f.tagID) || video.Tags[0].Name != guestSecretTag {
+		t.Errorf("tags = %+v, want id %d の %s", video.Tags, domain.RemoteID(1, f.tagID), guestSecretTag)
 	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range []string{"progress", "favorite"} {
-		if value, ok := raw[field]; ok {
-			t.Errorf("リモートの動画に %s = %s", field, value)
-		}
+	// The position and favorite live on the peer, which holds the video.
+	if video.Progress == nil || video.Progress.PositionMs != 30_000 || video.Favorite == nil {
+		t.Errorf("progress = %+v, favorite = %v, want the peer's 30000 ms and its favorite", video.Progress, video.Favorite)
 	}
 }
 
@@ -226,22 +231,8 @@ func TestRemoteVideoFollowsTheViewersAudience(t *testing.T) {
 func TestRemoteVideoRefusesOperationsKeptOnEachNode(t *testing.T) {
 	f, a, b, _ := remoteVideoNodes(t)
 
-	for _, tc := range []struct {
-		label string
-		req   authRequest
-	}{
-		{"open", authRequest{method: http.MethodPost, target: f.remotePath("a", "/open")}},
-		{"progress", authRequest{
-			method: http.MethodPut, target: f.remotePath("a", "/progress"), body: `{"positionMs":1000,"durationMs":60000}`,
-		}},
-	} {
-		rec := b.send(tc.req)
-		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
-	}
-	if local := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner)); local.Progress == nil ||
-		local.Progress.PositionMs != 30_000 {
-		t.Errorf("持ち主の再生位置が変わった: %+v", local.Progress)
-	}
+	rec := b.send(authRequest{method: http.MethodPost, target: f.remotePath("a", "/open")})
+	assertErrorBody(t, "open", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 
 	// With A reading B as well (a second pairing), a remote id in A's own request names A's video on B; it is
 	// not sent back.
@@ -260,7 +251,7 @@ func TestRemoteVideoDisplayNameIsWrittenOnThePeer(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("表示名: status = %d: %s", rec.Code, rec.Body)
 	}
-	if saved := decode[gen.Video](t, rec); saved.Id != domain.ToRemoteID(f.ids["a"]) || saved.Title != "遠くの名前" {
+	if saved := decode[gen.Video](t, rec); saved.Id != domain.RemoteID(1, f.ids["a"]) || saved.Title != "遠くの名前" {
 		t.Errorf("表示名の応答: id = %d, title = %q", saved.Id, saved.Title)
 	}
 	if local := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner)); local.Title != "遠くの名前" {
@@ -282,8 +273,8 @@ func TestRemoteVideoWithAStoppedPeerIsUnavailable(t *testing.T) {
 	}
 	rec := b.owner(http.MethodGet, f.remotePath("a", ""), "")
 	assertErrorBody(t, "止まった相手", rec.Code, rec.Body.Bytes(), unavailable)
-	if state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", "")); state.State != gen.PeerStateStateUnreachable {
-		t.Errorf("失敗の後の状態 = %s, want unreachable", state.State)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateUnreachable {
+		t.Errorf("失敗の後の状態 = %s, want unreachable", link.State)
 	}
 	// While unreachable, the request is refused without trying the peer.
 	again := b.owner(http.MethodGet, f.remotePath("a", "/thumbnail"), "")
@@ -307,7 +298,7 @@ type recordingPeerLink struct {
 	media []bool
 }
 
-func (l *recordingPeerLink) Forward(req *http.Request, _, media bool) (*http.Response, error) {
+func (l *recordingPeerLink) Forward(req *http.Request, _ int64, _, media bool) (*http.Response, error) {
 	l.media = append(l.media, media)
 	return &http.Response{
 		StatusCode: http.StatusOK,
@@ -325,7 +316,7 @@ func TestRemoteThumbnailPositionWaitsForThePeersExtraction(t *testing.T) {
 	cookie := env.setup()
 
 	rec := env.serve(authRequest{
-		method: http.MethodPut, target: "/api/videos/" + strconv.FormatInt(domain.ToRemoteID(5), 10) + "/thumbnail-position",
+		method: http.MethodPut, target: "/api/videos/" + strconv.FormatInt(domain.RemoteID(1, 5), 10) + "/thumbnail-position",
 		body: `{"positionMs":1000}`, cookies: []*http.Cookie{cookie},
 	})
 	if rec.Code != http.StatusOK {
@@ -353,4 +344,125 @@ func TestPeerContentCannotRunAsAPageOfThisNode(t *testing.T) {
 			t.Errorf("%s: nosniff = %q, CSP = %q", tc.peerType, header.Get("X-Content-Type-Options"), header.Get("Content-Security-Policy"))
 		}
 	}
+}
+
+// The assistant's read of a remote video reaches the peer as the screens' request does.
+func TestAssistantReadsARemoteVideoFromThePeer(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+	remote := domain.RemoteID(1, f.ids["a"])
+
+	result, err := b.env.runner.Read(context.Background(), domain.AssistantRead{
+		Operation: "getVideo", Arguments: json.RawMessage(fmt.Sprintf(`{"id":%d}`, remote)),
+	})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	var video gen.Video
+	if err := json.Unmarshal(result.Body, &video); err != nil || video.Id != remote || video.Title != "a" {
+		t.Errorf("video = %s (%v), want id %d の a", result.Body, err, remote)
+	}
+}
+
+// An operation no list names is forwarded by default and its answer rewritten by its type: switching the
+// representative of the peer's bundle answers the versions in remote ids.
+func TestRemoteVideoMakeRepresentativeAnswersRemoteVersions(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+	if rec := f.bundle(bundleBody([]int64{f.ids["a"], f.ids["b"]}, f.ids["a"]), f.owner); rec.Code != http.StatusOK {
+		t.Fatalf("precondition: bundle on the peer: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	rec := b.owner(http.MethodPost, f.remotePath("b", "/make-representative"), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("make-representative: status = %d: %s", rec.Code, rec.Body)
+	}
+	versions := decode[gen.VideoVersions](t, rec)
+	remoteA, remoteB := domain.RemoteID(1, f.ids["a"]), domain.RemoteID(1, f.ids["b"])
+	if got := versionIDs(versions); versions.RepresentativeId != remoteB || !slices.Equal(slices.Sorted(slices.Values(got)), []int64{remoteA, remoteB}) {
+		t.Errorf("versions = representative %d, items %v, want %d and [%d %d]", versions.RepresentativeId, got, remoteB, remoteA, remoteB)
+	}
+	if local := decode[gen.VideoVersions](t, f.env.get(f.videoPath("a", "/versions"), f.owner)); local.RepresentativeId != f.ids["b"] {
+		t.Errorf("the peer's representative = %d, want %d", local.RepresentativeId, f.ids["b"])
+	}
+}
+
+// Taking a version out of the peer's bundle happens on the peer, and the removed video answers in its remote id.
+func TestRemoteVideoUnbundleTakesTheVersionOutOnThePeer(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+	if rec := f.bundle(bundleBody([]int64{f.ids["a"], f.ids["b"]}, f.ids["a"]), f.owner); rec.Code != http.StatusOK {
+		t.Fatalf("precondition: bundle on the peer: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	rec := b.owner(http.MethodPost, f.remotePath("b", "/unbundle"), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unbundle: status = %d: %s", rec.Code, rec.Body)
+	}
+	if removed := decode[gen.Video](t, rec); removed.Id != domain.RemoteID(1, f.ids["b"]) || removed.Versions != nil {
+		t.Errorf("removed = id %d, versions %+v, want id %d without versions", removed.Id, removed.Versions, domain.RemoteID(1, f.ids["b"]))
+	}
+	if peer := decode[gen.Video](t, f.env.get(f.videoPath("b", ""), f.owner)); peer.Versions != nil {
+		t.Errorf("the peer's b still has versions %+v", peer.Versions)
+	}
+}
+
+func TestRemoteVideoIsDeletedOnThePeer(t *testing.T) {
+	virtual := &fakeVirtualVideos{}
+	f, _, b, _ := remoteVideoNodesWith(t, func(opts *Options) { opts.VirtualVideos = virtual })
+
+	rec := b.owner(http.MethodDelete, f.remotePath("a", "?contentVersion=v1"), "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: status = %d: %s", rec.Code, rec.Body)
+	}
+	want := []virtualCall{{op: "delete", videoID: f.ids["a"], contentVersion: "v1"}}
+	if !reflect.DeepEqual(virtual.calls, want) {
+		t.Errorf("the peer's deletes = %+v, want %+v", virtual.calls, want)
+	}
+}
+
+// slottedPeerLink holds links in slots 1 and 2 and answers each forwarded request with a video of the path's id,
+// recording which link received which path.
+type slottedPeerLink struct {
+	mu       sync.Mutex
+	received []string
+}
+
+func (l *slottedPeerLink) Forward(req *http.Request, slot int64, _, _ bool) (*http.Response, error) {
+	if slot != 1 && slot != 2 {
+		return nil, domain.ErrNotFound
+	}
+	l.mu.Lock()
+	l.received = append(l.received, fmt.Sprintf("%d %s", slot, req.URL.Path))
+	l.mu.Unlock()
+	id := strings.TrimPrefix(req.URL.Path, "/api/videos/")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {contentTypeJSON}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":` + id + `,"title":"x"}`)),
+		Request:    req,
+	}, nil
+}
+
+// A remote id names its link by its slot: a slot-2 id reaches the second link with that link's own id and comes
+// back in slot 2, and a slot without a link is not found.
+func TestForwardedReadReachesTheLinkOfTheIDsSlot(t *testing.T) {
+	link := &slottedPeerLink{}
+	env := newAuthEnvWith(t, t.TempDir(), func(*store.DB) Options {
+		return Options{Videos: &audienceLibrary{fakeLibrary: sampleLibrary()}, PeerLink: link}
+	})
+	cookie := env.setup()
+	get := func(id int64) *httptest.ResponseRecorder {
+		return env.serve(authRequest{
+			method: http.MethodGet, target: "/api/videos/" + strconv.FormatInt(id, 10), cookies: []*http.Cookie{cookie},
+		})
+	}
+
+	rec := get(domain.RemoteID(2, 5))
+	if video := decode[gen.Video](t, rec); rec.Code != http.StatusOK || video.Id != domain.RemoteID(2, 5) {
+		t.Errorf("スロット 2 の動画: status = %d, id = %d, want 200 と %d", rec.Code, video.Id, domain.RemoteID(2, 5))
+	}
+	if want := []string{"2 /api/videos/5"}; !slices.Equal(link.received, want) {
+		t.Errorf("届いた要求 = %v, want %v", link.received, want)
+	}
+	rec = get(domain.RemoteID(3, 5))
+	assertErrorBody(t, "リンクの無いスロット", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 }

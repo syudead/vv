@@ -33,6 +33,13 @@ export type WorkInfoSearchResult = components["schemas"]["WorkInfoSearchResult"]
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
+/** Run failures that mean the listed plugin can no longer run, so the caller rereads the list. */
+export const PLUGIN_GONE_CODES: ReadonlySet<string> = new Set([
+  "plugin_not_approved",
+  "plugin_disabled",
+  "not_found",
+]);
+
 function pluginPath(id: number): string {
   return `/api/work-info-plugins/${String(id)}`;
 }
@@ -81,6 +88,20 @@ export function revokeWorkInfoPluginApproval(
 ): Promise<WorkInfoPlugin> {
   return request<WorkInfoPlugin>(`${pluginPath(id)}/approval`, {
     method: "DELETE",
+    signal,
+  });
+}
+
+/** A plugin switched off keeps its approval and settings but never runs; switching it on needs no new approval. */
+export function setWorkInfoPluginEnabled(
+  id: number,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<WorkInfoPlugin> {
+  return request<WorkInfoPlugin>(`${pluginPath(id)}/enabled`, {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabled }),
     signal,
   });
 }

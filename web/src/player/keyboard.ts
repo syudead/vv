@@ -22,6 +22,8 @@ export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
   if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return null;
   const target = event.target instanceof Element ? event.target : null;
   if (target !== null && isEditable(target)) return null;
+  // The side panel beside the page owns its keys, Escape included.
+  if (target?.closest("[data-slot='side-panel']") != null) return null;
   const inPopover = target?.closest(popperContent) != null;
   if (inPopover && event.key !== "Escape" && event.key !== "Esc") return null;
 

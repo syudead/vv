@@ -1,12 +1,14 @@
-import { SquareDashed, X } from "lucide-react";
+import { FolderMinus, SquareDashed, X } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router";
 
 import type { VideoFolder } from "../api/client";
+import AssistantTrigger from "../assistant/AssistantTrigger";
+import { useAudience } from "../auth/audience";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import { usePeerName } from "../shell/PeerProvider";
+import { isRemoteId } from "../lib/remoteId";
 import BrandHomeLink from "../ui/BrandHomeLink";
 import {
   Breadcrumb,
@@ -18,7 +20,7 @@ import {
 } from "../ui/shadcn/breadcrumb";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import { ItemRemoteMark } from "../videoList/RemoteItemMark";
+import { ItemRemoteMark, useItemPeerName } from "../videoList/RemoteItemMark";
 
 interface FolderCrumb {
   label: string;
@@ -45,14 +47,17 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
 export default function VideoHeader({
   folder,
   virtual = false,
-  remote = false,
+  videoId,
+  folderOff = false,
   onClose,
 }: {
   folder: VideoFolder | undefined;
   /** A virtual video has no folder; the band names what it is instead, not as a link. */
   virtual?: boolean;
-  /** The paired VVMDM holds the video; the band names it before the breadcrumb. */
-  remote?: boolean;
+  /** The video's id; a link's video gets a band naming the link before the breadcrumb. */
+  videoId?: number;
+  /** Every folder holding the video is switched off; the crumbs turn to plain text, since the Folders page leaves it out. */
+  folderOff?: boolean;
   onClose: () => void;
 }) {
   const crumbs = folderCrumbs(folder);
@@ -69,7 +74,9 @@ export default function VideoHeader({
         </p>
       )}
 
-      {remote && <RemoteBand />}
+      {videoId !== undefined && isRemoteId(videoId) && <RemoteBand videoId={videoId} />}
+
+      {folderOff && <FolderOffBand />}
 
       {crumbs.length > 0 && (
         <Breadcrumb
@@ -79,6 +86,9 @@ export default function VideoHeader({
           <BreadcrumbList className="flex-nowrap whitespace-nowrap">
             {crumbs.map((crumb, index) => {
               const last = index === lastIndex;
+              const crumbClass = last
+                ? "font-medium text-foreground"
+                : "max-w-chip-label";
               return (
                 <Fragment key={crumb.to}>
                   {lastIndex > 0 && last && (
@@ -91,15 +101,15 @@ export default function VideoHeader({
                   )}
                   <BreadcrumbSeparator className={cn(!last && "hidden md:block")} />
                   <BreadcrumbItem className={cn(!last && "hidden md:inline-flex")}>
-                    <BreadcrumbLink
-                      asChild
-                      title={crumb.label}
-                      className={cn(
-                        last ? "font-medium text-foreground" : "max-w-chip-label",
-                      )}
-                    >
-                      <Link to={crumb.to}>{crumb.label}</Link>
-                    </BreadcrumbLink>
+                    {folderOff ? (
+                      <span title={crumb.label} className={cn("truncate", crumbClass)}>
+                        {crumb.label}
+                      </span>
+                    ) : (
+                      <BreadcrumbLink asChild title={crumb.label} className={crumbClass}>
+                        <Link to={crumb.to}>{crumb.label}</Link>
+                      </BreadcrumbLink>
+                    )}
                   </BreadcrumbItem>
                 </Fragment>
               );
@@ -108,6 +118,9 @@ export default function VideoHeader({
         </Breadcrumb>
       )}
 
+      <div className="ml-auto flex shrink-0 items-center">
+        <AssistantTrigger />
+      </div>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -115,7 +128,7 @@ export default function VideoHeader({
             size="icon"
             aria-label={t.common.close}
             onClick={onClose}
-            className="ml-auto [&_svg]:size-5"
+            className="[&_svg]:size-5"
           >
             <X aria-hidden="true" />
           </Button>
@@ -126,11 +139,41 @@ export default function VideoHeader({
   );
 }
 
-function RemoteBand() {
-  const name = t.list.card.remote.name(usePeerName());
+/** The owner reaches the switch from the band; a guest reads it only. */
+function FolderOffBand() {
+  const owner = useAudience() === "owner";
+  const text = t.player.folderOff;
+  const content = (
+    <>
+      <FolderMinus className="size-4 shrink-0" aria-hidden="true" />
+      <span className="truncate" aria-hidden="true">
+        {text.band}
+      </span>
+      <span className="sr-only">{text.detail}</span>
+    </>
+  );
+  const className =
+    "flex min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground";
+  return owner ? (
+    <Link
+      to="/settings/library"
+      title={text.detail}
+      className={cn(className, "rounded-sm hover:text-foreground")}
+    >
+      {content}
+    </Link>
+  ) : (
+    <p title={text.detail} className={className}>
+      {content}
+    </p>
+  );
+}
+
+function RemoteBand({ videoId }: { videoId: number }) {
+  const name = t.list.card.remote.name(useItemPeerName(videoId));
   return (
     <p className="flex min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground">
-      <ItemRemoteMark size="md" />
+      <ItemRemoteMark itemId={videoId} size="md" />
       <span
         aria-hidden="true"
         title={name}

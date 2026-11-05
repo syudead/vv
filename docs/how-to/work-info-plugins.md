@@ -337,16 +337,20 @@ A non-zero exit, or output that is none of these, fails the run with
 | `title` | string | As written |
 | `tags` | `["..."]` | The first 100, without duplicates |
 | `code` | string, such as the product code | Trimmed |
-| `description` | string; line feeds allowed | Trimmed |
+| `description` | string; line feeds allowed | Trimmed, cut to 10,000 characters |
 | `dates` | `[{"kind": "release", "date": "2024-03-01"}]`; `kind` is `release`, `recorded` or `published`; `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | The first date of each kind |
 | `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}], "image": "https://...", "profile": {...}}]`; `role` is `performer`, `director`, `photographer` or `streamer`; `externalIds`, `image` and `profile` optional | The first 100 of each role, and the first 20 distinct external IDs of each person; `image` and `profile` as in [People's images and profiles](#peoples-images-and-profiles) |
-| `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
+| `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...], "profile": {...}}]`; `role` is `maker` or `label`; `externalIds` and `profile` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization; `profile` as in [People's images and profiles](#peoples-images-and-profiles) |
 | `urls` | `["https://..."]` | The first 20 distinct |
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
 | `covers` | `["https://..."]`, `http` or `https` URLs of the work's cover images, each at most 2048 characters | The first 5 distinct valid URLs, whose images VVMDM fetches itself after the run; see [Cover images](#cover-images) |
+| `imageReferer` | string, an `http` or `https` URL of at most 2048 characters, usually the work's page | Sent as `Referer` with each cover and person image request; see [Image referer](#image-referer) |
 
-For every field except `title` and `tags`, VVMDM trims surrounding
-whitespace from each string, then drops an entry that is empty, an entry
+In every string, VVMDM turns CR line ends into line feeds in `description`
+and into spaces elsewhere, turns tabs and other whitespace control characters
+into spaces and drops any other control character. For every field except
+`title` and `tags`, it then trims surrounding whitespace from each string and
+drops an entry that is empty, an entry
 whose `kind`, `role`, `source` or `value` is missing or not in the table, and
 a field or entry of another JSON type. The limits count what remains. The
 same person or organization twice in one role, with the same name and
@@ -383,6 +387,20 @@ A module that returns `cover` instead gets no cover.
 | Any other answer: not `2xx`, larger, another format, unreachable | Dropped; the rest of the result is kept |
 | On a refused address | The run fails with `blocked_address`, as for the plugin's own requests |
 
+### Image referer
+
+Some sites refuse an image request that does not come from their own pages.
+Return `imageReferer` with the page the images appear on, and VVMDM sends it
+as the `Referer` header of every image request of that result: the covers and
+the people's images of a work-info plugin, and the `images` of a person
+plugin. Without it, or with a value that is not such a URL, VVMDM sends no
+`Referer`, and the rest of the result is kept. A redirect keeps the value,
+except from `https` to `http`, where it is dropped.
+
+```json
+{"workInfo": {"title": "...", "covers": ["https://img.example.com/1.jpg"], "imageReferer": "https://www.example.com/works/1"}}
+```
+
 ### People's images and profiles
 
 A person in `people` may carry `image`, an `http` or `https` URL of the
@@ -394,10 +412,15 @@ profile properties of
 `links`. Numbers are integers, `links` is an array of URLs, and the rest are
 strings, under the rules in
 [People: profiles](../design-docs/people.md#what-a-valid-profile-is).
-Organizations take neither field.
+An organization in `organizations` may carry `profile` with `foundedDate`,
+`dissolvedDate`, `location`, `bio` and `links`, under
+[the organization rules](../design-docs/people.md#organizations-share-the-profile-image-and-favorite-shapes);
+VVMDM does not fetch an organization's `image`.
 
 VVMDM drops an `image` that is not such a URL and a `profile` property of
-another JSON type, and keeps the rest of the person. After the run it fetches
+another JSON type, and keeps the rest of the person. It treats control
+characters in profile strings as in the work fields, keeping `bio`'s line
+feeds like `description`'s and cutting `bio` to its length limit. After the run it fetches
 the images of the first 7 people that have one, in the order the plugin
 returned them, the way it fetches the [covers](#cover-images): the same client,
 limits, formats and 30 seconds, and a refused address fails the run with
@@ -434,7 +457,7 @@ work-info plugin.
 | Response | Body |
 | --- | --- |
 | `search` result | `{"candidates": [{"source": "...", "id": "...", "name": "...", "url": "...", "detail": "..."}]}`: `source` (one of `sources`), `id`, `name` and `url` required, `detail` optional; VVMDM keeps the first 50, and a kept candidate with another `source` fails the run with `plugin_failed` |
-| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "images": ["https://...", "https://..."], "profile": {...}}}`: `name` required, the rest optional |
+| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "images": ["https://...", "https://..."], "imageReferer": "https://...", "profile": {...}}}`: `name` required, the rest optional; `imageReferer` as in [Image referer](#image-referer) |
 | Failure | As for a work-info plugin |
 
 A link matches a domain when its host, lowercased, is the domain or ends with

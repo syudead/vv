@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
+import { useAssistantScreen } from "../assistant/AssistantProvider";
 import { isAborted, RequestFailed } from "../api/client";
 import {
   deletePlaylist,
@@ -171,6 +172,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
   }, []);
 
   const documentName = page.kind === "ready" ? page.name : t.playlists.documentTitle;
+  useAssistantScreen({ name: page.kind === "ready" ? page.name : undefined });
   useEffect(() => {
     const previous = document.title;
     document.title = documentName;

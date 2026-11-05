@@ -13,12 +13,14 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
+  generateAssistantFixtures,
   generateDragOrganizeFixtures,
   generateFolderFixtures,
   generateHistoryFixtures,
   generateHomeFixtures,
   generateOnboardingFixtures,
   generateMediaFixtures,
+  generateMultiPeerFixtures,
   generatePeerFixtures,
   generateSearchFixtures,
   generateTagsFixtures,
@@ -45,7 +47,9 @@ function fixtureDirs(root) {
     onboardingMediaDir: path.join(root, "onboarding-media"),
     workInfoMediaDir: path.join(root, "work-info-media"),
     videoTabsMediaDir: path.join(root, "video-tabs-media"),
+    assistantMediaDir: path.join(root, "assistant-media"),
     peerMediaDir: path.join(root, "peer-media"),
+    multiPeerMediaDir: path.join(root, "multi-peer-media"),
   };
 }
 
@@ -60,7 +64,9 @@ function generateFixtures(dirs) {
   generateOnboardingFixtures(dirs.onboardingMediaDir);
   generateWorkInfoFixtures(dirs.workInfoMediaDir);
   generateVideoTabsFixtures(dirs.videoTabsMediaDir);
+  generateAssistantFixtures(dirs.assistantMediaDir);
   generatePeerFixtures(dirs.peerMediaDir);
+  generateMultiPeerFixtures(dirs.multiPeerMediaDir);
 }
 
 // Cache FFmpeg fixtures by generator sources, directory layout and FFmpeg version; CI preserves this cache between runs.
@@ -155,7 +161,9 @@ function run() {
           MDM_E2E_ONBOARDING_MEDIA_DIR: fixtures.onboardingMediaDir,
           MDM_E2E_WORK_INFO_MEDIA_DIR: fixtures.workInfoMediaDir,
           MDM_E2E_VIDEO_TABS_MEDIA_DIR: fixtures.videoTabsMediaDir,
+          MDM_E2E_ASSISTANT_MEDIA_DIR: fixtures.assistantMediaDir,
           MDM_E2E_PEER_MEDIA_DIR: fixtures.peerMediaDir,
+          MDM_E2E_MULTI_PEER_MEDIA_DIR: fixtures.multiPeerMediaDir,
         },
         stdio: "inherit",
       },

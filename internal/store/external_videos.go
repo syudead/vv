@@ -27,7 +27,7 @@ func (s *LibraryStore) ListExternalVideos(ctx context.Context, q domain.External
 	case limit > domain.MaxLimit:
 		limit = domain.MaxLimit
 	}
-	query := `select videos.id, videos.added_at from videos where ` + registeredVideoCondition("videos")
+	query := `select videos.id, videos.added_at from videos where ` + listedFileVideoCondition("videos", domain.AudienceOwner)
 	var args []any
 	if q.Cursor != "" {
 		addedAt, id, err := decodeExternalCursor(q.Cursor)

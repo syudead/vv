@@ -215,7 +215,7 @@ async function open() {
 }
 
 async function dropAOnB() {
-  dropOn("A", 0, 1);
+  await dropOn("A", 0, 1);
   return openedMenu();
 }
 
@@ -294,7 +294,7 @@ describe("LibraryPage drag a video onto a video", () => {
     await user.click(
       within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
     );
-    dropOn("C", 1, 2);
+    await dropOn("C", 1, 2);
     await user.click(
       within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
     );
@@ -343,7 +343,7 @@ describe("LibraryPage drag a video onto a video", () => {
       answerSecond = resolve;
     });
     server.failGroupOn = 4;
-    dropOn("C", 1, 2);
+    await dropOn("C", 1, 2);
     await user.click(
       within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
     );

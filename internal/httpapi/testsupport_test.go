@@ -247,7 +247,11 @@ func sampleVideo(id int64, title string) domain.Video {
 
 func newTestServer(t *testing.T, opts Options) http.Handler {
 	t.Helper()
+	return NewRouter(testServerOptions(opts))
+}
 
+// testServerOptions fills the options a test leaves out with empty assets, files and an owner.
+func testServerOptions(opts Options) Options {
 	if opts.Assets == nil {
 		opts.Assets = emptyAssets{}
 	}
@@ -257,7 +261,7 @@ func newTestServer(t *testing.T, opts Options) http.Handler {
 	if opts.Auth == nil {
 		opts.Auth = ownerAuth{}
 	}
-	return NewRouter(opts)
+	return opts
 }
 
 // Use ownerAuth to isolate routes; auth_test.go verifies the real boundary.
@@ -384,11 +388,11 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 // The related list over both nodes is tested with the real catalog (peer_related_test.go).
 var errFakeCatalogMerged = errors.New("the fake catalog has no related list over both nodes")
 
-func (f *fakeCatalog) MergedRelatedVideos(context.Context, domain.Audience, domain.Video, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+func (f *fakeCatalog) MergedRelatedVideos(context.Context, domain.Audience, domain.Video, domain.MergedRelatedPage, []domain.RelatedPeer) (domain.MergedRelated, error) {
 	return domain.MergedRelated{}, errFakeCatalogMerged
 }
 
-func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, domain.RelatedClues, []int64, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, domain.RelatedClues, domain.MergedRelatedPage, []domain.RelatedPeer) (domain.MergedRelated, error) {
 	return domain.MergedRelated{}, errFakeCatalogMerged
 }
 

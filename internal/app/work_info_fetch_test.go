@@ -228,6 +228,8 @@ func TestRunRefusesBeforeTheModuleRuns(t *testing.T) {
 			func(err error) bool { return errors.Is(err, domain.ErrWorkInfoPluginNotApproved) }},
 		{"replaced after approval", func(e *fetchEnv) { e.store.plugins[1].Digest = "d1b" }, "work",
 			func(err error) bool { return errors.Is(err, domain.ErrWorkInfoPluginNotApproved) }},
+		{"switched off", func(e *fetchEnv) { e.store.plugins[1].Disabled = true }, "work",
+			func(err error) bool { return errors.Is(err, domain.ErrWorkInfoPluginDisabled) }},
 		{"no search", func(e *fetchEnv) {
 			e.store.plugins[1].Manifest.Operations = []domain.WorkInfoOperation{domain.WorkInfoFetch}
 		}, "work", func(err error) bool { return errors.Is(err, domain.ErrWorkInfoOperationUnsupported) }},

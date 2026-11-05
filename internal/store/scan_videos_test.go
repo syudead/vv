@@ -5,10 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io/fs"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -403,23 +400,8 @@ func TestImportDoesNotDoubleCountRequeuedRunningJobs(t *testing.T) {
 }
 
 func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsys, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 17)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 17); err != nil {
-		t.Fatal(err)
-	}
 	for _, stmt := range []string{
 		`insert into media_folders(path, version, created_at, updated_at) values ('` + fixturePath("/media") + `', 1, 1, 1)`,
 		`insert into videos(id, content_key, probe_state, added_at, updated_at) values (1, 'key-a', 'pending', 1, 1)`,

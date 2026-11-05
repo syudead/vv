@@ -180,8 +180,10 @@ func run(opts runOptions) error {
 	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
 	}
+	sources := app.MediaFiles{Folders: settingsStore, Resolver: mediafs.New()}
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
+		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Sources: sources, Publisher: bus,
+		Logger: logger,
 	})
 	// Provider adapters own connection settings and expose app.Classifier; see
 	// docs/design-docs/ai-layer.md.
@@ -193,6 +195,7 @@ func run(opts runOptions) error {
 		Settings:   settingsStore,
 		Undo:       db.Activity(),
 		Classifier: classifier,
+		Chooser:    classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
 		Wake:       func() { scheduler.Wake() },
 		Logger:     logger,
@@ -222,7 +225,7 @@ func run(opts runOptions) error {
 		handlers[kind] = faces.analysis.HandleJob
 	}
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
-	addBackfillHandlers(handlers, ingestStore, ingest)
+	addBackfillHandlers(handlers, ingestStore, sources, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
 		Folders:  scanIndexStore,
@@ -266,6 +269,16 @@ func run(opts runOptions) error {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
 	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
+	// The assistant runs requests as tool loops over the generation model, judges review sets with the classifier
+	// and executes approved proposals through the screen API; its runner is registered once the HTTP server exists.
+	assistant := app.NewAssistant(app.AssistantOptions{
+		Store: db.Assistant(), Turns: db.Assistant(), Chat: ollama.NewChat(settingsStore), Vocabulary: db.Assistant(),
+		Videos: libraryStore, SmartFolders: db.SmartFolders(), Groups: libraryStore,
+		Reviews: db.Assistant(), Classifier: classifier, Clef: classifier, Model: ollamaConnection, Logger: logger,
+	})
+	if err := assistant.Recover(backgroundCtx); err != nil {
+		logger.Warn("could not recover the assistant proposals and turns", slog.Any("error", err))
+	}
 	versionJudgementActivity := app.NewVersionJudgementActivity(db.Versions(), db.Activity(), versionJudge)
 	activity := app.NewActivity(app.ActivityOptions{
 		Store: db.Activity(),
@@ -307,6 +320,9 @@ func run(opts runOptions) error {
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
+	workersDone.Go(func() { assistant.Run(backgroundCtx) })
+	workersDone.Go(func() { assistant.RunReviews(backgroundCtx) })
+	workersDone.Go(func() { assistant.RunTurns(backgroundCtx) })
 	// Always stop scans and workers before closing the database, including listener failures and
 	// grace-period expiry. Register this defer after database cleanup so it runs first.
 	defer func() {
@@ -377,7 +393,7 @@ func run(opts runOptions) error {
 	personImages := app.NewPersonImages(db.Credits(), ingest)
 	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, pluginProxy, ingest, personImages, logger)
 	defer closeWorkInfoPlugins()
-	handler := httpapi.NewRouter(httpapi.Options{
+	handler, assistantRunner := httpapi.NewServer(httpapi.Options{
 		Build:            build,
 		Pinger:           db,
 		Videos:           libraryStore,
@@ -424,6 +440,7 @@ func run(opts runOptions) error {
 		FaceRecognition:   faces.settings,
 		FaceAnalysis:      faces.analysis,
 		Ollama:            ollamaConnection,
+		Assistant:         assistant,
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,
 		ThumbnailUploads:  ingest,
@@ -445,6 +462,7 @@ func run(opts runOptions) error {
 		PeerLink:          peerLink,
 		TrustedProxies:    cfg.TrustedProxies,
 	})
+	assistant.UseRunner(assistantRunner)
 
 	// SSE has no natural end; unsubscribe screen events and close connections before waiting for HTTP
 	// shutdown. The stream to the peer closes with them.
@@ -469,9 +487,11 @@ func run(opts runOptions) error {
 }
 
 // addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
-func addBackfillHandlers(handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, ingest *app.Ingest) {
-	keyframes := app.KeyframeBackfill(ingestStore, media.ProbeKeyframes)
-	mediaInfo := app.MediaInfoBackfill(ingestStore, media.ProbeMediaInfo)
+func addBackfillHandlers(
+	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
+) {
+	keyframes := app.KeyframeBackfill(ingestStore, sources, media.ProbeKeyframes)
+	mediaInfo := app.MediaInfoBackfill(ingestStore, sources, media.ProbeMediaInfo)
 	handlers[domain.JobQueueKeyframes] = keyframes.QueueAll
 	handlers[domain.JobKeyframes] = keyframes.Read
 	handlers[domain.JobQueueMediaInfo] = mediaInfo.QueueAll

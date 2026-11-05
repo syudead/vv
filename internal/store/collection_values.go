@@ -88,7 +88,7 @@ func refreshGroupValues(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 		`insert into group_members (group_id, audience, video_id, position) with ` + groupDescendantsCTE(roots, audience) +
 			` select root_id, ` + a + `, video_id, sort_key from gdesc`,
 		`delete from group_values where audience = ` + a + ` and group_id in (` + roots + `)`,
-		`insert into group_values ` + groupValuesSelect(roots, audience),
+		`insert into group_values ` + groupValuesSelect(storedGroupMembers(audience), roots, audience),
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
@@ -98,8 +98,14 @@ func refreshGroupValues(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 	return nil
 }
 
-// Aggregate narrow member rows in SQLite; no member details cross into Go.
-func groupValuesSelect(roots string, audience domain.Audience) string {
+// storedGroupMembers is the audience's stored member rows as group_id, video_id and position.
+func storedGroupMembers(audience domain.Audience) string {
+	return `(select group_id, video_id, position from group_members where audience = ` +
+		strconv.Itoa(audienceValue(audience)) + `)`
+}
+
+// Aggregate narrow member rows, given as group_id, video_id and position, in SQLite; no member details cross into Go.
+func groupValuesSelect(members, roots string, audience domain.Audience) string {
 	a := strconv.Itoa(audienceValue(audience))
 	progress, join := `0 as completed, 0 as position_ms, null as played_at`, ""
 	if audience.IsOwner() {
@@ -110,8 +116,8 @@ func groupValuesSelect(roots string, audience domain.Audience) string {
 		select gm.group_id, gm.video_id, gm.position, videos.added_at, videos.duration_ms,
 			rl.mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes,
 			` + progress + `
-		from group_members gm join videos on videos.id = gm.video_id` + representativeLocationJoin("gm", audience) + join + `
-		where gm.audience = ` + a + ` and gm.group_id in (` + roots + `))
+		from ` + members + ` gm join videos on videos.id = gm.video_id` + representativeLocationJoin("gm", audience) + join + `
+		where gm.group_id in (` + roots + `))
 		select g.id, ` + a + `, count(m.video_id), max(m.added_at), max(m.mtime), max(m.created_at), max(m.played_at),
 			sum(m.duration_ms), coalesce(sum(m.size_bytes), 0), coalesce(sum(m.completed = 1), 0),
 			coalesce(sum(m.completed = 1 or m.position_ms > 0), 0),

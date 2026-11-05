@@ -151,7 +151,12 @@ Items `combobox`, `command`. Pick one value from many by typing.
 
 - `Combobox` is a button showing the current value; it opens a `Command` in a
   popover with a search field and the matching options. Use it for a long
-  list (folders, tags) where typing is faster than scrolling.
+  list (folders, tags) where typing is faster than scrolling. `createLabel`
+  lets a typed value that no option has be kept, such as an Ollama model name
+  the list could not offer: the create row comes first and the trigger shows
+  the value. `status` replaces the empty text with one row while the list
+  loads or after it fails, and `onOpenChange` lets the caller read the list
+  when the popover opens.
 - `Command` is the filtered list on its own. Put it inside an existing
   popover when the popover itself is the picker, such as a selection bar's
   "Add tag" and "Remove tag"; pass `shouldFilter={false}` when the caller
@@ -281,8 +286,9 @@ a notice with its `useToast`, which calls `toast()`. It shows at most three
 notices at once on list screens and one at a time on the video page, so a
 notice raised in the shell waits its turn after the viewer opens a video. On
 list screens it sits under the top bar at the right below `lg`, and at the
-bottom centre, above the selection bar, from `lg`; on the video page it sits at
-the top centre.
+bottom centre, above the selection bar, from `lg`; the bar publishes its height
+as `--selection-bar-height`, so the notice clears it when its actions wrap onto
+more rows. On the video page it sits at the top centre.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.
@@ -459,7 +465,7 @@ in the same frame, so a row that mixes both keeps one height:
 | `token`      | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name                                                                                       |
 | `option`     | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list                                                                                             |
 | `compare`    | `size-8`, `rounded-full`                    | A fetched person in a comparison                                                                                                                        |
-| `judge`      | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same                                                                              |
+| `judge`      | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same, and a bulk editor tile of an unnamed performer to merge                     |
 | `scene`      | Full width, `aspect-square`, `rounded-md`   | A face cut from a video, in a grid or a fixed box; square, so it reads as a frame of the video; a credited person's tile on the video page's People tab |
 | `suggestion` | `size-16`, `rounded-full`                   | A person offered as where faces belong, in a ranked list                                                                                                |
 | `mark`       | `size-5`, `rounded-full`, a faint ring      | A performer on a video card's thumbnail; hovering it pops the same face as `profile`, at most `face-popover` wide                                       |
@@ -565,11 +571,11 @@ it is typed; while it is invalid or a request is in flight, neither Enter nor a
 click acts. A paste or drop with a line break is refused with its reason, and
 keys pressed during IME composition are ignored. `layout` places the list:
 
-| `layout`   | Use it for                                                                            | List                                                                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `popover`  | Inside a `Popover` that is the picker: the selection bar's "Add tag" and "Remove tag" | Always shown; the create row first and the first row selected                                                                                            |
-| `dropdown` | A small add field in a row of chips: the video page's "Add tag"                       | Opens below the input on focus or typing; Esc, Tab and leaving close it; Esc when closed calls `onEscape`; the create row last                           |
-| `inline`   | A target picked inside a dialog: the tag admin's merge target                         | Always open in a fixed-height box in the body (`h-combobox-panel`); `chosenId` marks the picked row; `emptyText` fills an empty box; the create row last |
+| `layout`   | Use it for                                                                            | List                                                                                                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `popover`  | Inside a `Popover` that is the picker: the selection bar's "Add tag" and "Remove tag" | Always shown; the create row first and the first row selected                                                                                                                                              |
+| `dropdown` | A small add field in a row of chips: the video page's "Add tag"                       | Opens below the input on focus or typing, aligned to its right edge when the left would run past the scrolling panel; Esc, Tab and leaving close it; Esc when closed calls `onEscape`; the create row last |
+| `inline`   | A target picked inside a dialog: the tag admin's merge target                         | Always open in a fixed-height box in the body (`h-combobox-panel`); `chosenId` marks the picked row; `emptyText` fills an empty box; the create row last                                                   |
 
 In `dropdown` and `inline`, no row is selected until the arrow keys or the
 pointer select one.

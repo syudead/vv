@@ -139,25 +139,6 @@ func isAuthOnlyPath(path string) bool {
 	return false
 }
 
-// Audience defaults to guest so omitted values fail closed.
-type Audience int
-
-const (
-	AudienceGuest Audience = iota
-	AudienceOwner
-)
-
-// IsOwner treats every value except AudienceOwner as guest.
-func (a Audience) IsOwner() bool { return a == AudienceOwner }
-
-// String returns the owner/guest names used by X-VV-Audience.
-func (a Audience) String() string {
-	if a.IsOwner() {
-		return "owner"
-	}
-	return "guest"
-}
-
 // CheckVideoQuery rejects guest filters and sorting based on owner data with ErrGuestQueryNotAllowed.
 func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	if a.IsOwner() {
@@ -168,7 +149,7 @@ func (a Audience) CheckVideoQuery(q VideoQuery) error {
 		return ErrGuestQueryNotAllowed
 	}
 	if len(q.TagIDs) > 0 || q.FavoriteOnly || q.Person != 0 || q.PersonRole != "" || q.Organization != 0 || q.TagKindID != 0 ||
-		q.ByName() {
+		q.WatchState != "" || q.ByName() {
 		return ErrGuestQueryNotAllowed
 	}
 	return nil

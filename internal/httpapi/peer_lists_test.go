@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
@@ -27,32 +28,42 @@ func mergedNodes(t *testing.T) (fa, fb *guestFixture, b *peerNode, stopA func())
 // mergedNodesWith is mergedNodes with extend applied to both nodes' options.
 func mergedNodesWith(t *testing.T, extend func(db *store.DB, opts *Options)) (fa, fb *guestFixture, a, b *peerNode, stopA func()) {
 	t.Helper()
-	node := func(name string) (*guestFixture, *peerNode, func()) {
-		var pairing *app.Pairing
-		f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
-			pairing = withTestPairing(db, name, nil, opts)
-			opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
-			if extend != nil {
-				extend(db, opts)
-			}
-		})
-		server := httptest.NewServer(f.env.handler)
-		t.Cleanup(server.Close)
-		return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
-	}
-	fa, a, stopA = node("node-a")
-	fb, b, _ = node("node-b")
+	fa, a, stopA = mergedNode(t, "node-a", extend)
+	fb, b, _ = mergedNode(t, "node-b", extend)
 	pairNodes(t, a, b)
 	return fa, fb, a, b, stopA
+}
+
+// mergedNode is one served node of mergedNodesWith, unpaired, with the function that stops serving it.
+func mergedNode(t *testing.T, name string, extend func(db *store.DB, opts *Options)) (*guestFixture, *peerNode, func()) {
+	t.Helper()
+	var pairing *app.Pairing
+	f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
+		pairing = withTestPairing(db, name, nil, opts)
+		opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
+		if extend != nil {
+			extend(db, opts)
+		}
+	})
+	server := httptest.NewServer(f.env.handler)
+	t.Cleanup(server.Close)
+	return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
 }
 
 // listLabel names a listed video by node and title, such as "a:e" for a's video e seen from b.
 func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 	t.Helper()
-	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
-		for name, own := range f.ids {
-			if (node == "b" && id == own) || (node == "a" && id == domain.ToRemoteID(own)) {
-				return node + ":" + name
+	return nodeLabel(t, []string{"b", "a"}, []*guestFixture{fb, fa}, id)
+}
+
+// nodeLabel names a listed video by node and title; nodes[0], named names[0], is the reading node and nodes[k] the
+// link in slot k.
+func nodeLabel(t *testing.T, names []string, nodes []*guestFixture, id int64) string {
+	t.Helper()
+	if slot := domain.RemoteSlot(id); slot < int64(len(nodes)) {
+		for name, own := range nodes[slot].ids {
+			if own == domain.FromRemoteID(id) {
+				return names[slot] + ":" + name
 			}
 		}
 	}
@@ -62,6 +73,12 @@ func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 
 // pageVideos follows nextCursor from path with limit 2 and returns every listed video's label with the totals.
 func pageVideos(t *testing.T, fa, fb *guestFixture, get func(string) *httptest.ResponseRecorder, path string, query url.Values) ([]string, []int) {
+	t.Helper()
+	return pageVideosBy(t, func(id int64) string { return listLabel(t, fa, fb, id) }, get, path, query)
+}
+
+// pageVideosBy is pageVideos naming each video by label.
+func pageVideosBy(t *testing.T, label func(int64) string, get func(string) *httptest.ResponseRecorder, path string, query url.Values) ([]string, []int) {
 	t.Helper()
 	query.Set("limit", "2")
 	var labels []string
@@ -76,7 +93,7 @@ func pageVideos(t *testing.T, fa, fb *guestFixture, get func(string) *httptest.R
 			t.Fatalf("%s: %d items, peerItems %v", path, len(page.Items), page.PeerItems)
 		}
 		for _, video := range page.Items {
-			labels = append(labels, listLabel(t, fa, fb, video.Id))
+			labels = append(labels, label(video.Id))
 		}
 		totals = append(totals, page.Total)
 		if page.NextCursor == nil {
@@ -187,7 +204,7 @@ func TestMergedListSendsALocalTagToThePeerByName(t *testing.T) {
 		t.Errorf("tag filter = %v, totals %v, want %v and 2", got, totals, want)
 	}
 	// A filter by an entity only the peer has lists the peer's matches alone.
-	remoteTag := strconv.FormatInt(domain.ToRemoteID(fa.tagID), 10)
+	remoteTag := strconv.FormatInt(domain.RemoteID(1, fa.tagID), 10)
 	got, _ = pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"tag": {remoteTag}})
 	if want := []string{"a:b", "a:a"}; !slices.Equal(got, want) {
 		t.Errorf("remote tag filter = %v, want %v", got, want)
@@ -211,8 +228,8 @@ func TestMergedListContinuesWithTheLocalPartWhenThePeerStops(t *testing.T) {
 	if !slices.Equal(totals, []int{5, 5}) {
 		t.Errorf("totals = %v, want the local total on each page", totals)
 	}
-	if state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", "")); state.State != gen.PeerStateStateUnreachable {
-		t.Errorf("state = %s, want unreachable", state.State)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateUnreachable {
+		t.Errorf("state = %s, want unreachable", link.State)
 	}
 }
 
@@ -227,8 +244,8 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 			t.Errorf("remote root %d carries its grouping", root.RootId)
 		}
 	}
-	remoteRoot := domain.ToRemoteID(fa.rootID)
-	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.ToRemoteID(fa.otherID)} {
+	remoteRoot := domain.RemoteID(1, fa.rootID)
+	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.RemoteID(1, fa.otherID)} {
 		if !slices.Contains(ids, want) {
 			t.Errorf("roots = %v, want %d among them", ids, want)
 		}
@@ -247,18 +264,47 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 	}
 }
 
-// Favorites stay with each node, so a favorites-only read of the peer's folder lists none of the peer's favorites.
-func TestRemoteFolderFavoritesListNoneOfThePeersFavorites(t *testing.T) {
+// A favorites-only read of the peer's folder lists the peer's own favorites.
+func TestRemoteFolderFavoritesListThePeersFavorites(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
-	change := domain.FavoriteChange{VideoIDs: []int64{fa.ids["a"]}, Favorite: true}
-	if _, err := fa.env.db.Favorites().SetFavorites(context.Background(), change); err != nil {
-		t.Fatal(err)
-	}
+	favoriteOn(t, fa, "a")
 
 	got, totals := pageVideos(t, fa, fb, func(target string) *httptest.ResponseRecorder {
 		return b.owner(http.MethodGet, target, "")
-	}, fb.folderPath(domain.ToRemoteID(fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
-	if len(got) != 0 || !slices.Equal(totals, []int{0}) {
-		t.Errorf("favorites of the remote root = %v, totals %v, want none", got, totals)
+	}, fb.folderPath(domain.RemoteID(1, fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
+	if !slices.Equal(got, []string{"a:a"}) || !slices.Equal(totals, []int{1}) {
+		t.Errorf("favorites of the remote root = %v, totals %v, want a:a", got, totals)
+	}
+}
+
+// playedOn sets each video's last play on f to base plus its offset in seconds.
+func playedOn(t *testing.T, f *guestFixture, base time.Time, offsets map[string]int) {
+	t.Helper()
+	for video, offset := range offsets {
+		at := base.Add(time.Duration(offset) * time.Second)
+		if err := store.SetPlayedAtForTest(context.Background(), f.env.db, "content-key-"+video, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Played sorts and the favorite filter use each node's own history and favorites, so both nodes' videos
+// interleave by play time and the peer's favorites are listed.
+func TestMergedListSortsAndFiltersByEachNodesWatchValues(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	base := time.Now().Add(-time.Hour)
+	playedOn(t, fa, base, map[string]int{"a": 5, "b": 3, "c": 1})
+	playedOn(t, fb, base, map[string]int{"a": 4, "c": 2})
+	favoriteOn(t, fa, "a", "b")
+	favoriteOn(t, fb, "b", "c")
+	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
+
+	got, _ := pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"sort": {"playedDesc"}})
+	if played := []string{"a:a", "b:a", "a:b", "b:c", "a:c"}; len(got) != 10 || !slices.Equal(got[:5], played) {
+		t.Errorf("playedDesc = %v, want %v first, then the five unplayed videos", got, played)
+	}
+	got, totals := pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"sort": {"playedDesc"}, "favorite": {"true"}})
+	if want := []string{"a:a", "a:b", "b:c", "b:b"}; !slices.Equal(got, want) || totals[0] != 4 {
+		t.Errorf("favorites by playedDesc = %v, totals %v, want %v of 4", got, totals, want)
 	}
 }

@@ -130,6 +130,7 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 	}{
 		{"no plugin", domain.ErrNotFound, wantError{status: 404, code: gen.ErrorCodeNotFound}, nil},
 		{"not approved", domain.ErrWorkInfoPluginNotApproved, wantError{status: 409, code: gen.ErrorCodePluginNotApproved}, nil},
+		{"switched off", domain.ErrWorkInfoPluginDisabled, wantError{status: 409, code: gen.ErrorCodePluginDisabled}, nil},
 		{"other kind", domain.ErrWorkInfoPluginKindMismatch, wantError{status: 409, code: gen.ErrorCodePluginKindMismatch}, nil},
 		{"unsupported", domain.ErrWorkInfoOperationUnsupported, wantError{status: 409, code: gen.ErrorCodeOperationUnsupported}, nil},
 		{"invalid", domain.ErrWorkInfoRunInvalid, wantError{status: 400, code: gen.ErrorCodeInvalidRequest}, nil},

@@ -85,12 +85,14 @@ export function SmartFolderCardsProvider({ children }: { children: ReactNode }) 
       if (shown.length > 0) read(shown);
     };
     const unsubscribeChanges = subscribeSmartFolderChanges(readShown);
+    // Counts include the peer's matches only while it is connected, and a folder's only while it is on.
+    const readAsked = () => {
+      if (asked.current.size > 0) read(Array.from(asked.current));
+    };
     const unsubscribe = subscribeServerEvents({
       smartFolder: readShown,
-      // Counts include the peer's matches only while it is connected.
-      peerItems: () => {
-        if (asked.current.size > 0) read(Array.from(asked.current));
-      },
+      peerItems: readAsked,
+      mediaFolders: readAsked,
       open: (reconnected) => {
         if (reconnected && asked.current.size > 0) read(Array.from(asked.current));
       },

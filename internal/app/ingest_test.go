@@ -16,8 +16,97 @@ import (
 func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *fakePublisher) {
 	publisher := &fakePublisher{}
 	return NewIngest(IngestOptions{
-		Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Publisher: publisher, Logger: discardLogger(),
+		Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Sources: openableSources(),
+		Publisher: publisher, Logger: discardLogger(),
 	}), publisher
+}
+
+// openableSources lets every location through unchanged.
+func openableSources() MediaFiles {
+	return MediaFiles{Folders: &fakeMediaFolders{}, Resolver: sameMediaFile{}}
+}
+
+type sameMediaFile struct{}
+
+func (sameMediaFile) ResolveMediaFile(_ []string, path string) (string, error) {
+	return path, nil
+}
+
+// sourceRecordingGenerator records the path each stage hands to ffmpeg.
+type sourceRecordingGenerator struct {
+	*fakeGenerator
+	sources []string
+}
+
+func (g *sourceRecordingGenerator) Probe(ctx context.Context, path string) (domain.Probe, error) {
+	g.sources = append(g.sources, path)
+	return g.fakeGenerator.Probe(ctx, path)
+}
+
+func (g *sourceRecordingGenerator) Thumbnail(
+	ctx context.Context, path string, durationMs int64, output, poster string,
+) (bool, error) {
+	g.sources = append(g.sources, path)
+	return g.fakeGenerator.Thumbnail(ctx, path, durationMs, output, poster)
+}
+
+func (g *sourceRecordingGenerator) SeekSprite(
+	ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout,
+) error {
+	g.sources = append(g.sources, path)
+	return g.fakeGenerator.SeekSprite(ctx, path, outputDir, layout)
+}
+
+func (g *sourceRecordingGenerator) Preview(ctx context.Context, path, output string, durationMs int64) error {
+	g.sources = append(g.sources, path)
+	return g.fakeGenerator.Preview(ctx, path, output, durationMs)
+}
+
+// A failed read of the media folders is not reported as an unavailable file, which the probe would persist.
+func TestIngestProbeReturnsAFailedFolderList(t *testing.T) {
+	video := probedVideo(1, "a")
+	folders := &fakeMediaFolders{}
+	folders.setErr(errors.New("database is locked"))
+	generator := &fakeGenerator{}
+	ingest := NewIngest(IngestOptions{
+		Store: newFakeIngestStore(video), Generator: generator, Artifacts: fakeArtifactStore{generator},
+		Sources: MediaFiles{Folders: folders, Resolver: fakeMediaFiles{}}, Logger: discardLogger(),
+	})
+	err := ingest.Handler(domain.JobProbe)(context.Background(), jobFor(domain.JobProbe, video))
+	if err == nil || domain.ProbeErrorCodeOf(err) == domain.ProbeErrorFileUnavailable {
+		t.Errorf("err = %v, want the folder error without an unavailable-file code", err)
+	}
+}
+
+// Every stage that reads the file reads it only through the media folders' access rules.
+func TestIngestStagesReadTheResolvedSource(t *testing.T) {
+	for _, kind := range []domain.JobKind{
+		domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail, domain.JobPreview,
+	} {
+		for _, location := range []string{"/media/show/a.mp4", "/elsewhere/a.mp4"} {
+			video := probedVideo(1, "a")
+			video.Path = location
+			video.ThumbnailState = domain.ThumbnailStatePending
+			generator := &sourceRecordingGenerator{fakeGenerator: &fakeGenerator{
+				probe: domain.Probe{DurationMs: 1000, VideoCodec: "h264"},
+			}}
+			ingest := NewIngest(IngestOptions{
+				Store: newFakeIngestStore(video), Generator: generator, Artifacts: fakeArtifactStore{generator.fakeGenerator},
+				Sources: MediaFiles{Folders: &fakeMediaFolders{}, Resolver: fakeMediaFiles{}}, Logger: discardLogger(),
+			})
+
+			err := ingest.Handler(kind)(context.Background(), jobFor(kind, video))
+
+			if location == "/media/show/a.mp4" {
+				if err != nil || !slices.Equal(generator.sources, []string{"resolved:" + location}) {
+					t.Errorf("%s inside: err = %v, sources = %v, want the resolved path", kind, err, generator.sources)
+				}
+			} else if domain.ProbeErrorCodeOf(err) != domain.ProbeErrorFileUnavailable || len(generator.sources) != 0 {
+				t.Errorf("%s outside: err = %v, sources = %v, want an unavailable file and no read", kind, err,
+					generator.sources)
+			}
+		}
+	}
 }
 
 func TestIngestProbeSuccess(t *testing.T) {

@@ -29,6 +29,33 @@ func (f personImageStoreFunc) DeletePersonImage(context.Context, int64) (domain.
 	return domain.Credit{}, errors.New("not used")
 }
 
+func (f personImageStoreFunc) CreditImage(context.Context, domain.CreditKind, int64) (domain.PersonImage, error) {
+	return domain.PersonImage{}, errors.New("not used")
+}
+
+func (f personImageStoreFunc) SetCreditImage(_ context.Context, _ domain.CreditKind, id int64, image domain.PersonImage) (domain.Credit, error) {
+	return f(id, image)
+}
+
+func (f personImageStoreFunc) DeleteCreditImage(context.Context, domain.CreditKind, int64) (domain.Credit, error) {
+	return domain.Credit{}, errors.New("not used")
+}
+
+// unusedCreditImages completes a person-only fake as a CreditImageStore.
+type unusedCreditImages struct{}
+
+func (unusedCreditImages) CreditImage(context.Context, domain.CreditKind, int64) (domain.PersonImage, error) {
+	return domain.PersonImage{}, errors.New("not used")
+}
+
+func (unusedCreditImages) SetCreditImage(context.Context, domain.CreditKind, int64, domain.PersonImage) (domain.Credit, error) {
+	return domain.Credit{}, errors.New("not used")
+}
+
+func (unusedCreditImages) DeleteCreditImage(context.Context, domain.CreditKind, int64) (domain.Credit, error) {
+	return domain.Credit{}, errors.New("not used")
+}
+
 func TestUploadPersonImageFitsTheLongSideTo800(t *testing.T) {
 	var stored domain.PersonImage
 	images := &PersonImages{uploads: newUploadGate(), store: personImageStoreFunc(func(id int64, image domain.PersonImage) (domain.Credit, error) {

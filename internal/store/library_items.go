@@ -28,8 +28,41 @@ func matchConditions(spec listSpec) ([]string, []any) {
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)
 		works, workArgs := workInfoConditions(level, userKey)
-		conditions = append(append(conditions, tags...), works...)
-		args = append(append(args, tagArgs...), workArgs...)
+		videoConds, videoArgs := videoConditionClauses(level.conditions, userKey)
+		conditions = append(append(append(conditions, tags...), works...), videoConds...)
+		args = append(append(append(args, tagArgs...), workArgs...), videoArgs...)
+	}
+	return conditions, args
+}
+
+// Watch states follow videoWatchStateExpr through a subquery, since not every caller joins playback_progress; unidentified content is unwatched.
+var watchStateConditions = map[domain.WatchState]string{
+	domain.WatchStateUnwatched: `not exists (select 1 from playback_progress wp where wp.content_key = {key} and videos.content_key <> ''
+		and (wp.completed = 1 or wp.position_ms <> 0))`,
+	domain.WatchStateInProgress: `exists (select 1 from playback_progress wp where wp.content_key = {key} and videos.content_key <> ''
+		and wp.completed <> 1 and wp.position_ms <> 0)`,
+	domain.WatchStateWatched: `exists (select 1 from playback_progress wp where wp.content_key = {key} and videos.content_key <> ''
+		and wp.completed = 1)`,
+}
+
+// Compare durations against videos.duration_ms, which is null when unknown, and days against added_at in Unix seconds.
+func videoConditionClauses(c domain.VideoConditions, userKey string) ([]string, []any) {
+	var conditions []string
+	var args []any
+	if c.MinDurationMs != nil {
+		conditions, args = append(conditions, `videos.duration_ms >= ?`), append(args, *c.MinDurationMs)
+	}
+	if c.MaxDurationMs != nil {
+		conditions, args = append(conditions, `videos.duration_ms <= ?`), append(args, *c.MaxDurationMs)
+	}
+	if c.AddedFrom != "" {
+		conditions, args = append(conditions, `videos.added_at >= ?`), append(args, c.AddedFrom.Start().Unix())
+	}
+	if c.AddedTo != "" {
+		conditions, args = append(conditions, `videos.added_at < ?`), append(args, c.AddedTo.End().Unix())
+	}
+	if clause, ok := watchStateConditions[c.WatchState]; ok {
+		conditions = append(conditions, strings.ReplaceAll(clause, "{key}", userKey))
 	}
 	return conditions, args
 }
@@ -115,7 +148,7 @@ func tagConditions(spec listSpec, userKey string) ([]string, []any) {
 // Join the representative location once instead of repeating the same lookup for every selected column.
 func representativeLocationJoin(alias string, audience domain.Audience) string {
 	return ` left join video_locations rl on rl.id = (select l.id from video_locations l where l.video_id = ` +
-		alias + `.video_id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
+		alias + `.video_id and ` + listedLocationCondition("l", audience) + ` order by l.path limit 1)`
 }
 
 const topGroupsSelect = `select g.id from groups g where not exists (select 1 from group_items c where c.child_id = g.id)`
@@ -226,7 +259,9 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 		return domain.LibraryPage{}, err
 	}
 	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
-	spec.storedCollections = true
+	// Stored group values follow this node's switches, so an explicit folder scope computes its groups.
+	_, explicit := audience.ExcludedFolders()
+	spec.storedCollections = !explicit
 	list := listLibraryPageTx
 	// Guests do not see smart folders.
 	if audience.IsOwner() && q.ListsSmartFolders() {
@@ -245,6 +280,9 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	page.MissingTagIDs = filters.missingTagIDs
 	page.Roots = roots
+	if !explicit {
+		page.EmptyReason = domain.LibraryEmptyReason(len(page.Items), roots)
+	}
 	return page, nil
 }
 

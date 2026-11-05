@@ -9,7 +9,7 @@ import (
 
 // The two-node tests cover the fields a scanned video carries; this covers the references they lack.
 func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
-	r := domain.ToRemoteID
+	r := func(id int64) int64 { return domain.RemoteID(1, id) }
 	video := gen.Video{
 		Id:          5,
 		Group:       &gen.VideoGroupRef{Id: 6, Folder: &gen.VideoFolder{RootId: 2}},
@@ -26,7 +26,7 @@ func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
 			Organizations: []gen.WorkOrganization{{Organization: gen.CreditRef{Id: 31, Name: "レーベル"}}},
 		},
 	}
-	join := domain.VocabularyJoin{Tags: map[string]int64{"海": 3}, People: map[string]int64{"山田": 4}}
+	join := domain.VocabularyJoin{Slot: 1, Tags: map[string]int64{"海": 3}, People: map[string]int64{"山田": 4}}
 
 	rewriteRemoteVideo(&video, join)
 
@@ -54,21 +54,24 @@ func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
 	}
 }
 
-// A same-named person takes the local id; the crop, which is not offered for the peer's appearances, is dropped.
-func TestRewriteRemoteFaceAppearancesJoinsPeopleAndDropsCrops(t *testing.T) {
+// A same-named person takes the local id, and each appearance keeps the peer's hasCrop, whose crop is forwarded.
+func TestRewriteRemoteFaceAppearancesJoinsPeopleAndKeepsCrops(t *testing.T) {
 	list := gen.VideoFaceAppearanceList{Analysed: true, Items: []gen.VideoFaceAppearance{
 		{AppearanceId: 7, Person: gen.CreditRef{Id: 20, Name: "山田"}, HasCrop: true,
 			Spans: []gen.FaceAppearanceSpan{{Start: 5, End: 8}}},
-		{AppearanceId: 8, Person: gen.CreditRef{Id: 21, Provisional: true}, HasCrop: true},
+		{AppearanceId: 8, Person: gen.CreditRef{Id: 21, Provisional: true}},
 	}}
 
-	rewriteRemoteFaceAppearances(&list, domain.VocabularyJoin{People: map[string]int64{"山田": 4}})
+	rewriteRemoteFaceAppearances(&list, domain.VocabularyJoin{Slot: 1, People: map[string]int64{"山田": 4}})
 
-	r := domain.ToRemoteID
-	for i, want := range []struct{ appearance, person int64 }{{r(7), 4}, {r(8), r(21)}} {
+	r := func(id int64) int64 { return domain.RemoteID(1, id) }
+	for i, want := range []struct {
+		appearance, person int64
+		crop               bool
+	}{{r(7), 4, true}, {r(8), r(21), false}} {
 		item := list.Items[i]
-		if item.AppearanceId != want.appearance || item.Person.Id != want.person || item.HasCrop {
-			t.Errorf("items[%d] = %+v, want appearance %d, person %d, no crop", i, item, want.appearance, want.person)
+		if item.AppearanceId != want.appearance || item.Person.Id != want.person || item.HasCrop != want.crop {
+			t.Errorf("items[%d] = %+v, want appearance %d, person %d, hasCrop %t", i, item, want.appearance, want.person, want.crop)
 		}
 	}
 	if spans := list.Items[0].Spans; len(spans) != 1 || spans[0] != (gen.FaceAppearanceSpan{Start: 5, End: 8}) {

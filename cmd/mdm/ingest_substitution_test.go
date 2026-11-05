@@ -12,6 +12,7 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -56,6 +57,9 @@ func TestThumbnailSubstitutionIsReportedAsImportIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := os.WriteFile(filepath.Join(mediaDir, "clip.mp4"), []byte{0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	scan, _, err := db.Scans().StartScan(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +84,7 @@ func TestThumbnailSubstitutionIsReportedAsImportIssue(t *testing.T) {
 		Store:     db.Ingest(),
 		Generator: substitutingGenerator{},
 		Artifacts: artifacts.New(Config{DataDir: dataDir}.ThumbnailsDir()),
+		Sources:   app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()},
 		Logger:    slog.New(slog.DiscardHandler),
 	})
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobPreview} {

@@ -21,13 +21,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
-import {
-  groupKey,
-  itemKey,
-  itemVideo,
-  smartFolderKey,
-  videoKey,
-} from "../api/libraryItems";
+import { itemKey, itemVideo } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { GroupChangedContext } from "../groups/groupChanges";
@@ -68,9 +62,11 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryFilter } from "../smartFolders/smartRule";
 import CardTagRow from "./CardTagRow";
-import EmptyLibrary from "./EmptyLibrary";
+import EmptyLibrary, { AllFoldersOff } from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
   DraggableGroupRow,
@@ -79,32 +75,23 @@ import {
   useLibraryMoves,
 } from "./LibraryDrag";
 import LibraryToolbar from "./LibraryToolbar";
-import { MarqueeBox } from "./MarqueeBox";
 import {
-  emptySelection,
   retainVideos,
   favoriteTargets,
   selectionTargets,
-  type LibrarySelection,
   reconcileGroups,
   selectedCount,
-  selectedGroupOf,
   isGroupSelected,
-  setGroup,
-  setSmartFolder,
-  setVideo,
 } from "./selection";
 import SelectionBar from "./SelectionBar";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
-import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import {
-  libraryFilterParams,
+  libraryPageParams,
   useLibraryFilters,
   useLibraryFilterValues,
 } from "./useLibraryFilters";
-import { useMarqueeSelection } from "./useMarqueeSelection";
-import { useRangeSelection } from "./useRangeSelection";
+import { useListSelection } from "./useListSelection";
 import { hasConditions as hasTagConditions } from "./tagCriteria";
 
 const skeletonCount = 12;
@@ -127,7 +114,12 @@ function drawsBoxes(owner: boolean, view: ViewPreferences["view"], loading: bool
 }
 
 function libraryConditioned(filter: LibraryFilter): boolean {
-  return hasTagConditions(filter.criteria, filter.tagIds, filter.credits);
+  return hasTagConditions(
+    filter.criteria,
+    filter.tagIds,
+    filter.credits,
+    filter.conditions,
+  );
 }
 
 function saveSmartFolderAction(
@@ -142,7 +134,7 @@ function saveSmartFolderAction(
 }
 
 /** Retired parameters (versions, addedWithin, minDuration, maxDuration) are dropped on the next write. */
-const libraryParams = libraryFilterParams;
+const libraryParams = libraryPageParams;
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -154,7 +146,7 @@ export default function LibraryPage() {
   // Pass library-specific filters through useListCriteria's extension so every URL update preserves them.
   const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
   const { query, favorite, sort } = criteria;
-  const { tagIds, credits } = useLibraryFilterValues(owner);
+  const { tagIds, credits, conditions } = useLibraryFilterValues(owner);
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
@@ -199,7 +191,7 @@ export default function LibraryPage() {
   );
 
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...credits }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...credits, ...conditions }),
   );
   const {
     items,
@@ -210,18 +202,24 @@ export default function LibraryPage() {
     loadingMore,
     error,
     missingTagIds,
+    emptyReason,
     loadMore,
     retryLoadMore,
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds, ...credits }, restored, "library");
+  } = useVideos(
+    { ...criteria, tag: tagIds, ...credits, ...conditions },
+    restored,
+    "library",
+  );
   const filters = useLibraryFilters({
     owner,
     criteria,
     apply,
     tagIds,
     credits,
+    conditions,
     missingTagIds,
     restored: restored !== undefined,
     resetPreview,
@@ -235,54 +233,22 @@ export default function LibraryPage() {
   }, [favorite, items, query, resetPreview, sort, view, zoom]);
 
   // Selection retains video IDs and group identity; video mutations expand groups, while favorites target groups themselves.
-  const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
-  const selectedIds = selection.ids;
-  // Removing any member also removes the group's selected identity.
-  const displayed = useRef<readonly LibraryItem[]>(items);
-  const { select: selectRange, point: pointRange } = useRangeSelection(
-    displayed,
+  const {
+    selection,
     setSelection,
-  );
-  // Toggles read the rendered selection, so a Shift toggle can extend a range like a check.
-  const selectionNow = useRef(selection);
-  selectionNow.current = selection;
-  const changeSelection = useCallback(
-    (id: number, selected: boolean) =>
-      selectRange(videoKey(id), selected, (current) => setVideo(current, id, selected)),
-    [selectRange],
-  );
-  const toggleSelection = useCallback(
-    (id: number) => changeSelection(id, !selectionNow.current.ids.has(id)),
-    [changeSelection],
-  );
-  const changeGroupSelection = useCallback(
-    (group: LibraryGroup, selected: boolean) =>
-      selectRange(groupKey(group.id), selected, (current) =>
-        setGroup(current, selectedGroupOf(group), selected),
-      ),
-    [selectRange],
-  );
-  const toggleGroupSelection = useCallback(
-    (group: LibraryGroup) =>
-      changeGroupSelection(group, !isGroupSelected(selectionNow.current, group.id)),
-    [changeGroupSelection],
-  );
-  const changeSmartFolderSelection = useCallback(
-    (id: number, selected: boolean) =>
-      selectRange(smartFolderKey(id), selected, (current) =>
-        setSmartFolder(current, id, selected),
-      ),
-    [selectRange],
-  );
-  const toggleSmartFolderSelection = useCallback(
-    (id: number) =>
-      changeSmartFolderSelection(id, !selectionNow.current.smartFolders.has(id)),
-    [changeSmartFolderSelection],
-  );
-  const clearSelection = useCallback(() => {
-    pointRange(null);
-    setSelection(emptySelection);
-  }, [pointRange]);
+    show,
+    clear: clearSelection,
+    changeVideo: changeSelection,
+    toggleVideo: toggleSelection,
+    changeGroup: changeGroupSelection,
+    toggleGroup: toggleGroupSelection,
+    changeSmartFolder: changeSmartFolderSelection,
+    toggleSmartFolder: toggleSmartFolderSelection,
+    container: results,
+    marqueeBox,
+  } = useListSelection({ boxes: drawsBoxes(owner, view, loading) });
+  const selectedIds = selection.ids;
+  useAssistantScreen(selectionScreen(selection));
   // The library keeps selected ids it no longer lists, so narrow to the failed videos still listed.
   const retainSelection = useCallback(
     (kept: ReadonlySet<number>) => {
@@ -290,7 +256,7 @@ export default function LibraryPage() {
       const shown = new Set([...kept].filter((id) => listed.has(id)));
       setSelection((current) => retainVideos(current, shown));
     },
-    [items],
+    [items, setSelection],
   );
 
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
@@ -307,9 +273,7 @@ export default function LibraryPage() {
     undo,
   });
   const shown = drops.shown;
-  useLayoutEffect(() => {
-    displayed.current = shown;
-  });
+  useLayoutEffect(() => show(shown));
 
   // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
@@ -331,7 +295,7 @@ export default function LibraryPage() {
   // Reconcile selected group identity after refresh without removing selected video IDs.
   useEffect(() => {
     setSelection((current) => reconcileGroups(current, items));
-  }, [items]);
+  }, [items, setSelection]);
 
   // Clear selection whenever conditions change, even when some videos match both views.
   const conditionsSignature = [criteriaKey(criteria), filters.signature].join("\u0000");
@@ -342,8 +306,6 @@ export default function LibraryPage() {
     clearSelection();
   }, [clearSelection, conditionsSignature]);
   useScrollTopOnChange(conditionsSignature);
-
-  useEscapeClearsSelection(selectedCount(selection) > 0, clearSelection);
 
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
@@ -406,7 +368,7 @@ export default function LibraryPage() {
     // Do not snapshot temporary drag overlays or restore stale order after successful mutations invalidated it.
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...credits },
+      { ...criteria, tags: tagIds, ...credits, ...conditions },
       {
         items,
         total,
@@ -417,18 +379,18 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
-
-  const results = useRef<HTMLElement | null>(null);
-  const marqueeBox = useRef<HTMLDivElement | null>(null);
-  useMarqueeSelection({
-    container: results,
-    box: marqueeBox,
-    enabled: drawsBoxes(owner, view, loading),
-    items: shown,
-    selection,
-    setSelection,
-  });
+  }, [
+    conditions,
+    credits,
+    criteria,
+    cursor,
+    hasMore,
+    items,
+    shown,
+    staleGroups,
+    tagIds,
+    total,
+  ]);
 
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -456,7 +418,7 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const smartFolderFilter = { criteria, tagIds, credits };
+  const smartFolderFilter = { criteria, tagIds, credits, conditions };
   const conditioned = libraryConditioned(smartFolderFilter);
   const selectionMode = selectedCount(selection) > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
@@ -593,6 +555,7 @@ export default function LibraryPage() {
     <LibraryEmpty
       conditioned={conditioned}
       owner={owner}
+      allFoldersOff={emptyReason === "all_folders_off"}
       onSearch={() => searchField.current?.focus()}
     />
   ) : loading ? (
@@ -680,7 +643,7 @@ export default function LibraryPage() {
           aria-label={conditioned ? t.library.resultsLabel : undefined}
           className="flex min-w-0 flex-col gap-3"
         >
-          <MarqueeBox ref={marqueeBox} />
+          {marqueeBox}
           {/* Home itself needs no heading or count; only filtered results get them. */}
           {conditioned && (
             <PageHeader
@@ -716,14 +679,18 @@ export default function LibraryPage() {
 function LibraryEmpty({
   conditioned,
   owner,
+  allFoldersOff,
   onSearch,
 }: {
   conditioned: boolean;
   owner: boolean;
+  allFoldersOff: boolean;
   onSearch: () => void;
 }) {
   if (conditioned) return <NoMatches onSearch={onSearch} />;
-  return owner ? <EmptyLibrary /> : <GuestEmpty />;
+  // A guest signs in to reach the switches, so the guest state stays.
+  if (!owner) return <GuestEmpty />;
+  return allFoldersOff ? <AllFoldersOff /> : <EmptyLibrary />;
 }
 
 export function LibraryTableHeader({ owner }: { owner: boolean }) {

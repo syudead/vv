@@ -36,8 +36,27 @@ func TestCoversAreFetchedThroughVVAfterTheRun(t *testing.T) {
 	}
 	site.mu.Lock()
 	defer site.mu.Unlock()
-	if len(site.userAgent) != 1 || site.userAgent[0] != defaultUserAgent {
-		t.Fatalf("site saw User-Agent %q, want the default one", site.userAgent)
+	if len(site.userAgent) != 1 || site.userAgent[0] != defaultUserAgent || site.referers[0] != "" {
+		t.Fatalf("site saw User-Agent %q, Referer %q; want the default one and no Referer", site.userAgent, site.referers)
+	}
+}
+
+func TestImageRefererIsSentWithTheCoversAndPeoplesImages(t *testing.T) {
+	site := newTestSite(t)
+	rt := newNetTestRuntime(t, site)
+	req := fetchMode("people")
+	req.Settings = map[string]string{"people": `[{"role":"performer","name":"P","image":"http://site.test/face/1"}], ` +
+		`"covers": ["http://site.test/page"], "imageReferer": "https://site.test/work/1"`}
+
+	got, _, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, domain.WorkInfoRunNetwork{}, nil)
+	if err != nil || len(got.CoverImages) != 1 || got.CoverImages[0] == nil || len(got.PersonImages) != 1 ||
+		got.PersonImages[0] == nil {
+		t.Fatalf("Run(imageReferer) = covers %q, people %q, %v; want both images", got.CoverImages, got.PersonImages, err)
+	}
+	site.mu.Lock()
+	defer site.mu.Unlock()
+	if !slices.Equal(site.referers, []string{"https://site.test/work/1", "https://site.test/work/1"}) {
+		t.Fatalf("site saw Referer %q, want the plugin's on both requests", site.referers)
 	}
 }
 
@@ -70,7 +89,7 @@ func TestCoverImageSendsNothingForAURLItCannotRequest(t *testing.T) {
 	rt := newNetTestRuntime(t, site)
 	session := rt.run.net.session(domain.WorkInfoRunNetwork{})
 	for _, raw := range []string{"", "http://[::1", "http://site.test/%zz"} {
-		if got := session.image(context.Background(), raw); got != nil {
+		if got := session.image(context.Background(), raw, ""); got != nil {
 			t.Fatalf("image(%q) = %q, want nil", raw, got)
 		}
 	}

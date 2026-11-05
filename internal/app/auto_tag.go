@@ -65,7 +65,9 @@ type AutoTaggerOptions struct {
 	// Nil disables undo.
 	Undo       AutoTagUndoStore
 	Classifier Classifier
-	Images     VideoImageSource
+	// Chooser shortlists a large candidate set before Classifier asks about each; nil asks about every candidate.
+	Chooser ChoiceClassifier
+	Images  VideoImageSource
 	// Wake wakes the job scheduler, which runs auto_tag jobs through HandleJob.
 	Wake Waker
 	// Nil uses slog.Default.
@@ -80,6 +82,7 @@ type AutoTagger struct {
 	settings   AutoTagSettingsStore
 	undo       AutoTagUndoStore
 	classifier Classifier
+	chooser    ChoiceClassifier
 	images     VideoImageSource
 	logger     *slog.Logger
 	Waker
@@ -98,6 +101,7 @@ func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 		settings:   opts.Settings,
 		undo:       opts.Undo,
 		classifier: opts.Classifier,
+		chooser:    opts.Chooser,
 		images:     opts.Images,
 		logger:     logger.With(slog.String("component", "auto-tagging")),
 		Waker:      opts.Wake,
@@ -296,20 +300,35 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.Job) (domain.AutoTag
 	video := found.Video
 	subject := domain.NewAutoTagSubject(video.Title, found.MediaFolder, video.Path)
 	subject.Images = a.videoImages(job.ContentKey, video)
-
-	questions := make([]domain.ClassifierQuestion, len(candidates))
-	for i, candidate := range candidates {
-		questions[i] = domain.AutoTagQuestionFor(candidate)
-	}
-	probabilities, err := a.classifier.Classify(ctx, domain.ClassifierRequest{
-		Input:     subject.ClassifierInput(),
-		Questions: questions,
-	})
+	input := subject.ClassifierInput()
+	asked, err := a.shortlist(ctx, input, candidates)
 	if err != nil {
 		return selection, "", err
 	}
-	selection = domain.SelectAutoTags(candidates, probabilities, settings)
+
+	questions := make([]domain.ClassifierQuestion, len(asked))
+	for i, candidate := range asked {
+		questions[i] = domain.AutoTagQuestionFor(candidate)
+	}
+	probabilities, err := a.classifier.Classify(ctx, domain.ClassifierRequest{Input: input, Questions: questions})
+	if err != nil {
+		return selection, "", err
+	}
+	selection = domain.SelectAutoTags(asked, probabilities, settings)
 	return selection, domain.ActivityByAI, nil
+}
+
+// shortlist narrows more than AutoTagShortlistAbove candidates with one choice question, since asking each yes/no
+// question resends the images and the requests would grow with the tag vocabulary.
+func (a *AutoTagger) shortlist(ctx context.Context, input domain.ClassifierInput, candidates []domain.AutoTagCandidate) ([]domain.AutoTagCandidate, error) {
+	if a.chooser == nil || len(candidates) <= domain.AutoTagShortlistAbove {
+		return candidates, nil
+	}
+	probabilities, err := a.chooser.Choose(ctx, domain.AutoTagChoiceFor(input, candidates))
+	if err != nil {
+		return nil, err
+	}
+	return domain.ShortlistAutoTags(candidates, probabilities), nil
 }
 
 // Skip unreadable images and classify with available metadata and images.

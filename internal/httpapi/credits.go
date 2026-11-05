@@ -18,7 +18,7 @@ import (
 // People and organization routes share handlers and owner-only defaults; each operation completes through CreditStore without an app use case.
 
 type Credits interface {
-	List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
+	List(ctx context.Context, audience domain.Audience, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
 	Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
 	Lookup(ctx context.Context, kind domain.CreditKind, source, value string) (domain.Credit, error)
 	Create(ctx context.Context, kind domain.CreditKind, input domain.CreditInput) (domain.Credit, error)
@@ -143,8 +143,8 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 	if !s.acceptTagListQuery(w, problem) {
 		return
 	}
-	if (params.Favorite != nil || params.Provisional != nil) && api.kind != domain.CreditPerson {
-		s.invalidRequest(w, "favorite and provisional apply to people only.")
+	if params.Provisional != nil && api.kind != domain.CreditPerson {
+		s.invalidRequest(w, "provisional applies to people only.")
 		return
 	}
 	if !s.creditsConfigured(w) {
@@ -160,7 +160,7 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 		}
 		return
 	}
-	page, err := s.credits.List(r.Context(), api.kind, query)
+	page, err := s.credits.List(r.Context(), audienceFrom(r.Context()), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
@@ -228,7 +228,8 @@ func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api credit
 	s.writeCreditBody(w, http.StatusCreated, api.one(credit))
 }
 
-// creditInputOf is shared with external create requests; parentId and profile are rejected for the other kind even when null.
+// creditInputOf is shared with external create requests; parentId, profile and organizationProfile are rejected for
+// the other kind even when null.
 func creditInputOf(body gen.CreditInput, present func(name string) bool, kind domain.CreditKind) (domain.CreditInput, string, bool) {
 	if present("parentId") && kind != domain.CreditOrganization {
 		return domain.CreditInput{}, "parentId applies to organizations only.", false
@@ -236,12 +237,18 @@ func creditInputOf(body gen.CreditInput, present func(name string) bool, kind do
 	if present("profile") && kind != domain.CreditPerson {
 		return domain.CreditInput{}, "profile applies to people only.", false
 	}
+	if present("organizationProfile") && kind != domain.CreditOrganization {
+		return domain.CreditInput{}, "organizationProfile applies to organizations only.", false
+	}
 	input := domain.CreditInput{
 		Name: body.Name, Aliases: fromAPIAliases(body.Aliases), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
 		ParentID: body.ParentId,
 	}
 	if body.Profile != nil {
 		input.Profile = fromAPIProfile(*body.Profile)
+	}
+	if body.OrganizationProfile != nil {
+		input.OrganizationProfile = fromAPIOrganizationProfile(*body.OrganizationProfile)
 	}
 	return input, "", true
 }
@@ -301,6 +308,13 @@ func creditPatchOf(body gen.CreditPatch, fields bodyFields, kind domain.CreditKi
 		}
 		patch.Profile = profile
 	}
+	if present("organizationProfile") {
+		profile, message, ok := organizationProfilePatchOf(body.OrganizationProfile, fields, kind)
+		if !ok {
+			return domain.CreditPatch{}, message, false
+		}
+		patch.OrganizationProfile = profile
+	}
 	return patch, "", true
 }
 
@@ -309,20 +323,44 @@ func profilePatchOf(body *gen.PersonProfilePatch, fields bodyFields, kind domain
 	if kind != domain.CreditPerson {
 		return nil, "profile applies to people only.", false
 	}
-	raw, _ := jsonProperty(fields, "profile")
-	var properties bodyFields
-	if body == nil || json.Unmarshal(raw, &properties) != nil {
-		return nil, "profile must be an object; send null for a property to clear it.", false
+	present, message, ok := presentProfileFields(fields, "profile", body != nil, domain.PersonProfileFields)
+	if !ok {
+		return nil, message, false
 	}
-	patch := &domain.PersonProfilePatch{Values: fromAPIProfilePatch(*body)}
-	for name := range properties {
-		for _, field := range domain.PersonProfileFields {
-			if strings.EqualFold(name, string(field)) {
-				patch.Fields = append(patch.Fields, field)
+	return &domain.PersonProfilePatch{Fields: present, Values: fromAPIProfilePatch(*body)}, "", true
+}
+
+func organizationProfilePatchOf(
+	body *gen.OrganizationProfilePatch, fields bodyFields, kind domain.CreditKind,
+) (*domain.OrganizationProfilePatch, string, bool) {
+	if kind != domain.CreditOrganization {
+		return nil, "organizationProfile applies to organizations only.", false
+	}
+	present, message, ok := presentProfileFields(fields, "organizationProfile", body != nil,
+		domain.OrganizationProfileFields)
+	if !ok {
+		return nil, message, false
+	}
+	return &domain.OrganizationProfilePatch{Fields: present, Values: fromAPIOrganizationProfilePatch(*body)}, "", true
+}
+
+// presentProfileFields lists the profile properties present under name, including nulls, so each one replaces or
+// clears its field.
+func presentProfileFields[F ~string](fields bodyFields, name string, decoded bool, known []F) ([]F, string, bool) {
+	raw, _ := jsonProperty(fields, name)
+	var properties bodyFields
+	if !decoded || json.Unmarshal(raw, &properties) != nil {
+		return nil, name + " must be an object; send null for a property to clear it.", false
+	}
+	var present []F
+	for property := range properties {
+		for _, field := range known {
+			if strings.EqualFold(property, string(field)) {
+				present = append(present, field)
 			}
 		}
 	}
-	return patch, "", true
+	return present, "", true
 }
 
 // Property-presence matching must use EqualFold to mirror encoding/json field matching.
@@ -407,6 +445,9 @@ func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api credit
 	case propagate && slices.Contains(body.SourceIds, id):
 		s.writeCreditError(w, api, domain.ErrMergeSameCredit)
 		return
+	case propagate && onlyLink(domain.RemoteSlot(id), append([]int64{id}, body.SourceIds...)):
+		s.mergeOnPeer(w, r, api, id, body.SourceIds)
+		return
 	case propagate:
 		s.mergeOnBothNodes(w, r, id, body.SourceIds, s.creditMergeSide(api))
 		return
@@ -466,7 +507,9 @@ func toAPIPerson(credit domain.Credit) gen.Person {
 func toAPIOrganization(credit domain.Credit) gen.Organization {
 	out := gen.Organization{
 		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
-		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIOrganizationProfile(credit.OrganizationProfile),
+		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
+		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 	if credit.Parent != nil {
 		out.Parent = &gen.CreditRef{Id: credit.Parent.ID, Name: credit.Parent.Name}
