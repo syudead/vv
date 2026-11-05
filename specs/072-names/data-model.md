@@ -12,10 +12,19 @@ stay as they are.
 
 1. Adds `position integer not null default 0`.
 2. Sets `position` to 0 on the row with `canonical = 1` and numbers the other
-   rows of each entity from 1, ordered by `sort_key` and then `name`, which is
-   the order the screens show aliases today.
+   rows of each entity from 1, ordered by `name collate vv_alias_order`, which
+   is the order the screens show aliases today. `sort_key` cannot give that
+   order: it is NFKC-folded and kana-folded, so `Ｂ` sorts before `C` by
+   `sort_key` but after it on the screens.
 3. Creates the unique index `<table>_position_idx (<id>, position)`.
 4. Drops the partial index `<table>_canonical_idx` and the `canonical` column.
+
+`vv_alias_order` is a SQLite collation the store registers in Go, backed by
+the comparison `domain.SortAliases` makes today (`CompareNatural`, ties by
+`strings.Compare`). That comparison stays in `domain` as the collation's
+function after `SortAliases` goes, and the collation stays registered so that a
+database migrated later gets the same order, as `vv_natural_sort_key` does for
+migration 43.
 
 Down restores `canonical` as `position = 0`, recreates the partial index and
 drops `position` and its index. The search-dirty triggers of migration 62 stay
@@ -41,7 +50,7 @@ most one display name.
 | An entry's `name` is trimmed, not blank, at most 200 code points, without control characters | `domain.NormalizeCredit` |
 | An entry's `language` is empty or BCP 47 syntax of at most 35 characters | `domain.NormalizeCredit` |
 | Two entries never share a spelling; the later one is the duplicate | `domain.NormalizeCredit`; the primary key as the final guard |
-| At most 50 entries, the display name counted | `domain.NormalizeCredit`; `checkMergedCreditLimits` after a merge |
+| At most 50 entries, the display name counted, checked when a create or patch carries `names` and after a merge; a patch without `names` keeps a stored list over the limit | `domain.NormalizeCredit`; `checkMergedCreditLimits` after a merge |
 | An organization has at least one entry; a person with none is provisional | `domain.NormalizeCredit`, given the kind |
 | Positions are 0 to n-1 in the written order | `CreditStore` writes; the unique index as the final guard |
 | A merge appends the sources' entries after the target's, in `sourceIds` order, skipping spellings the list holds | `CreditStore.Merge` |

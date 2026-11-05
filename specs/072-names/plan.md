@@ -111,11 +111,12 @@ A long spelling is `work_info_too_long` and a control character
 | Same | A separate `people_name_order` table | A join for an integer the row can hold, and the merge would write two tables |
 | The `language` column takes a value on any row | A `display_language` column on the entity | The display name is a row like the others; one column serves every entry |
 | The list is stored and returned in the sent order; `SortAliases` goes | Keep natural order for the entries after the first | Requirement 3; the owner decides the order |
-| The limit is 50 names in all, the display name counted; `work_info_too_many` at `names` with `limit` 50 | 51, so every existing entity stays within the limit | 50 is the product's number; an entity migrated with 51 rows keeps them until its list is next written, when the owner drops one, and a merge or apply over 50 is refused or skipped as today |
+| The limit is 50 names in all, the display name counted; `work_info_too_many` at `names` with `limit` 50 | 51, so every existing entity stays within the limit | 50 is the product's number; an entity migrated with 51 rows keeps them until a request sends `names`, when the owner drops one, so a patch without `names` (a profile change, or `name` alone) does not count the list; a merge or apply over 50 is refused or skipped as today |
 | A blank `name` in `names[i]` is `work_info_empty` at `names[i].name` | Drop blank entries silently, as blank aliases are dropped today | Requirement 4: the error points at the entry; a dropped first entry would silently make the next one the display name |
 | Duplicates compare the trimmed spelling exactly, and the error points at the later entry | Folded comparison (width, case, kana) | The rows' primary key is the exact spelling; two spellings that fold to one name are two names today and stay matchable by search |
 | A person with an empty list is provisional; an organization's empty list is `work_info_empty` at `names` | Refuse an empty list on a person and keep a separate "unnamed" state | Requirement 5 defines a provisional person by its list; face recognition creates such people and the owner may clear a list |
-| The migration numbers existing rows: the canonical row at 0, the others from 1 in their current display order (natural order, ties by spelling), and drops `canonical` with its partial index | Recreate the two tables | `alter table` keeps the search-dirty triggers of migration 62 in place; dropping the column needs only its index dropped first |
+| The migration numbers existing rows: the canonical row at 0, the others from 1 in their current display order through the Go collation `vv_alias_order`, which compares as `SortAliases` does, and drops `canonical` with its partial index | Recreate the two tables | `alter table` keeps the search-dirty triggers of migration 62 in place; dropping the column needs only its index dropped first |
+| Same | Order by `sort_key, name` in SQL alone | `sort_key` is NFKC- and kana-folded and `SortAliases` compares the spellings unfolded, so mixed-width or mixed-kana aliases would change order, against the Issue's edge case |
 | `Credit.Name` stays the display name read from position 0, and `Credit.Names` replaces `Aliases` | Only `Names`, with callers reading `Names[0]` | Every reader of a display name (activity labels, work credits, the assistant, the peer) would branch on an empty list; today's `Provisional` is read the same way |
 
 ## Screen API and external API v1
@@ -217,7 +218,8 @@ rows and fetch apply), `cmd/mdm/plugin_run_person.go`, `api/openapi.yaml`,
 `docs/design-docs/`, `docs/how-to/`.
 
 **New paths**: `internal/store/migrations/00098_credit_name_positions.sql`
-and its test, `web/src/credits/NameRows.tsx` and its test,
+and its test, the registration of the `vv_alias_order` collation in
+`internal/store`, `web/src/credits/NameRows.tsx` and its test,
 `docs/design-docs/credit-names.md`.
 
 **Structure decision**: The list rule, the merge rule and the apply rule get
@@ -246,8 +248,8 @@ flowchart LR
 with the kind's empty-list rule, position-ordered reads and writes, every
 store query that read `canonical` on the two name tables, the merge rule of
 [Merge and plugin apply](#merge-and-plugin-apply), the merged-limit check
-counting all names, `FillPersonItems` appending to the list, and the by-name
-rename keeping the display name's language. The contract of
+counting all names, the count checked only when a request carries `names`, and
+the by-name rename keeping the display name's language. The contract of
 [contracts/credit-names.md](contracts/credit-names.md): both schemas,
 `task generate`, the credit handlers, the external handlers, the MCP
 descriptions, the peer vocabulary's name list, the assistant's arguments and
@@ -255,7 +257,14 @@ bodies. The web side reads `names` wherever it read `aliases` (rows, profile,
 pickers, search match, the fetch dialog's other names, the comparison's
 current person), the New person dialog, the bulk editor and the video editor
 send `names` or `name`, and the two editors keep their layout and send
-`names` from their current rows. Adds `docs/design-docs/credit-names.md`
+`names` from their current rows.
+
+Temporary wiring that later units replace, kept to what `Credit.Names` and the
+removed `aliases` need to build: `FillPersonItems`, the apply and the fetch
+result keep the `aliases` item and the fetched aliases and append them to
+`Names` where they appended to `Aliases`; the person edit page and the
+organization dialog keep their layout and send their current name and alias
+rows as `names`. Adds `docs/design-docs/credit-names.md`
 with the list, merge and API decisions, links it from the index and
 `people.md`, and updates `external-api.md` and `assistant.md`.
 
@@ -268,9 +277,11 @@ reads back the same (acceptance 2, 3); an emptied list makes a person
 provisional and answers an organization `work_info_empty` (acceptance 5); a
 merge into a named target keeps its display name and appends the sources'
 names in order without repeats, and into a provisional target takes the first
-named source's list first (acceptance 7); a merge or apply reaching 51 names
-is refused or skipped; the migration test numbers a person's rows canonical
-first and the rest in natural order and round-trips down. Handler tests:
+named source's list first (acceptance 7); a merge reaching 51 names is
+refused; on a person with 51 names a profile-only patch and a `name` patch
+succeed and a `names` patch of 51 is `work_info_too_many`; the migration test
+numbers a person's rows canonical first and the rest in today's display order,
+with `Ｂ` and `C` as aliases numbered `C` then `Ｂ`, and round-trips down. Handler tests:
 `Person` and `Organization` carry `name` and `names` and no `aliases` on both
 APIs (acceptance 6); `name` with `names` is `invalid_request`; `aliases` on
 external v1 is `invalid_request`; a `name` equal to another entry is
@@ -284,7 +295,9 @@ query on the two name tables.
 ### Apply a person plugin's fetched names as one list
 
 **Scope**: [contracts/person-plugin-names.md](contracts/person-plugin-names.md):
-`names` on the fetch result, the apply request and item, the skipped values,
+`names` on the fetch result, the apply request and item, the append rule of
+`Select` and `FillPersonItems` in place of the first unit's temporary wiring,
+the skipped values,
 the peer apply body, `mdm plugin run`'s kept person, the assistant's `fields`
 value, the comparison's names list in `personCompareRows.ts` and
 `PersonCompare.tsx`, and the `person-plugins.md` and `work-info-plugins.md`

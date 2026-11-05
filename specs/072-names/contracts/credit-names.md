@@ -53,7 +53,7 @@ writes nothing.
 | 400 | `invalid_request` | `work_info_too_long`, `work_info_invalid_language` | `names[i].language` | The entry's language |
 | 400 | `invalid_request` | `work_info_duplicate` | `names[i].name` | The later of two entries with one spelling |
 | 400 | `invalid_request` | `work_info_duplicate` | `name` | `name` equals another entry of the list |
-| 400 | `invalid_request` | `work_info_too_many` | `names` | Over 50 entries; `limit` is 50 |
+| 400 | `invalid_request` | `work_info_too_many` | `names` | `names` with over 50 entries; `limit` is 50. A patch without `names` does not count the list, so a list migrated with 51 entries survives a `name` or other-field patch |
 
 ## `POST /api/people`, `POST /api/organizations`, `POST /api/v1/people`, `POST /api/v1/organizations`
 
@@ -68,8 +68,11 @@ entity, as today.
 Unchanged request. The merged entity's `names` is the target's list followed
 by each source's list in `sourceIds` order, each spelling once; a provisional
 target's list therefore starts with the first named source's display name.
-Over 50 names answers `400 work_info_too_many` at `names` with `limit` 50 and
-changes nothing, as `aliases` did.
+Over 50 names changes nothing and answers as `aliases` did:
+
+| Status | `code` | `reason` | `field` | When |
+| --- | --- | --- | --- | --- |
+| 400 | `invalid_request` | `work_info_too_many` | `names` | The merged list has over 50 entries; `limit` is 50 |
 
 ## MCP tools
 
