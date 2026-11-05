@@ -101,7 +101,13 @@ stays the band's or the footer's one `default` button.
 
 A row being dragged lifts as the playlist row does: `bg-popover` with
 `shadow-elevated`, moving on the vertical axis only, while the other rows slide
-to make room. The list keeps its height and the labels their place. Pointer,
+to make room. The list keeps its height and the labels their place: the
+labels are not sortable items, so a row that slides to make room moves by the
+distance to the next slot, label space included, and comes to rest in a slot,
+never on a label. The lifted row follows the pointer across the label space
+and is drawn above the label, its `bg-popover` covering it while it passes;
+the first slot holds either its resting row or the gap the lifted row will
+drop into, so the label never sits over two rows. Pointer,
 touch and keyboard sorting are the sensors of `reorder.tsx`, with the keyboard
 instructions and announcements the playlist uses. A row's error sits under the
 row (`FieldError`), the input it names outlined as invalid; the list's error
@@ -121,14 +127,20 @@ flowchart LR
   empty -->|no| keep[Rows close the gap]
 ```
 
-A blank row (no name, no language) is not sent, as a blank alias row is not
-today, so an empty list always shows one blank row under `Display name`: a
-provisional person's editor opens on it with the person's number as its
-placeholder and the focus in it, and `Save` with the row still blank keeps
-the person provisional; an organization whose list was emptied shows the same
-blank row, and `Save` answers `work_info_empty` under `Add name`. The blank
-first row has the handle and the remove button like any row; removing it
-leaves the list empty, which shows a blank row again.
+An empty list shows one blank row (no name, no language) under
+`Display name`, and that row alone is not sent: when the draft is exactly one
+blank row, `Save` sends `names: []`. A provisional person's editor opens on
+it with the person's number as its placeholder and the focus in it, and
+`Save` with the row still blank keeps the person provisional; an organization
+whose list was emptied shows the same blank row, and `Save` answers
+`work_info_empty` under `Add name`. The blank first row has the handle and the
+remove button like any row; removing it leaves the list empty, which shows a
+blank row again. In a draft of two or more rows every row is sent, blank or
+not, as the plan's blank-entry rule requires
+([One ordered list of names](plan.md#one-ordered-list-of-names)): clearing the
+display name of a list with other names keeps the row in the first slot, and
+`Save` answers `work_info_empty` at `names[0].name` under that row instead of
+making the next row the display name.
 
 ### Person edit page
 
@@ -153,10 +165,10 @@ and the other names are edited in the dialog.
 | Empty list | `Display name`, one blank row, `Other names`, `Add name`; on a provisional person the blank row shows `#1042` as its placeholder |
 | One name | The row under `Display name`; `Other names` with only `Add name` under it |
 | Several names | Row 0 under `Display name`, the rest under `Other names` in list order, each with `Make display name` |
-| Dragging | The lifted row on `bg-popover` with `shadow-elevated`; the other rows slid apart; the labels unmoved; exactly one row under `Display name` |
+| Dragging | The lifted row on `bg-popover` with `shadow-elevated`, above the labels it crosses; the other rows slid apart into slots; the labels unmoved; the first slot holds one row or the lifted row's gap |
 | Promoting | The pressed row is now row 0 and the former row 0 is row 1 with `Make display name`; nothing is saved until `Save` |
 | Saving | Inputs `readOnly`, handle and buttons `aria-disabled`, the save button's `Spinner` |
-| Row error | `FieldError` under that row, its name or language input `aria-invalid`; every other row keeps its value and place |
+| Row error | `FieldError` under that row, its name or language input `aria-invalid`; every other row keeps its value and place; a blank row in a list of two or more answers `work_info_empty` here |
 | List error | `FieldError` under `Add name`: `work_info_empty` on an organization emptied, `work_info_too_many` over 50 |
 | 50 rows | `Add name` `disabled` with the shared `opacity-50` |
 
@@ -195,9 +207,11 @@ places it there ([plan.md, Technical Context](plan.md#technical-context)).
    the group, the slot labels have the weight of the panel's other field
    labels, and no row carries a colour, fill or badge of its own.
 2. Dragging the third row up to the first slot, by pointer and by keyboard, at
-   every moment one row sits under `Display name` and no row overlaps a label;
-   after the drop the dropped row has no `Make display name` and the former
-   display name, now second, has one.
+   every moment the first slot under `Display name` holds one row or the gap
+   for the lifted row; the rows that slide come to rest in slots and never on
+   a label, and only the lifted row crosses a label, drawn above it; after the
+   drop the dropped row has no `Make display name` and the former display
+   name, now second, has one.
 3. Pressing `Make display name` on the third row moves it under `Display name`
    with its language kept, the former display name becomes the first row under
    `Other names`, and no request is sent until `Save`.
