@@ -806,6 +806,17 @@ and the people API names it by its two people in either order
 `GET /api/people/{id}/face-candidates` lists the open pairs a person takes part
 in as the other person of each, highest similarity first.
 
+Stored pairs are written only when an analysis or a face image is new, and they
+compare a face with face images alone. The list therefore also ranks every
+other person live, as the merge dialog's similar people do
+([`face_live_pairs.go`](../../internal/store/face_live_pairs.go)): the mean of
+the person's faces in videos, or their face image without any, against each
+other person's face image and the mean of their faces. A person reaching the
+recognizer's Candidate threshold is listed when one of the two is provisional,
+no row holds the pair and the owner has not dismissed it. Confirming or
+dismissing such a pair first stores it as an analysis would, so the actions
+below work alike.
+
 | Action  | Effect                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Confirm | The merge of the other person into the person it is confirmed from, in one transaction with the pair lookup; an unnamed source is merged as `MergeProvisional` does and recorded as a `face_merge` entry decided by the owner, whose id the response carries as `undoActivityId`, and a named source by the ordinary merge with no entry |
@@ -820,6 +831,7 @@ reopen does without a dismissed one.
 
 | Rejected                                       | Why                                                                                                                                 |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Only the stored pairs                          | A person whose faces grew through merges or moves, or whose face image matches their videos poorly, was never offered although the merge dialog ranked them first |
 | Pairs of appearances                           | The person page offers people, and one person's many appearances would repeat one choice                                            |
 | Merging the stored provisional side, as before | Sorting unnamed people, the person on the page was often the one merged away, so the page and its face switched to the other person |
 

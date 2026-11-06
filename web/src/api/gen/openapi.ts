@@ -2789,7 +2789,7 @@ export interface paths {
         };
         /**
          * List a person's face candidates
-         * @description Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found.
+         * @description Owner-only. Open (not dismissed) face candidate pairs the person takes part in, and the people the live ranking of listSimilarPeople puts at or over the recognizer's Candidate threshold when one of the two is provisional and no pair row exists, highest similarity first, each as the other person; confirming or dismissing such a person stores the pair first. Missing person returns 404 person_not_found.
          */
         get: operations["listFaceCandidates"];
         put?: never;
