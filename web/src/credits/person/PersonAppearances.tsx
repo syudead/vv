@@ -158,16 +158,14 @@ export interface AppearanceActions {
   split: (appearanceIds: readonly number[]) => Promise<Person>;
   /** Merges the split person back, taking the faces and their credits back. */
   undoSplit: (created: Person) => Promise<void>;
-  /**
-   * Moves faces moved to target back to the shown person, putting back the credits the move took; undoActivityId is
-   * the merge that took the emptied shown person into target, undone first.
-   */
+  /** Moves faces moved to target back to the shown person, putting back the credits the move took. */
   undoMove: (
     target: Person,
     appearanceIds: readonly number[],
     restore: readonly FaceMoveCredit[],
-    undoActivityId?: number,
   ) => Promise<void>;
+  /** Undoes the merge a move made of the emptied shown person, bringing the person back; once per merge. */
+  undoMerge: (activityId: number) => Promise<void>;
   onGone: () => void;
 }
 
@@ -241,14 +239,14 @@ function useSplits(
       .map(([id]) => id);
     await track(ids, async () => {
       try {
+        // A later move may have emptied the shown person and merged it away; any undo needs the person back first.
+        const merge = [...splits.values()].find(
+          (other) => other.undoActivityId !== undefined,
+        );
+        if (merge?.undoActivityId !== undefined)
+          await actions.undoMerge(merge.undoActivityId);
         if (relink.kind === "split") await actions.undoSplit(relink.person);
-        else
-          await actions.undoMove(
-            relink.person,
-            ids,
-            relink.restore ?? [],
-            relink.undoActivityId,
-          );
+        else await actions.undoMove(relink.person, ids, relink.restore ?? []);
         rescored();
         setSplits((current) => new Map([...current].filter(([id]) => !ids.includes(id))));
       } catch (failure) {

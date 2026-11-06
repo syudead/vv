@@ -204,18 +204,19 @@ function FacesShown({
     }
   }
 
-  /** A move that emptied the shown person merged it into target, so that merge is undone before the faces go back. */
   async function undoMove(
     target: Person,
     appearanceIds: readonly number[],
     restore: readonly FaceMoveCredit[],
-    undoActivityId?: number,
   ) {
-    if (undoActivityId !== undefined && !undone.current.has(undoActivityId)) {
-      await undoActivity(undoActivityId);
-      undone.current.add(undoActivityId);
-    }
     await moveFaceAppearances(target.id, appearanceIds, person.id, restore);
+  }
+
+  async function undoMerge(activityId: number) {
+    if (!undone.current.has(activityId)) {
+      await undoActivity(activityId);
+      undone.current.add(activityId);
+    }
   }
 
   const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;
@@ -299,7 +300,13 @@ function FacesShown({
             <PersonAppearances
               person={person}
               appearances={appearances}
-              actions={{ split: splitAppearances, undoSplit, undoMove, onGone: markGone }}
+              actions={{
+                split: splitAppearances,
+                undoSplit,
+                undoMove,
+                undoMerge,
+                onGone: markGone,
+              }}
             />
           </PageSection>
         </TabsContent>

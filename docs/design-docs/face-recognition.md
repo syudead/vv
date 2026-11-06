@@ -916,9 +916,10 @@ A move that leaves the old person provisional, credited nowhere, without an
 appearance that is not dropped and without an external ID merges that person
 into the target as the owner's `face_merge`, in the same transaction, so no
 empty person stays and the candidate pairs its face earned go to the target.
-The response's `undoActivityId` names the entry; the page's Undo takes the
-merge back first, which brings the person back under its id, and then moves
-the faces back.
+The response's `undoActivityId` names the entry. Every Undo the page still
+shows for that person, the earlier moves' and splits' included, takes the merge
+back first, once, which brings the person back under its id, and then moves the
+faces back.
 
 `GET /api/people/{id}/similar-people` ranks the other people for picking
 where faces belong ([`face_similar_people.go`](../../internal/store/face_similar_people.go)):
