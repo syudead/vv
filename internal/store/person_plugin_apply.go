@@ -10,7 +10,7 @@ import (
 )
 
 // ApplyPersonPluginFetch rechecks the plugin's approval, digest and generation, unless the peer fetched, then writes
-// the person's selected profile fields and appends missing aliases and external IDs in one transaction. A plugin
+// the person's selected profile fields and appends missing names and external IDs in one transaction. A plugin
 // changed since the fetch returns ErrWorkInfoFetchStale and a missing person ErrNotFound, both without writes. The
 // face is the caller's, after commit.
 func (s *CreditStore) ApplyPersonPluginFetch(

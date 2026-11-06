@@ -69,7 +69,11 @@ export const server = {
   sent: [] as Sent[],
   plugins: [] as WorkInfoPlugin[],
   candidates: [] as PersonPluginCandidate[],
-  fetched: { name: "Aoi", aliases: [], externalIds: [] } as PersonPluginFetchedPerson,
+  fetched: {
+    name: "Aoi",
+    names: [{ name: "Aoi" }],
+    externalIds: [],
+  } as PersonPluginFetchedPerson,
   /** Links the plugin handles; with only the plugin sent, the server picks from these when no ID is stored. */
   handledLinks: [] as string[],
   /** When set, the next apply answers that the result is out of date. */
@@ -315,7 +319,7 @@ export function installPersonServer() {
     server.sent = [];
     server.plugins = [];
     server.candidates = [];
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [] };
+    server.fetched = { name: "Aoi", names: [{ name: "Aoi" }], externalIds: [] };
     server.handledLinks = [];
     server.staleApply = false;
     server.applied = null;

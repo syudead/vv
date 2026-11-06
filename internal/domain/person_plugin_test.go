@@ -128,13 +128,18 @@ func idsJSON(n int) string {
 }
 
 func TestParsePersonResponseLimits(t *testing.T) {
-	aliases := make([]string, 51)
-	for i := range aliases {
-		aliases[i] = fmt.Sprintf(`{"name":"a%d","language":"ja"}`, i)
+	// The module's name leads the list and counts toward the limit; a repeat of it or of an alias is dropped.
+	aliases := []string{`{"name":"N","language":"en"}`, `{"name":" "}`}
+	for i := range CreditNamesMaxCount {
+		aliases = append(aliases, fmt.Sprintf(`{"name":"a%d","language":"ja"}`, i))
+		if i == 0 {
+			aliases = append(aliases, `{"name":"a0"}`)
+		}
 	}
 	got, err := personFetch(t, `{"name":" N ","aliases":[`+strings.Join(aliases, ",")+`],"externalIds":`+idsJSON(ExternalIDsMaxCount)+`}`)
-	if err != nil || got.Name != "N" || len(got.Aliases) != CreditNamesMaxCount || got.Aliases[49].Name != "a49" {
-		t.Fatalf("person = %+v, %v; want N with aliases a0 to a49", got, err)
+	if err != nil || got.Name != "N" || len(got.Names) != CreditNamesMaxCount || got.Names[0] != (CreditName{Name: "N"}) ||
+		got.Names[1] != (CreditName{Name: "a0", Language: "ja"}) || got.Names[49].Name != "a48" {
+		t.Fatalf("person = %+v, %v; want N then a0 to a48", got, err)
 	}
 	if len(got.ExternalIDs) != ExternalIDsMaxCount || got.ExternalIDs[0] != (ExternalID{Source: "s", Value: "1"}) ||
 		got.ExternalIDs[19] != (ExternalID{Source: "o", Value: "18"}) {
@@ -175,7 +180,7 @@ func TestParsePersonResponseKeepsImagesAndProfileUnderTheCreditRules(t *testing.
 func TestParsePersonResponseMakesControlCharactersSavable(t *testing.T) {
 	got, err := personFetch(t, `{"name":"N\tM","aliases":[{"name":"A\r\nB","language":"ja"}],`+
 		`"profile":{"birthplace":"Tokyo\u0000","bio":"line 1\r\nline 2\tend"}}`)
-	if err != nil || got.Name != "N M" || got.Aliases[0].Name != "A  B" || got.Profile.Birthplace != "Tokyo" ||
+	if err != nil || got.Name != "N M" || got.Names[1].Name != "A  B" || got.Profile.Birthplace != "Tokyo" ||
 		got.Profile.Bio != "line 1\nline 2 end" {
 		t.Fatalf("person = %+v, %v; want control characters turned into spaces or line feeds", got, err)
 	}

@@ -72,7 +72,7 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 // The kept profile already holds only the values that pass validation, as a work-info fetch shows a fetched person's.
 func toAPIPluginPerson(fetched domain.FetchedPluginPerson, imageCount int) gen.PersonPluginFetchedPerson {
 	person := gen.PersonPluginFetchedPerson{
-		Name: fetched.Name, Aliases: toAPINames(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
+		Name: fetched.Name, Names: toAPINames(fetched.Names), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
 	}
 	if imageCount > 0 {
 		person.ImageCount = new(imageCount)
@@ -109,7 +109,7 @@ func (s *server) ApplyPersonPluginFetch(
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	selection, ok := toPersonPluginSelection(body.Items, body.Aliases, body.ExternalIds, body.Links)
+	selection, ok := toPersonPluginSelection(body.Items, body.Names, body.ExternalIds, body.Links)
 	if !ok {
 		s.invalidRequest(w, "Each item must be image or profile.<property>.")
 		return
@@ -135,7 +135,7 @@ func (s *server) ApplyPersonPluginFetch(
 		s.peerUnreachable(w)
 		return
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
-		s.invalidRequest(w, "Select at least one value the result carries; aliases, external IDs and links go in "+
+		s.invalidRequest(w, "Select at least one value the result carries; names, external IDs and links go in "+
 			"their own lists, and image needs the imageIndex of a kept image.")
 		return
 	case errors.Is(err, domain.ErrPersonNotFound):
@@ -175,7 +175,7 @@ func toAPISkippedPersonValues(values []domain.SkippedPersonValue) []gen.SkippedP
 
 // toPersonPluginSelection reports false for an unknown item; whether the values are in the result is the apply's.
 func toPersonPluginSelection(
-	items []gen.PersonPluginItem, aliases *[]string, ids *[]gen.ExternalId, links *[]string,
+	items []gen.PersonPluginItem, names *[]string, ids *[]gen.ExternalId, links *[]string,
 ) (domain.PersonPluginSelection, bool) {
 	out := domain.PersonPluginSelection{
 		Items: make([]domain.PersonPluginItem, 0, len(items)), ExternalIDs: fromAPIExternalIDs(ids),
@@ -186,8 +186,8 @@ func toPersonPluginSelection(
 		}
 		out.Items = append(out.Items, domain.PersonPluginItem(item))
 	}
-	if aliases != nil {
-		out.Aliases = *aliases
+	if names != nil {
+		out.Names = *names
 	}
 	if links != nil {
 		out.Links = *links
