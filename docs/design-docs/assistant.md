@@ -223,7 +223,7 @@ a selected group's members are not favorited with it.
 A target over 20,000 videos answers `400 too_many_videos`, as the bulk
 operations do. A clarification choice is sent again as the same request with
 the chosen id pinned; a pinned id wins only when it is among the candidates the
-name finds, so a chosen alias does not ask the same question again.
+name finds, so a choice found by another of its names does not ask the same question again.
 
 ## The tool registry classifies every operation
 
@@ -448,7 +448,7 @@ for the owner to adopt or reject together
 | Kind | Candidate set | Adoption |
 | --- | --- | --- |
 | `tags` | Two of the 2,000 most used tags whose folded names or synonyms are equal or near: distance 1 when the longer has 4 or 5 characters, 2 when it has 6 or more, none when the shorter has under 4 | `mergeTag` into the tag on more videos |
-| `people` | Two people with an equal folded name or alias, or the same link URL | `mergePeople` into the person with more credits |
+| `people` | Two people with an equal folded name, or the same link URL | `mergePeople` into the person with more credits |
 | `works` | Ungrouped videos sharing a work code, or titles that differ only in a trailing number or part marker | `createGroup` named by the common title |
 
 | Rule | Why |

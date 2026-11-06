@@ -245,7 +245,7 @@ with the person's name, after the server answers
 `409 person_external_id_missing`, or when the owner presses `Search by name`,
 which the plugin step and a comparison fetched by a stored key offer; a chosen
 candidate's `source` and `id` are then sent with the fetch. Under the field,
-the person's name and aliases each search at a press, since a site may list the
+each of the person's names searches at a press, since a site may list the
 person under any of them. Every comparison has `Back` to the plugin step, and
 to the matches after a name search, so another plugin or candidate is one step
 away. The response of the apply replaces the page's person
