@@ -131,7 +131,10 @@ func TestParsePersonResponseLimits(t *testing.T) {
 	// The module's name leads the list and counts toward the limit; a repeat of it or of an alias is dropped.
 	aliases := []string{`{"name":"N","language":"en"}`, `{"name":" "}`}
 	for i := range CreditNamesMaxCount {
-		aliases = append(aliases, fmt.Sprintf(`{"name":"a%d","language":"ja"}`, i), `{"name":"a0"}`)
+		aliases = append(aliases, fmt.Sprintf(`{"name":"a%d","language":"ja"}`, i))
+		if i == 0 {
+			aliases = append(aliases, `{"name":"a0"}`)
+		}
 	}
 	got, err := personFetch(t, `{"name":" N ","aliases":[`+strings.Join(aliases, ",")+`],"externalIds":`+idsJSON(ExternalIDsMaxCount)+`}`)
 	if err != nil || got.Name != "N" || len(got.Names) != CreditNamesMaxCount || got.Names[0] != (CreditName{Name: "N"}) ||
