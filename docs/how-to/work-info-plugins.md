@@ -469,7 +469,9 @@ treats path case and tracking parameters as its site does. When the page is
 missing, private or does not answer, return an `error`; the run fails and
 nothing is applied.
 
-VVMDM keeps the first 50 aliases with a name, each name once. It puts the
+VVMDM folds `name` and `aliases` into one list of names: `name` first, then
+the aliases with a name, each spelling once, 50 in all. The owner may add any
+of them to the person, and on the person page they are one list. It puts the
 request's `source` and `id` first in `externalIds` and keeps the plugin's
 other distinct IDs after it, up to 20 in all, so the ID a person was fetched
 by always survives the limit. A fetch by link has no request ID, so VVMDM
@@ -498,7 +500,8 @@ mdm plugin run plugin.wasm fetch https://www.example.com/people/1 --url
 `--url` with `--source`, on a work-info plugin, or with a link whose host
 matches none of `domains` exits with code 2. `search` takes the
 person's name. The output is `{"candidates": [...]}` or `{"person": {...}}`
-after VVMDM's limits, and `mdm plugin pack` prints the kind, the sources and any domains.
+after VVMDM's limits, with the folded `names` in place of `aliases`, and
+`mdm plugin pack` prints the kind, the sources and any domains.
 
 In VVMDM, a person plugin is listed in the **Person plugins** section of
 **Settings**, under the **Work-info plugins** section. Either section's

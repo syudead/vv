@@ -370,6 +370,30 @@ func TestApplyWorkInfoFetchStepListsTheFetchedFieldsItSets(t *testing.T) {
 	}
 }
 
+// The field names applies every fetched name, the fetched display name among them.
+func TestApplyPersonPluginFetchStepSendsTheFetchedNames(t *testing.T) {
+	f := newWriteFixture(t,
+		calls(toolCall("fetchPersonWithPlugin", `{"id":11,"body":{"pluginId":1}}`)),
+		calls(toolCall("applyPersonPluginFetch", `{"target":{"kind":"current"},"fetchId":"p1","fields":["names"]}`)),
+		text("提案しました。"))
+	f.runner.tools = append(f.runner.tools, domain.AssistantTool{
+		Name: "fetchPersonWithPlugin", Kind: domain.AssistantToolRead, Operation: "fetchPersonWithPlugin", Summary: "fetch",
+	}, writeTool("applyPersonPluginFetch"))
+	f.runner.bodies["fetchPersonWithPlugin"] = `{"fetchId":"p1","person":{"name":"Hanako",` +
+		`"names":[{"name":"Hanako"},{"name":"Hana","language":"ja"}],"externalIds":[]}}`
+
+	f.runIn(t, 0, "名前を取り込んで", domain.AssistantTurnContext{Route: domain.AssistantRoutePerson, RouteID: 11})
+
+	if len(f.store.plans) != 1 {
+		t.Fatalf("plans = %+v", f.store.plans)
+	}
+	call := f.store.plans[0].Call
+	names, _ := call.Body["names"].([]string)
+	if !slices.Equal(names, []string{"Hanako", "Hana"}) || call.Body["aliases"] != nil || call.Path["fetchId"] != "p1" {
+		t.Fatalf("call = %+v; want names Hanako and Hana", call)
+	}
+}
+
 func TestMoveFaceAppearancesStepLabelsBothPeopleAndCountsTheAppearances(t *testing.T) {
 	f := newWriteFixture(t,
 		calls(toolCall("moveFaceAppearances", `{"id":11,"body":{"targetId":12,"appearanceIds":[101,102]}}`)),
