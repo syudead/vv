@@ -66,7 +66,7 @@ var assistantArgumentSchemas = map[AssistantArgument]map[string]any{
 	AssistantArgFetchID:    typed("string", "The fetchId a fetch tool answered in this request."),
 	AssistantArgFields: {"type": "array", "items": map[string]any{"type": "string"},
 		"description": "The fetched fields to apply, such as title, tags, code, description, dates, cover, " +
-			"people, organizations, urls and externalIds for a video, or image, profile, aliases, " +
+			"people, organizations, urls and externalIds for a video, or image, profile, names, " +
 			"externalIds and links for a person."},
 	AssistantArgAtMs:        typed("integer", "The frame position in milliseconds; leave it out to edit the current thumbnail."),
 	AssistantArgInstruction: typed("string", "What to change in the image, in the owner's words."),

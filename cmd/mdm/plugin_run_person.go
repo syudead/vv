@@ -13,7 +13,7 @@ type keptPersonCandidate struct {
 	Detail string `json:"detail,omitempty"`
 }
 
-type keptAlias struct {
+type keptName struct {
 	Name     string `json:"name"`
 	Language string `json:"language,omitempty"`
 }
@@ -36,8 +36,9 @@ type keptProfile struct {
 }
 
 type keptPerson struct {
-	Name        string           `json:"name"`
-	Aliases     []keptAlias      `json:"aliases,omitempty"`
+	Name string `json:"name"`
+	// Names are the fetched name first, then the module's aliases, as VVMDM keeps them.
+	Names       []keptName       `json:"names"`
 	ExternalIDs []keptExternalID `json:"externalIds"`
 	Images      []string         `json:"images,omitempty"`
 	// Profile is omitted when the plugin gave no property.
@@ -63,8 +64,8 @@ func toKeptPerson(result domain.WorkInfoRunResult) keptPerson {
 			out.Images = append(out.Images, p.ImageURLs[i])
 		}
 	}
-	for _, a := range p.Aliases {
-		out.Aliases = append(out.Aliases, keptAlias{Name: a.Name, Language: a.Language})
+	for _, n := range p.Names {
+		out.Names = append(out.Names, keptName{Name: n.Name, Language: n.Language})
 	}
 	if !p.Profile.Equal(domain.PersonProfile{}) {
 		profile := keptProfile(p.Profile)

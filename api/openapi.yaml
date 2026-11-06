@@ -2955,7 +2955,7 @@ paths:
     post:
       operationId: applyPeerFetchedPerson
       summary: "Apply a person the peer fetched for a person of this node"
-      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md."
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the names, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -4415,7 +4415,7 @@ paths:
     post:
       operationId: applyPersonPluginFetch
       summary: "Apply selected items of a person fetch"
-      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
+      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen names, external IDs and links the person lacks, in the fetched order and up to 50, 20 and 100; a provisional person's first appended name becomes its display name; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases in the body, names, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -8439,15 +8439,16 @@ components:
 
     PersonPluginFetchedPerson:
       type: object
-      required: [name, aliases, externalIds]
+      required: [name, names, externalIds]
       additionalProperties: false
       description: "A person as the plugin returned it, after VV's limits."
       properties:
         name:
           type: string
-        aliases:
+          description: "The fetched display name."
+        names:
           type: array
-          description: "First 50 distinct names; languages are checked by the apply."
+          description: "The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply."
           items:
             $ref: "#/components/schemas/CreditName"
         externalIds:
@@ -8501,7 +8502,7 @@ components:
         - profile.careerEndYear
         - profile.bio
         - profile.links
-        - aliases
+        - names
         - externalIds
 
     ApplyPersonPluginFetchRequest:
@@ -8511,16 +8512,16 @@ components:
       properties:
         items:
           type: array
-          description: "Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below."
+          description: "Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below."
           items:
             $ref: "#/components/schemas/PersonPluginItem"
         imageIndex:
           type: integer
           minimum: 0
           description: "The kept image that image applies; required with image."
-        aliases:
+        names:
           type: array
-          description: "Names to append as aliases, each the fetched name or one of the fetched aliases."
+          description: "Spellings to append, each the name of one of the result's names."
           items:
             type: string
         externalIds:
@@ -8548,7 +8549,7 @@ components:
           $ref: "#/components/schemas/PersonPluginItem"
         value:
           type: string
-          description: "Value shown in the comparison: the profile value, the alias, or source: value."
+          description: "Value shown in the comparison: the profile value, the name, or source: value."
         reason:
           $ref: "#/components/schemas/SkippedPersonReason"
         holderName:
@@ -8564,7 +8565,7 @@ components:
           $ref: "#/components/schemas/Person"
         skipped:
           type: array
-          description: "Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order."
+          description: "Skipped values: profile items in property order, then names, then external IDs, each in fetched order."
           items:
             $ref: "#/components/schemas/SkippedPersonValue"
 
@@ -14679,13 +14680,13 @@ components:
           $ref: "#/components/schemas/OrganizationProfile"
     PeerFetchedPluginPerson:
       type: object
-      required: [name, aliases, externalIds, items]
+      required: [name, names, externalIds, items]
       additionalProperties: false
-      description: "The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links."
+      description: "The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links."
       properties:
         name:
           type: string
-        aliases:
+        names:
           type: array
           items:
             $ref: "#/components/schemas/CreditName"
@@ -14697,7 +14698,7 @@ components:
           $ref: "#/components/schemas/PersonProfile"
         items:
           type: array
-          description: "The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent."
+          description: "The items to write, each with a value above; names, externalIds and profile.links write all the values sent."
           items:
             $ref: "#/components/schemas/PersonPluginItem"
 

@@ -13,7 +13,7 @@ export type PersonPluginFetchApplied = components["schemas"]["PersonPluginFetchA
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
-/** The apply's choice; aliases, external IDs and links are chosen one by one. */
+/** The apply's choice; names, external IDs and links are chosen one by one. */
 export type PersonPluginApplyChoice = Omit<
   components["schemas"]["ApplyPersonPluginFetchRequest"],
   "imageIndex"

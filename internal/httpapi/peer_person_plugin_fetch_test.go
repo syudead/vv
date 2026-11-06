@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -52,14 +53,15 @@ func remotePersonFetch(
 }
 
 // A person page fetch for the peer's person runs this node's plugin and writes on the peer: the profile field, the
-// alias and the face, while this node gains no person.
+// name and the face, while this node gains no person.
 func TestRemotePersonPluginFetchAppliesOnThePeer(t *testing.T) {
 	var face bytes.Buffer
 	if err := png.Encode(&face, image.NewGray(image.Rect(0, 0, 64, 64))); err != nil {
 		t.Fatal(err)
 	}
 	runtime := personRuntime{image: face.Bytes(), person: domain.FetchedPluginPerson{
-		Name: "早美れむ", Aliases: []domain.CreditName{{Name: "はやみれむ"}}, Profile: domain.PersonProfile{Birthplace: "東京都"},
+		Name: "早美れむ", Names: []domain.CreditName{{Name: "早美れむ"}, {Name: "はやみれむ", Language: "ja-Hira"}},
+		Profile: domain.PersonProfile{Birthplace: "東京都"},
 	}}
 	fa, fb, b, person, path, fetched := remotePersonFetch(t, runtime)
 	ctx := context.Background()
@@ -69,7 +71,7 @@ func TestRemotePersonPluginFetchAppliesOnThePeer(t *testing.T) {
 	}
 
 	rec := b.owner(http.MethodPost, fmt.Sprintf("%s/%s/apply", path, fetched.FetchId),
-		`{"items":["image","profile.birthplace"],"imageIndex":0,"aliases":["はやみれむ"]}`)
+		`{"items":["image","profile.birthplace"],"imageIndex":0,"names":["はやみれむ","早美れむ"]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -78,8 +80,10 @@ func TestRemotePersonPluginFetchAppliesOnThePeer(t *testing.T) {
 		t.Errorf("apply answer = %+v, want person %d born in 東京都 with a face", applied, remote)
 	}
 	saved, err := fa.env.db.Credits().Get(ctx, domain.CreditPerson, person.ID)
-	if err != nil || saved.Profile.Birthplace != "東京都" || len(saved.Names) != 2 || saved.ImageRevision == 0 {
-		t.Errorf("a's person = %+v, %v, want born in 東京都, alias はやみれむ and a face", saved, err)
+	// The names cross in the peer body with their languages, and a's own name is not appended again.
+	wantNames := []domain.CreditName{{Name: "早美れむ"}, {Name: "はやみれむ", Language: "ja-Hira"}}
+	if err != nil || saved.Profile.Birthplace != "東京都" || !slices.Equal(saved.Names, wantNames) || saved.ImageRevision == 0 {
+		t.Errorf("a's person = %+v, %v, want born in 東京都, names %+v and a face", saved, err, wantNames)
 	}
 	matches, err := fb.env.db.Credits().Match(ctx, domain.CreditPerson, []domain.CreditMatchEntry{{Name: "早美れむ"}})
 	if err != nil || matches[0].State != domain.CreditMatchNew {

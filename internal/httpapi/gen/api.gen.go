@@ -2081,9 +2081,9 @@ func (e PeerVocabularyRequestKind) Valid() bool {
 
 // Defines values for PersonPluginItem.
 const (
-	PersonPluginItemAliases                PersonPluginItem = "aliases"
 	PersonPluginItemExternalIds            PersonPluginItem = "externalIds"
 	PersonPluginItemImage                  PersonPluginItem = "image"
+	PersonPluginItemNames                  PersonPluginItem = "names"
 	PersonPluginItemProfileBio             PersonPluginItem = "profile.bio"
 	PersonPluginItemProfileBirthDate       PersonPluginItem = "profile.birthDate"
 	PersonPluginItemProfileBirthplace      PersonPluginItem = "profile.birthplace"
@@ -2103,11 +2103,11 @@ const (
 // Valid indicates whether the value is a known member of the PersonPluginItem enum.
 func (e PersonPluginItem) Valid() bool {
 	switch e {
-	case PersonPluginItemAliases:
-		return true
 	case PersonPluginItemExternalIds:
 		return true
 	case PersonPluginItemImage:
+		return true
+	case PersonPluginItemNames:
 		return true
 	case PersonPluginItemProfileBio:
 		return true
@@ -4071,20 +4071,20 @@ type AddTagSynonymRequest struct {
 
 // ApplyPersonPluginFetchRequest defines model for ApplyPersonPluginFetchRequest.
 type ApplyPersonPluginFetchRequest struct {
-	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
-	Aliases *[]string `json:"aliases,omitempty"`
-
 	// ExternalIds Fetched external IDs to append.
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 
 	// ImageIndex The kept image that image applies; required with image.
 	ImageIndex *int `json:"imageIndex,omitempty"`
 
-	// Items Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below.
+	// Items Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
 
 	// Links Fetched profile links to append.
 	Links *[]string `json:"links,omitempty"`
+
+	// Names Spellings to append, each the name of one of the result's names.
+	Names *[]string `json:"names,omitempty"`
 }
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
@@ -6288,14 +6288,14 @@ type PeerFetchedPerson struct {
 	Role WorkPersonRole `json:"role"`
 }
 
-// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links.
+// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links.
 type PeerFetchedPluginPerson struct {
-	Aliases     []CreditName `json:"aliases"`
 	ExternalIds []ExternalId `json:"externalIds"`
 
-	// Items The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent.
+	// Items The items to write, each with a value above; names, externalIds and profile.links write all the values sent.
 	Items []PersonPluginItem `json:"items"`
 	Name  string             `json:"name"`
+	Names []CreditName       `json:"names"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -6655,7 +6655,7 @@ type PersonPluginFetchApplied struct {
 	// Person One person.
 	Person Person `json:"person"`
 
-	// Skipped Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order.
+	// Skipped Skipped values: profile items in property order, then names, then external IDs, each in fetched order.
 	Skipped []SkippedPersonValue `json:"skipped"`
 }
 
@@ -6674,15 +6674,17 @@ type PersonPluginFetchRequest struct {
 
 // PersonPluginFetchedPerson A person as the plugin returned it, after VV's limits.
 type PersonPluginFetchedPerson struct {
-	// Aliases First 50 distinct names; languages are checked by the apply.
-	Aliases []CreditName `json:"aliases"`
-
 	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs.
 	ExternalIds []ExternalId `json:"externalIds"`
 
 	// ImageCount How many images VV kept, in the plugin's order; served by index.
-	ImageCount *int   `json:"imageCount,omitempty"`
-	Name       string `json:"name"`
+	ImageCount *int `json:"imageCount,omitempty"`
+
+	// Name The fetched display name.
+	Name string `json:"name"`
+
+	// Names The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply.
+	Names []CreditName `json:"names"`
 
 	// Profile Plugin-provided profile values that pass validation; omitted when none.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -7319,7 +7321,7 @@ type SkippedPersonValue struct {
 	// Reason Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
 	Reason SkippedPersonReason `json:"reason"`
 
-	// Value Value shown in the comparison: the profile value, the alias, or source: value.
+	// Value Value shown in the comparison: the profile value, the name, or source: value.
 	Value string `json:"value"`
 }
 

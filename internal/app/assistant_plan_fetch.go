@@ -174,9 +174,9 @@ func (d *planDraft) fetchedLists(work *fetchedWork, name string) bool {
 // fetchedPerson is the part of a person fetch result the apply step chooses from.
 type fetchedPerson struct {
 	Person struct {
-		Aliases []struct {
+		Names []struct {
 			Name string `json:"name"`
-		} `json:"aliases"`
+		} `json:"names"`
 		ExternalIDs []json.RawMessage `json:"externalIds"`
 		Profile     map[string]any    `json:"profile"`
 		ImageCount  int               `json:"imageCount"`
@@ -184,7 +184,7 @@ type fetchedPerson struct {
 }
 
 // applyPersonPluginFetch applies the named parts of a person fetch result read in this turn: the first image, the
-// whole profile or one profile field, every alias, every external id, or every link.
+// whole profile or one profile field, every fetched name, every external id, or every link.
 func applyPersonPluginFetch(_ context.Context, d *planDraft) (bool, error) {
 	var fetched fetchedPerson
 	if !d.fetched("fetchPersonWithPlugin", &fetched) {
@@ -204,8 +204,8 @@ func applyPersonPluginFetch(_ context.Context, d *planDraft) (bool, error) {
 			}
 		case "profile":
 			ok = d.fetchedProfile(p.Profile, part, &items)
-		case "aliases":
-			ok = d.fetchedAliases(p.Aliases)
+		case "names":
+			ok = d.fetchedNames(p.Names)
 		case "externalIds", "links":
 			ok = d.fetchedPersonList(name, p.ExternalIDs, p.Profile["links"])
 		}
@@ -234,18 +234,18 @@ func (d *planDraft) fetchedProfile(profile map[string]any, part string, items *[
 	return found
 }
 
-func (d *planDraft) fetchedAliases(aliases []struct {
+func (d *planDraft) fetchedNames(fetched []struct {
 	Name string `json:"name"`
 }) bool {
-	names := make([]string, 0, len(aliases))
-	for _, alias := range aliases {
-		names = append(names, alias.Name)
+	names := make([]string, 0, len(fetched))
+	for _, name := range fetched {
+		names = append(names, name.Name)
 	}
 	if len(names) == 0 {
 		return false
 	}
-	d.body("aliases", names)
-	d.fetchedField("aliases", names)
+	d.body("names", names)
+	d.fetchedField("names", names)
 	return true
 }
 
