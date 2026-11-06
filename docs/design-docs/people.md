@@ -293,8 +293,8 @@ person plugin exists
 
 ### The edit page
 
-`/people/:id/edit` is a `FormPage` outside the shell that edits the name,
-aliases, external IDs, links and every profile field together, built and left
+`/people/:id/edit` is a `FormPage` outside the shell that edits the names,
+external IDs, links and every profile field together, built and left
 as the video details editor is
 ([library-ui.md](library-ui.md#details-editor)): the same band, the same
 `Discard changes?` on `Cancel`, the aside's link and the browser's Back, and
@@ -310,6 +310,24 @@ without reading it again; opened by its URL, the page reads the person first.
 A reason with a `field` stays under that input with every other input kept.
 Number inputs keep only digits, so a value the server reads is always a whole
 number or empty.
+
+The names are one sortable list,
+[`NameRows`](../../web/src/credits/NameRows.tsx), with a name and an optional
+language per row. Two fixed labels split it: `Display name` over the first
+slot and `Other names` over the rest, so the display name is read from its
+place, also while a row is dragged past the labels. Rows reorder by the drag
+handle, with pointer, touch and keyboard sorting as on the playlist page, and
+`Make display name` moves its row to the first slot in the draft; `Save` sends
+the whole list as `names`, so a promotion is a reorder and needs no request of
+its own. An empty list shows one blank row, which alone is sent as
+`names: []`; in a list of two or more every row is sent, so a blank row gets
+the server's reason at its own index. A reason at `names[i].name` or
+`names[i].language` stays under that row, and one at `names` under `Add name`.
+
+| Rejected                      | Why                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| A mark drawn on the first row | During a drag the marked row slides out of the first slot before the drop    |
+| Up and down buttons per row   | The drag handle's keyboard sorting already reorders, as on the playlist page |
 
 | Rejected                         | Why                                                                                |
 | -------------------------------- | ---------------------------------------------------------------------------------- |
@@ -473,8 +491,9 @@ place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
 The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
 `provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
 A provisional person's page offers `Name…` in place of `Edit`; the edit page
-shows the empty name with the person's number as its placeholder, and `Save` with the
-name still empty sends no `name`, so the person stays provisional.
+shows one blank name row with the person's number as its placeholder, and
+`Save` with that row still blank sends `names: []`, so the person stays
+provisional.
 
 The `Performers` picker of the details editor lists provisional people under
 `Unnamed people` (`GET /api/people?provisional=true` with the picker's limit).

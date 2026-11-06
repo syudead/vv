@@ -17,12 +17,13 @@ describe("buildPersonPatch", () => {
   );
 
   it("sends the whole list as names, the display name first with its language, and never name", () => {
-    const draft = { ...loaded, name: "Aoi Sora", aliases: loaded.aliases.slice(0, 0) };
+    const first = { ...loaded.names[0]!, name: "Aoi Sora" };
+    const draft = { ...loaded, names: [first] };
 
     const { patch, sent } = buildPersonPatch(draft, loaded);
 
     expect(patch).toEqual({ names: [{ name: "Aoi Sora", language: "ja" }] });
-    expect(sent.nameKeys).toEqual([""]);
+    expect(sent.nameKeys).toEqual([first.key]);
   });
 
   it("sends no names while the rows are as loaded", () => {
