@@ -55,7 +55,7 @@ questions instead.
 | --- | --- | --- |
 | Auto-tagging | One question per candidate tag, after one choice over the candidates when there are more than 64; the thumbnail, 7 frames and the facts `title`, `file_name`, `folder` | [auto-tagging.md](auto-tagging.md) |
 | Duplicate judging | One question; up to 4 images of frame A beside frame B and no facts; sent only once the Ollama connection is saved | [duplicate-judging.md](duplicate-judging.md) |
-| Assistant review runs | One question per candidate set; as facts, the two names with their synonyms or aliases and 3 titles each, or up to 10 titles and their folders of a work; no images | [assistant.md](assistant.md#review-runs-judge-candidate-sets-for-the-owner) |
+| Assistant review runs | One question per candidate set; as facts, the two names with their synonyms or other names and 3 titles each, or up to 10 titles and their folders of a work; no images | [assistant.md](assistant.md#review-runs-judge-candidate-sets-for-the-owner) |
 
 ## Clef wire port
 

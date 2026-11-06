@@ -251,8 +251,8 @@ dialog and opens the new person's page. Organizations keep the table.
 
 `/people/:id` shows one person in a `ProfilePage`
 ([design-system.md](design-system.md#page-patterns)): a profile spread across
-the page, then the person's videos. The spread holds the face; the name and
-aliases; the key figures (age, height, measurements with the cup, career) as
+the page, then the person's videos. The spread holds the face; the display
+name and the other names; the key figures (age, height, measurements with the cup, career) as
 large numbers; the bio; the actions; and a card at the end with the remaining
 facts (dates, gender, birthplace, blood type), links and external IDs. From
 `lg` that card stops at the face's height and scrolls inside, so a person with
@@ -284,8 +284,8 @@ people list, each with a toast. The person's own fields are edited on
 `/people/:id/edit`.
 
 A person plugin fills or replaces the person's fields from the page: the apply
-writes the profile values and face the owner selects, appends missing aliases
-and external IDs, and never merges the person with the holder of a fetched ID
+writes the profile values and face the owner selects, appends the fetched names
+the person lacks and missing external IDs, and never merges the person with the holder of a fetched ID
 ([person-plugins.md](person-plugins.md#a-fetched-person-applies-per-item-and-a-profile-value-may-replace)).
 `Fetch info…` after `Edit` opens that fetch, shown only while an approved
 person plugin exists
