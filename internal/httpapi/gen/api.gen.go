@@ -4973,6 +4973,9 @@ type FaceAppearanceMove struct {
 
 	// RestoreCredits Works whose performer credit of the moved-from person was removed because the target already held one.
 	RestoreCredits []FaceMoveCredit `json:"restoreCredits"`
+
+	// UndoActivityId Present when the move left the moved-from person provisional, with no credit and no face, so it was merged into the target: the face_merge entry whose undo brings that person back, before the reverse move.
+	UndoActivityId *int64 `json:"undoActivityId,omitempty"`
 }
 
 // FaceAppearanceMoveRequest defines model for FaceAppearanceMoveRequest.

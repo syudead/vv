@@ -248,21 +248,25 @@ func checkCreditRefs(ctx context.Context, tx *sql.Tx, infos []domain.WorkInfo) (
 	return -1, nil
 }
 
-// Write only changed keys in input order, dropping the face appearances of removed performers and marking the
-// removed credits of automatic merges; the caller advances edit times.
+// Write only changed keys in input order, dropping the face appearances of removed performers, deleting the
+// provisional ones nothing uses any more and marking the removed credits of automatic merges; the caller advances
+// edit times.
 func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[string]domain.WorkInfo) ([]string, error) {
 	before, err := workInfoByUserKeys(ctx, tx, keys)
 	if err != nil {
 		return nil, err
 	}
 	var edited []string
+	var removed []int64
 	for _, key := range keys {
 		if before[key].Equal(final[key]) {
 			continue
 		}
-		if err := dropRemovedPerformerFaces(ctx, tx, key, before[key], final[key]); err != nil {
+		performers, err := dropRemovedPerformerFaces(ctx, tx, key, before[key], final[key])
+		if err != nil {
 			return nil, err
 		}
+		removed = append(removed, performers...)
 		if err := markOwnerChangedMergeCredits(ctx, tx, key, before[key], final[key]); err != nil {
 			return nil, err
 		}
@@ -270,6 +274,10 @@ func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[str
 			return nil, err
 		}
 		edited = append(edited, key)
+	}
+	// After every key is written, so a performer moved to another of the keys is still credited.
+	if err := deleteUnusedProvisionalPeople(ctx, tx, removed); err != nil {
+		return nil, err
 	}
 	return edited, nil
 }

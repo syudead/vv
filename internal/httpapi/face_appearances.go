@@ -123,6 +123,9 @@ func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id 
 		for _, credit := range moved.Restore {
 			body.RestoreCredits = append(body.RestoreCredits, gen.FaceMoveCredit{WorkKey: credit.UserKey, Position: credit.Position})
 		}
+		if moved.UndoActivityID != 0 {
+			body.UndoActivityId = &moved.UndoActivityID
+		}
 		s.writeCreditBody(w, http.StatusOK, body)
 	}
 }

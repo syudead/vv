@@ -204,11 +204,17 @@ function FacesShown({
     }
   }
 
+  /** A move that emptied the shown person merged it into target, so that merge is undone before the faces go back. */
   async function undoMove(
     target: Person,
     appearanceIds: readonly number[],
     restore: readonly FaceMoveCredit[],
+    undoActivityId?: number,
   ) {
+    if (undoActivityId !== undefined && !undone.current.has(undoActivityId)) {
+      await undoActivity(undoActivityId);
+      undone.current.add(undoActivityId);
+    }
     await moveFaceAppearances(target.id, appearanceIds, person.id, restore);
   }
 

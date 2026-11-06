@@ -206,6 +206,37 @@ describe("PersonFacesPage", () => {
     ).toBeTruthy();
   });
 
+  it("undoes the merge of an emptied person before moving its faces back", async () => {
+    const user = userEvent.setup();
+    server.moveMerged = true;
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(dialog).findByRole("radio", { name: /Mio/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Undo the move in Beach day" }),
+    );
+
+    await waitFor(() =>
+      expect(sent("POST", "/api/people/9/appearances/move")).toHaveLength(1),
+    );
+    // The merge brings the shown person back first, so the faces have somewhere to go.
+    const order = server.sent
+      .filter((request) => request.method === "POST")
+      .map((request) => request.url.pathname);
+    expect(order.slice(-2)).toEqual([
+      "/api/activity/31/undo",
+      "/api/people/9/appearances/move",
+    ]);
+  });
+
   it("moves faces to a person found by name instead of by face", async () => {
     const user = userEvent.setup();
     server.searchable = [

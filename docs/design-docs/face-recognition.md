@@ -518,7 +518,12 @@ person deleted during the analysis is never linked.
 | Linked to a person     | A new appearance and a `performer` row at the video's user key                                                                                                       |
 | New                    | A provisional person (a `people` row without names) whose face is the crop with its face's vector, its candidate pairs, a new appearance and a `performer` row       |
 
-A stored appearance nothing is carried over to is deleted. The completed
+A stored appearance nothing is carried over to is deleted. A provisional
+person it linked loses the video's `performer` row unless another appearance of
+the video not dropped still links them, and is deleted once credited nowhere
+and without an appearance that is not dropped, so a re-analysis that joins or
+splits faces differently leaves no old person beside the new one. A named
+person's credit is the owner's and stays. The completed
 `face_analysis` entry lists each link it made in
 `activity_entry_face_links`, with `created_person` set when the run created the
 person. Appearances are keyed by content key, so a content key that no video
@@ -659,7 +664,7 @@ Writes to people and credits move or drop face rows in their own transaction
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Deleting a person                                                  | Their appearances become dropped and lose centroid and crop, keeping only their tracks; the face image, its vector and the candidate pairs go with the person                                                                                                                                                              |
 | Merging people                                                     | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a pair the target already has, in either orientation, keeps the target's row, so each pair of people stays one row; a target that takes a source's face also takes that face's current vector |
-| A work-information write that removes a performer                  | The video's appearances of that person become dropped                                                                                                                                                                                                                                                                      |
+| A work-information write that removes a performer                  | The video's appearances of that person become dropped; a provisional person credited nowhere and without an appearance that is not dropped is deleted once every work of the write is written                                                                                                                              |
 | A work-information write that removes a credit from a merge target | The credit's row of each `face_merge` not yet undone is marked `owner_changed`                                                                                                                                                                                                                                             |
 
 The kept tracks are what let a re-analysis carry a dropped appearance over, so
@@ -906,6 +911,14 @@ to the old person in those works, so the move answers them as
 reverse move given them keeps the target's credit and puts the old person's
 back at that position. A list kept by the page avoids an activity entry for a
 decision the owner can only undo from the same page.
+
+A move that leaves the old person provisional, credited nowhere, without an
+appearance that is not dropped and without an external ID merges that person
+into the target as the owner's `face_merge`, in the same transaction, so no
+empty person stays and the candidate pairs its face earned go to the target.
+The response's `undoActivityId` names the entry; the page's Undo takes the
+merge back first, which brings the person back under its id, and then moves
+the faces back.
 
 `GET /api/people/{id}/similar-people` ranks the other people for picking
 where faces belong ([`face_similar_people.go`](../../internal/store/face_similar_people.go)):

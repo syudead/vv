@@ -2911,7 +2911,7 @@ export interface paths {
         put?: never;
         /**
          * Move face appearances to another person
-         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
+         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. A provisional id left with no credit and no face that is not dropped, and holding no external ID, is merged into targetId as a face_merge entry decided by the owner, which undoActivityId names; Undo takes that merge back before the reverse move. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
          */
         post: operations["moveFaceAppearances"];
         delete?: never;
@@ -6097,6 +6097,11 @@ export interface components {
             person: components["schemas"]["Person"];
             /** @description Works whose performer credit of the moved-from person was removed because the target already held one. */
             restoreCredits: components["schemas"]["FaceMoveCredit"][];
+            /**
+             * Format: int64
+             * @description Present when the move left the moved-from person provisional, with no credit and no face, so it was merged into the target: the face_merge entry whose undo brings that person back, before the reverse move.
+             */
+            undoActivityId?: number;
         };
         FaceMoveCredit: {
             /** @description An opaque key of the work. */

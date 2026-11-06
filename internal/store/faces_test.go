@@ -480,3 +480,86 @@ func TestAfterImportFaceAnalysisJoinsTheImportPipeline(t *testing.T) {
 		})
 	}
 }
+
+// faceAt is a main person at the middle of the frame over the given spans.
+func faceAt(centroid []float32, spans ...domain.FaceSpan) domain.FaceAnalysedPerson {
+	return domain.FaceAnalysedPerson{
+		Spans: spans, GoodSeconds: 12, Centroid: centroid, FaceVector: centroid,
+		Crop: domain.PersonImage{JPEG: []byte("crop"), Width: 2, Height: 2},
+	}
+}
+
+func personExists(t *testing.T, db *DB, id int64) bool {
+	t.Helper()
+	var exists bool
+	if err := db.sql.QueryRow(`select exists (select 1 from people where id = ?)`, id).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	return exists
+}
+
+// One face first split into two appearances and then analysed as one carries neither over; the old provisional
+// people must not stay credited beside the new one.
+func TestStoreFaceAnalysisAgainRemovesThePeopleItCarriedNothingTo(t *testing.T) {
+	f := newFaceFixture(t)
+	first, second := domain.FaceSpan{Start: 0, End: 10, X: 0.5, Y: 0.5, W: 0.1}, domain.FaceSpan{Start: 20, End: 30, X: 0.5, Y: 0.5, W: 0.1}
+	f.analyse(t, faceAt(faceBasis(0), first), faceAt(faceNear(0, 1, 0.4), second))
+	old := linkedPeople(t, f.db, f.key, "performer")
+	if len(old) != 2 {
+		t.Fatalf("performers after the first analysis = %v, want 2", old)
+	}
+
+	f.analyse(t, faceAt(faceBasis(0), first, second))
+
+	appearances := faceAppearances(t, f.db)
+	if len(appearances) != 1 {
+		t.Fatalf("appearances = %+v, want 1", appearances)
+	}
+	if got, want := linkedPeople(t, f.db, f.key, "performer"), []int64{appearances[0].personID}; !slices.Equal(got, want) {
+		t.Errorf("performers = %v, want only the new appearance's person %v", got, want)
+	}
+	for _, id := range old {
+		if personExists(t, f.db, id) {
+			t.Errorf("provisional person %d is kept with no face and no credit", id)
+		}
+	}
+}
+
+// A named person's credit is the owner's, so a re-analysis that carries nothing to their appearance keeps it, and the
+// cast rule then gives them the new face.
+func TestStoreFaceAnalysisAgainKeepsANamedPersonItCarriedNothingTo(t *testing.T) {
+	f := newFaceFixture(t)
+	first, second := domain.FaceSpan{Start: 0, End: 10, X: 0.5, Y: 0.5, W: 0.1}, domain.FaceSpan{Start: 20, End: 30, X: 0.5, Y: 0.5, W: 0.1}
+	f.analyse(t, faceAt(faceBasis(0), first), faceAt(faceBasis(1), second))
+	named := faceAppearances(t, f.db)[0].personID
+	nameFacePerson(t, f.db, named, "Named")
+
+	f.analyse(t, faceAt(faceBasis(0), first, second))
+
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, []int64{named}) {
+		t.Errorf("performers = %v, want Named %d alone", got, named)
+	}
+	if got := faceAppearances(t, f.db); len(got) != 1 || got[0].personID != named {
+		t.Errorf("appearances = %+v, want the one face with Named %d", got, named)
+	}
+}
+
+func TestRemovingAProvisionalPerformerDeletesThePersonNothingUses(t *testing.T) {
+	f := newLinkedFixture(t)
+	info, _ := workInfoOf(t, f.db, f.videoID)
+	info.People = []domain.WorkPerson{performer(f.named)}
+	if _, err := f.db.WorkInfo().SetDetails(context.Background(), f.videoID, "", info); err != nil {
+		t.Fatal(err)
+	}
+
+	if personExists(t, f.db, f.provisional) {
+		t.Errorf("provisional person %d is kept after its only credit was removed", f.provisional)
+	}
+	if !personExists(t, f.db, f.named) {
+		t.Errorf("named person %d is gone", f.named)
+	}
+	appearances := faceAppearances(t, f.db)
+	if !appearances[1].dropped || appearances[1].personID != 0 {
+		t.Errorf("removed performer's appearance = %+v, want dropped without a person", appearances[1])
+	}
+}
