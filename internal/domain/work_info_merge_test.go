@@ -157,7 +157,7 @@ func TestMergeChecksNewEntitiesBeforeKeepingThem(t *testing.T) {
 		t.Errorf("skipped = %+v, want %+v", got.Skipped, wantSkipped)
 	}
 	wantNew := []NewCredit{{
-		Input: CreditInput{Name: "Rin", Aliases: []Alias{}, ExternalIDs: []ExternalID{{Source: "fanza", Value: "r-1"}}},
+		Input: CreditInput{Names: []CreditName{{Name: "Rin"}}, ExternalIDs: []ExternalID{{Source: "fanza", Value: "r-1"}}},
 		Links: []int{0, 1},
 	}}
 	if !reflect.DeepEqual(got.NewPeople, wantNew) {

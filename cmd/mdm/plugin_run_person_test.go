@@ -28,7 +28,7 @@ func TestPluginRunFetchesAPersonFromTheSource(t *testing.T) {
 		t.Fatalf("stdout %q: %v", got.stdout, err)
 	}
 	// The fixture names the person by the ID and lists another ID before the requested one.
-	want := map[string]any{"person": map[string]any{"name": "1", "externalIds": []any{
+	want := map[string]any{"person": map[string]any{"name": "1", "names": []any{map[string]any{"name": "1"}}, "externalIds": []any{
 		map[string]any{"source": "s", "value": "1"}, map[string]any{"source": "other", "value": "x"},
 	}}}
 	if !reflect.DeepEqual(body, want) {
@@ -46,9 +46,11 @@ func TestPluginRunFetchesAPersonByALinkWithURL(t *testing.T) {
 		t.Fatalf("stdout %q: %v", got.stdout, err)
 	}
 	// The fixture names the person by the url it received and adds no ID for the link.
-	want := map[string]any{"person": map[string]any{"name": "https://www.example.com/p/1", "externalIds": []any{
-		map[string]any{"source": "other", "value": "x"},
-	}}}
+	want := map[string]any{"person": map[string]any{
+		"name": "https://www.example.com/p/1", "names": []any{map[string]any{"name": "https://www.example.com/p/1"}},
+		"externalIds": []any{
+			map[string]any{"source": "other", "value": "x"},
+		}}}
 	if !reflect.DeepEqual(body, want) {
 		t.Fatalf("stdout = %s, want %v", got.stdout, want)
 	}

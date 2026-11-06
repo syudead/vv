@@ -12,12 +12,17 @@ export type CreditPatch = components["schemas"]["CreditPatch"];
 export type OrganizationProfile = components["schemas"]["OrganizationProfile"];
 export type OrganizationProfilePatch = components["schemas"]["OrganizationProfilePatch"];
 export type CreditSort = components["schemas"]["CreditSort"];
-export type Alias = components["schemas"]["Alias"];
+export type CreditName = components["schemas"]["CreditName"];
 export type ExternalId = components["schemas"]["ExternalId"];
 
 export type CreditKind = "person" | "organization";
 
 export type Credit = Person | Organization;
+
+/** The names after the display name, in the owner's order. */
+export function otherNames(credit: { names: readonly CreditName[] }): CreditName[] {
+  return credit.names.slice(1);
+}
 
 export interface CreditList {
   items: Credit[];
@@ -94,6 +99,15 @@ export function createCredit(
     body: JSON.stringify(input),
     signal,
   });
+}
+
+/** Create an entity with one name, which the server reports at names[0].name. */
+export function createNamedCredit(
+  kind: CreditKind,
+  name: string,
+  signal?: AbortSignal,
+): Promise<Credit> {
+  return createCredit(kind, { names: [{ name }] }, signal);
 }
 
 export function getCredit(

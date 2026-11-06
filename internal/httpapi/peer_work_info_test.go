@@ -19,7 +19,7 @@ func TestRemoteVideoWorkInfoIsSavedOnThePeerInItsIDs(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()
 	credit := func(f *guestFixture, kind domain.CreditKind, name string) int64 {
-		created, err := f.env.db.Credits().Create(ctx, kind, domain.CreditInput{Name: name})
+		created, err := f.env.db.Credits().Create(ctx, kind, domain.CreditInput{Names: namesOf(name)})
 		if err != nil {
 			t.Fatal(err)
 		}

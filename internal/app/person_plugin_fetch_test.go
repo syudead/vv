@@ -351,7 +351,7 @@ func TestApplyPersonPluginFetchRefusesAnItemWithoutAValue(t *testing.T) {
 		image     int
 	}{
 		{domain.PersonPluginSelection{}, -1},
-		{domain.PersonPluginSelection{Aliases: []string{"Not fetched"}}, -1},
+		{domain.PersonPluginSelection{Names: []string{"Not fetched"}}, -1},
 		{domain.PersonPluginSelection{Items: image}, -1}, {domain.PersonPluginSelection{Items: image}, 1},
 	} {
 		if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, tc.selection, tc.image); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {

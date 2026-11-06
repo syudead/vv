@@ -1,7 +1,8 @@
 # People: profiles and faces
 
-A person carries a fixed profile and at most one face next to the names,
-aliases and external IDs that people and organizations share. The profile
+A person carries a fixed profile and at most one face next to the ordered list
+of names ([credit-names.md](credit-names.md)) and the external IDs that people
+and organizations share. The profile
 rules live in [`person_profile.go`](../../internal/domain/person_profile.go)
 and the storage in
 [`person_profiles.go`](../../internal/store/person_profiles.go) and
@@ -82,32 +83,11 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Reject the merge with `400`    | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step                                                         |
 
-## A person without a canonical name is provisional
+## A person without names is provisional
 
-Face recognition finds people before anyone knows their names, so a person may
-have no `people_names` row at all. Such a person is provisional: `Person`,
-`CreditRef` and `WorkPerson` carry `provisional: true` and `name` is `""`, so
-a client that ignores the flag still parses the response. The flag is read
-from the missing canonical row by every person query, never stored, so a
-named provisional person cannot exist. Organizations always have a name and
-read `provisional: false`.
-
-| Operation                       | Effect on a provisional person                                                                                            |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/people?provisional=…` | `true` keeps only provisional people, `false` only named ones; an organization list answers `400 invalid_request`         |
-| Natural-name order              | Provisional people come after every named person, by ID; the other sorts break ties the same way                          |
-| `PATCH` with `name`             | The person becomes an ordinary person in the same write                                                                   |
-| `PATCH` without `name`          | Profile and external-ID changes keep the person provisional; aliases need a name and answer `work_info_empty` on `name`   |
-| Merge into a provisional target | The target takes the canonical name of the first source in `sourceIds` order that has one; the other names become aliases |
-
-The name order keeps one keyset cursor by prefixing each listed sort key with
-`0` for a named person and making it `1` for a provisional one, so the cursor
-needs no null branch.
-
-| Rejected                                       | Why                                                                                                |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| A `provisional` column beside the name         | Two facts that can disagree                                                                        |
-| A stored placeholder name such as `Unknown 12` | It cannot follow the screen's language, it matches name searches, and a merge keeps it as an alias |
+A person whose list of names is empty is provisional; the list rule, what each
+request does to such a person and the merge into one are in
+[credit-names.md](credit-names.md#a-person-without-names-is-provisional).
 
 ## People sort by age, unknown birth dates last
 
@@ -271,8 +251,8 @@ dialog and opens the new person's page. Organizations keep the table.
 
 `/people/:id` shows one person in a `ProfilePage`
 ([design-system.md](design-system.md#page-patterns)): a profile spread across
-the page, then the person's videos. The spread holds the face; the name and
-aliases; the key figures (age, height, measurements with the cup, career) as
+the page, then the person's videos. The spread holds the face; the display
+name and the other names; the key figures (age, height, measurements with the cup, career) as
 large numbers; the bio; the actions; and a card at the end with the remaining
 facts (dates, gender, birthplace, blood type), links and external IDs. From
 `lg` that card stops at the face's height and scrolls inside, so a person with
@@ -304,8 +284,8 @@ people list, each with a toast. The person's own fields are edited on
 `/people/:id/edit`.
 
 A person plugin fills or replaces the person's fields from the page: the apply
-writes the profile values and face the owner selects, appends missing aliases
-and external IDs, and never merges the person with the holder of a fetched ID
+writes the profile values and face the owner selects, appends the fetched names
+the person lacks and missing external IDs, and never merges the person with the holder of a fetched ID
 ([person-plugins.md](person-plugins.md#a-fetched-person-applies-per-item-and-a-profile-value-may-replace)).
 `Fetch info…` after `Edit` opens that fetch, shown only while an approved
 person plugin exists
@@ -313,13 +293,14 @@ person plugin exists
 
 ### The edit page
 
-`/people/:id/edit` is a `FormPage` outside the shell that edits the name,
-aliases, external IDs, links and every profile field together, built and left
+`/people/:id/edit` is a `FormPage` outside the shell that edits the names,
+external IDs, links and every profile field together, built and left
 as the video details editor is
 ([library-ui.md](library-ui.md#details-editor)): the same band, the same
 `Discard changes?` on `Cancel`, the aside's link and the browser's Back, and
 the same return along the history when the person page opened it. Organizations
-keep the details dialog.
+keep the details dialog, whose first group is the same names list
+([Organizations](#organizations-share-the-profile-image-and-favorite-shapes)).
 
 `Save` sends one `PATCH /api/people/{id}` with only the properties that differ
 from the person as loaded, so a change made elsewhere to another property
@@ -330,6 +311,24 @@ without reading it again; opened by its URL, the page reads the person first.
 A reason with a `field` stays under that input with every other input kept.
 Number inputs keep only digits, so a value the server reads is always a whole
 number or empty.
+
+The names are one sortable list,
+[`NameRows`](../../web/src/credits/NameRows.tsx), with a name and an optional
+language per row. Two fixed labels split it: `Display name` over the first
+slot and `Other names` over the rest, so the display name is read from its
+place, also while a row is dragged past the labels. Rows reorder by the drag
+handle, with pointer, touch and keyboard sorting as on the playlist page, and
+`Make display name` moves its row to the first slot in the draft; `Save` sends
+the whole list as `names`, so a promotion is a reorder and needs no request of
+its own. An empty list shows one blank row, which alone is sent as
+`names: []`; in a list of two or more every row is sent, so a blank row gets
+the server's reason at its own index. A reason at `names[i].name` or
+`names[i].language` stays under that row, and one at `names` under `Add name`.
+
+| Rejected                      | Why                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| A mark drawn on the first row | During a drag the marked row slides out of the first slot before the drop    |
+| Up and down buttons per row   | The drag handle's keyboard sorting already reorders, as on the playlist page |
 
 | Rejected                         | Why                                                                                |
 | -------------------------------- | ---------------------------------------------------------------------------------- |
@@ -478,7 +477,7 @@ the owner says they are, both `PersonFace judge`
 ## Provisional people on the screens
 
 A provisional person
-([A person without a canonical name is provisional](#a-person-without-a-canonical-name-is-provisional))
+([A person without names is provisional](#a-person-without-names-is-provisional))
 is drawn as any person, with their id as `#1042` in `muted-foreground` where
 the name goes: the grid card, the person page's `h1` and document title, the
 video page's cast chip, the details editor's chips and the library's person
@@ -493,8 +492,9 @@ place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
 The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
 `provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
 A provisional person's page offers `Name…` in place of `Edit`; the edit page
-shows the empty name with the person's number as its placeholder, and `Save` with the
-name still empty sends no `name`, so the person stays provisional.
+shows one blank name row with the person's number as its placeholder, and
+`Save` with that row still blank changes nothing, so the person stays
+provisional.
 
 The `Performers` picker of the details editor lists provisional people under
 `Unnamed people` (`GET /api/people?provisional=true` with the picker's limit).
@@ -531,7 +531,12 @@ linked organization's empty fields, as a person's does; a plugin's organization
 
 The organizations table shows a favorite toggle on each row, and the details
 dialog edits the logo, which saves at once, and the profile, which saves with
-the dialog.
+the dialog. The dialog's first group is the names list of
+[the edit page](#the-edit-page), with the display name as its first row;
+`Save` sends the list as `names` when it was edited, a reason at `names` stays
+under `Add name`, and an emptied list answers `work_info_empty` there. The
+row's inline `Rename` stays and sends `name`, which respells the display name
+and keeps its language and the other names.
 
 | Rejected                                         | Why                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------- |

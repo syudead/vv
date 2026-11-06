@@ -198,7 +198,7 @@ func (s *server) linkEditVocabulary(r *http.Request, slot int64, entries linkEnt
 			var created struct {
 				ID int64 `json:"id"`
 			}
-			err := s.peerCall(r, slot, http.MethodPost, vocabularyListPaths[vocabularyKindOf(kind)], nil, gen.CreditInput{Name: name}, &created)
+			err := s.peerCall(r, slot, http.MethodPost, vocabularyListPaths[vocabularyKindOf(kind)], nil, gen.CreditInput{Names: []gen.CreditName{{Name: name}}}, &created)
 			if err != nil {
 				return 0, fmt.Errorf("%w: %w", errPeerPart, err)
 			}
@@ -232,7 +232,7 @@ func (s *server) localEditVocabulary(r *http.Request, entries linkEntries) editV
 			return byName[name], nil
 		},
 		create: func(kind domain.CreditKind, name string) (int64, error) {
-			created, err := s.credits.Create(ctx, kind, domain.CreditInput{Name: name})
+			created, err := s.credits.Create(ctx, kind, domain.CreditInput{Names: []domain.CreditName{{Name: name}}})
 			return created.ID, err
 		},
 	}

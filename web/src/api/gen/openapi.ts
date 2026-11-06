@@ -2020,8 +2020,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rename, merge or delete a tag, person or organization by name
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
+         * Rename, merge or delete a tag, person or organization, or unname a person, by name
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
          */
         post: operations["applyPeerVocabulary"];
         delete?: never;
@@ -2061,7 +2061,7 @@ export interface paths {
         put?: never;
         /**
          * Match fetched people or organizations against this node's
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by any of the folded names, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.
          */
         post: operations["matchPeerCredits"];
         delete?: never;
@@ -2101,7 +2101,7 @@ export interface paths {
         put?: never;
         /**
          * Apply a person the peer fetched for a person of this node
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md.
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the names, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md.
          */
         post: operations["applyPeerFetchedPerson"];
         delete?: never;
@@ -2685,7 +2685,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
+         * @description Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
          */
         get: operations["listPeople"];
         put?: never;
@@ -2726,7 +2726,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a person's name, aliases and external IDs
+         * Update a person's names and external IDs
          * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing person returns 404 person_not_found. parentId is forbidden (400 invalid_request).
          */
         patch: operations["updatePerson"];
@@ -2743,7 +2743,7 @@ export interface paths {
         put?: never;
         /**
          * Merge sourceIds into person id
-         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.
+         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.
          */
         post: operations["mergePeople"];
         delete?: never;
@@ -3031,7 +3031,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected items of a person fetch
-         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
+         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen names, external IDs and links the person lacks, in the fetched order and up to 50, 20 and 100; a provisional person's first appended name becomes its display name; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases in the body, names, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
          */
         post: operations["applyPersonPluginFetch"];
         delete?: never;
@@ -3049,7 +3049,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.
+         * @description Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -3086,7 +3086,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update an organization's name, aliases and external IDs
+         * Update an organization's names and external IDs
          * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle.
          */
         patch: operations["updateOrganization"];
@@ -3131,7 +3131,7 @@ export interface paths {
         put?: never;
         /**
          * Merge sourceIds into organization id
-         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.
+         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.
          */
         post: operations["mergeOrganizations"];
         delete?: never;
@@ -5103,9 +5103,10 @@ export interface components {
         };
         /** @description A person as the plugin returned it, after VV's limits. */
         PersonPluginFetchedPerson: {
+            /** @description The fetched display name. */
             name: string;
-            /** @description First 50 distinct names; languages are checked by the apply. */
-            aliases: components["schemas"]["Alias"][];
+            /** @description The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply. */
+            names: components["schemas"]["CreditName"][];
             /** @description The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs. */
             externalIds: components["schemas"]["ExternalId"][];
             /** @description Plugin-provided profile values that pass validation; omitted when none. */
@@ -5130,14 +5131,14 @@ export interface components {
          * @description One applicable part of a fetched person; a profile item is one profile property.
          * @enum {string}
          */
-        PersonPluginItem: "image" | "profile.gender" | "profile.birthDate" | "profile.deathDate" | "profile.birthplace" | "profile.heightCm" | "profile.bustCm" | "profile.waistCm" | "profile.hipsCm" | "profile.cup" | "profile.bloodType" | "profile.careerStartYear" | "profile.careerEndYear" | "profile.bio" | "profile.links" | "aliases" | "externalIds";
+        PersonPluginItem: "image" | "profile.gender" | "profile.birthDate" | "profile.deathDate" | "profile.birthplace" | "profile.heightCm" | "profile.bustCm" | "profile.waistCm" | "profile.hipsCm" | "profile.cup" | "profile.bloodType" | "profile.careerStartYear" | "profile.careerEndYear" | "profile.bio" | "profile.links" | "names" | "externalIds";
         ApplyPersonPluginFetchRequest: {
-            /** @description Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below. */
+            /** @description Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below. */
             items: components["schemas"]["PersonPluginItem"][];
             /** @description The kept image that image applies; required with image. */
             imageIndex?: number;
-            /** @description Names to append as aliases, each the fetched name or one of the fetched aliases. */
-            aliases?: string[];
+            /** @description Spellings to append, each the name of one of the result's names. */
+            names?: string[];
             /** @description Fetched external IDs to append. */
             externalIds?: components["schemas"]["ExternalId"][];
             /** @description Fetched profile links to append. */
@@ -5150,7 +5151,7 @@ export interface components {
         SkippedPersonReason: "invalid" | "too_many" | "taken";
         SkippedPersonValue: {
             item: components["schemas"]["PersonPluginItem"];
-            /** @description Value shown in the comparison: the profile value, the alias, or source: value. */
+            /** @description Value shown in the comparison: the profile value, the name, or source: value. */
             value: string;
             reason: components["schemas"]["SkippedPersonReason"];
             /** @description Name of the person holding the external ID; only for taken. */
@@ -5158,7 +5159,7 @@ export interface components {
         };
         PersonPluginFetchApplied: {
             person: components["schemas"]["Person"];
-            /** @description Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order. */
+            /** @description Skipped values: profile items in property order, then names, then external IDs, each in fetched order. */
             skipped: components["schemas"]["SkippedPersonValue"][];
         };
         WorkInfoSearchResult: {
@@ -5681,10 +5682,11 @@ export interface components {
             /** @description True for a person without a canonical name, whose name is then ""; always false for an organization. */
             provisional: boolean;
         };
-        /** @description One person or organization alias. */
-        Alias: {
+        /** @description One name of a person or organization. */
+        CreditName: {
+            /** @description 1-200 code points after trimming; unique within the list. */
             name: string;
-            /** @description BCP 47 language tag; omitted when absent. */
+            /** @description BCP 47 language tag, on any entry; omitted when absent. */
             language?: string;
         };
         /** @description One identifier from an external source. */
@@ -5796,11 +5798,12 @@ export interface components {
         Person: {
             /** Format: int64 */
             id: number;
+            /** @description The display name, the first of names; "" for a provisional person. */
             name: string;
-            /** @description True while the person has no canonical name; name is then "". Setting a name makes the person ordinary. */
+            /** @description True while the person has no names; name is then "" and names []. Setting a name makes the person ordinary. */
             provisional: boolean;
-            /** @description Natural-name order. */
-            aliases: components["schemas"]["Alias"][];
+            /** @description Every name in the owner's order, the display name first; at most 50. */
+            names: components["schemas"]["CreditName"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
             profile: components["schemas"]["PersonProfile"];
@@ -5888,9 +5891,10 @@ export interface components {
         Organization: {
             /** Format: int64 */
             id: number;
+            /** @description The display name, the first of names. */
             name: string;
-            /** @description Natural-name order. */
-            aliases: components["schemas"]["Alias"][];
+            /** @description Every name in the owner's order, the display name first; at least 1 and at most 50. */
+            names: components["schemas"]["CreditName"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
             profile: components["schemas"]["OrganizationProfile"];
@@ -5938,8 +5942,8 @@ export interface components {
         };
         /** @description Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only. */
         CreditInput: {
-            name: string;
-            aliases?: components["schemas"]["Alias"][];
+            /** @description The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization. */
+            names: components["schemas"]["CreditName"][];
             externalIds?: components["schemas"]["ExternalId"][];
             /**
              * Format: int64
@@ -5951,10 +5955,12 @@ export interface components {
             /** @description Organization-only profile; sending it for a person returns 400 invalid_request. */
             organizationProfile?: components["schemas"]["OrganizationProfile"];
         };
-        /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
+        /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request. */
         CreditPatch: {
+            /** @description Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives. */
             name?: string;
-            aliases?: components["schemas"]["Alias"][] | null;
+            /** @description Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names. */
+            names?: components["schemas"]["CreditName"][] | null;
             externalIds?: components["schemas"]["ExternalId"][] | null;
             /**
              * Format: int64
@@ -8523,13 +8529,13 @@ export interface components {
             externalIds: components["schemas"]["ExternalId"][];
             profile?: components["schemas"]["OrganizationProfile"];
         };
-        /** @description The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links. */
+        /** @description The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links. */
         PeerFetchedPluginPerson: {
             name: string;
-            aliases: components["schemas"]["Alias"][];
+            names: components["schemas"]["CreditName"][];
             externalIds: components["schemas"]["ExternalId"][];
             profile?: components["schemas"]["PersonProfile"];
-            /** @description The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent. */
+            /** @description The items to write, each with a value above; names, externalIds and profile.links write all the values sent. */
             items: components["schemas"]["PersonPluginItem"][];
         };
         PeerFetchedWorkInfoApplied: {
@@ -8540,9 +8546,12 @@ export interface components {
         PeerVocabularyRequest: {
             /** @enum {string} */
             kind: "tag" | "person" | "organization";
-            /** @enum {string} */
-            action: "rename" | "merge" | "delete";
-            /** @description The current canonical name; required for rename and delete */
+            /**
+             * @description `unname` empties a person's names, making it provisional; it takes kind `person` only
+             * @enum {string}
+             */
+            action: "rename" | "merge" | "delete" | "unname";
+            /** @description The current canonical name; required for rename, delete and unname */
             name?: string;
             /** @description Required for rename */
             newName?: string;
@@ -8627,7 +8636,7 @@ export interface components {
             reason?: components["schemas"]["ErrorReason"];
             /** @description Reason limit, included only for reasons whose contract specifies a limit. */
             limit?: number;
-            /** @description JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken. */
+            /** @description JSON property path using dots and array indices, such as names[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken. */
             field?: string;
             /** @description Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required. */
             tagName?: string;
@@ -8838,7 +8847,7 @@ export interface components {
         FaceCandidateOtherId: number;
         /** @description Organization ID */
         OrganizationId: number;
-        /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
+        /** @description Normalized, trimmed query; nonempty queries substring-match any of the names */
         CreditQuery: string;
         /** @description Sort order */
         CreditSort: components["schemas"]["CreditSort"];
@@ -13317,7 +13326,7 @@ export interface operations {
     listPeople: {
         parameters: {
             query?: {
-                /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
+                /** @description Normalized, trimmed query; nonempty queries substring-match any of the names */
                 q?: components["parameters"]["CreditQuery"];
                 /** @description Sort order */
                 sort?: components["parameters"]["CreditSort"];
@@ -13974,7 +13983,7 @@ export interface operations {
     listOrganizations: {
         parameters: {
             query?: {
-                /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
+                /** @description Normalized, trimmed query; nonempty queries substring-match any of the names */
                 q?: components["parameters"]["CreditQuery"];
                 /** @description Sort order */
                 sort?: components["parameters"]["CreditSort"];

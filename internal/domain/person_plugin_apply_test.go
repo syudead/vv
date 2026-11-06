@@ -79,46 +79,65 @@ func TestFillPersonItemsReplacesDependentFieldsTogether(t *testing.T) {
 
 func TestFillPersonItemsAppliesOnlySelectedItems(t *testing.T) {
 	fetched := FetchedPluginPerson{
-		Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},
+		Name: "Hanako", Names: []CreditName{{Name: "Hanako"}, {Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},
 		Profile: PersonProfile{Birthplace: "Tokyo"},
 	}
 	got := FillPersonItems(PersonItemFill{
-		Current: Credit{Name: "Hanako"}, Fetched: fetched, Items: []PersonPluginItem{PersonItemAliases},
+		Current: Credit{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}}}, Fetched: fetched, Items: []PersonPluginItem{PersonItemNames},
 		Today: personFillToday,
 	})
-	if len(got.Aliases) != 1 || len(got.ExternalIDs) != 0 || got.Profile.Birthplace != "" {
-		t.Fatalf("filled = %+v; want only the aliases", got)
+	if len(got.Names) != 2 || len(got.ExternalIDs) != 0 || got.Profile.Birthplace != "" {
+		t.Fatalf("filled = %+v; want only the names", got)
 	}
 }
 
-func TestFillPersonItemsAppendsAliasesUpToTheLimit(t *testing.T) {
-	current := Credit{Name: "Hanako"}
-	for i := range CreditAliasesMaxCount - 1 {
-		current.Aliases = append(current.Aliases, Alias{Name: fmt.Sprintf("stored %d", i)})
+func TestFillPersonItemsAppendsMissingNamesUpToTheLimit(t *testing.T) {
+	current := Credit{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}}}
+	for i := range CreditNamesMaxCount - 3 {
+		current.Names = append(current.Names, CreditName{Name: fmt.Sprintf("stored %d", i)})
 	}
-	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []Alias{
-		{Name: "Hanako"}, {Name: "stored 0"}, {Name: "bad", Language: "not a tag"}, {Name: "Hana", Language: "ja"},
-		{Name: "Hanachan"},
+	fetched := FetchedPluginPerson{Name: "Yamada", Names: []CreditName{
+		{Name: "Yamada"}, {Name: "Hanako"}, {Name: "stored 0"}, {Name: "bad", Language: "not a tag"},
+		{Name: "Hana", Language: "ja"}, {Name: "Hanachan"},
 	}}
 
 	got := FillPersonItems(PersonItemFill{
-		Current: current, Fetched: fetched, Items: []PersonPluginItem{PersonItemAliases}, Today: personFillToday,
+		Current: current, Fetched: fetched, Items: []PersonPluginItem{PersonItemNames}, Today: personFillToday,
 	})
 
-	if len(got.Aliases) != CreditAliasesMaxCount || got.Aliases[CreditAliasesMaxCount-1] != (Alias{Name: "Hana", Language: "ja"}) {
-		t.Fatalf("aliases end with %+v (%d); want Hana appended as the 50th", got.Aliases[len(got.Aliases)-1], len(got.Aliases))
+	// The fetched name is one more name, and the person's own names keep their places.
+	wantTail := []CreditName{{Name: "Yamada"}, {Name: "Hana", Language: "ja"}}
+	if len(got.Names) != CreditNamesMaxCount || got.Names[0].Name != "Hanako" ||
+		!slices.Equal(got.Names[CreditNamesMaxCount-2:], wantTail) {
+		t.Fatalf("names = %+v (%d); want Yamada and Hana appended as the 49th and 50th", got.Names, len(got.Names))
 	}
 	want := []SkippedPersonValue{
-		{Item: PersonItemAliases, Value: "bad", Reason: SkippedWorkInfoInvalid},
-		{Item: PersonItemAliases, Value: "Hanachan", Reason: SkippedWorkInfoTooMany},
+		{Item: PersonItemNames, Value: "bad", Reason: SkippedWorkInfoInvalid},
+		{Item: PersonItemNames, Value: "Hanachan", Reason: SkippedWorkInfoTooMany},
 	}
 	if !slices.Equal(got.Skipped, want) {
-		t.Fatalf("skipped = %+v; want %+v and nothing for the name or a stored alias", got.Skipped, want)
+		t.Fatalf("skipped = %+v; want %+v and nothing for the names the person has", got.Skipped, want)
+	}
+}
+
+func TestFillPersonItemsNamesAProvisionalPersonByTheFirstAppendedName(t *testing.T) {
+	fetched := FetchedPluginPerson{Name: "Hanako", Names: []CreditName{
+		{Name: "Hanako", Language: "not a tag"}, {Name: "Hana", Language: "ja"}, {Name: "Hanachan"},
+	}}
+
+	got := FillPersonItems(PersonItemFill{
+		Current: Credit{Provisional: true, Names: []CreditName{}}, Fetched: fetched,
+		Items: []PersonPluginItem{PersonItemNames}, Today: personFillToday,
+	})
+
+	// The skipped fetched name does not hold the display name's place.
+	if want := []CreditName{{Name: "Hana", Language: "ja"}, {Name: "Hanachan"}}; !slices.Equal(got.Names, want) {
+		t.Fatalf("names = %+v; want %+v, Hana first as the display name", got.Names, want)
 	}
 }
 
 func TestFillPersonItemsAppendsFreeExternalIDsUpToTheLimit(t *testing.T) {
-	current := Credit{Name: "Hanako"}
+	current := Credit{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}}}
 	for i := range ExternalIDsMaxCount - 1 {
 		current.ExternalIDs = append(current.ExternalIDs, ExternalID{Source: "stored", Value: fmt.Sprint(i)})
 	}
@@ -158,7 +177,7 @@ func TestPersonFetchIDPicksTheFirstAcceptedStoredID(t *testing.T) {
 
 func TestPersonPluginItemValid(t *testing.T) {
 	for item, want := range map[PersonPluginItem]bool{
-		"image": true, "aliases": true, "externalIds": true, "profile.heightCm": true, "profile.name": false, "name": false,
+		"image": true, "names": true, "aliases": false, "externalIds": true, "profile.heightCm": true, "profile.name": false, "name": false,
 	} {
 		if got := item.Valid(); got != want {
 			t.Errorf("%q.Valid() = %v, want %v", item, got, want)
@@ -168,24 +187,24 @@ func TestPersonPluginItemValid(t *testing.T) {
 
 func TestSelectNarrowsTheFetchedPersonToTheChosenValues(t *testing.T) {
 	fetched := FetchedPluginPerson{
-		Name: "Hanako Yamada", Aliases: []Alias{{Name: "Hana"}, {Name: "Hanachan"}},
+		Name: "Hanako Yamada", Names: []CreditName{{Name: "Hanako Yamada"}, {Name: "Hana"}, {Name: "Hanachan"}},
 		ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}, {Source: "site", Value: "2"}},
 		Profile:     PersonProfile{Birthplace: "Tokyo", Links: []string{"https://a.test", "https://b.test"}},
 	}
 	got, items, ok := fetched.Select(PersonPluginSelection{
-		Items:   []PersonPluginItem{PersonProfileItem(ProfileBirthplace)},
-		Aliases: []string{"Hanachan", "Hanako Yamada"}, ExternalIDs: []ExternalID{{Source: "site", Value: "2"}},
+		Items: []PersonPluginItem{PersonProfileItem(ProfileBirthplace)},
+		Names: []string{"Hanachan", "Hanako Yamada"}, ExternalIDs: []ExternalID{{Source: "site", Value: "2"}},
 		Links: []string{"https://b.test"},
 	}, false)
 
 	wantItems := []PersonPluginItem{
-		PersonProfileItem(ProfileBirthplace), PersonProfileItem(ProfileLinks), PersonItemAliases, PersonItemExternalIDs,
+		PersonProfileItem(ProfileBirthplace), PersonProfileItem(ProfileLinks), PersonItemNames, PersonItemExternalIDs,
 	}
 	if !ok || !slices.Equal(items, wantItems) {
 		t.Fatalf("items = %v, %v; want %v", items, ok, wantItems)
 	}
-	// The fetched name is an alias choice, and chosen values keep the fetched order.
-	if !slices.Equal(got.Aliases, []Alias{{Name: "Hanako Yamada"}, {Name: "Hanachan"}}) ||
+	// Chosen values keep the fetched order.
+	if !slices.Equal(got.Names, []CreditName{{Name: "Hanako Yamada"}, {Name: "Hanachan"}}) ||
 		!slices.Equal(got.ExternalIDs, []ExternalID{{Source: "site", Value: "2"}}) ||
 		!slices.Equal(got.Profile.Links, []string{"https://b.test"}) || got.Profile.Birthplace != "Tokyo" {
 		t.Fatalf("narrowed = %+v", got)
@@ -193,15 +212,15 @@ func TestSelectNarrowsTheFetchedPersonToTheChosenValues(t *testing.T) {
 }
 
 func TestSelectRefusesASelectionTheResultCannotGive(t *testing.T) {
-	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}}
+	fetched := FetchedPluginPerson{Name: "Hanako", Names: []CreditName{{Name: "Hanako"}, {Name: "Hana"}}}
 	for _, tc := range []struct {
 		name      string
 		selection PersonPluginSelection
 		hasImage  bool
 	}{
 		{"nothing", PersonPluginSelection{}, true},
-		{"a list as an item", PersonPluginSelection{Items: []PersonPluginItem{PersonItemAliases}}, true},
-		{"a value not fetched", PersonPluginSelection{Aliases: []string{"Hana", "Other"}}, true},
+		{"a list as an item", PersonPluginSelection{Items: []PersonPluginItem{PersonItemNames}}, true},
+		{"a value not fetched", PersonPluginSelection{Names: []string{"Hana", "Other"}}, true},
 		{"a field without a value", PersonPluginSelection{Items: []PersonPluginItem{PersonProfileItem(ProfileCup)}}, true},
 		{"the image without one", PersonPluginSelection{Items: []PersonPluginItem{PersonItemImage}}, false},
 	} {

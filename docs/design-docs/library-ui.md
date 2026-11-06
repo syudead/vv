@@ -201,7 +201,7 @@ header (or, while rows are selected, the selection bar) and tabs stick under
 the top bar, and the table's column header sticks right under them. The
 organizations page is an `AdminTablePage` with the same header and column
 header, without the filter, tabs, checkbox column and selection bar, and a
-details dialog (aliases, external IDs and the parent) in place of the synonyms
+details dialog (the names list, external IDs and the parent) in place of the synonyms
 dialog. The people page is a `ListPage` of face cards with the search, the
 favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the
@@ -289,7 +289,7 @@ active filters show as chips above the list:
 
 The `Person` and `Organization` pickers list the 20 with the most videos before
 any typing, so a person without a name, shown as `#<id>` with their face, can
-be picked; typing matches names and aliases, and `#<id>` finds that one.
+be picked; typing matches any of their names, and `#<id>` finds that one.
 
 Applied tags, kinds, people and organizations also show as chips in the
 `Filtering by` row, and an id the server or the loaded lists no longer hold
@@ -1110,7 +1110,7 @@ that is not a positive integer is `400 invalid_request`. `personRole` without
 
 For the owner, a search term matches a video when it appears in the title or
 relative path of one of its locations, in a name or synonym of one of its
-tags, in its work code, or in a name or alias of a person or organization
+tags, in its work code, or in any name of a person or organization
 linked to its work information. Matching uses the folded form
 (`domain.FoldForMatch`), so width, letter case and hiragana or katakana do not
 matter. The description, dates, URLs and external IDs are not matched. A guest

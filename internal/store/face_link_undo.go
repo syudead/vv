@@ -16,7 +16,7 @@ import (
 const faceLinkPersonJoin = `
 	left join face_appearances a on a.id = l.appearance_id
 	left join people p on p.id = case when a.id is null then l.person_id else a.person_id end
-	left join people_names n on n.person_id = p.id and n.canonical = 1`
+	left join people_names n on n.person_id = p.id and n.position = 0`
 
 func attachActivityFaceLinks(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
 	index, encoded := activityEntryIDs(entries, func(entry domain.ActivityEntry) bool {
@@ -261,7 +261,7 @@ func removeFacePerformer(ctx context.Context, tx *sql.Tx, userKey string, person
 func deleteUnusedProvisionalPerson(ctx context.Context, tx *sql.Tx, c *changes, personID int64) error {
 	var unused bool
 	if err := tx.QueryRowContext(ctx, `select
-		not exists (select 1 from people_names where person_id = ?1 and canonical = 1)
+		not exists (select 1 from people_names where person_id = ?1 and position = 0)
 		and not exists (select 1 from video_work_people where person_id = ?1)`, personID).Scan(&unused); err != nil {
 		return fmt.Errorf("cannot read the credits of person %d: %w", personID, err)
 	}

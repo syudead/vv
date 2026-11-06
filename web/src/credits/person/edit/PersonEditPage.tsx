@@ -142,8 +142,7 @@ function loadingPanels() {
       key: "names",
       legend: text.namesAndLinks,
       content: [
-        text.name,
-        text.aliases,
+        t.credits.names.title,
         text.externalIds,
         t.player.detailsEditor.links,
       ].map(field),

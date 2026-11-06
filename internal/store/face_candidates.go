@@ -31,7 +31,7 @@ func (s *CreditStore) FaceCandidates(ctx context.Context, personID int64) ([]dom
 		`+personImageRevision("o.id")+`, c.similarity
 		  from face_candidates c
 		  join people o on o.id = case when c.provisional_id = ?1 then c.person_id else c.provisional_id end
-		  left join people_names n on n.person_id = o.id and n.canonical = 1
+		  left join people_names n on n.person_id = o.id and n.position = 0
 		 where c.dismissed = 0 and (c.provisional_id = ?1 or c.person_id = ?1)
 		 order by c.similarity desc, o.id`, personID)
 	if err != nil {
@@ -112,12 +112,12 @@ func mergeByOwner(ctx context.Context, tx *sql.Tx, c *changes, source domain.Cre
 }
 
 // openFacePairDirection returns the open pair's people as (source, target): the person the owner confirms from stays,
-// unless only the other one has a canonical name, so a named person is never merged into one without a name.
+// unless only the other one has names, so a named person is never merged into one without a name.
 func openFacePairDirection(ctx context.Context, tx *sql.Tx, personID, otherID int64) (int64, int64, error) {
 	var personNamed, otherNamed bool
 	err := tx.QueryRowContext(ctx, `select
-		exists (select 1 from people_names n where n.person_id = ?1 and n.canonical = 1),
-		exists (select 1 from people_names n where n.person_id = ?2 and n.canonical = 1)
+		exists (select 1 from people_names n where n.person_id = ?1 and n.position = 0),
+		exists (select 1 from people_names n where n.person_id = ?2 and n.position = 0)
 		  from face_candidates where `+openFacePairCondition+`
 		 limit 1`, personID, otherID).
 		Scan(&personNamed, &otherNamed)

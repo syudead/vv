@@ -20,7 +20,7 @@ func (f *guestFixture) putVideo(name, suffix, body string, cookies ...*http.Cook
 
 func (f *guestFixture) createWorkInfoPerson(t *testing.T, name string) int64 {
 	t.Helper()
-	credit, err := f.env.db.Credits().Create(context.Background(), domain.CreditPerson, domain.CreditInput{Name: name})
+	credit, err := f.env.db.Credits().Create(context.Background(), domain.CreditPerson, domain.CreditInput{Names: namesOf(name)})
 	if err != nil {
 		t.Fatal(err)
 	}

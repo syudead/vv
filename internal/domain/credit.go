@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// People and organizations have stable IDs, duplicate names, aliases, and external IDs; only organizations have parents.
+// People and organizations have stable IDs, an ordered list of names that may repeat across entities, and external
+// IDs; only organizations have parents (docs/design-docs/credit-names.md).
 
 // CreditKind selects the persistence table.
 type CreditKind string
@@ -24,13 +25,14 @@ func (k CreditKind) Valid() bool {
 
 const (
 	// CreditNameMaxLength counts code points and matches the display-name limit.
-	CreditNameMaxLength     = 200
-	CreditAliasesMaxCount   = 50
+	CreditNameMaxLength = 200
+	// CreditNamesMaxCount counts every name, the display name included.
+	CreditNamesMaxCount     = 50
 	CreditLanguageMaxLength = 35
 )
 
-// Language is an optional BCP 47 syntax tag.
-type Alias struct {
+// CreditName is one spelling of a person's or organization's name; Language is an optional BCP 47 syntax tag.
+type CreditName struct {
 	Name     string
 	Language string
 }
@@ -38,12 +40,12 @@ type Alias struct {
 type Credit struct {
 	Kind CreditKind
 	ID   int64
-	// Name is empty exactly when the credit is provisional.
+	// Name is the display name, the first of Names, and empty exactly when the credit is provisional.
 	Name string
-	// Provisional is true exactly when a person has no canonical name; organizations always have one.
+	// Provisional is true exactly when a person has no names; organizations always have one.
 	Provisional bool
-	// Aliases use natural name order, breaking ties by the original string.
-	Aliases []Alias
+	// Names are in the owner's order, the display name first.
+	Names []CreditName
 	// ExternalIDs are ordered by (source, value).
 	ExternalIDs []ExternalID
 	// Parent is nil for people and root organizations.
@@ -62,8 +64,8 @@ type Credit struct {
 
 // ParentID and OrganizationProfile are used only for organizations and Profile only for people.
 type CreditInput struct {
-	Name                string
-	Aliases             []Alias
+	// Names are in the owner's order; an empty list makes a provisional person.
+	Names               []CreditName
 	ExternalIDs         []ExternalID
 	ParentID            *int64
 	Profile             PersonProfile
@@ -72,8 +74,10 @@ type CreditInput struct {
 
 // CreditPatch preserves nil fields and replaces whole lists; pointers to nil lists clear them, while ParentSet controls whether ParentID changes (nil removes the parent).
 type CreditPatch struct {
+	// Name respells the display name, keeping its language and the other names; on a provisional person it is the
+	// only name. It applies after Names when both are set.
 	Name        *string
-	Aliases     *[]Alias
+	Names       *[]CreditName
 	ExternalIDs *[]ExternalID
 	ParentSet   bool
 	ParentID    *int64
@@ -98,7 +102,7 @@ func ValidCreditSort(kind CreditKind, sort TagSort) bool {
 }
 
 type CreditQuery struct {
-	// Q is folded and trimmed by storage, then matched as a substring of canonical names and aliases.
+	// Q is folded and trimmed by storage, then matched as a substring of every name.
 	Q string
 	// Sort defaults to TagSortName; ValidCreditSort lists the orders each kind supports.
 	Sort TagSort
@@ -172,32 +176,81 @@ func (e *CreditNotFoundError) Error() string {
 
 func (e *CreditNotFoundError) Unwrap() error { return ErrNotFound }
 
-// NormalizeCredit trims without case folding, drops blank aliases and fully blank external IDs, and returns the first InvalidWorkInfoError in name/alias/external-ID/profile order; storage validates parent existence and cycles.
-func NormalizeCredit(input CreditInput) (CreditInput, error) {
-	name, err := normalizeWorkInfoText("name", input.Name, CreditNameMaxLength, false)
-	if err != nil {
-		return CreditInput{}, err
+// DisplayName is the first name, or "" for an empty list.
+func (in CreditInput) DisplayName() string {
+	if len(in.Names) == 0 {
+		return ""
 	}
-	if name == "" {
-		return CreditInput{}, invalidWorkInfo("name", WorkInfoEmpty, 0)
-	}
-	return normalizeCreditFields(name, input)
+	return in.Names[0].Name
 }
 
-// NormalizeProvisionalCredit normalizes a person that stays without a canonical name; an alias needs a name, so any alias is reported as an empty name.
-func NormalizeProvisionalCredit(input CreditInput) (CreditInput, error) {
-	normalized, err := normalizeCreditFields("", input)
-	if err != nil {
-		return CreditInput{}, err
+// NormalizeCredit trims without case folding, drops fully blank external IDs, and returns the first
+// InvalidWorkInfoError in names/external-ID/profile order; storage validates parent existence and cycles.
+func NormalizeCredit(kind CreditKind, input CreditInput) (CreditInput, error) {
+	return normalizeCredit(kind, input, true)
+}
+
+// PatchCredit applies patch to current and normalizes the result. A patch without Names does not count the list, so
+// a stored list over the limit survives it, and an error in a respelled display name is reported at name.
+func PatchCredit(current Credit, patch CreditPatch) (CreditInput, error) {
+	merged := CreditInput{
+		Names: current.Names, ExternalIDs: current.ExternalIDs, Profile: current.Profile,
+		OrganizationProfile: current.OrganizationProfile,
 	}
-	if len(normalized.Aliases) > 0 {
-		return CreditInput{}, invalidWorkInfo("name", WorkInfoEmpty, 0)
+	if current.Parent != nil {
+		parent := current.Parent.ID
+		merged.ParentID = &parent
+	}
+	if patch.Names != nil {
+		merged.Names = *patch.Names
+	}
+	if patch.Name != nil {
+		merged.Names = respellDisplayName(merged.Names, *patch.Name)
+	}
+	if patch.ExternalIDs != nil {
+		merged.ExternalIDs = *patch.ExternalIDs
+	}
+	if patch.ParentSet {
+		merged.ParentID = patch.ParentID
+	}
+	if patch.Profile != nil {
+		merged.Profile = patch.Profile.Apply(current.Profile)
+	}
+	if patch.OrganizationProfile != nil {
+		merged.OrganizationProfile = patch.OrganizationProfile.Apply(current.OrganizationProfile)
+	}
+	normalized, err := normalizeCredit(current.Kind, merged, patch.Names != nil)
+	var invalid *InvalidWorkInfoError
+	if patch.Names == nil && patch.Name != nil && errors.As(err, &invalid) && strings.HasPrefix(invalid.Field, "names[") {
+		// The stored list was valid, so the respelled display name is the entry at fault.
+		return CreditInput{}, &InvalidWorkInfoError{Field: "name", Problem: invalid.Problem, Limit: invalid.Limit}
+	}
+	return normalized, err
+}
+
+func respellDisplayName(names []CreditName, name string) []CreditName {
+	if len(names) == 0 {
+		return []CreditName{{Name: name}}
+	}
+	out := slices.Clone(names)
+	out[0].Name = name
+	return out
+}
+
+// NormalizeCreditName normalizes one display name, which may not be blank, reporting errors at name.
+func NormalizeCreditName(name string) (string, error) {
+	normalized, err := normalizeWorkInfoText("name", name, CreditNameMaxLength, false)
+	if err != nil {
+		return "", err
+	}
+	if normalized == "" {
+		return "", invalidWorkInfo("name", WorkInfoEmpty, 0)
 	}
 	return normalized, nil
 }
 
-func normalizeCreditFields(name string, input CreditInput) (CreditInput, error) {
-	aliases, err := normalizeAliases(name, input.Aliases)
+func normalizeCredit(kind CreditKind, input CreditInput, countNames bool) (CreditInput, error) {
+	names, err := normalizeCreditNames(kind, input.Names, countNames)
 	if err != nil {
 		return CreditInput{}, err
 	}
@@ -215,41 +268,52 @@ func normalizeCreditFields(name string, input CreditInput) (CreditInput, error) 
 		return CreditInput{}, err
 	}
 	return CreditInput{
-		Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID, Profile: profile,
+		Names: names, ExternalIDs: externalIDs, ParentID: input.ParentID, Profile: profile,
 		OrganizationProfile: organizationProfile,
 	}, nil
 }
 
-func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
-	normalized := make([]Alias, 0, len(aliases))
-	seen := map[string]bool{name: true}
-	for i, raw := range aliases {
-		field := fmt.Sprintf("aliases[%d]", i)
-		alias, err := normalizeWorkInfoText(field+".name", raw.Name, CreditNameMaxLength, false)
+// normalizeCreditNames checks each entry in order, then the count when countNames is set, then the kind's empty-list
+// rule: an organization needs a name, and a person without one is provisional.
+func normalizeCreditNames(kind CreditKind, names []CreditName, countNames bool) ([]CreditName, error) {
+	normalized := make([]CreditName, 0, len(names))
+	seen := make(map[string]bool, len(names))
+	for i, raw := range names {
+		entry, err := normalizeCreditNameEntry(fmt.Sprintf("names[%d]", i), raw)
 		if err != nil {
 			return nil, err
 		}
-		if alias == "" {
-			// Drop nameless aliases without validating their language.
-			continue
+		if seen[entry.Name] {
+			return nil, invalidWorkInfo(fmt.Sprintf("names[%d].name", i), WorkInfoDuplicate, 0)
 		}
-		language, err := normalizeWorkInfoText(field+".language", raw.Language, CreditLanguageMaxLength, false)
-		if err != nil {
-			return nil, err
-		}
-		if language != "" && !isLanguageTagSyntax(language) {
-			return nil, invalidWorkInfo(field+".language", WorkInfoInvalidLanguage, 0)
-		}
-		if seen[alias] {
-			return nil, invalidWorkInfo(field+".name", WorkInfoDuplicate, 0)
-		}
-		seen[alias] = true
-		normalized = append(normalized, Alias{Name: alias, Language: language})
+		seen[entry.Name] = true
+		normalized = append(normalized, entry)
 	}
-	if len(normalized) > CreditAliasesMaxCount {
-		return nil, invalidWorkInfo("aliases", WorkInfoTooMany, CreditAliasesMaxCount)
+	if countNames && len(normalized) > CreditNamesMaxCount {
+		return nil, invalidWorkInfo("names", WorkInfoTooMany, CreditNamesMaxCount)
+	}
+	if len(normalized) == 0 && kind != CreditPerson {
+		return nil, invalidWorkInfo("names", WorkInfoEmpty, 0)
 	}
 	return normalized, nil
+}
+
+func normalizeCreditNameEntry(field string, raw CreditName) (CreditName, error) {
+	name, err := normalizeWorkInfoText(field+".name", raw.Name, CreditNameMaxLength, false)
+	if err != nil {
+		return CreditName{}, err
+	}
+	if name == "" {
+		return CreditName{}, invalidWorkInfo(field+".name", WorkInfoEmpty, 0)
+	}
+	language, err := normalizeWorkInfoText(field+".language", raw.Language, CreditLanguageMaxLength, false)
+	if err != nil {
+		return CreditName{}, err
+	}
+	if language != "" && !isLanguageTagSyntax(language) {
+		return CreditName{}, invalidWorkInfo(field+".language", WorkInfoInvalidLanguage, 0)
+	}
+	return CreditName{Name: name, Language: language}, nil
 }
 
 // isLanguageTagSyntax checks BCP 47 syntax, not registration; callers reject overlong values first.
@@ -277,13 +341,13 @@ func isASCIILetter(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-func SortAliases(aliases []Alias) {
-	slices.SortStableFunc(aliases, func(a, b Alias) int {
-		if order := CompareNatural(a.Name, b.Name); order != 0 {
-			return order
-		}
-		return strings.Compare(a.Name, b.Name)
-	})
+// CompareAliasOrder is the order the screens listed aliases in before names had positions; migration 98 numbers the
+// stored names by it through the vv_alias_order collation.
+func CompareAliasOrder(a, b string) int {
+	if order := CompareNatural(a, b); order != 0 {
+		return order
+	}
+	return strings.Compare(a, b)
 }
 
 func SortExternalIDs(ids []ExternalID) {

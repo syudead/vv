@@ -63,7 +63,7 @@ func TestApplyPersonPluginFetchSkipsAnIDAnotherPersonHolds(t *testing.T) {
 	plugin := approvedPersonPlugin(t, db)
 	taken := domain.ExternalID{Source: "wiki", Value: "taken"}
 	holder := createCredit(t, db, domain.CreditPerson,
-		domain.CreditInput{Name: "Holder", ExternalIDs: []domain.ExternalID{taken}})
+		domain.CreditInput{Names: namesOf("Holder"), ExternalIDs: []domain.ExternalID{taken}})
 	target := createPerson(t, db, "Target")
 
 	applied, err := db.Credits().ApplyPersonPluginFetch(ctx, domain.PersonPluginApply{
@@ -97,7 +97,7 @@ func TestApplyPersonPluginFetchReplacesAStoredProfileField(t *testing.T) {
 	db := migratedDB(t)
 	plugin := approvedPersonPlugin(t, db)
 	target := createCredit(t, db, domain.CreditPerson,
-		domain.CreditInput{Name: "Target", Profile: domain.PersonProfile{Birthplace: "Osaka"}})
+		domain.CreditInput{Names: namesOf("Target"), Profile: domain.PersonProfile{Birthplace: "Osaka"}})
 
 	applied, err := db.Credits().ApplyPersonPluginFetch(context.Background(), domain.PersonPluginApply{
 		PersonID: target.ID, PluginID: plugin.ID, Digest: plugin.Digest, Generation: plugin.Generation,

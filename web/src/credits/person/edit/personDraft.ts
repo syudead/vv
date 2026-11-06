@@ -2,14 +2,14 @@ import type { CreditPatch, Person } from "../../../api/credits";
 import type { components } from "../../../api/gen/openapi";
 import type { IdRow, LinkRow } from "../../../player/detailsEditor/draft";
 import { newRowKey } from "../../../player/detailsEditor/draft";
+import { idRowsOf, idsToSend, type Sent } from "../../CreditDetailsDialog";
 import {
-  type AliasRow,
-  aliasesToSend,
-  aliasRowsOf,
-  idRowsOf,
-  idsToSend,
-  type Sent,
-} from "../../CreditDetailsDialog";
+  type NameRow,
+  nameControl,
+  nameRowsControl,
+  nameRowsOf,
+  nameRowsToSend,
+} from "../../NameRows";
 
 type ProfilePatch = components["schemas"]["PersonProfilePatch"];
 
@@ -38,8 +38,8 @@ export type ProfileField = TextField | NumberField;
 
 /** Every input as typed; an empty string is a field left unset. */
 export interface PersonDraft {
-  name: string;
-  aliases: AliasRow[];
+  /** The names in list order; the first row is the display name. */
+  names: NameRow[];
   externalIds: IdRow[];
   links: LinkRow[];
   profile: Record<ProfileField, string>;
@@ -53,8 +53,7 @@ export function draftFromPerson(person: Person): PersonDraft {
     profile[field] = value === undefined ? "" : String(value);
   }
   return {
-    name: person.name,
-    aliases: aliasRowsOf(person.aliases),
+    names: nameRowsOf(person.names),
     externalIds: idRowsOf(person.externalIds),
     links: (person.profile.links ?? []).map((url) => ({ key: newRowKey("u"), url })),
     profile,
@@ -110,11 +109,9 @@ export function buildPersonPatch(
   loaded: PersonDraft,
 ): { patch: CreditPatch; sent: SentTargets } {
   const patch: CreditPatch = {};
-  const name = draft.name.trim();
-  if (name !== loaded.name.trim()) patch.name = name;
-  const aliases = aliasesToSend(draft.aliases);
-  if (!sameJson(aliases.values, aliasesToSend(loaded.aliases).values))
-    patch.aliases = aliases.values;
+  const names = nameRowsToSend(draft.names);
+  if (!sameJson(names.values, nameRowsToSend(loaded.names).values))
+    patch.names = names.values;
   const ids = idsToSend(draft.externalIds);
   if (!sameJson(ids.values, idsToSend(loaded.externalIds).values))
     patch.externalIds = ids.values;
@@ -123,7 +120,7 @@ export function buildPersonPatch(
   return {
     patch,
     sent: {
-      aliasKeys: aliases.keys,
+      nameKeys: names.keys,
       idKeys: ids.keys,
       linkKeys: sentLinks(draft.links).keys,
     },
@@ -134,9 +131,13 @@ export function draftChanged(draft: PersonDraft, loaded: PersonDraft): boolean {
   return Object.keys(buildPersonPatch(draft, loaded).patch).length > 0;
 }
 
-/** The control a profile or name path names; aliases and IDs are the dialog's mapping. */
+/** The control a name, profile or link path names; the IDs are the dialog's mapping. */
 export function profileControl(field: string, sent: SentTargets): string | undefined {
-  if (field === "name") return "name";
+  const first = sent.nameKeys[0];
+  if (field === "name")
+    return first === undefined ? undefined : nameControl("name", first);
+  const names = nameRowsControl(field, sent.nameKeys);
+  if (names !== undefined) return names;
   if (field === "profile.links") return "links";
   const link = /^profile\.links\[(\d+)\]$/.exec(field);
   if (link !== null) {

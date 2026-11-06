@@ -44,7 +44,7 @@ func (p *peerPersonFetch) ApplyPersonPluginFetch(
 ) (domain.PersonPluginApplied, error) {
 	fetched := apply.Fetched
 	body := gen.PeerFetchedPluginPerson{
-		Name: fetched.Name, Aliases: toAPIAliases(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
+		Name: fetched.Name, Names: toAPINames(fetched.Names), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
 		Items: make([]gen.PersonPluginItem, 0, len(apply.Items)),
 	}
 	if !fetched.Profile.Equal(domain.PersonProfile{}) {
@@ -118,7 +118,7 @@ func (s *server) ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	fetched := domain.FetchedPluginPerson{
-		Name: body.Name, Aliases: fromAPIAliases(&body.Aliases), ExternalIDs: fromAPIExternalIDs(&body.ExternalIds),
+		Name: body.Name, Names: fromAPINames(&body.Names), ExternalIDs: fromAPIExternalIDs(&body.ExternalIds),
 	}
 	if body.Profile != nil {
 		fetched.Profile = fromAPIProfile(*body.Profile)
@@ -130,7 +130,7 @@ func (s *server) ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request, 
 	applied, err := s.workInfoPlugins.ApplyPeerFetchedPerson(r.Context(), id, fetched, items)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
-		s.invalidRequest(w, "Each item must be a profile item, aliases or externalIds with a value in the request.")
+		s.invalidRequest(w, "Each item must be a profile item, names or externalIds with a value in the request.")
 		return
 	case errors.Is(err, domain.ErrPersonNotFound):
 		s.notFoundReason(w, gen.ErrorReasonPersonNotFound, "The person was deleted or merged into another.")

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 	"github.com/syudead/vv/internal/store"
 )
@@ -29,6 +30,11 @@ func (f *creditFixture) request(method, target, body string, cookies ...*http.Co
 
 func (f *creditFixture) owned(method, target, body string) *httptest.ResponseRecorder {
 	return f.request(method, target, body, f.owner)
+}
+
+// namesOf is the list of name followed by others.
+func namesOf(name string, others ...domain.CreditName) []domain.CreditName {
+	return append([]domain.CreditName{{Name: name}}, others...)
 }
 
 func creditPath(prefix string, id int64, suffix string) string {
@@ -79,12 +85,10 @@ func assertFieldError(t *testing.T, label string, rec *httptest.ResponseRecorder
 func TestCreatePersonAndReadIt(t *testing.T) {
 	f := newCreditFixture(t)
 	created := f.createPerson(t, map[string]any{
-		"name":        " 山田花子 ",
-		"aliases":     []map[string]string{{"name": "Hanako Yamada", "language": "en"}},
+		"names":       []map[string]string{{"name": " 山田花子 ", "language": "ja"}, {"name": "Hanako Yamada", "language": "en"}},
 		"externalIds": []map[string]string{{"source": "db", "value": "42"}},
 	})
-	if created.Name != "山田花子" || len(created.Aliases) != 1 || created.Aliases[0].Name != "Hanako Yamada" ||
-		created.Aliases[0].Language == nil || *created.Aliases[0].Language != "en" ||
+	if created.Name != "山田花子" || creditNameList(created.Names) != "[山田花子/ja Hanako Yamada/en]" ||
 		len(created.ExternalIds) != 1 || created.ExternalIds[0] != (gen.ExternalId{Source: "db", Value: "42"}) {
 		t.Fatalf("作成の応答 = %+v", created)
 	}
@@ -96,52 +100,73 @@ func TestCreatePersonAndReadIt(t *testing.T) {
 	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 		t.Errorf("Cache-Control = %q", got)
 	}
+	// Person carries name and names and no aliases.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["aliases"]; ok || raw["names"] == nil || raw["name"] == nil {
+		t.Errorf("読み出しの項目 = %s", rec.Body)
+	}
 	read := decode[gen.Person](t, rec)
-	if read.Id != created.Id || read.Name != created.Name || len(read.Aliases) != 1 || read.VideoCount != 0 {
+	if read.Id != created.Id || read.Name != created.Name || len(read.Names) != 2 || read.VideoCount != 0 {
 		t.Errorf("読み出し = %+v, want %+v", read, created)
+	}
+	provisional := f.createPerson(t, map[string]any{"names": []any{}})
+	if !provisional.Provisional || provisional.Name != "" || len(provisional.Names) != 0 {
+		t.Errorf("空の names の作成 = %+v", provisional)
 	}
 }
 
-func TestPatchPersonAliasesKeepsName(t *testing.T) {
-	f := newCreditFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "山田", "aliases": []map[string]string{{"name": "古い"}}})
+// creditNameList prints names as name/language in order.
+func creditNameList(names []gen.CreditName) string {
+	out := []string{}
+	for _, name := range names {
+		entry := name.Name
+		if name.Language != nil {
+			entry += "/" + *name.Language
+		}
+		out = append(out, entry)
+	}
+	return fmt.Sprint(out)
+}
 
-	rec := f.owned(http.MethodPatch, creditPath("/api/people", person.Id, ""),
-		jsonBody(map[string]any{"aliases": []map[string]string{{"name": "新しい"}, {"name": "Yamada", "language": "en"}}}))
+func TestPatchPersonNames(t *testing.T) {
+	f := newCreditFixture(t)
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "山田", "language": "ja"}, {"name": "古い"}}})
+	path := creditPath("/api/people", person.Id, "")
+
+	rec := f.owned(http.MethodPatch, path,
+		jsonBody(map[string]any{"names": []map[string]string{{"name": "Yamada", "language": "en"}, {"name": "新しい"}, {"name": "山田"}}}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("書き換え: status = %d: %s", rec.Code, rec.Body)
 	}
-	got := decode[gen.Person](t, rec)
-	names := []string{}
-	for _, alias := range got.Aliases {
-		names = append(names, alias.Name)
-	}
-	if got.Name != "山田" || fmt.Sprint(names) != "[Yamada 新しい]" {
-		t.Errorf("書き換えの後 = %q・%v", got.Name, names)
+	if got := decode[gen.Person](t, rec); got.Name != "Yamada" || creditNameList(got.Names) != "[Yamada/en 新しい 山田]" {
+		t.Errorf("書き換えの後 = %q・%v", got.Name, creditNameList(got.Names))
 	}
 
-	rec = f.owned(http.MethodPatch, creditPath("/api/people", person.Id, ""), `{"aliases":null}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("null の書き換え: status = %d: %s", rec.Code, rec.Body)
+	rec = f.owned(http.MethodPatch, path, `{"name":"ヤマダ"}`)
+	if got := decode[gen.Person](t, rec); rec.Code != http.StatusOK || creditNameList(got.Names) != "[ヤマダ/en 新しい 山田]" {
+		t.Errorf("name の書き換えの後 = %d %v", rec.Code, creditNameList(got.Names))
 	}
-	if got := decode[gen.Person](t, rec); got.Name != "山田" || len(got.Aliases) != 0 {
-		t.Errorf("null の書き換えの後 = %+v", got)
-	}
+	assertFieldError(t, "一覧の別の行と同じ name", f.owned(http.MethodPatch, path, `{"name":"山田"}`),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonWorkInfoDuplicate}, "name")
+	assertFieldError(t, "name と names", f.owned(http.MethodPatch, path, `{"name":"A","names":[{"name":"B"}]}`),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
+	assertFieldError(t, "aliases", f.owned(http.MethodPatch, path, `{"aliases":[{"name":"B"}]}`),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
 
-	rec = f.owned(http.MethodPatch, creditPath("/api/people", person.Id, ""), `{"Aliases":[{"name":"大文字"}]}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Aliases の書き換え: status = %d: %s", rec.Code, rec.Body)
-	}
-	if got := decode[gen.Person](t, rec); len(got.Aliases) != 1 || got.Aliases[0].Name != "大文字" {
-		t.Errorf("Aliases の書き換えの後 = %+v", got.Aliases)
+	rec = f.owned(http.MethodPatch, path, `{"names":null}`)
+	if got := decode[gen.Person](t, rec); rec.Code != http.StatusOK || !got.Provisional || len(got.Names) != 0 {
+		t.Errorf("null の書き換えの後 = %d %+v", rec.Code, got)
 	}
 }
 
 func TestCreditFieldErrors(t *testing.T) {
 	f := newCreditFixture(t)
-	holder := f.createPerson(t, map[string]any{"name": "持ち主", "externalIds": []map[string]string{{"source": "db", "value": "1"}}})
-	parent := f.createOrganization(t, map[string]any{"name": "親"})
-	child := f.createOrganization(t, map[string]any{"name": "子", "parentId": parent.Id})
+	holder := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "持ち主"}}, "externalIds": []map[string]string{{"source": "db", "value": "1"}}})
+	parent := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "親"}}})
+	child := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "子"}}, "parentId": parent.Id})
 	if child.Parent == nil || child.Parent.Id != parent.Id || child.Parent.Name != "親" {
 		t.Fatalf("子の親 = %+v", child.Parent)
 	}
@@ -155,21 +180,41 @@ func TestCreditFieldErrors(t *testing.T) {
 		field                       string
 	}{
 		{
-			"別名の language が x", http.MethodPost, "/api/people",
-			jsonBody(map[string]any{"name": "名", "aliases": []map[string]string{{"name": "別", "language": "x"}}}),
-			invalid(gen.ErrorReasonWorkInfoInvalidLanguage), "aliases[0].language",
+			"2 件目の language が x", http.MethodPost, "/api/people",
+			jsonBody(map[string]any{"names": []map[string]string{{"name": "名"}, {"name": "別", "language": "x"}}}),
+			invalid(gen.ErrorReasonWorkInfoInvalidLanguage), "names[1].language",
 		},
 		{
-			"空の名前", http.MethodPost, "/api/people", `{"name":"  "}`,
-			invalid(gen.ErrorReasonWorkInfoEmpty), "name",
+			"空の名前", http.MethodPost, "/api/people", `{"names":[{"name":"  "}]}`,
+			invalid(gen.ErrorReasonWorkInfoEmpty), "names[0].name",
 		},
 		{
-			"制御文字の別名", http.MethodPost, "/api/people", jsonBody(map[string]any{"name": "名", "aliases": []map[string]string{{"name": "a\tb"}}}),
-			invalid(gen.ErrorReasonWorkInfoControlCharacters), "aliases[0].name",
+			"制御文字の名前", http.MethodPost, "/api/people", jsonBody(map[string]any{"names": []map[string]string{{"name": "名"}, {"name": "a\tb"}}}),
+			invalid(gen.ErrorReasonWorkInfoControlCharacters), "names[1].name",
+		},
+		{
+			"同じ綴りの名前", http.MethodPost, "/api/organizations", `{"names":[{"name":"A"},{"name":"B"},{"name":"A"}]}`,
+			invalid(gen.ErrorReasonWorkInfoDuplicate), "names[2].name",
+		},
+		{
+			"空の一覧の団体", http.MethodPost, "/api/organizations", `{"names":[]}`,
+			invalid(gen.ErrorReasonWorkInfoEmpty), "names",
+		},
+		{
+			"作成に name", http.MethodPost, "/api/people", `{"name":"名","names":[]}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
+		},
+		{
+			"作成に names が無い", http.MethodPost, "/api/people", `{}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
+		},
+		{
+			"name の無い行", http.MethodPost, "/api/people", `{"names":[{"language":"ja"}]}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
 		},
 		{
 			"他の人物の外部 ID", http.MethodPost, "/api/people",
-			jsonBody(map[string]any{"name": "別人", "externalIds": []map[string]string{{"source": "db", "value": "1"}}}),
+			jsonBody(map[string]any{"names": []map[string]string{{"name": "別人"}}, "externalIds": []map[string]string{{"source": "db", "value": "1"}}}),
 			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonExternalIdTaken}, "externalIds[0]",
 		},
 		{
@@ -178,15 +223,15 @@ func TestCreditFieldErrors(t *testing.T) {
 			invalid(gen.ErrorReasonOrganizationParentCycle), "",
 		},
 		{
-			"無い親", http.MethodPost, "/api/organizations", `{"name":"孤","parentId":999999}`,
+			"無い親", http.MethodPost, "/api/organizations", `{"names":[{"name":"孤"}],"parentId":999999}`,
 			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound}, "parentId",
 		},
 		{
-			"人物に親", http.MethodPost, "/api/people", `{"name":"名","parentId":1}`,
+			"人物に親", http.MethodPost, "/api/people", `{"names":[{"name":"名"}],"parentId":1}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
 		},
 		{
-			"人物に null の親", http.MethodPost, "/api/people", `{"name":"名","parentId":null}`,
+			"人物に null の親", http.MethodPost, "/api/people", `{"names":[{"name":"名"}],"parentId":null}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
 		},
 		{
@@ -226,14 +271,15 @@ func TestCreditFieldErrors(t *testing.T) {
 	for i := range long {
 		long[i] = 'a'
 	}
-	assertFieldError(t, "長すぎる名前", f.owned(http.MethodPost, "/api/people", jsonBody(map[string]string{"name": string(long)})),
-		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonWorkInfoTooLong, limit: 200}, "name")
+	assertFieldError(t, "長すぎる名前", f.owned(http.MethodPost, "/api/people",
+		jsonBody(map[string]any{"names": []map[string]string{{"name": string(long)}}})),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonWorkInfoTooLong, limit: 200}, "names[0].name")
 }
 
 func TestMergePeopleReturnsTargetAndNotFound(t *testing.T) {
 	f := newCreditFixture(t)
-	target := f.createPerson(t, map[string]any{"name": "統合先"})
-	source := f.createPerson(t, map[string]any{"name": "統合元", "externalIds": []map[string]string{{"source": "db", "value": "7"}}})
+	target := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "統合先"}}})
+	source := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "統合元"}}, "externalIds": []map[string]string{{"source": "db", "value": "7"}}})
 
 	rec := f.owned(http.MethodPost, creditPath("/api/people", target.Id, "/merge"),
 		jsonBody(map[string]any{"sourceIds": []int64{source.Id, 999999}}))
@@ -241,14 +287,14 @@ func TestMergePeopleReturnsTargetAndNotFound(t *testing.T) {
 		t.Fatalf("統合: status = %d: %s", rec.Code, rec.Body)
 	}
 	got := decode[gen.PersonMergeResponse](t, rec)
-	if got.Person.Id != target.Id || len(got.Person.Aliases) != 1 || got.Person.Aliases[0].Name != "統合元" ||
+	if got.Person.Id != target.Id || creditNameList(got.Person.Names) != "[統合先 統合元]" ||
 		len(got.Person.ExternalIds) != 1 || fmt.Sprint(got.NotFoundIds) != "[999999]" {
 		t.Errorf("統合の応答 = %+v", got)
 	}
 	assertFieldError(t, "統合元の読み出し", f.env.get(creditPath("/api/people", source.Id, ""), f.owner),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonNotFound}, "")
 
-	org := f.createOrganization(t, map[string]any{"name": "団体"})
+	org := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "団体"}}})
 	rec = f.owned(http.MethodPost, creditPath("/api/organizations", org.Id, "/merge"), `{"sourceIds":[999999]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("団体の統合: status = %d: %s", rec.Code, rec.Body)
@@ -260,7 +306,7 @@ func TestMergePeopleReturnsTargetAndNotFound(t *testing.T) {
 
 func TestDeletePersonThenNotFound(t *testing.T) {
 	f := newCreditFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "消す"})
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "消す"}}})
 	rec := f.owned(http.MethodDelete, creditPath("/api/people", person.Id, ""), "")
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("削除: status = %d: %s", rec.Code, rec.Body)
@@ -273,7 +319,7 @@ func TestDeletePersonThenNotFound(t *testing.T) {
 func TestListPeoplePages(t *testing.T) {
 	f := newCreditFixture(t)
 	for _, name := range []string{"A", "B", "C"} {
-		f.createPerson(t, map[string]any{"name": name})
+		f.createPerson(t, map[string]any{"names": []map[string]string{{"name": name}}})
 	}
 	rec := f.env.get("/api/people?limit=2", f.owner)
 	if rec.Code != http.StatusOK {
@@ -323,8 +369,8 @@ func TestListPeoplePages(t *testing.T) {
 
 func TestCreditsOwnerOnly(t *testing.T) {
 	f := newCreditFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "人"})
-	org := f.createOrganization(t, map[string]any{"name": "団"})
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "人"}}})
+	org := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "団"}}})
 	for _, kind := range []struct {
 		prefix string
 		id     int64

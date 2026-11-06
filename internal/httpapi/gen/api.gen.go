@@ -2039,6 +2039,7 @@ const (
 	PeerVocabularyRequestActionDelete PeerVocabularyRequestAction = "delete"
 	PeerVocabularyRequestActionMerge  PeerVocabularyRequestAction = "merge"
 	PeerVocabularyRequestActionRename PeerVocabularyRequestAction = "rename"
+	PeerVocabularyRequestActionUnname PeerVocabularyRequestAction = "unname"
 )
 
 // Valid indicates whether the value is a known member of the PeerVocabularyRequestAction enum.
@@ -2049,6 +2050,8 @@ func (e PeerVocabularyRequestAction) Valid() bool {
 	case PeerVocabularyRequestActionMerge:
 		return true
 	case PeerVocabularyRequestActionRename:
+		return true
+	case PeerVocabularyRequestActionUnname:
 		return true
 	default:
 		return false
@@ -2078,9 +2081,9 @@ func (e PeerVocabularyRequestKind) Valid() bool {
 
 // Defines values for PersonPluginItem.
 const (
-	PersonPluginItemAliases                PersonPluginItem = "aliases"
 	PersonPluginItemExternalIds            PersonPluginItem = "externalIds"
 	PersonPluginItemImage                  PersonPluginItem = "image"
+	PersonPluginItemNames                  PersonPluginItem = "names"
 	PersonPluginItemProfileBio             PersonPluginItem = "profile.bio"
 	PersonPluginItemProfileBirthDate       PersonPluginItem = "profile.birthDate"
 	PersonPluginItemProfileBirthplace      PersonPluginItem = "profile.birthplace"
@@ -2100,11 +2103,11 @@ const (
 // Valid indicates whether the value is a known member of the PersonPluginItem enum.
 func (e PersonPluginItem) Valid() bool {
 	switch e {
-	case PersonPluginItemAliases:
-		return true
 	case PersonPluginItemExternalIds:
 		return true
 	case PersonPluginItemImage:
+		return true
+	case PersonPluginItemNames:
 		return true
 	case PersonPluginItemProfileBio:
 		return true
@@ -4066,29 +4069,22 @@ type AddTagSynonymRequest struct {
 	Name       string `json:"name"`
 }
 
-// Alias One person or organization alias.
-type Alias struct {
-	// Language BCP 47 language tag; omitted when absent.
-	Language *string `json:"language,omitempty"`
-	Name     string  `json:"name"`
-}
-
 // ApplyPersonPluginFetchRequest defines model for ApplyPersonPluginFetchRequest.
 type ApplyPersonPluginFetchRequest struct {
-	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
-	Aliases *[]string `json:"aliases,omitempty"`
-
 	// ExternalIds Fetched external IDs to append.
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 
 	// ImageIndex The kept image that image applies; required with image.
 	ImageIndex *int `json:"imageIndex,omitempty"`
 
-	// Items Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below.
+	// Items Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
 
 	// Links Fetched profile links to append.
 	Links *[]string `json:"links,omitempty"`
+
+	// Names Spellings to append, each the name of one of the result's names.
+	Names *[]string `json:"names,omitempty"`
 }
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
@@ -4760,9 +4756,10 @@ type CreditIdRef struct {
 
 // CreditInput Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.
 type CreditInput struct {
-	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
-	Name        string        `json:"name"`
+
+	// Names The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization.
+	Names []CreditName `json:"names"`
 
 	// OrganizationProfile Organization-only profile; sending it for a person returns 400 invalid_request.
 	OrganizationProfile *OrganizationProfile `json:"organizationProfile,omitempty"`
@@ -4780,11 +4777,24 @@ type CreditMergeRequest struct {
 	SourceIds []int64 `json:"sourceIds"`
 }
 
-// CreditPatch Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent.
+// CreditName One name of a person or organization.
+type CreditName struct {
+	// Language BCP 47 language tag, on any entry; omitted when absent.
+	Language *string `json:"language,omitempty"`
+
+	// Name 1-200 code points after trimming; unique within the list.
+	Name string `json:"name"`
+}
+
+// CreditPatch Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request.
 type CreditPatch struct {
-	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
-	Name        *string       `json:"name,omitempty"`
+
+	// Name Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives.
+	Name *string `json:"name,omitempty"`
+
+	// Names Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names.
+	Names *[]CreditName `json:"names,omitempty"`
 
 	// OrganizationProfile Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing.
 	OrganizationProfile *OrganizationProfilePatch `json:"organizationProfile,omitempty"`
@@ -4864,7 +4874,7 @@ type Error struct {
 	// Code Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
 	Code ErrorCode `json:"code"`
 
-	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
+	// Field JSON property path using dots and array indices, such as names[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
 	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed.
@@ -6021,8 +6031,6 @@ type OnboardingStep string
 
 // Organization One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization.
 type Organization struct {
-	// Aliases Natural-name order.
-	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// ExternalIds Ordered by (source, value).
@@ -6034,7 +6042,12 @@ type Organization struct {
 
 	// ImageRevision Present only while the organization has a logo; changes with every change of it.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
-	Name          string               `json:"name"`
+
+	// Name The display name, the first of names.
+	Name string `json:"name"`
+
+	// Names Every name in the owner's order, the display name first; at least 1 and at most 50.
+	Names []CreditName `json:"names"`
 
 	// Parent Parent organization; omitted for roots.
 	Parent *CreditRef `json:"parent,omitempty"`
@@ -6275,14 +6288,14 @@ type PeerFetchedPerson struct {
 	Role WorkPersonRole `json:"role"`
 }
 
-// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links.
+// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links.
 type PeerFetchedPluginPerson struct {
-	Aliases     []Alias      `json:"aliases"`
 	ExternalIds []ExternalId `json:"externalIds"`
 
-	// Items The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent.
+	// Items The items to write, each with a value above; names, externalIds and profile.links write all the values sent.
 	Items []PersonPluginItem `json:"items"`
 	Name  string             `json:"name"`
+	Names []CreditName       `json:"names"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -6509,13 +6522,14 @@ type PeerState struct {
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
 type PeerVocabularyRequest struct {
+	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only
 	Action PeerVocabularyRequestAction `json:"action"`
 
 	// Into The merge destination, created when absent; required for merge
 	Into *string                   `json:"into,omitempty"`
 	Kind PeerVocabularyRequestKind `json:"kind"`
 
-	// Name The current canonical name; required for rename and delete
+	// Name The current canonical name; required for rename, delete and unname
 	Name *string `json:"name,omitempty"`
 
 	// NewName Required for rename
@@ -6525,7 +6539,7 @@ type PeerVocabularyRequest struct {
 	Sources *[]string `json:"sources,omitempty"`
 }
 
-// PeerVocabularyRequestAction defines model for PeerVocabularyRequest.Action.
+// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only
 type PeerVocabularyRequestAction string
 
 // PeerVocabularyRequestKind defines model for PeerVocabularyRequest.Kind.
@@ -6551,8 +6565,6 @@ type PeopleCleared struct {
 
 // Person One person.
 type Person struct {
-	// Aliases Natural-name order.
-	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// ExternalIds Ordered by (source, value).
@@ -6564,12 +6576,17 @@ type Person struct {
 
 	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
-	Name          string               `json:"name"`
+
+	// Name The display name, the first of names; "" for a provisional person.
+	Name string `json:"name"`
+
+	// Names Every name in the owner's order, the display name first; at most 50.
+	Names []CreditName `json:"names"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
 
-	// Provisional True while the person has no canonical name; name is then "". Setting a name makes the person ordinary.
+	// Provisional True while the person has no names; name is then "" and names []. Setting a name makes the person ordinary.
 	Provisional bool `json:"provisional"`
 
 	// VideoCount Visible videos linked to this person in any role.
@@ -6638,7 +6655,7 @@ type PersonPluginFetchApplied struct {
 	// Person One person.
 	Person Person `json:"person"`
 
-	// Skipped Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order.
+	// Skipped Skipped values: profile items in property order, then names, then external IDs, each in fetched order.
 	Skipped []SkippedPersonValue `json:"skipped"`
 }
 
@@ -6657,15 +6674,17 @@ type PersonPluginFetchRequest struct {
 
 // PersonPluginFetchedPerson A person as the plugin returned it, after VV's limits.
 type PersonPluginFetchedPerson struct {
-	// Aliases First 50 distinct names; languages are checked by the apply.
-	Aliases []Alias `json:"aliases"`
-
 	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs.
 	ExternalIds []ExternalId `json:"externalIds"`
 
 	// ImageCount How many images VV kept, in the plugin's order; served by index.
-	ImageCount *int   `json:"imageCount,omitempty"`
-	Name       string `json:"name"`
+	ImageCount *int `json:"imageCount,omitempty"`
+
+	// Name The fetched display name.
+	Name string `json:"name"`
+
+	// Names The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply.
+	Names []CreditName `json:"names"`
 
 	// Profile Plugin-provided profile values that pass validation; omitted when none.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -7302,7 +7321,7 @@ type SkippedPersonValue struct {
 	// Reason Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
 	Reason SkippedPersonReason `json:"reason"`
 
-	// Value Value shown in the comparison: the profile value, the alias, or source: value.
+	// Value Value shown in the comparison: the profile value, the name, or source: value.
 	Value string `json:"value"`
 }
 
@@ -9606,7 +9625,7 @@ type DeleteMediaFolderParams struct {
 
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
-	// Q Normalized, trimmed query; nonempty queries substring-match names or aliases
+	// Q Normalized, trimmed query; nonempty queries substring-match any of the names
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Sort Sort order
@@ -9633,7 +9652,7 @@ type GetOrganizationImageParams struct {
 
 // ListPeopleParams defines parameters for ListPeople.
 type ListPeopleParams struct {
-	// Q Normalized, trimmed query; nonempty queries substring-match names or aliases
+	// Q Normalized, trimmed query; nonempty queries substring-match any of the names
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Sort Sort order
@@ -10537,7 +10556,7 @@ type ServerInterface interface {
 	// GetOrganization Return an organization
 	// (GET /api/organizations/{id})
 	GetOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
-	// UpdateOrganization Update an organization's name, aliases and external IDs
+	// UpdateOrganization Update an organization's names and external IDs
 	// (PATCH /api/organizations/{id})
 	UpdateOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
 	// DeleteOrganizationImage Remove an organization's logo
@@ -10627,7 +10646,7 @@ type ServerInterface interface {
 	// ApplyPeerFetchedWorkInfo Apply work information the peer fetched for a video of this node
 	// (POST /api/peer/videos/{id}/fetched-work-info)
 	ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
-	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization by name
+	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization, or unname a person, by name
 	// (POST /api/peer/vocabulary)
 	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
 	// ClearPeople Delete every person and all face data
@@ -10645,7 +10664,7 @@ type ServerInterface interface {
 	// GetPerson Return a person
 	// (GET /api/people/{id})
 	GetPerson(w http.ResponseWriter, r *http.Request, id PersonId)
-	// UpdatePerson Update a person's name, aliases and external IDs
+	// UpdatePerson Update a person's names and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
 	// ListPersonAppearances List a person's face appearances

@@ -37,7 +37,12 @@ async function searchByName(user: ReturnType<typeof userEvent.setup>) {
 describe("PersonPage fetch info", () => {
   it("compares the result of the stored ID with no name search", async () => {
     server.person = person(stored);
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      profile: { cup: "C" },
+    };
     const user = userEvent.setup();
     const dialog = await openDialog(user);
 
@@ -65,7 +70,7 @@ describe("PersonPage fetch info", () => {
     ];
     server.fetched = {
       name: "Aoi Sora",
-      aliases: [],
+      names: [{ name: "Aoi Sora" }],
       externalIds: [],
       profile: { cup: "C" },
     };
@@ -100,7 +105,7 @@ describe("PersonPage fetch info", () => {
     server.person = person({ ...stored, profile: { birthplace: "Tokyo" } });
     server.fetched = {
       name: "Aoi",
-      aliases: [{ name: "Sora" }],
+      names: [{ name: "Aoi" }, { name: "Sora" }],
       externalIds: [{ source: "fanza", value: "a1" }],
       profile: { birthplace: "Osaka", heightCm: 160, bloodType: "A" },
     };
@@ -118,7 +123,7 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["profile.bloodType"],
-      aliases: ["Sora"],
+      names: ["Sora"],
       externalIds: [],
       links: [],
     });
@@ -129,7 +134,7 @@ describe("PersonPage fetch info", () => {
     server.person = person({ ...stored, profile: { birthplace: "Tokyo" } });
     server.fetched = {
       name: "Aoi",
-      aliases: [],
+      names: [{ name: "Aoi" }],
       externalIds: [],
       profile: { birthplace: "Osaka", bloodType: "A" },
     };
@@ -151,7 +156,7 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["profile.bloodType", "profile.birthplace"],
-      aliases: [],
+      names: [],
       externalIds: [],
       links: [],
     });
@@ -161,7 +166,7 @@ describe("PersonPage fetch info", () => {
     server.person = person({ ...stored, profile: { birthplace: "Tokyo", cup: "C" } });
     server.fetched = {
       name: "Aoi",
-      aliases: [],
+      names: [{ name: "Aoi" }],
       externalIds: [],
       profile: { birthplace: "Osaka", cup: "D" },
     };
@@ -175,7 +180,7 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["profile.birthplace", "profile.cup"],
-      aliases: [],
+      names: [],
       externalIds: [],
       links: [],
     });
@@ -183,7 +188,12 @@ describe("PersonPage fetch info", () => {
 
   it("keeps the stored face until the owner picks one of the fetched images", async () => {
     server.person = person({ ...stored, imageRevision: 2 });
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], imageCount: 2 };
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      imageCount: 2,
+    };
     server.applied = person({ ...stored, imageRevision: 3 });
     const user = userEvent.setup();
     const dialog = await openDialog(user);
@@ -199,7 +209,7 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["image"],
-      aliases: [],
+      names: [],
       externalIds: [],
       links: [],
       imageIndex: 1,
@@ -222,11 +232,11 @@ describe("PersonPage fetch info", () => {
     });
   });
 
-  it("adds only the aliases, IDs and links left pressed", async () => {
+  it("adds only the names, IDs and links left pressed", async () => {
     server.person = person({ ...stored, profile: { links: ["https://a.test"] } });
     server.fetched = {
       name: "Aoi Sora",
-      aliases: [{ name: "Sora" }],
+      names: [{ name: "Aoi Sora" }, { name: "Sora" }],
       externalIds: [
         { source: "fanza", value: "a1" },
         { source: "fanza", value: "b2" },
@@ -237,7 +247,7 @@ describe("PersonPage fetch info", () => {
     const dialog = await openDialog(user);
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
 
-    // The fetched name is offered as an alias; values the person has are not choices.
+    // The fetched name is one of the names to add; values the person has are not choices.
     const fetchedName = await within(dialog).findByRole("button", { name: "Aoi Sora" });
     expect(fetchedName.getAttribute("aria-pressed")).toBe("true");
     expect(within(dialog).queryByRole("button", { name: "fanza a1" })).toBeNull();
@@ -247,15 +257,20 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: [],
-      aliases: ["Sora"],
+      names: ["Sora"],
       externalIds: [{ source: "fanza", value: "b2" }],
       links: ["https://b.test"],
     });
   });
 
   it("goes back from a comparison to search by another of the person's names", async () => {
-    server.person = person({ ...stored, aliases: [{ name: "Sora" }] });
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.person = person({ ...stored, names: [{ name: "Aoi" }, { name: "Sora" }] });
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      profile: { cup: "C" },
+    };
     const user = userEvent.setup();
     const dialog = await openDialog(user);
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
@@ -277,7 +292,12 @@ describe("PersonPage fetch info", () => {
 
   it("fetches the one handled link with only the plugin and names it on the source line", async () => {
     server.handledLinks = ["https://example.com/p/1"];
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      profile: { cup: "C" },
+    };
     const user = userEvent.setup();
     const dialog = await openDialog(user);
 
@@ -294,7 +314,12 @@ describe("PersonPage fetch info", () => {
 
   it("offers the handled links as a choice and fetches the pressed one", async () => {
     server.handledLinks = ["https://example.com/p/1", "https://example.com/p/2?tab=a"];
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      profile: { cup: "C" },
+    };
     const user = userEvent.setup();
     const dialog = await openDialog(user);
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
@@ -324,7 +349,12 @@ describe("PersonPage fetch info", () => {
 
   it("resends the picked link when the result went out of date", async () => {
     server.handledLinks = ["https://example.com/p/1", "https://example.com/p/2"];
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      profile: { cup: "C" },
+    };
     server.staleApply = true;
     const user = userEvent.setup();
     const dialog = await openDialog(user);
@@ -347,7 +377,12 @@ describe("PersonPage fetch info", () => {
 
   it("fetches a link typed into Name instead of searching it", async () => {
     server.handledLinks = ["https://example.com/p/1"];
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.fetched = {
+      name: "Aoi",
+      names: [{ name: "Aoi" }],
+      externalIds: [],
+      profile: { cup: "C" },
+    };
     const user = userEvent.setup();
     const dialog = await openDialog(user);
     await user.click(within(dialog).getByRole("button", { name: "Search by name" }));
@@ -401,7 +436,7 @@ describe("PersonPage fetch info", () => {
     server.person = person(stored);
     server.fetched = {
       name: "Aoi",
-      aliases: [],
+      names: [{ name: "Aoi" }],
       externalIds: [
         { source: "fanza", value: "a1" },
         { source: "fanza", value: "b2" },

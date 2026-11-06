@@ -713,7 +713,7 @@ paths:
     post:
       operationId: mergePeople
       summary: "Merge people into one target"
-      description: "Atomically move video links, names (as aliases) and external IDs to the target, then delete sources. Return missing sources in notFoundIds; uses the store operation behind `POST /api/people/{id}/merge`."
+      description: "Atomically move video links and external IDs to the target and append each source's names after the target's, in sourceIds order and each spelling once, then delete sources; over 50 names returns 400 work_info_too_many with field names and changes nothing. Return missing sources in notFoundIds; uses the store operation behind `POST /api/people/{id}/merge`."
       requestBody:
         required: true
         content:
@@ -847,7 +847,7 @@ paths:
     post:
       operationId: mergeOrganizations
       summary: "Merge organizations into one target"
-      description: "Atomically move video links, names (as aliases), external IDs and children to the target, then delete sources. Return missing sources in notFoundIds; uses the store operation behind `POST /api/organizations/{id}/merge`."
+      description: "Atomically move video links, external IDs and children to the target and append each source's names after the target's, in sourceIds order and each spelling once, then delete sources; over 50 names returns 400 work_info_too_many with field names and changes nothing. Return missing sources in notFoundIds; uses the store operation behind `POST /api/organizations/{id}/merge`."
       requestBody:
         required: true
         content:
@@ -958,7 +958,7 @@ components:
     CreditQuery:
       name: q
       in: query
-      description: "Trim and normalize the query, then substring-match names or aliases when nonempty."
+      description: "Trim and normalize the query, then substring-match any of the names when nonempty."
       schema:
         type: string
         maxLength: 100
@@ -1022,7 +1022,7 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     CreditInvalid:
-      description: "Malformed body, parentId on a person or null name (`invalid_request`); invalid name, alias, language, external ID or list (`work_info_*`, field, limit); parent is self or descendant (`organization_parent_cycle`). No changes."
+      description: "Malformed body, parentId on a person, null name, or name with names (`invalid_request`); invalid name, language, external ID or list (`work_info_*`, field, limit); parent is self or descendant (`organization_parent_cycle`). No changes."
       content:
         application/json:
           schema:
@@ -1040,7 +1040,7 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     CreditMergeInvalid:
-      description: "Malformed body (`invalid_request`); empty/over-20,000 sourceIds or merged alias/external-ID limits (`work_info_too_many`, field, limit); target among sources (`merge_same_person`, `merge_same_organization`); source organization is a target ancestor (`organization_parent_cycle`). No changes."
+      description: "Malformed body (`invalid_request`); empty/over-20,000 sourceIds or merged name/external-ID limits (`work_info_too_many`, field, limit); target among sources (`merge_same_person`, `merge_same_organization`); source organization is a target ancestor (`organization_parent_cycle`). No changes."
       content:
         application/json:
           schema:
@@ -1094,7 +1094,7 @@ components:
           description: "Zero-based position in tags for tag-name errors, items for display-name/thumbnail/work-info operations, or videos otherwise."
         field:
           type: string
-          description: "Property path using JSON names and array indices, such as people[0].person.id, aliases[2].language, externalIds[1] or parentId. For bulk work-info updates, relative to the item workInfo; present only for work_info_*, person_not_found, organization_not_found or external_id_taken."
+          description: "Property path using JSON names and array indices, such as people[0].person.id, names[2].language, externalIds[1] or parentId. For bulk work-info updates, relative to the item workInfo; present only for work_info_*, person_not_found, organization_not_found or external_id_taken."
         tagId:
           type: integer
           format: int64
@@ -1807,17 +1807,18 @@ components:
           type: integer
           format: int64
 
-    Alias:
+    CreditName:
       type: object
       required: [name]
       additionalProperties: false
-      description: "One person or organization alias."
+      description: "One name of a person or organization."
       properties:
         name:
           type: string
+          description: "1-200 code points after trimming; unique within the list."
         language:
           type: string
-          description: "BCP 47 language tag; omitted when absent."
+          description: "BCP 47 language tag, on any entry; omitted when absent."
 
     ExternalId:
       type: object
@@ -1971,7 +1972,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, provisional, aliases, externalIds, profile, videoCount, createdAt]
+      required: [id, name, provisional, names, externalIds, profile, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -1980,14 +1981,15 @@ components:
           format: int64
         name:
           type: string
+          description: "The display name, the first of names; \"\" for a provisional person."
         provisional:
           type: boolean
-          description: "True while the person has no canonical name; name is then \"\". Setting a name makes the person ordinary."
-        aliases:
+          description: "True while the person has no names; name is then \"\" and names []. Setting a name makes the person ordinary."
+        names:
           type: array
-          description: "Natural-name order; [] when empty."
+          description: "Every name in the owner's order, the display name first; at most 50."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "Ordered by (source, value); [] when empty."
@@ -2106,7 +2108,7 @@ components:
 
     Organization:
       type: object
-      required: [id, name, aliases, externalIds, videoCount, createdAt, parent]
+      required: [id, name, names, externalIds, videoCount, createdAt, parent]
       additionalProperties: false
       description: "One organization; same fields as Person plus its parent."
       properties:
@@ -2115,11 +2117,12 @@ components:
           format: int64
         name:
           type: string
-        aliases:
+          description: "The display name, the first of names."
+        names:
           type: array
-          description: "Natural-name order; [] when empty."
+          description: "Every name in the owner's order, the display name first; at least 1 and at most 50."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "Ordered by (source, value); [] when empty."
@@ -2145,16 +2148,15 @@ components:
 
     CreditInput:
       type: object
-      required: [name]
+      required: [names]
       additionalProperties: false
-      description: "Person or organization creation body; parentId is organization-only and profile person-only."
+      description: "Person or organization creation body; parentId is organization-only and profile person-only. name and aliases are unknown properties and return 400 invalid_request."
       properties:
-        name:
-          type: string
-        aliases:
+        names:
           type: array
+          description: "The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           items:
@@ -2179,10 +2181,12 @@ components:
           description: "Entity to update."
         name:
           type: string
-        aliases:
+          description: "Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives. Sending it with names returns 400 invalid_request."
+        names:
           type: [array, "null"]
+          description: "Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: [array, "null"]
           items:

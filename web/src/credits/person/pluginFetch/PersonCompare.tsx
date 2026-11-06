@@ -18,7 +18,7 @@ import { PersonFace } from "../../../ui/PersonFace";
 import { Bio } from "../PersonProfile";
 import { useLocalToday } from "../useLocalToday";
 import {
-  aliasList,
+  nameList,
   compareRows,
   type CompareRow,
   faceChoices,
@@ -173,7 +173,7 @@ function FacePicker({ props, count }: { props: PersonCompareProps; count: number
   );
 }
 
-type ListKey = "aliases" | "externalIds" | "links";
+type ListKey = "names" | "externalIds" | "links";
 
 interface ListSpec {
   key: ListKey;
@@ -194,9 +194,9 @@ function listSpecs(props: PersonCompareProps): ListSpec[] {
   };
   const specs: ListSpec[] = [
     {
-      key: "aliases",
-      label: text.items.aliases,
-      choices: aliasList(props.current, props.fetched),
+      key: "names",
+      label: text.items.names,
+      choices: nameList(props.current, props.fetched),
       text: (value) => value,
     },
     {

@@ -515,7 +515,7 @@ func findPeopleReviewSets(ctx context.Context, tx *sql.Tx) ([]domain.AssistantRe
 			e, ok := byID[id]
 			if !ok {
 				read, err := readReviewEntities(ctx, tx, `select person_id, name from people_names where person_id = ?
-					order by canonical desc, name`, id)
+					order by position`, id)
 				if err != nil {
 					return nil, err
 				}

@@ -55,6 +55,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Paired library: reading another VVMDM](peer-library.md)
 - [Catalog organization and persistent identity](catalog-organization.md)
 - [People: profiles and faces](people.md)
+- [Names of people and organizations](credit-names.md)
 - [Face recognition](face-recognition.md)
 - [Import progress and recovery](import-pipeline.md)
 - [Force rescan](force-rescan.md)

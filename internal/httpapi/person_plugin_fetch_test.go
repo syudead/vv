@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -73,14 +74,20 @@ func TestFetchPersonWithPluginAnswersTheResultOrItsError(t *testing.T) {
 	}
 	plugins.fetch = domain.PersonPluginFetchResult{
 		ID: "abc", ExpiresAt: time.Unix(1_800_000_600, 0), ImageCount: 2,
-		Person: domain.FetchedPluginPerson{Name: "Hanako", ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}}},
+		Person: domain.FetchedPluginPerson{
+			Name: "Hanako", Names: []domain.CreditName{{Name: "Hanako"}, {Name: "Hana", Language: "ja"}},
+			ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}},
+		},
 	}
 	status, body := post(`{"pluginId":1,"source":"wiki","id":"w-1"}`)
 	var fetch gen.PersonPluginFetch
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
 		fetch.ExpiresAt != 1_800_000_600 || fetch.Person.Name != "Hanako" || fetch.Person.ImageCount == nil || *fetch.Person.ImageCount != 2 ||
-		len(fetch.Person.ExternalIds) != 1 || fetch.Person.Aliases == nil || fetch.Person.Profile != nil {
+		len(fetch.Person.ExternalIds) != 1 || fetch.Person.Profile != nil || bytes.Contains(body, []byte(`"aliases"`)) {
 		t.Fatalf("fetch = %d %s", status, body)
+	}
+	if want := []gen.CreditName{{Name: "Hanako"}, {Name: "Hana", Language: new("ja")}}; !reflect.DeepEqual(fetch.Person.Names, want) {
+		t.Fatalf("names = %+v; want the fetched name first, then the alias with its language", fetch.Person.Names)
 	}
 	if k := plugins.key; k.Source == nil || *k.Source != "wiki" || k.ID == nil || *k.ID != "w-1" || k.Link != nil {
 		t.Fatalf("key = %+v; want the candidate passed on", k)
@@ -180,7 +187,7 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 			Item: domain.PersonItemExternalIDs, Value: "wiki: w-1", Reason: domain.SkippedWorkInfoTaken, HolderName: "Taro",
 		}},
 	}
-	status, body := post(`{"items":["image","profile.heightCm"],"imageIndex":1,"aliases":["Hana"],` +
+	status, body := post(`{"items":["image","profile.heightCm"],"imageIndex":1,"names":["Hana"],` +
 		`"externalIds":[{"source":"wiki","value":"w-1"}],"links":["https://e.test/h"]}`)
 	var applied gen.PersonPluginFetchApplied
 	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil || applied.Person.Id != 3 ||
@@ -193,7 +200,7 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 	}
 	want := domain.PersonPluginSelection{
 		Items:       []domain.PersonPluginItem{domain.PersonItemImage, domain.PersonProfileItem(domain.ProfileHeightCm)},
-		Aliases:     []string{"Hana"},
+		Names:       []string{"Hana"},
 		ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}},
 		Links:       []string{"https://e.test/h"},
 	}
@@ -215,13 +222,18 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 		{"plugin replaced", domain.ErrWorkInfoFetchStale, wantError{status: 409, code: gen.ErrorCodeWorkInfoFetchStale}},
 	} {
 		plugins.err = tc.err
-		status, body := post(`{"items":[],"aliases":["Hana"]}`)
+		status, body := post(`{"items":[],"names":["Hana"]}`)
 		assertErrorBody(t, tc.name, status, body, tc.want)
 	}
 	calls := plugins.calls
-	status, body = post(`{"items":["name"]}`)
-	assertErrorBody(t, "unknown item", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
+	for name, body := range map[string]string{
+		"unknown item": `{"items":["name"]}`, "aliases item": `{"items":["aliases"]}`,
+		"aliases list": `{"items":[],"aliases":["Hana"]}`,
+	} {
+		status, got := post(body)
+		assertErrorBody(t, name, status, got, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
+	}
 	if plugins.calls != calls {
-		t.Fatal("an unknown item reached the registry")
+		t.Fatal("an unknown item or the aliases list reached the registry")
 	}
 }

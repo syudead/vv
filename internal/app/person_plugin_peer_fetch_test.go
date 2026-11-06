@@ -85,7 +85,7 @@ func TestApplyPeerFetchedPersonWritesOnlyItemsWithValues(t *testing.T) {
 	}{
 		{name: "profile item", items: []domain.PersonPluginItem{birthplace}},
 		{name: "image", items: []domain.PersonPluginItem{birthplace, domain.PersonItemImage}, wantErr: domain.ErrWorkInfoApplyInvalid},
-		{name: "item without a value", items: []domain.PersonPluginItem{domain.PersonItemAliases}, wantErr: domain.ErrWorkInfoApplyInvalid},
+		{name: "item without a value", items: []domain.PersonPluginItem{domain.PersonItemNames}, wantErr: domain.ErrWorkInfoApplyInvalid},
 		{name: "unknown item", items: []domain.PersonPluginItem{"profile.weight"}, wantErr: domain.ErrWorkInfoApplyInvalid},
 	}
 	for _, tc := range cases {
