@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -391,7 +392,7 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 			return false
 		}
 		restoreBody(r, raw)
-		normalized, ok := forwardedDisplayName(kind, body)
+		normalized, ok := forwardedDisplayName(kind, body, raw)
 		switch {
 		case !ok:
 			return true
@@ -405,15 +406,23 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 
 // forwardedDisplayName is the normalized display name a forwarded patch sets, "" for a person's emptied list, and
 // false when the patch keeps the name or breaks the rule, which the id's own link then answers before any write.
-func forwardedDisplayName(kind domain.CreditKind, body gen.CreditPatch) (string, bool) {
-	if body.Names != nil {
-		input, err := domain.NormalizeCredit(kind, domain.CreditInput{Names: fromAPINames(body.Names)})
-		return displayNameOf(input.Names), err == nil
-	}
-	if body.Name == nil {
+// It reads the patch as the link does, so null names empty the list and a patch the link refuses changes no link.
+func forwardedDisplayName(kind domain.CreditKind, body gen.CreditPatch, raw []byte) (string, bool) {
+	var fields bodyFields
+	if json.Unmarshal(raw, &fields) != nil {
 		return "", false
 	}
-	normalized, err := domain.NormalizeCreditName(*body.Name)
+	patch, _, ok := creditPatchOf(body, fields, kind)
+	switch {
+	case !ok:
+		return "", false
+	case patch.Names != nil:
+		input, err := domain.NormalizeCredit(kind, domain.CreditInput{Names: *patch.Names})
+		return displayNameOf(input.Names), err == nil
+	case patch.Name == nil:
+		return "", false
+	}
+	normalized, err := domain.NormalizeCreditName(*patch.Name)
 	return normalized, err == nil && normalized != ""
 }
 
