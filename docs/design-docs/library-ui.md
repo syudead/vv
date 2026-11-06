@@ -201,7 +201,7 @@ header (or, while rows are selected, the selection bar) and tabs stick under
 the top bar, and the table's column header sticks right under them. The
 organizations page is an `AdminTablePage` with the same header and column
 header, without the filter, tabs, checkbox column and selection bar, and a
-details dialog (aliases, external IDs and the parent) in place of the synonyms
+details dialog (the names list, external IDs and the parent) in place of the synonyms
 dialog. The people page is a `ListPage` of face cards with the search, the
 favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the

@@ -299,7 +299,8 @@ as the video details editor is
 ([library-ui.md](library-ui.md#details-editor)): the same band, the same
 `Discard changes?` on `Cancel`, the aside's link and the browser's Back, and
 the same return along the history when the person page opened it. Organizations
-keep the details dialog.
+keep the details dialog, whose first group is the same names list
+([Organizations](#organizations-share-the-profile-image-and-favorite-shapes)).
 
 `Save` sends one `PATCH /api/people/{id}` with only the properties that differ
 from the person as loaded, so a change made elsewhere to another property
@@ -530,7 +531,12 @@ linked organization's empty fields, as a person's does; a plugin's organization
 
 The organizations table shows a favorite toggle on each row, and the details
 dialog edits the logo, which saves at once, and the profile, which saves with
-the dialog.
+the dialog. The dialog's first group is the names list of
+[the edit page](#the-edit-page), with the display name as its first row;
+`Save` sends the list as `names` when it was edited, a reason at `names` stays
+under `Add name`, and an emptied list answers `work_info_empty` there. The
+row's inline `Rename` stays and sends `name`, which respells the display name
+and keeps its language and the other names.
 
 | Rejected                                         | Why                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------- |

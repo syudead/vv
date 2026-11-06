@@ -360,9 +360,9 @@ describe("CreditsPage 人物の一覧", () => {
       within(rowOf("Alice")).getByRole("button", { name: "Edit details" }),
     );
     const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
-    await user.click(within(dialog).getAllByRole("button", { name: "Remove alias" })[1]!);
-    await user.click(within(dialog).getByRole("button", { name: "Add alias" }));
-    const names = within(dialog).getAllByRole("textbox", { name: "Alias" });
+    await user.click(within(dialog).getByRole("button", { name: 'Remove "Ali"' }));
+    await user.click(within(dialog).getByRole("button", { name: "Add name" }));
+    const names = within(dialog).getAllByRole("textbox", { name: "Name" });
     const languages = within(dialog).getAllByRole("textbox", { name: "Language" });
     await user.type(names.at(-1)!, "Alicia");
     await user.type(languages.at(-1)!, "es");
@@ -399,7 +399,7 @@ describe("CreditsPage 人物の一覧", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
     // Simulate another tab adding an external ID after the dialog opens.
     server.people[0]!.externalIds.push({ source: "wikidata", value: "Q1" });
-    await user.click(within(dialog).getAllByRole("button", { name: "Remove alias" })[1]!);
+    await user.click(within(dialog).getByRole("button", { name: 'Remove "Ali"' }));
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -453,7 +453,7 @@ describe("CreditsPage 人物の一覧", () => {
     );
     const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
     await user.type(
-      within(dialog).getAllByRole("textbox", { name: "Language" })[0]!,
+      within(dialog).getAllByRole("textbox", { name: "Language" })[1]!,
       "x",
     );
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -463,9 +463,9 @@ describe("CreditsPage 人物の一覧", () => {
     ).toBeDefined();
     expect(
       within(dialog)
-        .getAllByRole("textbox", { name: "Language" })[0]!
-        .getAttribute("aria-invalid"),
-    ).toBe("true");
+        .getAllByRole("textbox", { name: "Language" })
+        .map((field) => field.getAttribute("aria-invalid")),
+    ).toEqual([null, "true", null]);
   });
 
   it("人物の統合先は、名前を打つ前は顔の似ている順に出し、選んで統合できる", async () => {
@@ -651,6 +651,75 @@ describe("CreditsPage 団体の一覧", () => {
     ]);
   });
 
+  it("詳細の窓で別の名前を代表名にして保存すると、新しい順の names を送り、行が新しい名前を出す", async () => {
+    server.organizations[1]!.names = [
+      { name: "Label" },
+      { name: "Lbl" },
+      { name: "レーベル", language: "ja" },
+    ];
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Label");
+
+    await user.click(
+      within(rowOf("Label")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Label"' });
+    await user.click(
+      within(dialog).getByRole("button", { name: 'Make "レーベル" the display name' }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      requests("PATCH", /^\/api\/organizations\/11$/).map((item) => item.body),
+    ).toEqual([
+      {
+        names: [{ name: "レーベル", language: "ja" }, { name: "Label" }, { name: "Lbl" }],
+      },
+    ]);
+    expect(
+      within(rowOf("レーベル")).getByText("Part of Studio · Also known as Label · Lbl"),
+    ).toBeDefined();
+  });
+
+  it("詳細の窓で全ての名前を消して保存し、names の work_info_empty を一覧の下に出す", async () => {
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Label");
+    server.nextError = {
+      status: 400,
+      body: {
+        code: "invalid_request",
+        reason: "work_info_empty",
+        field: "names",
+        message: "empty",
+      },
+    };
+
+    await user.click(
+      within(rowOf("Label")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Label"' });
+    await user.click(within(dialog).getByRole("button", { name: 'Remove "Lbl"' }));
+    await user.click(within(dialog).getByRole("button", { name: 'Remove "Label"' }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    const reason = await within(dialog).findByText("This can't be empty.");
+    expect(
+      requests("PATCH", /^\/api\/organizations\/11$/).map((item) => item.body),
+    ).toEqual([{ names: [] }]);
+    // In the Names group under Add name, not inside the blank row that remains.
+    const group = within(dialog).getByRole("group", { name: "Names" });
+    const add = within(group).getByRole("button", { name: "Add name" });
+    expect(group.contains(reason)).toBe(true);
+    expect(reason.closest("[data-name-row]")).toBeNull();
+    expect(
+      add.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(dialog).getAllByRole("textbox", { name: "Name" })).toHaveLength(1);
+  });
+
   it("親を名前の下の 1 行の先頭に出し、名前は organization の絞り込みへのリンク", async () => {
     renderPage("organization");
     await screen.findByTitle("Label");
@@ -715,6 +784,30 @@ describe("CreditsPage 団体の一覧", () => {
     const input = screen.getByRole("textbox", { name: 'New name for "Studio"' });
     await user.clear(input);
     await user.type(input, "New Studio{Enter}");
+
+    await screen.findByTitle("New Studio");
+    expect(
+      requests("PATCH", /^\/api\/organizations\/10$/).map((item) => item.body),
+    ).toEqual([{ name: "New Studio" }]);
+    expect(
+      within(rowOf("Label")).getByText("Part of New Studio · Also known as Lbl"),
+    ).toBeDefined();
+  });
+
+  it("詳細の窓で親の代表名を変えて保存すると、読み込んだ子の 1 行も新しい名前になる", async () => {
+    server.organizations[0]!.names = [{ name: "Studio" }, { name: "New Studio" }];
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+
+    await user.click(
+      within(rowOf("Studio")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Studio"' });
+    await user.click(
+      within(dialog).getByRole("button", { name: 'Make "New Studio" the display name' }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await screen.findByTitle("New Studio");
     expect(
