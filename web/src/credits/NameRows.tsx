@@ -68,6 +68,14 @@ export function nameRowsOf(names: readonly CreditName[]): NameRow[] {
   }));
 }
 
+/** A row as sent: name and language trimmed, an empty language left out. */
+export function sentName(row: { name: string; language: string }): CreditName {
+  const language = row.language.trim();
+  return language === ""
+    ? { name: row.name.trim() }
+    : { name: row.name.trim(), language };
+}
+
 /**
  * The list a save sends, trimmed and with each sent row's key. A lone blank row is the empty list;
  * otherwise every row is sent, so a blank one gets the server's reason at its own index.
@@ -78,12 +86,7 @@ export function nameRowsToSend(rows: readonly NameRow[]): {
 } {
   if (rows.length === 1 && isBlank(rows[0]!)) return { values: [], keys: [] };
   return {
-    values: rows.map((row) => {
-      const language = row.language.trim();
-      return language === ""
-        ? { name: row.name.trim() }
-        : { name: row.name.trim(), language };
-    }),
+    values: rows.map(sentName),
     keys: rows.map((row) => row.key),
   };
 }

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -112,6 +112,12 @@ describe("NameRows", () => {
 
     expect(names()).toEqual(["あおい", "Aoi", "葵"]);
     expect(displayName()).toBe("あおい");
+    // The row changed slots, so React mounted it anew; dnd-kit puts the focus back on its handle.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: 'Reorder "Aoi"' }),
+      ),
+    );
   });
 
   it("a problem at names[1].name marks the second row's name input", () => {

@@ -492,7 +492,7 @@ The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
 `provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
 A provisional person's page offers `Name…` in place of `Edit`; the edit page
 shows one blank name row with the person's number as its placeholder, and
-`Save` with that row still blank sends `names: []`, so the person stays
+`Save` with that row still blank changes nothing, so the person stays
 provisional.
 
 The `Performers` picker of the details editor lists provisional people under
