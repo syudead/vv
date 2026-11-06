@@ -8,7 +8,7 @@
   "semanticCommitType": "build",
   "semanticCommitScope": "deps",
   "postUpdateOptions": ["gomodTidy"],
-  "constraints": { "npm": "^11.19.0" },
+  "constraints": { "npm": "^12.0.0" },
   "lockFileMaintenance": { "enabled": true },
   "vulnerabilityAlerts": {
     "labels": ["security"],
