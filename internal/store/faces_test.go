@@ -563,3 +563,83 @@ func TestRemovingAProvisionalPerformerDeletesThePersonNothingUses(t *testing.T) 
 		t.Errorf("removed performer's appearance = %+v, want dropped without a person", appearances[1])
 	}
 }
+
+// The performer row belongs to the whole work, so a re-analysis of one version keeps it while another version's
+// face still links the provisional person.
+func TestStoreFaceAnalysisAgainKeepsAPerformerAnotherVersionStillShows(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	pa, pb := fixturePath("/media/a.mp4"), fixturePath("/media/b.mp4")
+	ids := upsertAll(t, db, listingFile(pa, "a", "key-a", 1), listingFile(pb, "b", "key-b", 2))
+	bundle(t, db, ids[pa], ids[pa], ids[pb])
+	// store analyses the next queued video; the first version shows the face elsewhere once moved is set.
+	moved := false
+	var first string
+	store := func() string {
+		t.Helper()
+		job, err := claimFace(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first == "" {
+			first = job.ContentKey
+		}
+		face := facePerson(0.5, 0, faceBasis(0), "crop-"+job.ContentKey)
+		if moved && job.ContentKey == first {
+			face = facePerson(0.9, 100, faceBasis(1), "crop-again")
+		}
+		if err := db.Faces().Store(context.Background(), domain.FaceAnalysis{ContentKey: job.ContentKey, Recognizer: domain.FaceRecognizerSFaceInt8,
+			Generation: job.Generation, People: []domain.FaceAnalysedPerson{face}}); err != nil {
+			t.Fatal(err)
+		}
+		return job.ContentKey
+	}
+	queueAllFaces(t, db)
+	store()
+	other := store()
+	byKey := map[string]int64{}
+	if err := func() error {
+		rows, err := db.sql.Query(`select content_key, person_id from face_appearances`)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var key string
+			var id int64
+			if err := rows.Scan(&key, &id); err != nil {
+				return err
+			}
+			byKey[key] = id
+		}
+		return rows.Err()
+	}(); err != nil {
+		t.Fatal(err)
+	}
+	// The owner merges the two versions' people into one, which then holds the work's one performer row.
+	if _, err := db.Credits().Merge(ctx, domain.CreditPerson, byKey[first], []int64{byKey[other]}); err != nil {
+		t.Fatal(err)
+	}
+	person := byKey[first]
+	var userKey string
+	if err := db.sql.QueryRow(`select content_key from video_work_people where person_id = ?`, person).Scan(&userKey); err != nil {
+		t.Fatal(err)
+	}
+	if got := linkedPeople(t, db, userKey, "performer"); !slices.Equal(got, []int64{person}) {
+		t.Fatalf("performers before = %v, want %d", got, person)
+	}
+
+	// The first version again, with the face elsewhere on screen, so its old appearance carries nothing over; the
+	// other version's analysis carries its face over.
+	moved = true
+	queueAllFaces(t, db)
+	store()
+	store()
+
+	if got := linkedPeople(t, db, userKey, "performer"); !slices.Contains(got, person) {
+		t.Errorf("performers = %v, want %d kept for the other version's face", got, person)
+	}
+	if !personExists(t, db, person) {
+		t.Errorf("person %d is gone though the other version still shows them", person)
+	}
+}

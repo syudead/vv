@@ -251,7 +251,7 @@ func writeFaceAppearances(
 		if kept[old.ID] {
 			continue
 		}
-		removed, err := deleteStaleFaceAppearance(ctx, tx, userKey, result.ContentKey, old)
+		removed, err := deleteStaleFaceAppearance(ctx, tx, userKey, old)
 		if err != nil {
 			return nil, false, err
 		}
@@ -261,11 +261,11 @@ func writeFaceAppearances(
 }
 
 // deleteStaleFaceAppearance deletes a stored appearance the result carried nothing over to. A provisional person it
-// linked loses the video's performer row unless another appearance of the video not dropped still links them, and is
+// linked loses the work's performer row unless an appearance not dropped in any video of the work still links them, and is
 // deleted once nothing uses them, so a re-analysis does not leave the old people beside the new ones. A named
 // person's credit is the owner's and stays. It reports whether it removed a performer row.
 func deleteStaleFaceAppearance(
-	ctx context.Context, tx *sql.Tx, userKey, contentKey string, old domain.StoredFaceAppearance,
+	ctx context.Context, tx *sql.Tx, userKey string, old domain.StoredFaceAppearance,
 ) (bool, error) {
 	if _, err := tx.ExecContext(ctx, `delete from face_appearances where id = ?`, old.ID); err != nil {
 		return false, fmt.Errorf("cannot delete face appearance %d: %w", old.ID, err)
@@ -281,7 +281,7 @@ func deleteStaleFaceAppearance(
 	if named {
 		return false, nil
 	}
-	linked, err := personStillLinked(ctx, tx, contentKey, old.PersonID)
+	linked, err := personLinkedInWork(ctx, tx, userKey, old.PersonID)
 	if err != nil || linked {
 		return false, err
 	}

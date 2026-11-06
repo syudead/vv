@@ -519,8 +519,8 @@ person deleted during the analysis is never linked.
 | New                    | A provisional person (a `people` row without names) whose face is the crop with its face's vector, its candidate pairs, a new appearance and a `performer` row       |
 
 A stored appearance nothing is carried over to is deleted. A provisional
-person it linked loses the video's `performer` row unless another appearance of
-the video not dropped still links them, and is deleted once credited nowhere
+person it linked loses the work's `performer` row unless an appearance not
+dropped in any video of the work still links them, and is deleted once credited nowhere
 and without an appearance that is not dropped, so a re-analysis that joins or
 splits faces differently leaves no old person beside the new one. A named
 person's credit is the owner's and stays. The completed
