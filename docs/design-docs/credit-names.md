@@ -14,7 +14,7 @@ flowchart LR
   assistant[Assistant plan rows] --> screen
   merge[Merge] --> rows
   rule --> rows[(people_names, organization_names)]
-  peer[Paired node] -->|display name by name| rows
+  peer[Paired node] -->|display name or unnaming, by name| rows
 ```
 
 ## The names are one ordered list
@@ -145,3 +145,16 @@ A rename of the display name reaches every read VVMDM by name, whether the
 request sends `name` or a `names` list with a new first entry; the other
 entries stay with each node
 ([peer-library.md, Vocabulary by name](peer-library.md#vocabulary-by-name)).
+`names: []` on a named person reaches them as the `unname` action, which
+empties the names of each node's person of that display name, its other
+names included, so that person is provisional on every node. The whole list
+is checked before any node is written, so a list the rule refuses changes no
+node. A peer older than the action refuses it with `400 invalid_request`,
+which the reader answers naming that peer, as for any link's refusal
+([Mixed versions](peer-library.md#mixed-versions)).
+
+| Rejected | Why |
+| --- | --- |
+| Leaving the peers' person named | The nodes would no longer join one person: the name stays a remote entry, and a later person given that name joins the old one |
+| Unnaming only the display name on the peers | The peer's next entry would become its display name, which no node chose |
+| Sending the whole list to the peers | Each node keeps its own other names, as for a tag's synonyms |

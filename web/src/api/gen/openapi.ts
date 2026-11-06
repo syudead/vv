@@ -2020,8 +2020,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rename, merge or delete a tag, person or organization by name
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
+         * Rename, merge or delete a tag, person or organization, or unname a person, by name
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
          */
         post: operations["applyPeerVocabulary"];
         delete?: never;
@@ -8545,9 +8545,12 @@ export interface components {
         PeerVocabularyRequest: {
             /** @enum {string} */
             kind: "tag" | "person" | "organization";
-            /** @enum {string} */
-            action: "rename" | "merge" | "delete";
-            /** @description The current canonical name; required for rename and delete */
+            /**
+             * @description `unname` empties a person's names, making it provisional; it takes kind `person` only
+             * @enum {string}
+             */
+            action: "rename" | "merge" | "delete" | "unname";
+            /** @description The current canonical name; required for rename, delete and unname */
             name?: string;
             /** @description Required for rename */
             newName?: string;

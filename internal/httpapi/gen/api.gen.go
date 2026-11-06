@@ -2039,6 +2039,7 @@ const (
 	PeerVocabularyRequestActionDelete PeerVocabularyRequestAction = "delete"
 	PeerVocabularyRequestActionMerge  PeerVocabularyRequestAction = "merge"
 	PeerVocabularyRequestActionRename PeerVocabularyRequestAction = "rename"
+	PeerVocabularyRequestActionUnname PeerVocabularyRequestAction = "unname"
 )
 
 // Valid indicates whether the value is a known member of the PeerVocabularyRequestAction enum.
@@ -2049,6 +2050,8 @@ func (e PeerVocabularyRequestAction) Valid() bool {
 	case PeerVocabularyRequestActionMerge:
 		return true
 	case PeerVocabularyRequestActionRename:
+		return true
+	case PeerVocabularyRequestActionUnname:
 		return true
 	default:
 		return false
@@ -6519,13 +6522,14 @@ type PeerState struct {
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
 type PeerVocabularyRequest struct {
+	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only
 	Action PeerVocabularyRequestAction `json:"action"`
 
 	// Into The merge destination, created when absent; required for merge
 	Into *string                   `json:"into,omitempty"`
 	Kind PeerVocabularyRequestKind `json:"kind"`
 
-	// Name The current canonical name; required for rename and delete
+	// Name The current canonical name; required for rename, delete and unname
 	Name *string `json:"name,omitempty"`
 
 	// NewName Required for rename
@@ -6535,7 +6539,7 @@ type PeerVocabularyRequest struct {
 	Sources *[]string `json:"sources,omitempty"`
 }
 
-// PeerVocabularyRequestAction defines model for PeerVocabularyRequest.Action.
+// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only
 type PeerVocabularyRequestAction string
 
 // PeerVocabularyRequestKind defines model for PeerVocabularyRequest.Kind.
@@ -10640,7 +10644,7 @@ type ServerInterface interface {
 	// ApplyPeerFetchedWorkInfo Apply work information the peer fetched for a video of this node
 	// (POST /api/peer/videos/{id}/fetched-work-info)
 	ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
-	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization by name
+	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization, or unname a person, by name
 	// (POST /api/peer/vocabulary)
 	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
 	// ClearPeople Delete every person and all face data

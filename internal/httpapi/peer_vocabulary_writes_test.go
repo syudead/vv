@@ -350,3 +350,51 @@ func TestMergeThePeersProvisionalPersonMergesItOnThePeer(t *testing.T) {
 		t.Errorf("b's people = %v, want none", got)
 	}
 }
+
+// personByID is f's person id with its whole list of names.
+func personByID(t *testing.T, f *guestFixture, id int64) domain.Credit {
+	t.Helper()
+	credit, err := f.env.db.Credits().Get(context.Background(), domain.CreditPerson, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return credit
+}
+
+// Emptying a named person's names unnames the peer's person of that name, its other names included, so the two
+// nodes do not join a name one of them dropped.
+func TestEmptyingAPersonsNamesUnnamesItOnThePeer(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	sato := fb.createWorkInfoPerson(t, "佐藤")
+	peerSato, err := fa.env.db.Credits().Create(context.Background(), domain.CreditPerson,
+		domain.CreditInput{Names: namesOf("佐藤", domain.CreditName{Name: "さとう"})})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rec := b.owner(http.MethodPatch, creditPath("/api/people", sato, ""), `{"names":[]}`); rec.Code != http.StatusOK {
+		t.Fatalf("names []: status = %d: %s", rec.Code, rec.Body)
+	}
+	for node, person := range map[string]domain.Credit{"a": personByID(t, fa, peerSato.ID), "b": personByID(t, fb, sato)} {
+		if !person.Provisional || len(person.Names) != 0 {
+			t.Errorf("%s's person = provisional %v, names %v; want provisional without names", node, person.Provisional, person.Names)
+		}
+	}
+}
+
+// A list the rule refuses is refused before any node is written, even when its first entry renames the person.
+func TestARefusedNamesListRenamesNoNode(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	sato := fb.createWorkInfoPerson(t, "佐藤")
+	fa.createWorkInfoPerson(t, "佐藤")
+
+	assertFieldError(t, "重複のある一覧", b.owner(http.MethodPatch, creditPath("/api/people", sato, ""),
+		`{"names":[{"name":"鈴木"},{"name":"すずき"},{"name":"すずき"}]}`),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonWorkInfoDuplicate},
+		"names[2].name")
+	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
+		if got, want := personNamesOn(t, f), []string{"佐藤"}; !slices.Equal(got, want) {
+			t.Errorf("%s's people = %v, want %v", node, got, want)
+		}
+	}
+}

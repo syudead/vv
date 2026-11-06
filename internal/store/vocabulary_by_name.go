@@ -207,6 +207,9 @@ func (s *CreditStore) ApplyByName(ctx context.Context, kind domain.CreditKind, c
 		domain.VocabularyMerge: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
 			return mergeCreditsByName(ctx, tx, t, change.Into, change.Sources)
 		},
+		domain.VocabularyUnname: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
+			return unnameCreditByName(ctx, tx, t, change.Name)
+		},
 	})
 }
 
@@ -249,7 +252,24 @@ func renameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name, n
 	case !found:
 		return domain.VocabularyOutcome{}, nil, nil
 	}
-	current, updated, changes, err := updateCreditInTx(ctx, tx, t, id, domain.CreditPatch{Name: &normalized})
+	return patchCreditByName(ctx, tx, t, id, domain.CreditPatch{Name: &normalized})
+}
+
+// unnameCreditByName empties the names of the entry of name, which the domain rule allows for a person only.
+func unnameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name string) (
+	domain.VocabularyOutcome, []domain.Event, error,
+) {
+	id, found, err := creditIDByName(ctx, tx, t, name)
+	if err != nil || !found {
+		return domain.VocabularyOutcome{}, nil, err
+	}
+	return patchCreditByName(ctx, tx, t, id, domain.CreditPatch{Names: &[]domain.CreditName{}})
+}
+
+func patchCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, id int64, patch domain.CreditPatch) (
+	domain.VocabularyOutcome, []domain.Event, error,
+) {
+	current, updated, changes, err := updateCreditInTx(ctx, tx, t, id, patch)
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}

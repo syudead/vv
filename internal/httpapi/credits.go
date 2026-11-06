@@ -262,7 +262,7 @@ func creditInputOf(body gen.CreditInput, fields bodyFields, kind domain.CreditKi
 
 func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	patch, ok := s.readCreditPatch(w, r, api.kind)
-	if !ok || !s.creditsConfigured(w) || !s.renameCreditOnPeer(w, r, api.kind, id, patchDisplayName(patch)) {
+	if !ok || !s.creditsConfigured(w) || !s.syncCreditNameOnPeer(w, r, api, id, patch) {
 		return
 	}
 	credit, err := s.credits.Update(r.Context(), api.kind, id, patch)
@@ -574,14 +574,6 @@ func requestNames(fields bodyFields, names *[]gen.CreditName) ([]domain.CreditNa
 		}
 	}
 	return fromAPINames(names), "", true
-}
-
-// patchDisplayName is the display name a patch sets, or nil when it keeps the current one or empties the list.
-func patchDisplayName(patch domain.CreditPatch) *string {
-	if patch.Names != nil && len(*patch.Names) > 0 {
-		return &(*patch.Names)[0].Name
-	}
-	return patch.Name
 }
 
 func fromAPIExternalIDs(ids *[]gen.ExternalId) []domain.ExternalID {
