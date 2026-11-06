@@ -44,7 +44,7 @@ func (p *peerPersonFetch) ApplyPersonPluginFetch(
 ) (domain.PersonPluginApplied, error) {
 	fetched := apply.Fetched
 	body := gen.PeerFetchedPluginPerson{
-		Name: fetched.Name, Aliases: toAPIAliases(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
+		Name: fetched.Name, Aliases: toAPINames(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
 		Items: make([]gen.PersonPluginItem, 0, len(apply.Items)),
 	}
 	if !fetched.Profile.Equal(domain.PersonProfile{}) {
@@ -118,7 +118,7 @@ func (s *server) ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	fetched := domain.FetchedPluginPerson{
-		Name: body.Name, Aliases: fromAPIAliases(&body.Aliases), ExternalIDs: fromAPIExternalIDs(&body.ExternalIds),
+		Name: body.Name, Aliases: fromAPINames(&body.Aliases), ExternalIDs: fromAPIExternalIDs(&body.ExternalIds),
 	}
 	if body.Profile != nil {
 		fetched.Profile = fromAPIProfile(*body.Profile)

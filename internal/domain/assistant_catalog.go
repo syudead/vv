@@ -43,7 +43,6 @@ const (
 	AssistantArgOrganizationNames AssistantArgument = "organizationNames"
 	AssistantArgRole              AssistantArgument = "role"
 	AssistantArgSynonym           AssistantArgument = "synonym"
-	AssistantArgAliases           AssistantArgument = "aliases"
 	AssistantArgCode              AssistantArgument = "code"
 	AssistantArgURL               AssistantArgument = "url"
 	AssistantArgDateKind          AssistantArgument = "dateKind"
@@ -191,8 +190,8 @@ var assistantCatalog = []AssistantAction{
 	assistantRow("setTagKindCardFirst", AssistantTargetTagKind, oneCall, canUndo, AssistantArgEnabled),
 
 	// People and organizations
-	assistantRow("createPerson", AssistantTargetNone, oneCall, canUndo, AssistantArgName, AssistantArgAliases),
-	assistantRow("updatePerson", AssistantTargetPerson, oneCall, canUndo, AssistantArgNewName, AssistantArgAliases),
+	assistantRow("createPerson", AssistantTargetNone, oneCall, canUndo, AssistantArgNames),
+	assistantRow("updatePerson", AssistantTargetPerson, oneCall, canUndo, AssistantArgNewName, AssistantArgNames),
 	assistantRow("deletePerson", AssistantTargetPerson, oneCall, cannotUndo),
 	assistantRow("mergePeople", AssistantTargetPerson, oneCall, cannotUndo, AssistantArgNames),
 	assistantRow("deletePersonImage", AssistantTargetPerson, oneCall, cannotUndo),
@@ -205,9 +204,9 @@ var assistantCatalog = []AssistantAction{
 	schemaRow("splitFaceAppearances", cannotUndo),
 	schemaRow("splitFaceAppearance", cannotUndo),
 	assistantRow("createOrganization", AssistantTargetNone, oneCall, canUndo,
-		AssistantArgName, AssistantArgAliases, AssistantArgParentName),
+		AssistantArgNames, AssistantArgParentName),
 	assistantRow("updateOrganization", AssistantTargetOrganization, oneCall, canUndo,
-		AssistantArgNewName, AssistantArgAliases, AssistantArgParentName),
+		AssistantArgNewName, AssistantArgNames, AssistantArgParentName),
 	assistantRow("deleteOrganization", AssistantTargetOrganization, oneCall, cannotUndo),
 	assistantRow("mergeOrganizations", AssistantTargetOrganization, oneCall, cannotUndo, AssistantArgNames),
 	assistantRow("deleteOrganizationImage", AssistantTargetOrganization, oneCall, cannotUndo),

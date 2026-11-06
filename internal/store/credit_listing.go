@@ -108,11 +108,11 @@ type creditFilter struct {
 	search       string
 	onlyID       int64
 	favoriteOnly bool
-	// provisional, when set, keeps only people with (false) or without (true) a canonical name.
+	// provisional, when set, keeps only people with (false) or without (true) names.
 	provisional *bool
 }
 
-// A prefix puts people without a canonical name after every named one in any name order, ties by ID.
+// A prefix puts people without names after every named one in any name order, ties by ID.
 const creditSortKey = `case when n.{id} is null then '1' else '0' || n.sort_key end`
 
 // Count visible representatives by user-data key so each bundle contributes one video.
@@ -153,7 +153,7 @@ func listedCreditsCTE(t creditTables, audience domain.Audience, filter creditFil
 			       coalesce(c.video_count, 0) as video_count, ` + t.parentColumn() + ` as parent_id,
 			       ` + t.birthKeyColumn() + ` as birth_key
 			  from {entity} e
-			  left join {names} n on n.{id} = e.id and n.canonical = 1
+			  left join {names} n on n.{id} = e.id and n.position = 0
 			  left join credit_counts c on c.credit_id = e.id` + where + `
 		)`
 	return t.q(statement), append(countArgs, whereArgs...)
@@ -171,7 +171,7 @@ func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statemen
 	var listed []adminListRow
 	total := 0
 	for rows.Next() {
-		credit := domain.Credit{Kind: t.kind, Aliases: []domain.Alias{}, ExternalIDs: []domain.ExternalID{}}
+		credit := domain.Credit{Kind: t.kind, Names: []domain.CreditName{}, ExternalIDs: []domain.ExternalID{}}
 		var createdAt int64
 		var row adminListRow
 		var parent sql.NullInt64
@@ -193,7 +193,7 @@ func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statemen
 	return items, listed, total, nil
 }
 
-// Batch aliases, external IDs, profiles and parent names for the page to avoid N+1 queries.
+// Batch names, external IDs, profiles and parent names for the page to avoid N+1 queries.
 func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []domain.Credit) error {
 	if len(items) == 0 {
 		return nil
@@ -213,12 +213,12 @@ func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []d
 		return fmt.Errorf("cannot encode %s ids: %w", t.kind, err)
 	}
 	err = eachCreditRow(ctx, tx, t.q(`select {id}, name, coalesce(language, '') from {names}
-		 where canonical = 0 and {id} in (select value from json_each(?))`), string(encoded),
+		 where {id} in (select value from json_each(?)) order by {id}, position`), string(encoded),
 		func(id int64, a, b string) {
-			items[index[id]].Aliases = append(items[index[id]].Aliases, domain.Alias{Name: a, Language: b})
+			items[index[id]].Names = append(items[index[id]].Names, domain.CreditName{Name: a, Language: b})
 		})
 	if err != nil {
-		return fmt.Errorf("cannot read the aliases of %s entities: %w", t.kind, err)
+		return fmt.Errorf("cannot read the names of %s entities: %w", t.kind, err)
 	}
 	err = eachCreditRow(ctx, tx, t.q(`select {id}, source, value from {ext}
 		 where {id} in (select value from json_each(?)) order by source, value`), string(encoded),
@@ -230,9 +230,6 @@ func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []d
 	}
 	if err := addCreditProfiles(ctx, tx, t, items, index, string(encoded)); err != nil {
 		return err
-	}
-	for i := range items {
-		domain.SortAliases(items[i].Aliases)
 	}
 	return addCreditParentNames(ctx, tx, t, items, parentIDs)
 }
@@ -247,7 +244,7 @@ func addCreditParentNames(ctx context.Context, tx *sql.Tx, t creditTables, items
 	}
 	names := make(map[int64]string, len(parentIDs))
 	err = eachCreditRow(ctx, tx, t.q(`select {id}, name, '' from {names}
-		 where canonical = 1 and {id} in (select value from json_each(?))`), string(encoded),
+		 where position = 0 and {id} in (select value from json_each(?))`), string(encoded),
 		func(id int64, name, _ string) { names[id] = name })
 	if err != nil {
 		return fmt.Errorf("cannot read the parents of %s entities: %w", t.kind, err)

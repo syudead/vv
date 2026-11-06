@@ -24,7 +24,7 @@ func existingMatch(credit domain.Credit) domain.CreditMatch {
 func TestCreditMatchPrefersExternalIDOverName(t *testing.T) {
 	db := migratedDB(t)
 	holder := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+		Names: namesOf("Aoi"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
 	})
 	createPerson(t, db, "Mika")
 
@@ -54,10 +54,10 @@ func TestCreditMatchAmbiguous(t *testing.T) {
 	createPerson(t, db, "Rin")
 	createPerson(t, db, "Rin Kato", "ＲＩＮ")
 	createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+		Names: namesOf("Aoi"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
 	})
 	createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Yui", ExternalIDs: []domain.ExternalID{{Source: "mgs", Value: "y-1"}},
+		Names: namesOf("Yui"), ExternalIDs: []domain.ExternalID{{Source: "mgs", Value: "y-1"}},
 	})
 
 	got := matchFetched(t, db, domain.CreditPerson,
@@ -73,7 +73,7 @@ func TestCreditMatchAmbiguous(t *testing.T) {
 func TestCreditMatchNew(t *testing.T) {
 	db := migratedDB(t)
 	createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+		Names: namesOf("Aoi"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
 	})
 
 	got := matchFetched(t, db, domain.CreditPerson,
@@ -89,7 +89,7 @@ func TestCreditMatchNew(t *testing.T) {
 func TestCreditMatchKeepsKindsApart(t *testing.T) {
 	db := migratedDB(t)
 	createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Studio A", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "s-1"}},
+		Names: namesOf("Studio A"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "s-1"}},
 	})
 	entry := domain.CreditMatchEntry{Name: "Studio A", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "s-1"}}}
 
@@ -123,7 +123,7 @@ func TestCreditMatchIsStable(t *testing.T) {
 func TestCreditMatchBatchKeepsEntryOrder(t *testing.T) {
 	db := migratedDB(t)
 	byID := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "Aoi", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+		Names: namesOf("Aoi"), ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
 	})
 	byName := createPerson(t, db, "Mika", "ミカ")
 	createPerson(t, db, "Rin")

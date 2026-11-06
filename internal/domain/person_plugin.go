@@ -112,7 +112,7 @@ type PersonCandidate struct {
 // request's (source, id) unless the fetch went by link.
 type FetchedPluginPerson struct {
 	Name        string
-	Aliases     []Alias
+	Aliases     []CreditName
 	ExternalIDs []ExternalID
 	// ImageURLs are the first PersonPluginImagesMaxCount distinct valid image URLs in result order.
 	ImageURLs []string
@@ -206,19 +206,19 @@ func parseFetchedImageURLs(raw json.RawMessage, limit int) []string {
 	return out
 }
 
-// parseFetchedAliases trims names, drops nameless and repeated names, and keeps the first CreditAliasesMaxCount;
+// parseFetchedAliases trims names, drops nameless and repeated names, and keeps the first CreditNamesMaxCount;
 // languages are validated by the apply.
-func parseFetchedAliases(raw json.RawMessage) []Alias {
-	var out []Alias
+func parseFetchedAliases(raw json.RawMessage) []CreditName {
+	var out []CreditName
 	for _, a := range lenientList[fetchedAliasJSON](raw) {
-		if len(out) == CreditAliasesMaxCount {
+		if len(out) == CreditNamesMaxCount {
 			break
 		}
 		name := fetchedText(a.Name)
-		if name == "" || slices.ContainsFunc(out, func(kept Alias) bool { return kept.Name == name }) {
+		if name == "" || slices.ContainsFunc(out, func(kept CreditName) bool { return kept.Name == name }) {
 			continue
 		}
-		out = append(out, Alias{Name: name, Language: fetchedText(a.Language)})
+		out = append(out, CreditName{Name: name, Language: fetchedText(a.Language)})
 	}
 	return out
 }

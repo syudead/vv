@@ -1,7 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import { isAborted, RequestFailed, type Video } from "../../api/client";
-import { createCredit, updateCredit } from "../../api/credits";
+import { createNamedCredit, updateCredit } from "../../api/credits";
 import { setVideoDetails } from "../../api/workInfo";
 import { errorText, t } from "../../i18n";
 import { isRemoteId } from "../../lib/remoteId";
@@ -106,7 +106,7 @@ export function useDetailsSave({
     const byName = isRemoteId(video.id);
     for (const entry of byName ? [] : newEntries(draft)) {
       try {
-        const credit = await createCredit(entry.kind, { name: entry.name }, signal);
+        const credit = await createNamedCredit(entry.kind, entry.name, signal);
         draft = withCreated(draft, entry.kind, entry.newKey, credit.id);
         created += 1;
         setDraft(draft);

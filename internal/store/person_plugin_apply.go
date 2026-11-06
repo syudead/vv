@@ -65,7 +65,7 @@ func fillPersonFromPlugin(
 		Current: current, Fetched: fetched, Items: items, Holders: holders, Today: today, Replace: replace,
 	})
 	next := domain.CreditInput{
-		Name: current.Name, Aliases: filled.Aliases, ExternalIDs: filled.ExternalIDs, Profile: filled.Profile,
+		Names: filled.Names, ExternalIDs: filled.ExternalIDs, Profile: filled.Profile,
 	}
 	changes := creditChanges(t, current, next)
 	patch := domain.CreditPatch{ExternalIDs: &next.ExternalIDs}
@@ -93,7 +93,7 @@ func externalIDHolderNames(
 			continue
 		}
 		var name string
-		if err := tx.QueryRowContext(ctx, t.q(`select name from {names} where {id} = ? and canonical = 1`),
+		if err := tx.QueryRowContext(ctx, t.q(`select name from {names} where {id} = ? and position = 0`),
 			holder).Scan(&name); err != nil {
 			return nil, fmt.Errorf("cannot read the name of %s %d: %w", t.kind, holder, err)
 		}

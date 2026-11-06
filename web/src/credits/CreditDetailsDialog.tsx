@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { isAborted, RequestFailed } from "../api/client";
 import {
-  type Alias,
   type Credit,
   type CreditKind,
+  type CreditName,
   type CreditPatch,
   type ExternalId,
   isCreditGone,
   type Organization,
   listCredits,
+  otherNames,
   updateCredit,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
@@ -49,7 +50,8 @@ import {
   OrganizationProfileFields,
 } from "./OrganizationProfileFields";
 
-const maxAliases = 50;
+// The display name counts toward the 50 names, so 49 rows follow it.
+const maxAliases = 49;
 export const maxExternalIds = 20;
 
 /** Combobox values cannot be empty, so None needs a sentinel. */
@@ -61,9 +63,9 @@ export interface AliasRow {
   language: string;
 }
 
-/** Map submitted array indexes back to stable row keys for field errors. */
+/** Map submitted array indexes back to stable row keys for field errors; "" marks a name no row shows. */
 export interface Sent {
-  aliasKeys: string[];
+  nameKeys: string[];
   idKeys: string[];
 }
 
@@ -76,12 +78,13 @@ export function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
   const field = failure.field ?? "";
   const profileControl = organizationProfileControl(field);
   if (profileControl !== undefined) return { control: profileControl, text };
-  if (field === "aliases") return { control: "aliases", text };
+  if (field === "names") return { control: "aliases", text };
   if (field === "externalIds") return { control: "ids", text };
-  const alias = /^aliases\[(\d+)\]\.(name|language)$/.exec(field);
-  if (alias !== null) {
-    const key = sent.aliasKeys[Number(alias[1])];
-    if (key !== undefined) return { control: `alias-${alias[2]!}-${key}`, text };
+  const entry = /^names\[(\d+)\]\.(name|language)$/.exec(field);
+  if (entry !== null) {
+    const key = sent.nameKeys[Number(entry[1])];
+    if (key !== undefined && key !== "")
+      return { control: `alias-${entry[2]!}-${key}`, text };
   }
   const id = /^externalIds\[(\d+)\](?:\.(source|value))?$/.exec(field);
   if (id !== null) {
@@ -116,16 +119,17 @@ function blank(...values: string[]): boolean {
  */
 function buildPatch(
   kind: CreditKind,
+  displayName: CreditName | undefined,
   aliases: readonly AliasRow[],
   ids: readonly IdRow[],
   parent: string,
   edited: Edited,
   organization: OrganizationEdit | null,
 ): { patch: CreditPatch; sent: Sent } {
-  const sentAliases = aliasesToSend(edited.aliases ? aliases : []);
+  const sentNames = namesToSend(displayName, edited.aliases ? aliases : []);
   const sentIds = idsToSend(edited.ids ? ids : []);
   const patch: CreditPatch = {};
-  if (edited.aliases) patch.aliases = sentAliases.values;
+  if (edited.aliases) patch.names = sentNames.values;
   if (edited.ids) patch.externalIds = sentIds.values;
   if (kind === "organization" && edited.parent)
     patch.parentId = parent === noParent ? null : Number(parent);
@@ -133,12 +137,22 @@ function buildPatch(
     const profile = organizationProfilePatch(organization.draft, organization.loaded);
     if (Object.keys(profile).length > 0) patch.organizationProfile = profile;
   }
-  return { patch, sent: { aliasKeys: sentAliases.keys, idKeys: sentIds.keys } };
+  return { patch, sent: { nameKeys: sentNames.keys, idKeys: sentIds.keys } };
+}
+
+/** The names a save sends: first, which no row shows, then the rows as aliasesToSend keeps them. */
+export function namesToSend(
+  first: CreditName | undefined,
+  rows: readonly AliasRow[],
+): { values: CreditName[]; keys: string[] } {
+  const others = aliasesToSend(rows);
+  if (first === undefined) return others;
+  return { values: [first, ...others.values], keys: ["", ...others.keys] };
 }
 
 /** Rows as sent: blank rows and empty languages left out, values trimmed, with each sent row's key. */
 export function aliasesToSend(rows: readonly AliasRow[]): {
-  values: Alias[];
+  values: CreditName[];
   keys: string[];
 } {
   const kept = rows.filter((row) => !blank(row.name, row.language));
@@ -164,7 +178,7 @@ export function idsToSend(rows: readonly IdRow[]): {
   };
 }
 
-export function aliasRowsOf(aliases: readonly Alias[]): AliasRow[] {
+export function aliasRowsOf(aliases: readonly CreditName[]): AliasRow[] {
   return aliases.map((alias) => ({
     key: newRowKey("a"),
     name: alias.name,
@@ -199,7 +213,10 @@ export default function CreditDetailsDialog({
     () => (organization === null ? null : organizationDraftOf(organization.profile)),
   );
   const [loadedOrganization] = useState(organizationDraft);
-  const [aliases, setAliases] = useState<AliasRow[]>(() => aliasRowsOf(credit.aliases));
+  // The dialog edits the names after the display name; a save sends the display name first, unchanged.
+  const [aliases, setAliases] = useState<AliasRow[]>(() =>
+    aliasRowsOf(otherNames(credit)),
+  );
   const [ids, setIds] = useState<IdRow[]>(() => idRowsOf(credit.externalIds));
   const [parent, setParent] = useState(() => {
     const current = parentOf(credit);
@@ -223,6 +240,7 @@ export default function CreditDetailsDialog({
     if (pending) return;
     const { patch, sent } = buildPatch(
       kind,
+      credit.names[0],
       aliases,
       ids,
       parent,

@@ -72,7 +72,7 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 // The kept profile already holds only the values that pass validation, as a work-info fetch shows a fetched person's.
 func toAPIPluginPerson(fetched domain.FetchedPluginPerson, imageCount int) gen.PersonPluginFetchedPerson {
 	person := gen.PersonPluginFetchedPerson{
-		Name: fetched.Name, Aliases: toAPIAliases(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
+		Name: fetched.Name, Aliases: toAPINames(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
 	}
 	if imageCount > 0 {
 		person.ImageCount = new(imageCount)

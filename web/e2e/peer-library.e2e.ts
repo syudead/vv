@@ -69,7 +69,10 @@ async function createPerson(
   name: string,
   headers?: Record<string, string>,
 ): Promise<number> {
-  const created = await request.post("/api/people", { headers, data: { name } });
+  const created = await request.post("/api/people", {
+    headers,
+    data: { names: [{ name }] },
+  });
   expect(created.status()).toBe(201);
   return ((await created.json()) as { id: number }).id;
 }

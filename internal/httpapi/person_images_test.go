@@ -68,7 +68,7 @@ func uploadedRevision(t *testing.T, label string, rec *httptest.ResponseRecorder
 
 func TestPersonImageRevisionsAcrossUploadAndDelete(t *testing.T) {
 	f := newPersonImageFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "山田"})
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "山田"}}})
 	imagePath := creditPath("/api/people", person.Id, "/image")
 
 	first := uploadedRevision(t, "1 回目のアップロード", f.putPersonImage(t, person.Id))
@@ -105,7 +105,7 @@ func TestPersonImageRevisionsAcrossUploadAndDelete(t *testing.T) {
 
 func TestPersonImageErrors(t *testing.T) {
 	f := newPersonImageFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "山田"})
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "山田"}}})
 	missing := creditPath("/api/people", person.Id+100, "/image")
 	notFound := wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonNotFound}
 	rec := f.env.get(missing, f.owner)

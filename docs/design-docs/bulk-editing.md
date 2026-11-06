@@ -99,7 +99,7 @@ filter makes the page clear the selection and reload.
 ## Unnamed performers merge into the added performer
 
 Face recognition credits each face it cannot link as an unnamed (provisional)
-performer ([people.md](people.md#a-person-without-a-canonical-name-is-provisional)),
+performer ([people.md](credit-names.md#a-person-without-names-is-provisional)),
 so adding the real performer to the selected videos would otherwise list them
 twice. When the draft adds a named performer, or a name created on Apply, an
 `Unnamed performers` field under `Performers` shows each unnamed performer of

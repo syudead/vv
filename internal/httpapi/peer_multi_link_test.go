@@ -232,3 +232,20 @@ func TestWatchHistoryClearReachesEveryLink(t *testing.T) {
 		t.Errorf("with node-c down, a cleared %d times and b %d, want 1 and 1", histories[0].clears, histories[1].clears)
 	}
 }
+
+// Emptying the names of a person only links hold, addressed by the first link's id, unnames it on the other link too.
+func TestEmptyingARemoteOnlyPersonsNamesUnnamesItOnEveryLink(t *testing.T) {
+	fa, _, fc, b, _ := threeNodes(t)
+	sato := fa.createWorkInfoPerson(t, "佐藤")
+	fc.createWorkInfoPerson(t, "佐藤")
+
+	rec := b.owner(http.MethodPatch, creditPath("/api/people", domain.RemoteID(1, sato), ""), `{"names":[]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("names []: status = %d: %s", rec.Code, rec.Body)
+	}
+	for node, f := range map[string]*guestFixture{"a": fa, "c": fc} {
+		if got, want := personNamesOn(t, f), []string{""}; !slices.Equal(got, want) {
+			t.Errorf("%s's people = %v, want one provisional person", node, got)
+		}
+	}
+}

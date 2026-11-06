@@ -598,9 +598,9 @@ update.
 | --- | --- | --- |
 | List | `GET …?q=&sort=&cursor=&limit=`, as [List tags](#list-tags); people also take `sort=ageAsc` or `ageDesc` | `{ items, total, totalAll, nextCursor? }` |
 | Look up | `GET …?source=example&externalId=42` | The one entity holding that external ID in `items`, or empty `items` |
-| Create | `POST …` with `{ name, aliases?, externalIds?, parentId?, profile? }` | `200` and the entity |
-| Update | `POST …/update` with `{ id, …fields }` | `200` and the entity; absent fields stay, a given list replaces the stored one, `null` empties it |
-| Merge | `POST …/merge` with `{ targetId, sourceIds }` | `{ person or organization, notFoundIds }`; sources become aliases of the target |
+| Create | `POST …` with `{ names, externalIds?, parentId?, profile? }`; `names` lists every name, the display name first, and `[]` creates a provisional person | `200` and the entity |
+| Update | `POST …/update` with `{ id, …fields }`; `names` replaces the list and `name` respells only the display name, one of them at a time | `200` and the entity; absent fields stay, a given list replaces the stored one, `null` empties it |
+| Merge | `POST …/merge` with `{ targetId, sourceIds }` | `{ person or organization, notFoundIds }`; the sources' names follow the target's, each spelling once |
 | Delete | `POST …/delete` with `{ ids }` | `{ deletedIds, notFoundIds }` in `ids` order |
 
 - An external ID names at most one entity of a kind. Creating or updating an

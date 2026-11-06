@@ -34,7 +34,7 @@ func faceNodes(t *testing.T, peer func(Credits) Credits) (a, b *peerNode) {
 // createPerson creates name on n and returns its id there.
 func createPerson(t *testing.T, n *peerNode, name string) int64 {
 	t.Helper()
-	rec := n.owner(http.MethodPost, "/api/people", `{"name":"`+name+`"}`)
+	rec := n.owner(http.MethodPost, "/api/people", `{"names":[{"name":"`+name+`"}]}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create %s: status = %d: %s", name, rec.Code, rec.Body)
 	}

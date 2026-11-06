@@ -133,7 +133,7 @@ func TestParsePersonResponseLimits(t *testing.T) {
 		aliases[i] = fmt.Sprintf(`{"name":"a%d","language":"ja"}`, i)
 	}
 	got, err := personFetch(t, `{"name":" N ","aliases":[`+strings.Join(aliases, ",")+`],"externalIds":`+idsJSON(ExternalIDsMaxCount)+`}`)
-	if err != nil || got.Name != "N" || len(got.Aliases) != CreditAliasesMaxCount || got.Aliases[49].Name != "a49" {
+	if err != nil || got.Name != "N" || len(got.Aliases) != CreditNamesMaxCount || got.Aliases[49].Name != "a49" {
 		t.Fatalf("person = %+v, %v; want N with aliases a0 to a49", got, err)
 	}
 	if len(got.ExternalIDs) != ExternalIDsMaxCount || got.ExternalIDs[0] != (ExternalID{Source: "s", Value: "1"}) ||

@@ -131,7 +131,7 @@ async function prepareLibrary(request: APIRequestContext) {
 
   const person = await request.post("/api/people", {
     headers: mutationHeaders,
-    data: { name: performer },
+    data: { names: [{ name: performer }] },
   });
   expect(person.status()).toBe(201);
   const { id } = (await person.json()) as { id: number };

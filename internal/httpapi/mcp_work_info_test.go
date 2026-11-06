@@ -19,7 +19,7 @@ func TestMCPWorkInfoTools(t *testing.T) {
 	session := f.connect(t)
 	ctx := context.Background()
 	for i := range 101 {
-		if _, err := f.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: fmt.Sprintf("人物 %03d", i)}); err != nil {
+		if _, err := f.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf(fmt.Sprintf("人物 %03d", i))}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -30,7 +30,7 @@ func TestMCPWorkInfoTools(t *testing.T) {
 	}
 	var created extgen.Person
 	if callTool(t, session, "create_person", map[string]any{
-		"name": "出演者", "aliases": []any{map[string]any{"name": "Performer"}},
+		"names":       []any{map[string]any{"name": "出演者"}, map[string]any{"name": "Performer"}},
 		"externalIds": []any{map[string]any{"source": "example", "value": "42"}},
 	}, &created) || created.Id == 0 {
 		t.Fatalf("create_person = %+v", created)
@@ -41,9 +41,9 @@ func TestMCPWorkInfoTools(t *testing.T) {
 		t.Errorf("list_people の外部 ID の検索 = %+v", found)
 	}
 	var updated extgen.Person
-	if callTool(t, session, "update_person", map[string]any{"id": created.Id, "aliases": nil}, &updated) ||
-		updated.Aliases == nil || len(updated.Aliases) != 0 || len(updated.ExternalIds) != 1 {
-		t.Errorf("update_person の aliases: null = %+v", updated)
+	if callTool(t, session, "update_person", map[string]any{"id": created.Id, "names": []any{map[string]any{"name": "出演者"}}}, &updated) ||
+		updated.Name != "出演者" || len(updated.Names) != 1 || len(updated.ExternalIds) != 1 {
+		t.Errorf("update_person の names = %+v", updated)
 	}
 
 	var written extgen.VideoWorkInfoResponse
@@ -118,8 +118,8 @@ func TestMCPListPeopleSortsByAgeOnlyForPeople(t *testing.T) {
 	}
 
 	var undated, dated extgen.Person
-	if callTool(t, session, "create_person", map[string]any{"name": "A"}, &undated) ||
-		callTool(t, session, "create_person", map[string]any{"name": "B", "profile": map[string]any{"birthDate": "1990-01-02"}}, &dated) {
+	if callTool(t, session, "create_person", map[string]any{"names": []map[string]string{{"name": "A"}}}, &undated) ||
+		callTool(t, session, "create_person", map[string]any{"names": []map[string]string{{"name": "B"}}, "profile": map[string]any{"birthDate": "1990-01-02"}}, &dated) {
 		t.Fatalf("create_person = %+v, %+v", undated, dated)
 	}
 	for _, sort := range []string{"ageAsc", "ageDesc"} {

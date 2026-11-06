@@ -562,7 +562,7 @@ func workInfoReads(entry func(string) *domain.WorkInfo) []workInfoRead {
 	}
 }
 
-// creditLinkRead also reads each person's image revision; organizations read 0. A person without a canonical name reads as provisional.
+// creditLinkRead also reads each person's image revision; organizations read 0. A person without names reads as provisional.
 func creditLinkRead(t creditTables, add func(key, role string, ref domain.CreditRef, revision int64)) workInfoRead {
 	revision := `0`
 	if t.kind == domain.CreditPerson {
@@ -570,7 +570,7 @@ func creditLinkRead(t creditTables, add func(key, role string, ref domain.Credit
 	}
 	return workInfoRead{
 		query: t.q(`select l.content_key, l.role, l.{id}, coalesce(n.name, ''), n.{id} is null, ` + revision + ` from {links} l
-			left join {names} n on n.{id} = l.{id} and n.canonical = 1
+			left join {names} n on n.{id} = l.{id} and n.position = 0
 			where l.content_key in (select value from json_each(?)) order by l.content_key, l.position`),
 		scan: func(rows *sql.Rows) error {
 			var key, role string

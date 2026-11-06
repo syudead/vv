@@ -254,7 +254,7 @@ describe("PersonPage fetch info", () => {
   });
 
   it("goes back from a comparison to search by another of the person's names", async () => {
-    server.person = person({ ...stored, aliases: [{ name: "Sora" }] });
+    server.person = person({ ...stored, names: [{ name: "Aoi" }, { name: "Sora" }] });
     server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
     const user = userEvent.setup();
     const dialog = await openDialog(user);

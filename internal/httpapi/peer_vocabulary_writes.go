@@ -342,7 +342,8 @@ func (s *server) checkRemoteTagRename(w http.ResponseWriter, r *http.Request) bo
 // renameOnOtherLinks renames, by name, the entry of the path's remote id on every other link before the rename is
 // forwarded to the id's own link, so one name stays one entry on every node; it answers w and reports false when
 // the rename stops. With one link it does nothing, and the forward answers as before. An entry without a name, a
-// provisional person, has nothing to rename elsewhere, so only the new name is checked there.
+// provisional person, has nothing to rename elsewhere, so only the new name is checked there; an empty newName
+// unnames a person.
 func (s *server) renameOnOtherLinks(w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, newName string) bool {
 	id, _, found := remotePath(r.URL.EscapedPath(), vocabularyListPaths[kind]+"/")
 	links, err := s.readLinks(r.Context())
@@ -359,17 +360,18 @@ func (s *server) renameOnOtherLinks(w http.ResponseWriter, r *http.Request, kind
 	}
 	current, named := names[id]
 	_, credit := kind.CreditKind()
+	change := domain.VocabularyChange{Kind: kind, Action: domain.VocabularyRename, Name: current, NewName: newName}
 	switch {
-	case !named && credit:
+	case !named && credit && newName != "":
 		return s.renameFreeOnLinks(w, r, kind, "", newName, domain.RemoteSlot(id))
 	case !named || current == newName:
 		return true
+	case newName == "":
+		change = domain.VocabularyChange{Kind: kind, Action: domain.VocabularyUnname, Name: current}
 	case !s.renameFreeOnLinks(w, r, kind, current, newName, 0):
 		return false
 	}
-	_, ok := s.sendVocabularyExcept(w, r, domain.VocabularyChange{
-		Kind: kind, Action: domain.VocabularyRename, Name: current, NewName: newName,
-	}, domain.RemoteSlot(id))
+	_, ok := s.sendVocabularyExcept(w, r, change, domain.RemoteSlot(id))
 	return ok
 }
 
@@ -389,13 +391,30 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 			return false
 		}
 		restoreBody(r, raw)
-		if body.Name == nil {
+		normalized, ok := forwardedDisplayName(kind, body)
+		switch {
+		case !ok:
 			return true
+		case normalized == "":
+			return s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), "")
 		}
-		normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: *body.Name})
-		return err != nil || (s.creditNameFree(w, r.Context(), kind, 0, normalized.Name) &&
-			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized.Name))
+		return s.creditNameFree(w, r.Context(), kind, 0, normalized) &&
+			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized)
 	}
+}
+
+// forwardedDisplayName is the normalized display name a forwarded patch sets, "" for a person's emptied list, and
+// false when the patch keeps the name or breaks the rule, which the id's own link then answers before any write.
+func forwardedDisplayName(kind domain.CreditKind, body gen.CreditPatch) (string, bool) {
+	if body.Names != nil {
+		input, err := domain.NormalizeCredit(kind, domain.CreditInput{Names: fromAPINames(body.Names)})
+		return displayNameOf(input.Names), err == nil
+	}
+	if body.Name == nil {
+		return "", false
+	}
+	normalized, err := domain.NormalizeCreditName(*body.Name)
+	return normalized, err == nil && normalized != ""
 }
 
 // creditNameFree answers 409 with the kind's name_taken reason and reports false when an entry here other than id
@@ -473,35 +492,55 @@ func renameHolder(items []peerVocabularyItem, kind domain.VocabularyKind, name, 
 	return holder.Name, true
 }
 
-// renameCreditOnPeer renames every link's entry of id's name before the local update; a provisional person has no
-// name a link could hold, so only the new name is checked on every node.
-func (s *server) renameCreditOnPeer(w http.ResponseWriter, r *http.Request, kind domain.CreditKind, id int64, name *string) bool {
-	if name == nil {
-		return true
-	}
-	normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: *name})
-	if err != nil {
+// syncCreditNameOnPeer checks patch against id's entry and, when it changes the display name, renames every link's
+// entry of the current name, or unnames it for a person the patch leaves without names, before the local update.
+// The check runs first so a list the rule refuses changes no node; a provisional person has no name a link could
+// hold, so only the new name is checked on every node.
+func (s *server) syncCreditNameOnPeer(
+	w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64, patch domain.CreditPatch,
+) bool {
+	if patch.Name == nil && patch.Names == nil {
 		return true
 	}
 	propagate, ok := s.vocabularyPeer(w, r)
 	if !ok || !propagate {
 		return ok
 	}
-	current, err := s.credits.Get(r.Context(), kind, id)
-	if err != nil || current.Name == normalized.Name {
+	current, err := s.credits.Get(r.Context(), api.kind, id)
+	if err != nil {
 		return true
 	}
-	if !s.creditNameFree(w, r.Context(), kind, id, normalized.Name) ||
-		!s.renameFreeOnLinks(w, r, vocabularyKindOf(kind), current.Name, normalized.Name, 0) {
+	next, err := domain.PatchCredit(current, patch)
+	if err != nil {
+		s.writeCreditError(w, api, err)
 		return false
 	}
-	if current.Name == "" {
+	newName := displayNameOf(next.Names)
+	kind := vocabularyKindOf(api.kind)
+	switch {
+	case newName == current.Name:
+		return true
+	case newName == "":
+		_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{Kind: kind, Action: domain.VocabularyUnname, Name: current.Name})
+		return ok
+	case !s.creditNameFree(w, r.Context(), api.kind, id, newName) ||
+		!s.renameFreeOnLinks(w, r, kind, current.Name, newName, 0):
+		return false
+	case current.Name == "":
 		return true
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
-		Kind: vocabularyKindOf(kind), Action: domain.VocabularyRename, Name: current.Name, NewName: normalized.Name,
+		Kind: kind, Action: domain.VocabularyRename, Name: current.Name, NewName: newName,
 	})
 	return ok
+}
+
+// displayNameOf is the first entry of normalized names, or "" for a provisional person's empty list.
+func displayNameOf(names []domain.CreditName) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0].Name
 }
 
 // deleteOnPeer deletes every link's entry of id's name and reports whether the local deletion follows; a link's own

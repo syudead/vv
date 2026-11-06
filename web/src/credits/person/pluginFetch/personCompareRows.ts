@@ -1,4 +1,4 @@
-import type { Alias, ExternalId } from "../../../api/credits";
+import type { CreditName, ExternalId } from "../../../api/credits";
 import type {
   PersonPluginFetchedPerson,
   PersonPluginItem,
@@ -11,7 +11,7 @@ import { type PersonProfile, personFactGroups } from "../personFacts";
 /** The person a result is compared with; a lookup of a person the apply creates has no name or values. */
 export interface PersonCompareCurrent {
   name?: string;
-  aliases: readonly Alias[];
+  names: readonly CreditName[];
   externalIds: readonly ExternalId[];
   profile: PersonProfile;
   imageRevision?: number;
@@ -108,10 +108,8 @@ export function aliasList(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
 ): ListChoices<string> {
-  return split(
-    aliasChoices(fetched, current.name !== undefined),
-    (name) =>
-      name === current.name || current.aliases.some((alias) => alias.name === name),
+  return split(aliasChoices(fetched, current.name !== undefined), (name) =>
+    current.names.some((entry) => entry.name === name),
   );
 }
 

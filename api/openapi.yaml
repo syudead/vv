@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`). Its folder scope is `X-VV-Peer-Excluded-Folders`, this node's ids of the folders the reader switched off, comma-separated, and none when the header is absent; this node's own switches never apply to it, and a value that is not a list of positive ids returns `400 invalid_request`. Such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; its sorts and `favorite=true` use the peer's own favorites and play history. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While this node reads others, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied by name on every read VVMDM in slot order first and then here: a new name any node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while any read VVMDM is not connected the change returns `409 conflict` with `peer_unreachable` and changes nothing. `Error.peer` names the read VVMDM that is not connected, whose connection fails or that refuses; the read VVMDMs before it stay changed. A failure here after the read VVMDMs applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`). Its folder scope is `X-VV-Peer-Excluded-Folders`, this node's ids of the folders the reader switched off, comma-separated, and none when the header is absent; this node's own switches never apply to it, and a value that is not a list of positive ids returns `400 invalid_request`. Such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; its sorts and `favorite=true` use the peer's own favorites and play history. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While this node reads others, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied by name on every read VVMDM in slot order first and then here: a new name any node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while any read VVMDM is not connected the change returns `409 conflict` with `peer_unreachable` and changes nothing. `Error.peer` names the read VVMDM that is not connected, whose connection fails or that refuses; the read VVMDMs before it stay changed. A failure here after the read VVMDMs applied the change is returned as is, and repeating the request completes it. Synonyms, the names after the display name, tag kinds, the tentative state, rejected names, images and links stay with each node."
 servers:
   - url: /
     description: "Served by the application"
@@ -2861,8 +2861,8 @@ paths:
   /api/peer/vocabulary:
     post:
       operationId: applyPeerVocabulary
-      summary: "Rename, merge or delete a tag, person or organization by name"
-      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error."
+      summary: "Rename, merge or delete a tag, person or organization, or unname a person, by name"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error."
       requestBody:
         required: true
         content:
@@ -2907,7 +2907,7 @@ paths:
     post:
       operationId: matchPeerCredits
       summary: "Match fetched people or organizations against this node's"
-      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md."
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by any of the folded names, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md."
       requestBody:
         required: true
         content:
@@ -3880,7 +3880,7 @@ paths:
     get:
       operationId: listPeople
       summary: "List people"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts."
+      description: "Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -3954,7 +3954,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updatePerson
-      summary: "Update a person's name, aliases and external IDs"
+      summary: "Update a person's names and external IDs"
       description: "Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing person returns 404 person_not_found. parentId is forbidden (400 invalid_request)."
       parameters:
         - $ref: "#/components/parameters/PersonId"
@@ -3997,7 +3997,7 @@ paths:
     post:
       operationId: mergePeople
       summary: "Merge sourceIds into person id"
-      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 person_not_found. Errors change nothing."
+      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 person_not_found. Errors change nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -4445,7 +4445,7 @@ paths:
     get:
       operationId: listOrganizations
       summary: "List organizations"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request."
+      description: "Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -4506,7 +4506,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateOrganization
-      summary: "Update an organization's name, aliases and external IDs"
+      summary: "Update an organization's names and external IDs"
       description: "Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle."
       parameters:
         - $ref: "#/components/parameters/OrganizationId"
@@ -4618,7 +4618,7 @@ paths:
     post:
       operationId: mergeOrganizations
       summary: "Merge sourceIds into organization id"
-      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing."
+      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing."
       parameters:
         - $ref: "#/components/parameters/OrganizationId"
       requestBody:
@@ -6732,7 +6732,7 @@ components:
     CreditQuery:
       name: q
       in: query
-      description: "Normalized, trimmed query; nonempty queries substring-match names or aliases"
+      description: "Normalized, trimmed query; nonempty queries substring-match any of the names"
       schema:
         type: string
         maxLength: 100
@@ -8449,7 +8449,7 @@ components:
           type: array
           description: "First 50 distinct names; languages are checked by the apply."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs."
@@ -9588,17 +9588,18 @@ components:
           type: boolean
           description: "True for a person without a canonical name, whose name is then \"\"; always false for an organization."
 
-    Alias:
+    CreditName:
       type: object
       required: [name]
       additionalProperties: false
-      description: "One person or organization alias."
+      description: "One name of a person or organization."
       properties:
         name:
           type: string
+          description: "1-200 code points after trimming; unique within the list."
         language:
           type: string
-          description: "BCP 47 language tag; omitted when absent."
+          description: "BCP 47 language tag, on any entry; omitted when absent."
 
     ExternalId:
       type: object
@@ -9806,7 +9807,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, provisional, aliases, externalIds, profile, favorite, videoCount, createdAt]
+      required: [id, name, provisional, names, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -9815,14 +9816,15 @@ components:
           format: int64
         name:
           type: string
+          description: "The display name, the first of names; \"\" for a provisional person."
         provisional:
           type: boolean
-          description: "True while the person has no canonical name; name is then \"\". Setting a name makes the person ordinary."
-        aliases:
+          description: "True while the person has no names; name is then \"\" and names []. Setting a name makes the person ordinary."
+        names:
           type: array
-          description: "Natural-name order."
+          description: "Every name in the owner's order, the display name first; at most 50."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "Ordered by (source, value)."
@@ -9946,7 +9948,7 @@ components:
 
     Organization:
       type: object
-      required: [id, name, aliases, externalIds, profile, favorite, videoCount, createdAt]
+      required: [id, name, names, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization."
       properties:
@@ -9955,11 +9957,12 @@ components:
           format: int64
         name:
           type: string
-        aliases:
+          description: "The display name, the first of names."
+        names:
           type: array
-          description: "Natural-name order."
+          description: "Every name in the owner's order, the display name first; at least 1 and at most 50."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "Ordered by (source, value)."
@@ -10032,16 +10035,15 @@ components:
 
     CreditInput:
       type: object
-      required: [name]
+      required: [names]
       additionalProperties: false
       description: "Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only."
       properties:
-        name:
-          type: string
-        aliases:
+        names:
           type: array
+          description: "The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           items:
@@ -10060,14 +10062,16 @@ components:
     CreditPatch:
       type: object
       additionalProperties: false
-      description: "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent."
+      description: "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request."
       properties:
         name:
           type: string
-        aliases:
+          description: "Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives."
+        names:
           type: [array, "null"]
+          description: "Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: [array, "null"]
           items:
@@ -14684,7 +14688,7 @@ components:
         aliases:
           type: array
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           items:
@@ -14722,10 +14726,11 @@ components:
           enum: [tag, person, organization]
         action:
           type: string
-          enum: [rename, merge, delete]
+          enum: [rename, merge, delete, unname]
+          description: "`unname` empties a person's names, making it provisional; it takes kind `person` only"
         name:
           type: string
-          description: "The current canonical name; required for rename and delete"
+          description: "The current canonical name; required for rename, delete and unname"
         newName:
           type: string
           description: "Required for rename"
@@ -14944,7 +14949,7 @@ components:
           description: "Reason limit, included only for reasons whose contract specifies a limit."
         field:
           type: string
-          description: "JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken."
+          description: "JSON property path using dots and array indices, such as names[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken."
         tagName:
           type: string
           description: "Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required."

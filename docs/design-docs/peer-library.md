@@ -302,9 +302,11 @@ on the screens; their lists merge every node's entries in memory with summed
 counts. The connected links are read at once and joined in slot order, so a
 remote-only entry carries the offset of the first link that holds it.
 
-A rename, merge or deletion of a tag, person or organization on the reader
-first checks that every link is `connected`, and otherwise answers `409` with
-reason `peer_unreachable` and the first such link's name in `Error.peer`. It
+A rename, merge or deletion of a tag, person or organization, or emptying a
+named person's names (the `unname` action,
+[credit-names.md](credit-names.md#paired-nodes-share-the-display-name-only)),
+on the reader first checks that every link is `connected`, and otherwise
+answers `409` with reason `peer_unreachable` and the first such link's name in `Error.peer`. It
 then checks the conflict here and, for a rename, in every link's list, so a
 new name a link holds is refused with that link's name before any node
 changes and the same rename succeeds once the name is free. It then writes

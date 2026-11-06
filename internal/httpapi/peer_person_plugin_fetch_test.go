@@ -34,7 +34,7 @@ func remotePersonFetch(
 	t.Helper()
 	fa, fb, b, _ = workInfoNodes(t, runtime)
 	person, err := fa.env.db.Credits().Create(context.Background(), domain.CreditPerson, domain.CreditInput{
-		Name: "早美れむ", ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}},
+		Names: namesOf("早美れむ"), ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestRemotePersonPluginFetchAppliesOnThePeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := personRuntime{image: face.Bytes(), person: domain.FetchedPluginPerson{
-		Name: "早美れむ", Aliases: []domain.Alias{{Name: "はやみれむ"}}, Profile: domain.PersonProfile{Birthplace: "東京都"},
+		Name: "早美れむ", Aliases: []domain.CreditName{{Name: "はやみれむ"}}, Profile: domain.PersonProfile{Birthplace: "東京都"},
 	}}
 	fa, fb, b, person, path, fetched := remotePersonFetch(t, runtime)
 	ctx := context.Background()
@@ -78,7 +78,7 @@ func TestRemotePersonPluginFetchAppliesOnThePeer(t *testing.T) {
 		t.Errorf("apply answer = %+v, want person %d born in 東京都 with a face", applied, remote)
 	}
 	saved, err := fa.env.db.Credits().Get(ctx, domain.CreditPerson, person.ID)
-	if err != nil || saved.Profile.Birthplace != "東京都" || len(saved.Aliases) != 1 || saved.ImageRevision == 0 {
+	if err != nil || saved.Profile.Birthplace != "東京都" || len(saved.Names) != 2 || saved.ImageRevision == 0 {
 		t.Errorf("a's person = %+v, %v, want born in 東京都, alias はやみれむ and a face", saved, err)
 	}
 	matches, err := fb.env.db.Credits().Match(ctx, domain.CreditPerson, []domain.CreditMatchEntry{{Name: "早美れむ"}})

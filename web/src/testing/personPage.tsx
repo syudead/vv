@@ -31,7 +31,7 @@ export function person(overrides: Partial<Person> = {}): Person {
     id: 7,
     name: "Aoi",
     provisional: false,
-    aliases: [],
+    names: [{ name: "Aoi" }],
     externalIds: [],
     profile: {},
     favorite: false,
