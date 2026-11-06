@@ -16,12 +16,14 @@ import {
   type SentTargets,
 } from "./personDraft";
 
+/** The page's own controls first, so a `names` path lands on a row; IDs use the dialog's mapping. */
 function placeProblem(error: unknown, sent: SentTargets): FieldProblem | null {
-  const placed = problemOf(error, sent);
-  if (placed !== null || !(error instanceof RequestFailed)) return placed;
+  if (!(error instanceof RequestFailed)) return null;
   const control =
     error.field === undefined ? undefined : profileControl(error.field, sent);
-  return control === undefined ? null : { control, text: errorText(error) };
+  return control === undefined
+    ? problemOf(error, sent)
+    : { control, text: errorText(error) };
 }
 
 /**

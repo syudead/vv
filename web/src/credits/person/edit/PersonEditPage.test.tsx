@@ -60,9 +60,17 @@ function renderEditor() {
   );
 }
 
+/** Opens the page and returns the first name row's input. */
 async function opened() {
   renderEditor();
-  return screen.findByRole<HTMLInputElement>("textbox", { name: "Name" });
+  const [first] = await screen.findAllByRole<HTMLInputElement>("textbox", {
+    name: "Name",
+  });
+  return first!;
+}
+
+function nameInputs() {
+  return screen.getAllByRole<HTMLInputElement>("textbox", { name: "Name" });
 }
 
 function where() {
@@ -91,9 +99,8 @@ describe("PersonEditPage", () => {
   });
 
   it("1 回の PATCH で変えた property だけを送り、応答を持って人物ページへ戻る", async () => {
-    await opened();
     const user = userEvent.setup();
-    await user.type(screen.getByRole("textbox", { name: "Name" }), " Sora");
+    await user.type(await opened(), " Sora");
     await user.clear(screen.getByRole("textbox", { name: "Birthplace" }));
     await user.type(screen.getByRole("textbox", { name: "Waist (cm)" }), "5x8");
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -136,6 +143,85 @@ describe("PersonEditPage", () => {
       screen.getByRole<HTMLInputElement>("textbox", { name: "Bust (cm)" }).value,
     ).toBe("85");
     expect(where()).toBe("/people/7/edit");
+  });
+
+  describe("名前の一覧", () => {
+    const three: Person = {
+      ...aoi,
+      names: [
+        { name: "Aoi", language: "en" },
+        { name: "あおい", language: "ja" },
+        { name: "葵" },
+      ],
+    };
+
+    beforeEach(() => {
+      server.person = () => json(three);
+      server.patch.mockImplementation(() => json(three));
+    });
+
+    it("別の名前を代表名にして保存すると、言語と元の代表名を保った新しい順の names を送る", async () => {
+      await opened();
+      const user = userEvent.setup();
+      await user.click(
+        screen.getByRole("button", { name: 'Make "あおい" the display name' }),
+      );
+      expect(server.patch).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(server.patch).toHaveBeenCalledTimes(1));
+      expect(server.patch.mock.calls[0]![0]).toEqual({
+        names: [
+          { name: "あおい", language: "ja" },
+          { name: "Aoi", language: "en" },
+          { name: "葵" },
+        ],
+      });
+    });
+
+    it("names[2].name を指す work_info_duplicate はその行に出し、ほかの行を変えない", async () => {
+      server.patch.mockImplementation(() =>
+        json(
+          {
+            code: "invalid_request",
+            message: "x",
+            reason: "work_info_duplicate",
+            field: "names[2].name",
+          },
+          400,
+        ),
+      );
+      await opened();
+      const user = userEvent.setup();
+      await user.clear(nameInputs()[2]!);
+      await user.type(nameInputs()[2]!, "Aoi");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      const third = nameInputs()[2]!;
+      await waitFor(() => expect(third.getAttribute("aria-invalid")).toBe("true"));
+      expect(
+        document.getElementById(third.getAttribute("aria-describedby")!)?.textContent,
+      ).toBe("Already listed.");
+      expect(nameInputs().map((input) => input.value)).toEqual(["Aoi", "あおい", "Aoi"]);
+      expect(nameInputs().map((input) => input.getAttribute("aria-invalid"))).toEqual([
+        null,
+        null,
+        "true",
+      ]);
+      expect(where()).toBe("/people/7/edit");
+    });
+
+    it("全ての行を消して保存すると names: [] を送る", async () => {
+      await opened();
+      const user = userEvent.setup();
+      for (const name of ["Aoi", "あおい", "葵"])
+        await user.click(screen.getByRole("button", { name: `Remove "${name}"` }));
+      expect(nameInputs().map((input) => input.value)).toEqual([""]);
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(server.patch).toHaveBeenCalledTimes(1));
+      expect(server.patch.mock.calls[0]![0]).toEqual({ names: [] });
+    });
   });
 
   it("変えたまま Cancel で離れると Discard changes? を確かめ、Discard で送らずに戻る", async () => {

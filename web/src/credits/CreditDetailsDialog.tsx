@@ -41,6 +41,7 @@ import {
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { parentOf } from "./creditRows";
+import { sentName } from "./NameRows";
 import {
   type OrganizationDraft,
   organizationDraftOf,
@@ -157,12 +158,7 @@ export function aliasesToSend(rows: readonly AliasRow[]): {
 } {
   const kept = rows.filter((row) => !blank(row.name, row.language));
   return {
-    values: kept.map((row) => {
-      const language = row.language.trim();
-      return language === ""
-        ? { name: row.name.trim() }
-        : { name: row.name.trim(), language };
-    }),
+    values: kept.map(sentName),
     keys: kept.map((row) => row.key),
   };
 }

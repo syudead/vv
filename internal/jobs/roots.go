@@ -253,15 +253,14 @@ func (r *roots) untilRecheck(now time.Time) (time.Duration, bool) {
 }
 
 // snapshot groups the available folders by disk in key order, then adds the group of kinds that read no source. It
-// also returns each disk's read slots and the unavailable folders.
-func (r *roots) snapshot() (groups []diskGroup, readSlots map[string]int, unavailable []int64) {
+// also returns each disk's read slots.
+func (r *roots) snapshot() (groups []diskGroup, readSlots map[string]int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	readSlots = map[string]int{}
 	byDisk := map[string][]int64{}
 	for id, state := range r.known {
 		if state.unavailable {
-			unavailable = append(unavailable, id)
 			continue
 		}
 		byDisk[state.disk.Key] = append(byDisk[state.disk.Key], id)
@@ -272,6 +271,20 @@ func (r *roots) snapshot() (groups []diskGroup, readSlots map[string]int, unavai
 		groups = append(groups, diskGroup{disk: disk, roots: ids, kinds: readKinds})
 	}
 	slices.SortFunc(groups, func(a, b diskGroup) int { return cmp.Compare(a.disk, b.disk) })
-	slices.Sort(unavailable)
-	return append(groups, diskGroup{kinds: noReadKinds}), readSlots, unavailable
+	return append(groups, diskGroup{kinds: noReadKinds}), readSlots
+}
+
+// unavailable returns the unavailable folders in ID order. A claim reads them when it is made rather than at the
+// start of the turn, because a job that snoozes mid-turn parks its folder and is requeued at once.
+func (r *roots) unavailable() []int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var ids []int64
+	for id, state := range r.known {
+		if state.unavailable {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }

@@ -1,16 +1,15 @@
-import type { CreditName, CreditPatch, Person } from "../../../api/credits";
+import type { CreditPatch, Person } from "../../../api/credits";
 import type { components } from "../../../api/gen/openapi";
 import type { IdRow, LinkRow } from "../../../player/detailsEditor/draft";
 import { newRowKey } from "../../../player/detailsEditor/draft";
-import { otherNames } from "../../../api/credits";
+import { idRowsOf, idsToSend, type Sent } from "../../CreditDetailsDialog";
 import {
-  type AliasRow,
-  aliasRowsOf,
-  idRowsOf,
-  idsToSend,
-  namesToSend,
-  type Sent,
-} from "../../CreditDetailsDialog";
+  type NameRow,
+  nameControl,
+  nameRowsControl,
+  nameRowsOf,
+  nameRowsToSend,
+} from "../../NameRows";
 
 type ProfilePatch = components["schemas"]["PersonProfilePatch"];
 
@@ -39,10 +38,8 @@ export type ProfileField = TextField | NumberField;
 
 /** Every input as typed; an empty string is a field left unset. */
 export interface PersonDraft {
-  name: string;
-  /** The display name's language, which the page keeps without showing it. */
-  nameLanguage: string;
-  aliases: AliasRow[];
+  /** The names in list order; the first row is the display name. */
+  names: NameRow[];
   externalIds: IdRow[];
   links: LinkRow[];
   profile: Record<ProfileField, string>;
@@ -56,9 +53,7 @@ export function draftFromPerson(person: Person): PersonDraft {
     profile[field] = value === undefined ? "" : String(value);
   }
   return {
-    name: person.name,
-    nameLanguage: person.names[0]?.language ?? "",
-    aliases: aliasRowsOf(otherNames(person)),
+    names: nameRowsOf(person.names),
     externalIds: idRowsOf(person.externalIds),
     links: (person.profile.links ?? []).map((url) => ({ key: newRowKey("u"), url })),
     profile,
@@ -77,18 +72,6 @@ export function digitsOnly(value: string): string {
 function sentLinks(rows: readonly LinkRow[]): { values: string[]; keys: string[] } {
   const kept = rows.filter((row) => row.url.trim() !== "");
   return { values: kept.map((row) => row.url.trim()), keys: kept.map((row) => row.key) };
-}
-
-/** The names list: the name field first, then the rows; a blank name with no rows is the provisional person's []. */
-function personNamesToSend(draft: PersonDraft): { values: CreditName[]; keys: string[] } {
-  const name = draft.name.trim();
-  if (name === "" && noOtherNames(draft.aliases)) return { values: [], keys: [] };
-  const language = draft.nameLanguage.trim();
-  return namesToSend(language === "" ? { name } : { name, language }, draft.aliases);
-}
-
-function noOtherNames(rows: readonly AliasRow[]): boolean {
-  return namesToSend(undefined, rows).values.length === 0;
 }
 
 function sameJson(a: unknown, b: unknown): boolean {
@@ -126,8 +109,8 @@ export function buildPersonPatch(
   loaded: PersonDraft,
 ): { patch: CreditPatch; sent: SentTargets } {
   const patch: CreditPatch = {};
-  const names = personNamesToSend(draft);
-  if (!sameJson(names.values, personNamesToSend(loaded).values))
+  const names = nameRowsToSend(draft.names);
+  if (!sameJson(names.values, nameRowsToSend(loaded.names).values))
     patch.names = names.values;
   const ids = idsToSend(draft.externalIds);
   if (!sameJson(ids.values, idsToSend(loaded.externalIds).values))
@@ -148,9 +131,13 @@ export function draftChanged(draft: PersonDraft, loaded: PersonDraft): boolean {
   return Object.keys(buildPersonPatch(draft, loaded).patch).length > 0;
 }
 
-/** The control a profile or name path names; the other names and IDs are the dialog's mapping. */
+/** The control a name, profile or link path names; the IDs are the dialog's mapping. */
 export function profileControl(field: string, sent: SentTargets): string | undefined {
-  if (field === "name" || field === "names[0].name") return "name";
+  const first = sent.nameKeys[0];
+  if (field === "name")
+    return first === undefined ? undefined : nameControl("name", first);
+  const names = nameRowsControl(field, sent.nameKeys);
+  if (names !== undefined) return names;
   if (field === "profile.links") return "links";
   const link = /^profile\.links\[(\d+)\]$/.exec(field);
   if (link !== null) {
