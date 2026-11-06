@@ -374,6 +374,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     if (details === null) return;
     const order = visibleRows;
     replaceLoaded(updated, details);
+    reparentLoaded(updated.id, updated);
     setDetails(null);
     if (shown(updated)) focusRow(updated.id, "synonyms");
     else focusAfterRemoval(order, updated.id);

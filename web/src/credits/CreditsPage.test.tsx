@@ -794,6 +794,27 @@ describe("CreditsPage 団体の一覧", () => {
     ).toBeDefined();
   });
 
+  it("詳細の窓で親の代表名を変えて保存すると、読み込んだ子の 1 行も新しい名前になる", async () => {
+    server.organizations[0]!.names = [{ name: "Studio" }, { name: "New Studio" }];
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+
+    await user.click(
+      within(rowOf("Studio")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Studio"' });
+    await user.click(
+      within(dialog).getByRole("button", { name: 'Make "New Studio" the display name' }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await screen.findByTitle("New Studio");
+    expect(
+      within(rowOf("Label")).getByText("Part of New Studio · Also known as Lbl"),
+    ).toBeDefined();
+  });
+
   it("親を統合すると、読み込んだ子は統合先の下になる", async () => {
     server.organizations.push(credit({ id: 12, name: "Agency" }));
     const user = userEvent.setup();
