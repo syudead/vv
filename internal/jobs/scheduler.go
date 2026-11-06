@@ -137,13 +137,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 // turn is what one step knows while it grants: the disks in rotation, the most urgent due class of each kind, the
-// paused kinds, the class being served and the unavailable folders.
+// paused kinds and the class being served.
 type turn struct {
-	groups      []diskGroup
-	due         map[domain.JobKind]domain.JobPriority
-	paused      map[domain.JobKind]bool
-	class       domain.JobPriority
-	unavailable []int64
+	groups []diskGroup
+	due    map[domain.JobKind]domain.JobPriority
+	paused map[domain.JobKind]bool
+	class  domain.JobPriority
 }
 
 // step serves the classes strictly in order. Within a class it visits the disks in turn, claiming one job per visit,
@@ -175,7 +174,7 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 	s.roots.refresh(folders, now, func(folder domain.MediaFolder) bool { return s.populated(ctx, folder) })
 	var t turn
 	var readSlots map[string]int
-	t.groups, readSlots, t.unavailable = s.roots.snapshot()
+	t.groups, readSlots = s.roots.snapshot()
 	s.capacity.setDisks(readSlots)
 	if t.due, err = s.queue.DueJobKinds(ctx); err != nil {
 		return turn{}, err
@@ -236,7 +235,7 @@ func (s *Scheduler) grantIn(ctx context.Context, g diskGroup, t turn, empty map[
 			continue
 		}
 		job, err := s.queue.ClaimJobOn(ctx, domain.JobClaim{
-			Kind: kind, MaxPriority: t.class, Roots: g.roots, Unavailable: t.unavailable,
+			Kind: kind, MaxPriority: t.class, Roots: g.roots, Unavailable: s.roots.unavailable(),
 		})
 		if err != nil {
 			s.capacity.releaseJob(g.disk, kind, demand)
