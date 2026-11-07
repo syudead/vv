@@ -5469,7 +5469,7 @@ type LibraryGroup struct {
 // LibraryGroupWatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
 type LibraryGroupWatchState string
 
-// LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. This node lists no smartFolder item; one appears only in a merged page, passed through from a paired node on an older release that still leads its first page with its root folders. Fetch its card values with listSmartFolderCards.
+// LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. GET /api/library no longer returns a smartFolder item; the kind remains only for compatibility with paired nodes on older releases, whose folder-led first page the merged list leaves out.
 type LibraryItem struct {
 	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup   `json:"group,omitempty"`

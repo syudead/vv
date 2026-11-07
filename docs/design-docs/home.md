@@ -45,10 +45,9 @@ counts without traversing descendants or aggregating members. Search and
 member filters still match videos in SQL to decide whether a group is wholly
 matched or should appear as individual videos.
 
-The library lists no smart folders, for any audience or filter; the home reads
-them from `GET /api/smart-folders`. Guests see no smart folders in the folder
-list or the card values; a folder page opened by its URL checks that folder
-alone.
+The library lists no smart folders, for any audience or filter. Guests see no
+smart folders in the folder list or the card values; a folder page opened by
+its URL checks that folder alone.
 
 Selected group cards read their saved values, member IDs for existing selection
 actions, a union of member tags, and at most four cover videos. They do not load

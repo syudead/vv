@@ -6541,7 +6541,7 @@ export interface components {
             /** @description The item's value under the request's sort as the cursor encodes it; null sorts last. */
             sortValue: string | null;
         };
-        /** @description One library item containing exactly one of video, group or smartFolder according to kind. This node lists no smartFolder item; one appears only in a merged page, passed through from a paired node on an older release that still leads its first page with its root folders. Fetch its card values with listSmartFolderCards. */
+        /** @description One library item containing exactly one of video, group or smartFolder according to kind. GET /api/library no longer returns a smartFolder item; the kind remains only for compatibility with paired nodes on older releases, whose folder-led first page the merged list leaves out. */
         LibraryItem: {
             /** @enum {string} */
             kind: "video" | "group" | "smartFolder";
