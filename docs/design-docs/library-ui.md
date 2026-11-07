@@ -673,9 +673,11 @@ the root smart folders in the name order of `GET /api/smart-folders` as the
 home's list-view rows without the check and group cells, with `New smart
 folder` opening the folder dialog with an empty rule. It reads the list again
 after a creation, on every `smartFolder` and `peerItems` event and on
-reconnection, and the creation focuses the new folder's row. `/smart-folders`
-is an owner-only path of the auth gate; the folder pages below it check their
-own folder for a guest.
+reconnection. A created root folder gets the focus on its new row; a folder
+created with a parent has no row there, so the page opens that folder's page
+with `/smart-folders` as its return target. `/smart-folders` is an owner-only
+path of the auth gate; the folder pages below it check their own folder for a
+guest.
 
 While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's
