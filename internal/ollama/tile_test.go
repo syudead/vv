@@ -1,36 +1,31 @@
 package ollama
 
 import (
-	"bytes"
-	"image"
 	"image/color"
-	"image/png"
 	"testing"
 )
 
-func TestTileRejectsInputsOverTheLimits(t *testing.T) {
-	var tall bytes.Buffer
-	if err := png.Encode(&tall, image.NewGray(image.Rect(0, 0, maxCellWidth, 3000))); err != nil {
-		t.Fatal(err)
-	}
+func TestTileRejectsMoreImagesThanTheLimit(t *testing.T) {
 	small := solidPNG(t, color.White)
-	repeat := func(b []byte, n int) [][]byte {
-		out := make([][]byte, n)
-		for i := range out {
-			out[i] = b
-		}
-		return out
+	images := make([][]byte, maxTileImages+1)
+	for i := range images {
+		images[i] = small
 	}
-	cases := []struct {
-		name   string
-		images [][]byte
-	}{
-		{"too many images", repeat(small, maxTileImages+1)},
-		{"canvas over the pixel limit", repeat(tall.Bytes(), 9)},
+	if _, err := Tile(images); err == nil {
+		t.Fatal("Tile succeeded, want an error")
 	}
-	for _, c := range cases {
-		if _, err := Tile(c.images); err == nil {
-			t.Errorf("%s: Tile succeeded, want an error", c.name)
-		}
+}
+
+func TestGridForBoundsTheCanvas(t *testing.T) {
+	// Nine 640x100 cells make a 1920x300 canvas: 576,000 pixels.
+	g, err := gridFor(9, 1280, 200, 576_000)
+	if err != nil {
+		t.Fatalf("gridFor at the limit: %v", err)
+	}
+	if g != (grid{cols: 3, rows: 3, cellW: 640, cellH: 100}) {
+		t.Errorf("grid = %+v, want 3x3 cells of 640x100", g)
+	}
+	if _, err := gridFor(9, 1280, 200, 575_999); err == nil {
+		t.Error("gridFor one pixel over the limit succeeded, want an error")
 	}
 }
