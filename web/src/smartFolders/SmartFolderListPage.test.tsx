@@ -24,8 +24,13 @@ let favoriteAnswer: (() => void) | null = null;
 const fetchMock = vi.fn<typeof fetch>((input, init) => {
   const url = new URL(String(input), "http://localhost");
   if (url.pathname === "/api/smart-folders" && init?.method === "POST") {
-    const body = JSON.parse(String(init.body)) as { name: string };
-    const created = { id: 9, name: body.name, favorite: false };
+    const body = JSON.parse(String(init.body)) as { name: string; parentId?: number };
+    const created: SmartFolderSummary = {
+      id: 9,
+      name: body.name,
+      favorite: false,
+      ...(body.parentId === undefined ? {} : { parentId: body.parentId }),
+    };
     // The server places the new folder by its own name order.
     folders = [folders[0] as SmartFolderSummary, created, ...folders.slice(1)];
     return Promise.resolve(json(created, 201));
@@ -85,6 +90,10 @@ beforeEach(() => {
   folderReads = 0;
   favoriteAnswer = null;
   vi.stubGlobal("fetch", fetchMock);
+  // The dialog's Radix Select and the toast's swipe use these, which jsdom lacks.
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.setPointerCapture ??= () => undefined;
   // Row values stay unread; the page's own list read is the contract here.
   vi.stubGlobal(
     "IntersectionObserver",
@@ -132,6 +141,28 @@ describe("SmartFolderListPage", () => {
     await waitFor(() => expect(document.activeElement?.textContent).toBe("AA"));
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(String(post?.[1]?.body))).not.toHaveProperty("parentId");
+  });
+
+  it("offers the page of a created child folder, which has no row here, from the toast", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(rowNames()).toEqual(["A", "B", "C"]));
+
+    await user.click(screen.getByRole("button", { name: "New smart folder" }));
+    const dialog = await screen.findByRole("dialog", { name: "New smart folder" });
+    await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "AA");
+    await user.click(within(dialog).getByRole("combobox", { name: "Parent" }));
+    await user.click(await screen.findByRole("option", { name: "B" }));
+    await user.type(within(dialog).getByRole("searchbox", { name: "Search" }), "cat");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    // The page's read, the dialog's parent choices, then the page's read after the creation.
+    await waitFor(() => expect(folderReads).toBe(3));
+    expect(rowNames()).toEqual(["A", "B", "C"]);
+    await user.click(await screen.findByRole("button", { name: "Open" }));
+    expect(
+      await screen.findByText("folder page /smart-folders/9 from /smart-folders"),
+    ).toBeTruthy();
   });
 
   it("sends the row heart as smartFolderIds and fills it only after the answer", async () => {
