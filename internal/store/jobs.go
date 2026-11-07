@@ -548,7 +548,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	err = tx.QueryRowContext(ctx, `select attempts, force from jobs where id = ? and state = 'running'`, job.ID).
 		Scan(&attempts, &forced)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=0)", job.ID)
+		return fmt.Errorf("%w (id=%d, affected=0)", domain.ErrJobNotRunning, job.ID)
 	}
 	if err != nil {
 		return fmt.Errorf("cannot check the job attempt count (id=%d): %w", job.ID, err)
@@ -589,7 +589,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		return fmt.Errorf("cannot check the job update count (id=%d): %w", job.ID, err)
 	}
 	if affected != 1 {
-		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=%d)", job.ID, affected)
+		return fmt.Errorf("%w (id=%d, affected=%d)", domain.ErrJobNotRunning, job.ID, affected)
 	}
 
 	if isBackfillJob(job.Kind) {

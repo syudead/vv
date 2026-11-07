@@ -401,12 +401,52 @@ func (s *Scheduler) process(ctx context.Context, job domain.Job) {
 			return
 		}
 		s.fail(ctx, job, err)
-	} else if completeErr := s.queue.CompleteClaimedJob(ctx, job); completeErr != nil {
-		s.logger.Warn("could not record job completion",
-			slog.Int64("job", job.ID), slog.Any("error", completeErr))
+	} else {
+		s.recordOutcome(ctx, job, nil)
 	}
 	if s.finished != nil {
 		s.finished(job)
+	}
+}
+
+// Retry delays for recording a claimed job's outcome; a transient storage failure must not leave the job running
+// until the next restart.
+const (
+	outcomeRetryInitial = time.Second
+	outcomeRetryMax     = 30 * time.Second
+)
+
+// recordOutcome retries a transient storage failure so a claimed job is not left running until the next restart. A
+// cancelled context leaves the job for startup recovery, and a job another operation already settled needs no retry.
+func (s *Scheduler) recordOutcome(ctx context.Context, job domain.Job, cause error) {
+	backoff := outcomeRetryInitial
+	for {
+		var err error
+		if cause != nil {
+			err = s.queue.FailClaimedJob(ctx, job, cause)
+		} else {
+			err = s.queue.CompleteClaimedJob(ctx, job)
+		}
+		if err == nil {
+			return
+		}
+		if ctx.Err() != nil || errors.Is(err, domain.ErrJobNotRunning) {
+			if ctx.Err() == nil {
+				s.logger.Warn("could not record the job outcome",
+					slog.Int64("job", job.ID), slog.Any("error", err))
+			}
+			return
+		}
+		s.logger.Warn("could not record the job outcome; retrying",
+			slog.Int64("job", job.ID), slog.Duration("retryIn", backoff), slog.Any("error", err))
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		backoff = min(backoff*2, outcomeRetryMax)
 	}
 }
 
@@ -458,8 +498,5 @@ func (s *Scheduler) fail(ctx context.Context, job domain.Job, cause error) {
 		slog.Any("error", cause),
 	)
 
-	if err := s.queue.FailClaimedJob(ctx, job, cause); err != nil {
-		s.logger.Warn("could not record job failure",
-			slog.Int64("job", job.ID), slog.Any("error", err))
-	}
+	s.recordOutcome(ctx, job, cause)
 }
