@@ -13,7 +13,8 @@ favorite folders, at any depth, in a band above the list. `GET /api/library`
 stops leading its first page with smart folders, and the band and the list
 page read `GET /api/smart-folders`, which already carries `parentId` and
 `favorite`, and re-read it on the `smartFolder` event, which every favorite
-change of a folder already raises.
+change of a folder already raises, and on the `peerItems` event of a link that
+connects or drops.
 
 The diagram shows the screens this feature adds or changes and what each one
 reads.
@@ -93,7 +94,7 @@ flowchart LR
   filtered -->|no| read[Read the folder list]
   read --> keep[Keep favorite = true]
   keep --> band[Band above the list]
-  band -->|smartFolder event| read
+  band -->|smartFolder or peerItems event| read
 ```
 
 The favorite-only filter keeps the band, as the server's favorites-only
@@ -107,8 +108,8 @@ top (acceptance 5).
 | The band reads `GET /api/smart-folders` and keeps `favorite = true`; `GET /api/library` leads with no folder for anyone | Keep the folders as leading items of `GET /api/library`, with the condition changed from root to favorite | Leading items count toward `limit` and `total`, so a band the design caps would split over pages, and many favorites would fill the first page with folders, the Issue's edge case; the list is unpaginated, so the band needs no cursor |
 | Same | A `favorite=true` parameter on `listSmartFolders` | The list already carries `favorite`, and the list page needs the same read with another filter (`parentId` absent); one read with client-side filters instead of two shapes |
 | Band items are the library's smart folder cards and rows, so selection, the row heart, the playlist action and the card values stay | Navigation chips without selection | Drops bulk edit, playlist add and favorites of folders from the home for no requirement; `ui-design.md` still decides the band's frame, its cap and the link to the list page for the overflow |
-| The band re-reads the whole list on every `smartFolder` event and on reconnection | Patch the band from the event's ids | The event names every folder when a favorite changes, and the list is one small request; the folder cards keep their own value refresh |
-| An old folder cursor answers `400 invalid_cursor` | Keep decoding the folder cursor and skip the section | A restored list snapshot restarts from page one on `invalid_cursor`, as it does for a cursor of another list, and the decoder loses a branch |
+| The band re-reads the whole list on every `smartFolder` event, on every `peerItems` event and on reconnection | Patch the band from the event's ids | The event names every folder when a favorite changes, and the list is one small request; `GET /api/smart-folders` merges each connected link's folders, so a link that connects or drops changes the list without a `smartFolder` event, as `peerItems` already reloads the folder page; the folder cards keep their own value refresh |
+| An old folder cursor answers `400 invalid_cursor` | Keep decoding the folder cursor and skip the section | Only a home tab left open across the upgrade holds one, since the list snapshot lives in memory and a reload starts from page one; its next page fails with the existing `invalid_cursor` message and retry, as for a cursor of another list, and reloading starts again from page one. No automatic recovery is added for a one-time upgrade, and the decoder loses a branch |
 
 ## Smart folder list page
 
@@ -121,7 +122,7 @@ empty rule.
 | --- | --- | --- |
 | The page reads `GET /api/smart-folders` and keeps the folders without `parentId` | A paged root listing of its own | The list is already unpaginated for the parent selectors and the folder trees, so the root folders are a subset of a read that exists; a cursor would serve a count the product keeps small |
 | Creation opens `SmartFolderDialog` in its `create` form with an empty rule, the default sort and no parent; the dialog's existing rule validation refuses an empty rule | A dialog of its own with a name only | The folder needs a rule to mean anything; the dialog already edits name, conditions, sort and parent |
-| After a creation, and on every `smartFolder` event, the page re-reads the list and focuses the new folder's row | Insert the created folder locally in name order | The server's name order folds width, case and kana; a local order would be a second rule |
+| After a creation, on every `smartFolder` and `peerItems` event and on reconnection, the page re-reads the list; after a creation it focuses the new folder's row | Insert the created folder locally in name order | The server's name order folds width, case and kana; a local order would be a second rule |
 | The row's heart is `FavoriteToggle` with `smartFolderIds`, as the library's folder row | A favorite column with a checkbox | The favorite mark is one heart everywhere ([Favorite mark](../../docs/design-docs/library-ui.md#favorite-mark)) |
 | `/smart-folders` (exact) is an owner-only path of the auth gate | Answer guests an empty page | The gate already sends guests away from owner-only screens before any request; the folder pages below the path keep their own guest check |
 | An empty list shows an empty state with the creation action; a failed read shows the error state with retry | A link to the home's filters | Requirement 4: creation without a filter |
@@ -135,7 +136,7 @@ heart does.
 | Decision | Rejected | Why |
 | --- | --- | --- |
 | `FavoriteToggle` in its `page` form among the header actions, next to Play and the menu | A favorite item in the folder's menu | The mark is both mark and toggle; a menu item hides the state |
-| The mark changes after the server answers and the page does not refetch the folder | Refetch the folder as a group card does | The folder read carries the favorite and nothing else the toggle changes; the all-folder event refreshes the band and the list page |
+| The mark changes after the server answers, and the toggle adds no refetch of its own; the page's existing refresh on a `smartFolder` event naming its folder stays, and re-reads the folder when the all-folder event of the change arrives | Refetch the folder from the toggle as a group card does | The folder read carries the favorite and nothing else the toggle changes, and the existing event refresh already re-reads it; a second refetch from the toggle would read it twice. The same event refreshes the band and the list page |
 
 ## Sidebar entry
 
@@ -154,7 +155,7 @@ drawer, active on `/smart-folders` and the folder pages below it.
 ```text
 specs/073-smart-folder-menu/
 ├── plan.md                    # This file
-└── contracts/screen-api.md    # The changed descriptions of listLibrary and updateFavorites
+└── contracts/screen-api.md    # The changed descriptions of listLibrary, updateFavorites and LibraryItem
 ```
 
 `research.md` is not created: the decisions fit the tables above. `data-model.md`
