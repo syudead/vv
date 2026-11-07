@@ -143,7 +143,7 @@ describe("SmartFolderListPage", () => {
     expect(JSON.parse(String(post?.[1]?.body))).not.toHaveProperty("parentId");
   });
 
-  it("offers the page of a created child folder, which has no row here, from the toast", async () => {
+  it("opens the page of a created child folder, which has no row here, with the chosen parent", async () => {
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(rowNames()).toEqual(["A", "B", "C"]));
@@ -156,13 +156,16 @@ describe("SmartFolderListPage", () => {
     await user.type(within(dialog).getByRole("searchbox", { name: "Search" }), "cat");
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    // The page's read, the dialog's parent choices, then the page's read after the creation.
-    await waitFor(() => expect(folderReads).toBe(3));
-    expect(rowNames()).toEqual(["A", "B", "C"]);
-    await user.click(await screen.findByRole("button", { name: "Open" }));
     expect(
       await screen.findByText("folder page /smart-folders/9 from /smart-folders"),
     ).toBeTruthy();
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+      name: "AA",
+      parentId: 2,
+    });
+    expect(screen.getByText('Created "AA"')).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
   it("sends the row heart as smartFolderIds and fills it only after the answer", async () => {

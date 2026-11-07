@@ -25,7 +25,7 @@ const listPath = "/smart-folders";
 /**
  * The owner's root smart folders in the server's name order. A creation reads the list again
  * instead of inserting locally, since the server's name order folds width, case and kana. A child
- * folder has no row here, so its toast opens its page instead of the focus moving to it.
+ * folder has no row here, so the page opens the new folder's page instead.
  */
 export default function SmartFolderListPage() {
   const { state, read, reload } = useSmartFolderList(true);
@@ -137,22 +137,14 @@ export default function SmartFolderListPage() {
           onClose={() => setCreating(false)}
           onDone={(created) => {
             setCreating(false);
-            if (created.parentId === undefined) {
-              toast(t.smartFolders.created(created.name));
-              setFocusId(created.id);
-            } else {
-              toast(t.smartFolders.created(created.name), {
-                action: {
-                  label: t.smartFolders.open,
-                  run: () => {
-                    void navigate(smartFolderPagePath(created.id), {
-                      state: { from: listPath },
-                    });
-                    return Promise.resolve();
-                  },
-                },
+            toast(t.smartFolders.created(created.name));
+            if (created.parentId !== undefined) {
+              void navigate(smartFolderPagePath(created.id), {
+                state: { from: listPath },
               });
+              return;
             }
+            setFocusId(created.id);
             read();
           }}
         />
