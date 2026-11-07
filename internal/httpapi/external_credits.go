@@ -164,7 +164,7 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body gen.CreditInput
 	fields, ok := e.readJSONBodyFields(w, r, &body)
-	if !ok {
+	if !ok || !e.rejectUIOnlyCreditFields(w, fields) {
 		return
 	}
 	input, message, ok := creditInputOf(body, fields, api.kind)
@@ -183,6 +183,16 @@ func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, ap
 	writeExternalBody(w, e.s, api.one(credit))
 }
 
+// The bodies decode into the UI's credit types, which also carry organizationProfile; the external schema has no such
+// property and forbids additional ones.
+func (e *externalServer) rejectUIOnlyCreditFields(w http.ResponseWriter, fields bodyFields) bool {
+	if fields.has("organizationProfile") {
+		e.invalidRequest(w, nil, "organizationProfile is not a property of the external API.")
+		return false
+	}
+	return true
+}
+
 type creditUpdateBody struct {
 	ID *int64 `json:"id"`
 	gen.CreditPatch
@@ -191,7 +201,7 @@ type creditUpdateBody struct {
 func (e *externalServer) updateCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body creditUpdateBody
 	fields, ok := e.readJSONBodyFields(w, r, &body)
-	if !ok || !e.requireProperties(w, fields, "id") {
+	if !ok || !e.requireProperties(w, fields, "id") || !e.rejectUIOnlyCreditFields(w, fields) {
 		return
 	}
 	patch, message, ok := creditPatchOf(body.CreditPatch, fields, api.kind)

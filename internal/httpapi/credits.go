@@ -401,7 +401,7 @@ func (s *server) readJSONBodyProperties(w http.ResponseWriter, r *http.Request, 
 
 // Retain raw body bytes to recover field presence lost by generated types.
 func (s *server) readJSONBodyRaw(w http.ResponseWriter, r *http.Request, target any) ([]byte, bool) {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, jsonBodyLimit))
 	if err != nil {
 		s.invalidBody(w, err, "Cannot read the body.")
 		return nil, false

@@ -409,9 +409,13 @@ func bearerSecret(r *http.Request) (string, bool) {
 	return secret, true
 }
 
-// The colon namespace cannot collide with base64url session IDs.
+// Prefixed keys keep session, API-token and peer requests apart, so a cookie value cannot address another credential's requests.
 func apiTokenLedgerKey(id int64) string {
 	return "api-token:" + strconv.FormatInt(id, 10)
+}
+
+func sessionLedgerKey(token string) string {
+	return "session:" + token
 }
 
 func (s *server) bearerUnauthenticated(w http.ResponseWriter) {
@@ -485,7 +489,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Login deleted the previous session; cancel its active requests too.
 	if current != "" {
-		s.sessions.revoke(current)
+		s.sessions.revokeSession(current)
 	}
 	s.logAuthEvent(r, "login")
 	s.setSessionCookie(w, r, session)
@@ -629,7 +633,7 @@ func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, "Could not sign out.", err)
 			return
 		}
-		s.sessions.revoke(cookie.Value)
+		s.sessions.revokeSession(cookie.Value)
 	}
 	s.logAuthEvent(r, "logout")
 	// Deleting __Host- cookies requires Secure; delete HTTP cookies without it.
@@ -688,8 +692,7 @@ type sessionLedger struct {
 }
 
 type trackedRequest struct {
-	token string
-	// Nil check uses the ledger's session validator.
+	// Nil check disables periodic revalidation.
 	check      func(ctx context.Context) (bool, error)
 	cancel     context.CancelFunc
 	controller *http.ResponseController
@@ -744,20 +747,23 @@ func newSessionLedger(recheck time.Duration, logger *slog.Logger) *sessionLedger
 	return &sessionLedger{requests: map[string]map[*trackedRequest]struct{}{}, recheck: recheck, logger: logger}
 }
 
-// open registers before validation to avoid missed revocation; call release before the handler returns.
+// open registers a session request before validation to avoid missed revocation; call release before the handler returns.
 func (l *sessionLedger) open(
 	ctx context.Context, w http.ResponseWriter, token string,
 ) (context.Context, *trackedRequest, func()) {
-	return l.openWith(ctx, w, token, nil)
+	var check func(ctx context.Context) (bool, error)
+	if l.check != nil {
+		check = func(ctx context.Context) (bool, error) { return l.check(ctx, token) }
+	}
+	return l.openWith(ctx, w, sessionLedgerKey(token), check)
 }
 
-// openWith permits token-ID keys and token validation; nil check falls back to session validation.
+// openWith tracks a request under a namespaced ledger key, revalidated by check.
 func (l *sessionLedger) openWith(
-	ctx context.Context, w http.ResponseWriter, key string, check func(ctx context.Context) (bool, error),
+	ctx context.Context, w http.ResponseWriter, token string, check func(ctx context.Context) (bool, error),
 ) (context.Context, *trackedRequest, func()) {
-	token := key
 	ctx, cancel := context.WithCancel(ctx)
-	req := &trackedRequest{token: token, check: check, cancel: cancel, controller: http.NewResponseController(w)}
+	req := &trackedRequest{check: check, cancel: cancel, controller: http.NewResponseController(w)}
 
 	l.mu.Lock()
 	if l.requests[token] == nil {
@@ -799,10 +805,6 @@ func (l *sessionLedger) serve(
 	req.stopWatch = context.AfterFunc(ctx, req.abort)
 
 	check := req.check
-	if check == nil && l.check != nil {
-		token := req.token
-		check = func(ctx context.Context) (bool, error) { return l.check(ctx, token) }
-	}
 	if check != nil {
 		checkCtx := context.WithoutCancel(ctx)
 		recheck := func() {
@@ -825,8 +827,13 @@ func (l *sessionLedger) serve(
 	return ctx, true
 }
 
-func (l *sessionLedger) revoke(token string) {
-	l.revokeExcept(token, nil)
+func (l *sessionLedger) revoke(key string) {
+	l.revokeExcept(key, nil)
+}
+
+// revokeSession takes a raw cookie value, which only ever addresses session requests.
+func (l *sessionLedger) revokeSession(token string) {
+	l.revoke(sessionLedgerKey(token))
 }
 
 // revokeExcept leaves keep running, for a request that revokes its own credential and must still answer.

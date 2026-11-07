@@ -9826,6 +9826,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Unknown `size` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Video missing or thumbnail not generated */
             404: {
                 headers: {

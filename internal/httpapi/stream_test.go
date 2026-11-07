@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/media"
 )
 
 func streamFixture(t *testing.T, name string, size int) (string, domain.Video, []byte) {
@@ -450,5 +453,31 @@ func TestStreamWithoutMediaFilesIsInternalError(t *testing.T) {
 	})
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1/stream"); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)
+	}
+}
+
+type mediaFoldersFailingLibrary struct {
+	*fakeLibrary
+	err error
+}
+
+func (f mediaFoldersFailingLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	return nil, f.err
+}
+
+// A failed lookup is not proof that the file is missing, so it must not answer the cacheable 404 file_unavailable.
+func TestMediaFileLookupFailureIsInternalError(t *testing.T) {
+	mediaDir, video, _ := streamFixture(t, "movie.mp4", 16)
+	handler := newTestServer(t, Options{
+		Videos: mediaFoldersFailingLibrary{
+			fakeLibrary: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+			err:         errors.New("database is locked"),
+		},
+		Subtitles: media.NewSubtitleConverter(),
+	})
+	for _, target := range []string{"/api/videos/1/stream", "/api/videos/1/subtitles", "/api/videos/1/subtitles/movie.srt"} {
+		rec := do(t, handler, http.MethodGet, target)
+		assertErrorBody(t, target, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusInternalServerError, code: codeInternal})
 	}
 }

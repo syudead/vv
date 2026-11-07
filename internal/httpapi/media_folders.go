@@ -177,8 +177,11 @@ func toAPIMediaFolder(folder domain.MediaFolder) gen.MediaFolder {
 	}
 }
 
+// jsonBodyLimit bounds ordinary JSON bodies; endpoints whose schema allows more use readLargeJSONBody.
+const jsonBodyLimit = 1 << 20
+
 func (s *server) readJSONBody(w http.ResponseWriter, r *http.Request, target any) bool {
-	return s.decodeJSONBody(w, r, io.LimitReader(r.Body, 1<<20), target)
+	return s.readLargeJSONBody(w, r, jsonBodyLimit, target)
 }
 
 // Oversized JSON bodies report their limit rather than a truncated-JSON error.

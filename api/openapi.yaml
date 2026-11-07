@@ -917,6 +917,12 @@ paths:
                 format: binary
         "304":
           description: "`If-None-Match` matches `ETag`"
+        "400":
+          description: "Unknown `size`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "Video missing or thumbnail not generated"
 

@@ -24,9 +24,9 @@ func (s *server) ListVideoSubtitles(w http.ResponseWriter, r *http.Request, id g
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	_, sidecars, ok := s.subtitleSidecars(r, video)
-	if !ok {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	_, sidecars, err := s.subtitleSidecars(r, video)
+	if err != nil {
+		s.mediaFileError(w, err)
 		return
 	}
 
@@ -73,9 +73,9 @@ func (s *server) GetVideoSubtitle(
 		s.internalError(w, "Subtitle conversion is not configured.", nil)
 		return
 	}
-	location, sidecars, ok := s.subtitleSidecars(r, video)
-	if !ok {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	location, sidecars, err := s.subtitleSidecars(r, video)
+	if err != nil {
+		s.mediaFileError(w, err)
 		return
 	}
 
@@ -143,25 +143,26 @@ func (s *server) readSubtitle(
 	return s.subtitles.Convert(src, sidecar.Format, offsetMs)
 }
 
-// Try locations in streaming order; unreadable folders return an empty list and log the cause.
-func (s *server) subtitleSidecars(r *http.Request, video domain.Video) (string, []domain.SubtitleSidecar, bool) {
+// Try locations in streaming order; unreadable folders return an empty list and log the cause. No usable location
+// returns ErrMediaFileUnavailable, and lookup failures are returned as they are.
+func (s *server) subtitleSidecars(r *http.Request, video domain.Video) (string, []domain.SubtitleSidecar, error) {
 	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {
-		return "", nil, false
+		return "", nil, err
 	}
 	roots, err := s.mediaFolderPaths(r)
 	if err != nil {
-		return "", nil, false
+		return "", nil, err
 	}
 	for _, location := range locations {
 		entries, err := s.files.ListSidecarFiles(roots, location.Path)
 		switch {
 		case err == nil:
-			return location.Path, domain.SubtitleSidecars(filepath.Base(location.Path), entries), true
+			return location.Path, domain.SubtitleSidecars(filepath.Base(location.Path), entries), nil
 		case errors.Is(err, domain.ErrDirectoryUnavailable):
 			s.logger.Warn("cannot read the folder next to the video",
 				slog.Int64("video", video.ID), slog.Any("error", err))
-			return location.Path, nil, true
+			return location.Path, nil, nil
 		case errors.Is(err, domain.ErrMediaFileOutsideRoot):
 			s.logger.Warn("link target is outside the media folders",
 				slog.Int64("video", video.ID), slog.String("path", location.Path))
@@ -169,5 +170,5 @@ func (s *server) subtitleSidecars(r *http.Request, video domain.Video) (string, 
 			s.logger.Debug("cannot open the media file", slog.Int64("video", video.ID), slog.Any("error", err))
 		}
 	}
-	return "", nil, false
+	return "", nil, domain.ErrMediaFileUnavailable
 }
