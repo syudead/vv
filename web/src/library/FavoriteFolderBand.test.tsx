@@ -253,6 +253,27 @@ describe("The band of favorite smart folders on the home", () => {
     expect(screen.getByText("1 video and 3 smart folders selected")).toBeTruthy();
   });
 
+  it("drops a selected folder from the selection when it leaves the band", async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await waitFor(() => expect(bandNames()).toEqual(["A", "C", "C-1"]));
+    await user.click(
+      screen.getByRole("checkbox", { name: 'Select the smart folder "A"' }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: 'Select the smart folder "C"' }),
+    );
+    expect(screen.getByText("2 smart folders selected")).toBeTruthy();
+
+    folders = folders.map((folder) =>
+      folder.id === 1 ? { ...folder, favorite: false } : folder,
+    );
+    await emitServerEvent("smartFolder", { ids: [1] });
+    await waitFor(() => expect(bandNames()).toEqual(["C", "C-1"]));
+
+    expect(screen.getByText("1 smart folder selected")).toBeTruthy();
+  });
+
   it("is neither read nor drawn for a guest", async () => {
     renderHome("/", "guest");
     await screen.findByRole("link", { name: /動画 1/ });

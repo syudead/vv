@@ -36,7 +36,7 @@ import {
 import { useScanControls } from "../shell/ScanProvider";
 import { SmartFolderCardsProvider } from "../smartFolders/cardValues";
 import { SmartFolderCard, SmartFolderRow } from "../smartFolders/SmartFolderCard";
-import { loadedVideoIds } from "../smartFolders/pageRules";
+import { loadedSmartFolderIds, loadedVideoIds } from "../smartFolders/pageRules";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
@@ -79,6 +79,7 @@ import {
 import LibraryToolbar from "./LibraryToolbar";
 import {
   retainVideos,
+  keepSmartFolders,
   favoriteTargets,
   selectionTargets,
   reconcileGroups,
@@ -309,6 +310,18 @@ export default function LibraryPage() {
     setSelection((current) => reconcileGroups(current, items));
   }, [items, setSelection]);
 
+  // The band and the list are every listed item, the band first.
+  const listed = useMemo(
+    () => (band.items.length === 0 ? items : [...band.items, ...items]),
+    [band.items, items],
+  );
+  // A folder that leaves the band (unfavorited here or elsewhere, or a failed read) leaves the
+  // selection, so a bulk action cannot reach a folder no longer shown.
+  const listedFolders = useMemo(() => loadedSmartFolderIds(listed), [listed]);
+  useEffect(() => {
+    setSelection((current) => keepSmartFolders(current, listedFolders));
+  }, [listedFolders, setSelection]);
+
   // Clear selection whenever conditions change, even when some videos match both views.
   const conditionsSignature = [criteriaKey(criteria), filters.signature].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
@@ -424,13 +437,8 @@ export default function LibraryPage() {
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const favoriteSelection = useMemo(() => favoriteTargets(selection), [selection]);
   const editTargets = useMemo(
-    () =>
-      selectionTargets(
-        selection,
-        band.items.length === 0 ? items : [...band.items, ...items],
-        t.library.selection.unknownTarget,
-      ),
-    [band.items, selection, items],
+    () => selectionTargets(selection, listed, t.library.selection.unknownTarget),
+    [selection, listed],
   );
 
   const empty = !loading && error === null && items.length === 0;
