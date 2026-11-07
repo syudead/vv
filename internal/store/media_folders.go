@@ -140,7 +140,7 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	if _, err := tx.ExecContext(ctx, `update media_folders set path = ?, version = version + 1, updated_at = ? where id = ?`, cleaned, now, id); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	released, err := removeLocationsUnder(ctx, tx, oldPath)
+	released, _, err := removeLocationsUnder(ctx, tx, oldPath)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -228,12 +228,7 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	if err := domain.CheckMediaFolderMutation(running); err != nil {
 		return err
 	}
-	// Read affected videos before deleting locations to record how many leave the library.
-	_, underFolder, err := locationsUnder(ctx, tx, path)
-	if err != nil {
-		return err
-	}
-	released, err := removeLocationsUnder(ctx, tx, path)
+	released, underFolder, err := removeLocationsUnder(ctx, tx, path)
 	if err != nil {
 		return err
 	}
@@ -285,24 +280,31 @@ func scanRunning(ctx context.Context, tx *sql.Tx) (bool, error) {
 	return running != 0, nil
 }
 
-// Check iteration errors centrally so callers never treat a partial location set as a successful deletion or synchronization.
-func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, videoIDs map[int64]struct{}, err error) {
-	rows, err := tx.QueryContext(ctx, `select id, video_id, path from video_locations`)
+// locationsUnder narrows candidates with the indexed folder prefix and keeps PathWithinRoot as the exact rule, so
+// the result matches a full scan of clean stored paths. Iteration errors fail the caller instead of a partial set.
+func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids, videoIDs []int64, err error) {
+	prefix := folderPrefix(root)
+	inFolder, args := folderPrefixCondition("l", prefix)
+	// The root itself also counts as within; compare it the way the prefix compares paths.
+	rows, err := tx.QueryContext(ctx, `select l.id, l.video_id, l.path from video_locations l
+		where `+inFolder+` or `+folderPathExpr("l")+` = ? order by l.video_id`, append(args, prefix[:len(prefix)-1])...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	videoIDs = map[int64]struct{}{}
 	for rows.Next() {
 		var id, videoID int64
 		var path string
 		if err := rows.Scan(&id, &videoID, &path); err != nil {
 			return nil, nil, err
 		}
-		if domain.PathWithinRoot(root, path) {
-			ids = append(ids, id)
-			videoIDs[videoID] = struct{}{}
+		if !domain.PathWithinRoot(root, path) {
+			continue
+		}
+		ids = append(ids, id)
+		if n := len(videoIDs); n == 0 || videoIDs[n-1] != videoID {
+			videoIDs = append(videoIDs, videoID)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -311,47 +313,53 @@ func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, 
 	return ids, videoIDs, nil
 }
 
-// Count both deleted videos and surviving videos left with only unregistered locations.
-func countVideosOutOfLibrary(ctx context.Context, tx *sql.Tx, videoIDs map[int64]struct{}) (int, error) {
-	ids := make([]int64, 0, len(videoIDs))
-	for id := range videoIDs {
-		ids = append(ids, id)
-	}
+func jsonIDs(ids []int64) (string, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
-		return 0, fmt.Errorf("cannot build video ids: %w", err)
+		return "", fmt.Errorf("cannot build ids: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// Count both deleted videos and surviving videos left with only unregistered locations.
+func countVideosOutOfLibrary(ctx context.Context, tx *sql.Tx, videoIDs []int64) (int, error) {
+	encoded, err := jsonIDs(videoIDs)
+	if err != nil {
+		return 0, err
 	}
 	var count int
 	if err := tx.QueryRowContext(ctx, `select count(*) from json_each(?) v
 		where not exists (select 1 from video_locations l where l.video_id = v.value and `+
-		registeredLocationCondition("l")+`)`, string(encoded)).Scan(&count); err != nil {
+		registeredLocationCondition("l")+`)`, encoded).Scan(&count); err != nil {
 		return 0, fmt.Errorf("cannot count the videos the folder removed: %w", err)
 	}
 	return count, nil
 }
 
-func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]domain.DeletedVideo, error) {
+// removeLocationsUnder also returns the videos that had a removed location, for callers that report the effect.
+func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]domain.DeletedVideo, []int64, error) {
 	ids, affected, err := locationsUnder(ctx, tx, root)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `update jobs set location_id = null, location_version = null, location_path = null where state = 'queued' and location_id = ?`, id); err != nil {
-			return nil, err
+	if len(ids) > 0 {
+		encoded, err := jsonIDs(ids)
+		if err != nil {
+			return nil, nil, err
 		}
-		if _, err := tx.ExecContext(ctx, `delete from video_locations where id = ?`, id); err != nil {
-			return nil, err
+		if _, err := tx.ExecContext(ctx, `update jobs set location_id = null, location_version = null, location_path = null
+			where state = 'queued' and location_id in (select value from json_each(?))`, encoded); err != nil {
+			return nil, nil, err
 		}
-	}
-	for videoID := range affected {
-		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
-			return nil, err
-		}
-		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
-			return nil, err
+		if _, err := tx.ExecContext(ctx, `delete from video_locations where id in (select value from json_each(?))`, encoded); err != nil {
+			return nil, nil, err
 		}
 	}
-	return deleteOrphanVideos(ctx, tx)
+	if err := bumpLocationGenerations(ctx, tx, affected); err != nil {
+		return nil, nil, err
+	}
+	released, err := deleteOrphanVideos(ctx, tx)
+	return released, affected, err
 }
 
 func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
@@ -359,10 +367,22 @@ func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 	if err != nil {
 		return err
 	}
-	for videoID := range videoIDs {
-		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
-			return err
-		}
+	return bumpLocationGenerations(ctx, tx, videoIDs)
+}
+
+func bumpLocationGenerations(ctx context.Context, tx *sql.Tx, videoIDs []int64) error {
+	if len(videoIDs) == 0 {
+		return nil
+	}
+	encoded, err := jsonIDs(videoIDs)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1
+		where id in (select value from json_each(?))`, encoded); err != nil {
+		return err
+	}
+	for _, videoID := range videoIDs {
 		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 			return err
 		}

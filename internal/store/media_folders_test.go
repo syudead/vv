@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -374,6 +375,42 @@ func TestHasLocationsUnderReportsAVideoBelowTheFolder(t *testing.T) {
 		}
 		if got != tc.want {
 			t.Errorf("HasLocationsUnder(%d) = %v, want %v", tc.folder, got, tc.want)
+		}
+	}
+}
+
+// Siblings that sort next to the folder's prefix ("a-b" before '/', "a0" right after it) must keep their locations.
+func TestDeleteMediaFolderRemovesOnlyLocationsBelowTheFolder(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	rootA := filepath.Join(root, "a")
+	folder, err := db.Settings().AddMediaFolder(ctx, rootA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "x", "deep.mp4"), "deep", "deep", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []int64
+	for i, path := range []string{filepath.Join(root, "a-b", "m.mp4"), filepath.Join(root, "a0", "m.mp4")} {
+		video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(path, "m", fmt.Sprintf("kept-%d", i), 1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		kept = append(kept, video.ID)
+	}
+
+	if err := db.Settings().DeleteMediaFolder(ctx, folder.ID, folder.Version); err != nil {
+		t.Fatal(err)
+	}
+	if locations, err := db.Library().VideoLocations(ctx, nested.ID); err != nil || len(locations) != 0 {
+		t.Fatalf("nested locations after delete = %+v, %v; want none", locations, err)
+	}
+	for _, id := range kept {
+		if locations, err := db.Library().VideoLocations(ctx, id); err != nil || len(locations) != 1 {
+			t.Errorf("sibling video %d locations = %+v, %v; want 1", id, locations, err)
 		}
 	}
 }

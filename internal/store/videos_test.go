@@ -596,10 +596,14 @@ func TestIndexedVideosByPath(t *testing.T) {
 }
 
 func TestContentKeyReferenced(t *testing.T) {
-	db, _ := listFixture(t)
+	db, ids := listFixture(t)
 	ctx := context.Background()
+	// An unidentified video must not count as a reference to the empty key.
+	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, ids[0]); err != nil {
+		t.Fatal(err)
+	}
 
-	for key, want := range map[string]bool{"key-3": true, "消えた内容": false} {
+	for key, want := range map[string]bool{"key-3": true, "消えた内容": false, "": false} {
 		got, err := db.Library().ContentKeyReferenced(ctx, key)
 		if err != nil {
 			t.Fatal(err)
