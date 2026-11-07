@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
+import { json } from "../testing/groupPage";
 import {
   crumbs,
   folderCard,
@@ -78,6 +79,7 @@ describe("スマートフォルダのページ", () => {
     expect(await screen.findByText("Nothing matches these conditions yet")).toBeTruthy();
     expect(screen.getByText("0 videos")).toBeTruthy();
     expect(screen.queryByRole("link", { name: /^Play/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Favorite" })).toBeTruthy();
   });
 
   it("消えたタグを名指し、欠けた条件の状態を出す", async () => {
@@ -120,6 +122,57 @@ describe("スマートフォルダのページ", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
   });
 
+  it("オーナーの見出しはハート、Play、More の順で、ハートは答えの後にフォルダを登録する", async () => {
+    const user = userEvent.setup();
+    seed();
+    server.writeAnswer = () =>
+      json({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 1 });
+    renderPage("/smart-folders/1");
+    await screen.findByRole("heading", { level: 1, name: "タグ: 猫" });
+    const heart = screen.getByRole("button", { name: "Favorite" });
+    expect(heart.getAttribute("aria-pressed")).toBe("false");
+    const play = screen.getByRole("link", { name: 'Play "タグ: 猫"' });
+    const more = screen.getByRole("button", { name: "More" });
+    expect(
+      heart.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      play.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(heart);
+
+    await waitFor(() => expect(heart.getAttribute("aria-pressed")).toBe("true"));
+    expect(server.writes).toEqual([
+      {
+        method: "PUT",
+        path: "/api/favorites",
+        body: { videoIds: [], groupIds: [], smartFolderIds: [1], favorite: true },
+      },
+    ]);
+  });
+
+  it("お気に入りのフォルダはハートが点いて始まり、解除の失敗では点いたままトーストを出す", async () => {
+    const user = userEvent.setup();
+    seed();
+    const stored = server.folders.get(1);
+    if (stored === undefined) throw new Error("no folder");
+    stored.smartFolder = { ...stored.smartFolder, favorite: true };
+    server.writeAnswer = () => json({ code: "internal", message: "boom" }, 500);
+    renderPage("/smart-folders/1");
+    const heart = await screen.findByRole("button", { name: "Favorite" });
+    expect(heart.getAttribute("aria-pressed")).toBe("true");
+
+    await user.click(heart);
+
+    expect(await screen.findByText(/^Couldn't change the favorite: /)).toBeTruthy();
+    expect(server.writes[0]?.body).toMatchObject({
+      smartFolderIds: [1],
+      favorite: false,
+    });
+    expect(heart.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("ゲストは条件の行・選択なしでページを見て、Play を押せる", async () => {
     seed();
     const guestFolder = server.folders.get(1);
@@ -133,6 +186,7 @@ describe("スマートフォルダのページ", () => {
     expect(screen.queryByText("Conditions:")).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
     expect(screen.getByRole("link", { name: 'Play "タグ: 猫"' })).toBeTruthy();
   });
 

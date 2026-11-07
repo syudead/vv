@@ -3672,6 +3672,7 @@ export const en = {
         })[kind],
     },
     detail: {
+      favorite: "Favorite",
       edit: "Edit…",
       newChild: "New child smart folder…",
       delete: "Delete…",

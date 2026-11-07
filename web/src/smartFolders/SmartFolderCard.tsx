@@ -77,18 +77,18 @@ function SmartFolderMark() {
 }
 
 /**
- * Apply optimistic favorite state only to the current read object; discard it on every new read
+ * Apply the answered favorite state only to the current read object; discard it on every new read
  * identity, even if values match. Otherwise a later change from another tab can remain hidden.
  */
-function SmartFolderFavorite({
+export function SmartFolderFavorite({
   folder,
   read,
   variant,
 }: {
-  folder: SmartFolderSummary;
-  /** A new object on every read; initially the summary, then card values. */
+  folder: Pick<SmartFolderSummary, "id" | "name">;
+  /** A new object on every read; initially the summary, then card values or the page's read. */
   read: { favorite?: boolean };
-  variant: "card" | "row";
+  variant: "card" | "row" | "page";
 }) {
   const [toggled, setToggled] = useState<{ read: object; favorite: boolean }>();
   const favorite =
@@ -98,7 +98,11 @@ function SmartFolderFavorite({
   return (
     <FavoriteToggle
       favorite={favorite}
-      label={t.library.smartFolder.favorite(folder.name)}
+      label={
+        variant === "page"
+          ? t.smartFolders.detail.favorite
+          : t.library.smartFolder.favorite(folder.name)
+      }
       onToggle={async () => {
         await updateFavorites([], [], !favorite, { smartFolderIds: [folder.id] });
         setToggled({ read, favorite: !favorite });

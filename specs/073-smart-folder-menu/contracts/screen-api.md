@@ -29,12 +29,15 @@ description. The screens read the folders through `listSmartFolders`
 
 ## `LibraryItem`
 
-The schema keeps `kind: smartFolder` and its `smartFolder` field, because a
-paired node on an older release still leads its library page with its root
-folders and the merged page passes them through
+The schema keeps `kind: smartFolder` and its `smartFolder` field, so a paired
+node on an older release can still answer its folder-led first page. The merged
+page does not pass those folders through: that page's `peerItems` cover only
+its videos, so the merged list leaves the page out, as it does between two
+older nodes today
 ([plan.md, Technical Context](../plan.md#technical-context)). Its description
-stops promising a top-level or favorite folder from this node and says that a
-`smartFolder` item comes only from such an older paired node.
+stops promising a top-level or favorite folder from this node and says that
+`GET /api/library` no longer returns a `smartFolder` item; the kind remains
+only for compatibility with older paired nodes.
 
 ## `PUT /api/favorites`
 
