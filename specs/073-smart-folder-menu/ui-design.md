@@ -86,7 +86,8 @@ helper this feature adds beside `videos(n)`.
 
 | Place | Text | Notes |
 | --- | --- | --- |
-| Sidebar entry | Smart folders | `shell.nav.smartFolders` |
+| Sidebar entry, drawer row; the entry's accessible name | Smart folders | `shell.nav.smartFolders`; the rail link's accessible name too |
+| Sidebar entry, rail label | Smart | `shell.nav.smartFoldersShort`; the rail's `rail-item` square is 56px, which cuts `Smart folders` |
 | List page title; `document.title` | Smart folders | `smartFolders.list.title`, `.documentTitle` |
 | List page count | 1 smart folder; 12 smart folders | `smartFolders.list.count(n)`; after the title, absent while loading or empty |
 | List page table accessible name | Smart folders | `smartFolders.list.table` |
@@ -105,6 +106,9 @@ helper this feature adds beside `videos(n)`.
 "Favorite" is one word for the mark, the toggle and the filter, as on the
 video page and in the `Favorites only` filter. "Smart folders" names the
 sidebar entry, the list page and the band's link, so the three are one place.
+The rail alone shows the short `Smart`: it fits the 56px square whole, stays
+distinct from `Folders` above it, and keeps the icon as the shared mark, while
+the link's accessible name stays `Smart folders`.
 
 ## Sidebar entry
 
@@ -116,14 +120,14 @@ owner-only, with `matchDescendants: true`, so the entry is lit on
 | Part | Form |
 | --- | --- |
 | Icon | Lucide `FolderSearch`, `size-4` as every entry's icon |
-| Rail (from 640px) | A `rail-item` square: the icon above the label in `text-rail`, the label on one line and whole |
-| Drawer (below 640px) | One row: the icon, then the label in `text-sm`, as the rows above and below it |
+| Rail (from 640px) | A `rail-item` square: the icon above the label `Smart` in `text-rail`, on one line and whole; the link's accessible name is `Smart folders` |
+| Drawer (below 640px) | One row: the icon, then the full label `Smart folders` in `text-sm`, as the rows above and below it |
 | Current | `bg-secondary`, `text-foreground`, `font-medium`, the sidebar's current mark |
 | Guest | Absent; the guest's rail stays `Home`, `Folders` |
 
 The entry stands between the two entries that browse the library by a
 grouping and the entries that list the owner's own records, so the owner's
-rail reads `Home`, `Folders`, `Smart folders`, `History`, `Playlists`, `Tags`,
+rail reads `Home`, `Folders`, `Smart`, `History`, `Playlists`, `Tags`,
 `People`, `Organizations`, `Duplicates`, `Activity`.
 
 ## Home band
@@ -292,7 +296,7 @@ home's list view hides at each width.
 | Width | Layout |
 | --- | --- |
 | 360px | Sidebar: `Smart folders` is the third row of the drawer, with its icon and label like the rows around it. Home: the band's heading, count and `All smart folders` share one line (the link's text whole); one whole card and about half of the next show in the row, which scrolls sideways with a swipe; the separator, then the one-column grid or the table. List page: the title and `New smart folder` on one line, the count under the title when the header wraps; a row is the cover, the name and the count line, the heart, and the date column; `Add to playlist` is in no row. Folder page: the header's heart is the pill with the heart alone, before `Play` and `More` |
-| 768px | Sidebar: the rail with `Smart folders` third, its label on one line. Home: two whole cards and most of a third in the row. List page: the header on one line; a row adds `Add to playlist` and the watched and duration columns |
+| 768px | Sidebar: the rail with `Smart` third, its label on one line and whole. Home: two whole cards and most of a third in the row. List page: the header on one line; a row adds `Add to playlist` and the watched and duration columns |
 | 1280px | Sidebar: the rail. Home: five whole cards in the row and a sixth cut at the body's right edge when six or more are favorites; the grid under the separator has both edges on the band's. List page: a row shows every column, the heart column `w-8` as on the home; the table's edges are the header's. Folder page: the heart with its word, `Play` and `More` at the header's right end on one line with a name of up to about 40 characters |
 
 ## Review criteria
@@ -303,10 +307,11 @@ favorites, a child `C-1` under `C` that is a favorite, zoom 0 and zoom 2, and
 then as a guest.
 
 1. **One sign for smart folders** (`UI品質`, the third point): the rail's
-   `Smart folders` entry has the same icon size, label size and square as
-   `Folders` above it, and its icon is the mark on every folder card and
-   row; the label is whole at 768px and 1280px, and the drawer's row at
-   360px matches the rows around it in height and type. The guest's rail and
+   entry has the same icon size, label size and square as `Folders` above
+   it, and its icon is the mark on every folder card and row; its label
+   reads `Smart`, whole and not cut, at 768px and 1280px, and its accessible
+   name is `Smart folders`. The drawer's row at 360px reads `Smart folders`
+   and matches the rows around it in height and type. The guest's rail and
    drawer have no such entry (acceptance criterion 1; `タイポグラフィ`, `余白のリズム`).
 2. **The band is told from the list** (`UI品質`, the second point): at zoom 0
    the band's cards and the grid's cards are the same size, and the band is
@@ -381,4 +386,5 @@ then as a guest.
     smart folder` as an `outline` button or drawn in the empty state's
     header; the heart in the folder page's `More` menu; a heart after
     `More`; a `Smart folders` entry with an icon other than the card's mark,
-    placed away from `Folders`, or shown to a guest.
+    placed away from `Folders`, or shown to a guest; a rail label cut to
+    `Smart fol…` or wrapped onto two lines.
