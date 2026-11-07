@@ -206,6 +206,52 @@ describe("PersonFacesPage", () => {
     ).toBeTruthy();
   });
 
+  it("brings an emptied person back before undoing any of its moves", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces");
+
+    async function moveToMio(title: string) {
+      await user.click(screen.getByRole("checkbox", { name: `Select ${title}` }));
+      await user.click(screen.getByRole("button", { name: "Move to person…" }));
+      const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+      await user.click(await within(dialog).findByRole("radio", { name: /Mio/ }));
+      await user.click(within(dialog).getByRole("button", { name: "Move" }));
+      await screen.findByRole("button", { name: `Undo the move in ${title}` });
+    }
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await moveToMio("Beach day");
+    // The last face's move empties the shown person, which the server merges into Mio.
+    server.moveMerged = true;
+    await moveToMio("Mountain");
+
+    await user.click(screen.getByRole("button", { name: "Undo the move in Beach day" }));
+
+    await waitFor(() =>
+      expect(sent("POST", "/api/people/9/appearances/move")).toHaveLength(1),
+    );
+    const order = server.sent
+      .filter((request) => request.method === "POST")
+      .map((request) => request.url.pathname);
+    expect(order.slice(-2)).toEqual([
+      "/api/activity/31/undo",
+      "/api/people/9/appearances/move",
+    ]);
+    expect(sentBody(sent("POST", "/api/people/9/appearances/move")[0])).toMatchObject({
+      appearanceIds: [3],
+    });
+
+    // The merge is undone once; the later move's Undo only moves its face back.
+    await user.click(screen.getByRole("button", { name: "Undo the move in Mountain" }));
+    await waitFor(() =>
+      expect(sent("POST", "/api/people/9/appearances/move")).toHaveLength(2),
+    );
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+  });
+
   it("moves faces to a person found by name instead of by face", async () => {
     const user = userEvent.setup();
     server.searchable = [

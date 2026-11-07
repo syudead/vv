@@ -129,7 +129,7 @@ func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error
 	if err != nil {
 		return err
 	}
-	links, added, err := writeFaceAppearances(ctx, tx, spec, userKey, result, now)
+	links, performersChanged, err := writeFaceAppearances(ctx, tx, spec, userKey, result, now)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error
 	if err != nil && !errors.Is(err, domain.ErrFaceMergeRefused) {
 		return err
 	}
-	if added {
+	if performersChanged {
 		if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 			return err
 		}
@@ -201,7 +201,7 @@ type faceLink struct {
 }
 
 // writeFaceAppearances replaces the content key's appearances with the result's and reports the links it made and
-// whether it added a performer row.
+// whether it added or removed a performer row.
 func writeFaceAppearances(
 	ctx context.Context, tx *sql.Tx, spec domain.FaceRecognizerSpec, userKey string, result domain.FaceAnalysis,
 	now time.Time,
@@ -251,11 +251,46 @@ func writeFaceAppearances(
 		if kept[old.ID] {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `delete from face_appearances where id = ?`, old.ID); err != nil {
-			return nil, false, fmt.Errorf("cannot delete face appearance %d: %w", old.ID, err)
+		removed, err := deleteStaleFaceAppearance(ctx, tx, userKey, old)
+		if err != nil {
+			return nil, false, err
 		}
+		added = added || removed
 	}
 	return links, added, nil
+}
+
+// deleteStaleFaceAppearance deletes a stored appearance the result carried nothing over to. A provisional person it
+// linked loses the work's performer row unless an appearance not dropped in any video of the work still links them, and is
+// deleted once nothing uses them, so a re-analysis does not leave the old people beside the new ones. A named
+// person's credit is the owner's and stays. It reports whether it removed a performer row.
+func deleteStaleFaceAppearance(
+	ctx context.Context, tx *sql.Tx, userKey string, old domain.StoredFaceAppearance,
+) (bool, error) {
+	if _, err := tx.ExecContext(ctx, `delete from face_appearances where id = ?`, old.ID); err != nil {
+		return false, fmt.Errorf("cannot delete face appearance %d: %w", old.ID, err)
+	}
+	if old.Dropped || old.PersonID == 0 {
+		return false, nil
+	}
+	var named bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from people_names where person_id = ? and position = 0)`,
+		old.PersonID).Scan(&named); err != nil {
+		return false, fmt.Errorf("cannot read the names of person %d: %w", old.PersonID, err)
+	}
+	if named {
+		return false, nil
+	}
+	linked, err := personLinkedInWork(ctx, tx, userKey, old.PersonID)
+	if err != nil || linked {
+		return false, err
+	}
+	removed, err := removeFacePerformer(ctx, tx, userKey, old.PersonID)
+	if err != nil {
+		return false, err
+	}
+	_, err = deleteIfUnusedProvisional(ctx, tx, old.PersonID)
+	return removed, err
 }
 
 func storedFaceAppearances(ctx context.Context, tx *sql.Tx, contentKey string) ([]domain.StoredFaceAppearance, error) {

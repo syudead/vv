@@ -181,6 +181,8 @@ type FaceMoveCredit struct {
 type FaceMove struct {
 	Person  Credit
 	Restore []FaceMoveCredit
+	// UndoActivityID is the face_merge entry that merged the emptied provisional person into Person; 0 when none.
+	UndoActivityID int64
 }
 
 // SimilarPerson is a person whose faces look like a set of faces, offered as where those faces belong.

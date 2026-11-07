@@ -95,6 +95,8 @@ export const server = {
   searchable: [] as Person[],
   /** When set, a move answers that a face is no longer the person's. */
   moveGone: false,
+  /** When set, a move from the shown person answers that it emptied and merged the person into the target. */
+  moveMerged: false,
   /** How many similar-people reads fail before they succeed again. */
   similarFailures: 0,
   /** How many candidate reads fail before they succeed again. */
@@ -212,6 +214,7 @@ function faceRoute(method: string, url: URL): Response | null {
         ? {
             person: person({ id: 9, name: "Mio" }),
             restoreCredits: [{ workKey: "work-5", position: 1 }],
+            ...(server.moveMerged ? { undoActivityId: 31 } : {}),
           }
         : { person: person(), restoreCredits: [] },
     );
@@ -333,6 +336,7 @@ export function installPersonServer() {
     server.candidateFailures = 0;
     server.similarFailures = 0;
     server.moveGone = false;
+    server.moveMerged = false;
     server.imageRefusal = null;
     server.searchable = [];
     server.faceRecognition = true;

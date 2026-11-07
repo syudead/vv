@@ -282,3 +282,48 @@ func TestSimilarPeopleRanksByTheClosestFace(t *testing.T) {
 		t.Errorf("with another person's face only = %+v, %v; want none", got, err)
 	}
 }
+
+// Moving a provisional person's last face merges that emptied person into the target, so it neither stays as an
+// empty person nor keeps the candidate pairs its face earned; undoing the merge lets the reverse move put it back.
+func TestMoveFaceAppearancesMergesTheEmptiedProvisionalPerson(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	ctx := context.Background()
+	face := faceAppearances(t, f.db)[1].id
+	other := createPerson(t, f.db, "Other").ID
+	if got := faceCandidatePairs(t, f.db); len(got) == 0 {
+		t.Fatalf("the provisional person has no candidate pair to move")
+	}
+
+	moved, err := f.db.Credits().MoveFaceAppearances(ctx, f.provisional, []int64{face}, other, nil)
+	if err != nil || moved.UndoActivityID == 0 {
+		t.Fatalf("move = %+v, %v; want a merge to undo", moved, err)
+	}
+	if personExists(t, f.db, f.provisional) {
+		t.Errorf("provisional person %d is kept with no face and no credit", f.provisional)
+	}
+	for _, pair := range faceCandidatePairs(t, f.db) {
+		if pair[0] != other && pair[1] != other {
+			t.Errorf("candidate pair %v stayed off the target %d", pair, other)
+		}
+	}
+
+	if _, err := f.db.Activity().UndoFaceMerge(ctx, moved.UndoActivityID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Credits().MoveFaceAppearances(ctx, other, []int64{face}, f.provisional, moved.Restore); err != nil {
+		t.Fatal(err)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.named, f.provisional}) {
+		t.Errorf("after the undo: performers %v, want the provisional person back", got)
+	}
+}
+
+// A person who still has a face after the move stays where they are.
+func TestMoveFaceAppearancesKeepsAPersonWithAFaceLeft(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	face := faceAppearances(t, f.db)[0].id
+	moved, err := f.db.Credits().MoveFaceAppearances(context.Background(), f.named, []int64{face}, f.near, nil)
+	if err != nil || moved.UndoActivityID != 0 || !personExists(t, f.db, f.named) {
+		t.Errorf("move = %+v, %v; want the named person kept without a merge", moved, err)
+	}
+}

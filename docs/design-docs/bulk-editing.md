@@ -101,7 +101,8 @@ filter makes the page clear the selection and reload.
 Face recognition credits each face it cannot link as an unnamed (provisional)
 performer ([people.md](credit-names.md#a-person-without-names-is-provisional)),
 so adding the real performer to the selected videos would otherwise list them
-twice. When the draft adds a named performer, or a name created on Apply, an
+twice. When the draft adds a named performer, a name created on Apply, or an
+unnamed person picked by face with a typed name, an
 `Unnamed performers` field under `Performers` shows each unnamed performer of
 the selection as a `PersonFace judge` tile with how many selected videos have
 them. Pressing a tile steps through keeping the person apart and merging them
@@ -130,7 +131,17 @@ apart otherwise:
 | --- | --- |
 | The added performer the person's faces are most similar to | Their mean face reaches the recognizer's merge threshold against that performer's face or the mean of their faces, and the owner has not dismissed the pair |
 | The only added performer | The person is the only unnamed performer of at least one selected video |
+| The performer another tile starts merged into | The person's mean face reaches the merge threshold against that tile's person, and no co-performer of the same video already starts merged into that performer; this repeats until no tile changes, so a face in a two-person video follows the same face that is alone in another video |
 | Nobody | Neither holds, two or more performers are added and no face decides, or another unnamed performer of the same video would start merged into the same performer, since one video's unnamed performers are different people |
+
+The picker lists unnamed people first when a name is typed, as `Add as` that
+name. Picking one records the name in the draft (`names`), and the person
+counts as a named added performer: the chips and the change list show the name,
+the person is a merge target and not a tile, and Apply names the person with
+`PATCH /api/people/{id}` before the edit, as the details editor does on Save.
+The suggestions list the unnamed performers next to the added ones in
+`personIds`, so their faces are compared with each other as well; a person is
+never listed as similar to themself.
 
 Apply sends `merges` with the edit. The store applies the other parts first
 and then merges each source still unnamed as the faces page's confirmation
@@ -150,6 +161,8 @@ too; the field's hint says so.
 | Moving only the selected videos' faces and credits | The person stays split across two entries for the same face, which the next analysis or face image would merge anyway |
 | Suggesting every unnamed performer of the selection | A co-performer would be merged into the wrong person whenever the owner missed one tile |
 | Merging without a tile per person | The owner could not see or undo who is merged before Apply |
+| Following a face only to an added performer's face | A name created on Apply has no face yet, so a face in a two-person video was never suggested and stayed beside the new performer |
+| Dropping the typed name of a person picked by face | The person was added unnamed and became neither a target nor named, so the same faces stayed apart |
 | Waiting with Apply only for the summary | Apply pressed before the suggestions arrived would send no merges while the tiles then show some |
 
 ## Codes are edited in a table, one value per video

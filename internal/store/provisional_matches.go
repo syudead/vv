@@ -70,8 +70,9 @@ func provisionalPerformersByKey(ctx context.Context, tx *sql.Tx, keys []string) 
 	return out, nil
 }
 
-// addFaceSimilarity fills SimilarTo: the mean of each provisional person's faces against each added person's face
-// and the mean of their faces, at the recognizer's merge threshold, leaving out pairs the owner dismissed.
+// addFaceSimilarity fills SimilarTo: the mean of each provisional person's faces against each listed person's face
+// and the mean of their faces, at the recognizer's merge threshold, leaving out the person themself and pairs the owner
+// dismissed. The listed people may be other provisional performers, so the editor can follow one face to another.
 func addFaceSimilarity(ctx context.Context, tx *sql.Tx, matches []domain.ProvisionalMatch, personIDs []int64) error {
 	ids := slices.Clone(personIDs)
 	for _, m := range matches {
@@ -106,7 +107,8 @@ func addFaceSimilarity(ctx context.Context, tx *sql.Tx, matches []domain.Provisi
 			continue
 		}
 		for _, r := range domain.RankFacePeople(query, added, 0) {
-			if r.Similarity >= threshold && !dismissed[domain.FacePersonPair{ProvisionalID: matches[i].PersonID, PersonID: r.PersonID}] {
+			if r.PersonID != matches[i].PersonID && r.Similarity >= threshold &&
+				!dismissed[domain.FacePersonPair{ProvisionalID: matches[i].PersonID, PersonID: r.PersonID}] {
 				matches[i].SimilarTo = append(matches[i].SimilarTo, r.PersonID)
 			}
 		}

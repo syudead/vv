@@ -2,7 +2,7 @@ import { FolderSearch, Layers, Plus } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { undoActivity } from "../../api/activity";
-import { createNamedCredit } from "../../api/credits";
+import { createNamedCredit, updateCredit } from "../../api/credits";
 import { currentTags, revalidateTags, subscribeTags, type Tag } from "../../api/tags";
 import {
   applyVideoEdits,
@@ -43,6 +43,8 @@ import {
   emptyDraft,
   type FieldId,
   fieldOf,
+  nameOnApply,
+  namesToApply,
   newCredits,
   pickValue,
   presentCredits,
@@ -52,6 +54,7 @@ import {
   setPublic,
   tagKey,
   unpickValue,
+  withNamesOnApply,
 } from "./draft";
 import MergeField from "./MergeField";
 import {
@@ -132,6 +135,8 @@ export default function BulkEditor({
   const [failure, setFailure] = useState<UiText | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const created = useRef(new Map<string, number>());
+  // Names already given on an earlier Apply that failed later, so a retry does not rename again.
+  const named = useRef(new Map<number, string>());
 
   const included = targets.filter((target) => !excluded.has(target.key));
   const includedKey = included.map((target) => target.key).join(",");
@@ -145,8 +150,10 @@ export default function BulkEditor({
         : undefined;
   const present = useMemo(
     () =>
-      summary === undefined ? new Map<FieldId, PresentValue[]>() : presentMap(summary),
-    [summary],
+      summary === undefined
+        ? new Map<FieldId, PresentValue[]>()
+        : withNamesOnApply(presentMap(summary), draft.names),
+    [summary, draft.names],
   );
   const mergeState = useMergeState(draft, summary, editTargets, includedKey);
   const { targets: targetsToMerge, candidates, merges } = mergeState;
@@ -166,6 +173,12 @@ export default function BulkEditor({
   }
 
   async function send(current: VideoEditSummary) {
+    // An unnamed person picked by face with a typed name is named first, as the details editor does on Save.
+    for (const { id, name } of namesToApply(draft)) {
+      if (named.current.get(id) === name) continue;
+      await updateCredit("person", id, { name });
+      named.current.set(id, name);
+    }
     for (const entry of newCredits(draft)) {
       if (created.current.has(entry.key)) continue;
       const credit = await createNamedCredit(entry.kind, entry.name);
@@ -509,9 +522,17 @@ function fieldPanels({
         unsaved={unsavedNames(draft, entry.kind)}
         disabled={disabled}
         onAdd={(chip) =>
-          onChange((current) =>
-            pickValue(current, entry.id, pickedCredit(chip), present.get(entry.id) ?? []),
-          )
+          onChange((current) => {
+            const picked = pickValue(
+              current,
+              entry.id,
+              pickedCredit(chip),
+              present.get(entry.id) ?? [],
+            );
+            return !isNewChip(chip) && chip.naming === true
+              ? nameOnApply(picked, chip.id, chip.name)
+              : picked;
+          })
         }
       />,
     );
@@ -584,7 +605,7 @@ function pickedCredit(chip: Chip) {
     ? { key: `new:${chip.newKey}`, label: chip.name, newName: chip.name }
     : {
         key: creditKey(chip.id),
-        label: creditDisplayName(chip),
+        label: chip.naming === true ? chip.name : creditDisplayName(chip),
         id: chip.id,
         ...(chip.provisional === true && { provisional: true as const }),
       };

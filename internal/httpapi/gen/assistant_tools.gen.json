@@ -6227,7 +6227,7 @@
       "method": "GET",
       "path": "/api/people/{id}/face-candidates",
       "summary": "List a person's face candidates",
-      "description": "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found.",
+      "description": "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, and the people the live ranking of listSimilarPeople puts at or over the recognizer's Candidate threshold when one of the two is provisional and no pair row exists, highest similarity first, each as the other person; confirming or dismissing such a person stores the pair first. Missing person returns 404 person_not_found.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -8387,7 +8387,7 @@
       "method": "POST",
       "path": "/api/video-edits/provisional-matches",
       "summary": "Tell which provisional performers of selected videos are which added people",
-      "description": "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.",
+      "description": "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out the person themself and a pair the owner dismissed; personIds may list the provisional performers themselves, so the editor can follow one face to another. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -8701,7 +8701,7 @@
       "method": "POST",
       "path": "/api/people/{id}/appearances/move",
       "summary": "Move face appearances to another person",
-      "description": "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.",
+      "description": "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. A provisional id left with no credit and no face that is not dropped, and holding no external ID, is merged into targetId as a face_merge entry decided by the owner, which undoActivityId names; Undo takes that merge back before the reverse move. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.",
       "owner": true,
       "response": "json",
       "pathParams": [

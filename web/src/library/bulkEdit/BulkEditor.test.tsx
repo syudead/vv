@@ -276,10 +276,11 @@ describe("BulkEditor", () => {
       "#21, on 2 of 3 videos, will be merged into Alice",
       "#22, on 1 of 3 videos, kept apart",
     ]);
+    // The unnamed performers are compared too, so one face can lead to another's target.
     expect(server.matches).toHaveBeenCalledWith({
       videoIds: [1, 2, 3],
       smartFolderIds: [9],
-      personIds: [7],
+      personIds: [7, 21, 22],
     });
     expect(
       screen.getByText("Performers: merge #21 into Alice, on 2 videos here"),
@@ -298,5 +299,74 @@ describe("BulkEditor", () => {
     await waitFor(() =>
       expect(server.undo).toHaveBeenCalledWith("/api/activity/40/undo"),
     );
+  });
+
+  it("names an unnamed person picked by face on Apply and merges the same faces into them", async () => {
+    server.summary.mockImplementation(() =>
+      json({
+        ...fullSummary,
+        people: [21, 22].map((id) => ({
+          role: "performer",
+          person: { id, name: "", provisional: true },
+          count: 1,
+        })),
+      }),
+    );
+    server.matches.mockImplementation(() =>
+      json({
+        items: [
+          { personId: 21, alone: true, coPerformers: [], similarTo: [] },
+          { personId: 22, alone: true, coPerformers: [], similarTo: [21] },
+        ],
+      }),
+    );
+    const sent: string[] = [];
+    const base = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((input, init) => {
+        const url = String(input);
+        sent.push(`${init?.method ?? "GET"} ${url.split("?")[0] ?? url}`);
+        if (url.startsWith("/api/people?"))
+          return Promise.resolve(
+            json({
+              items: url.includes("provisional=true")
+                ? [{ id: 21, name: "", provisional: true, videoCount: 1 }]
+                : [],
+            }),
+          );
+        if (url === "/api/people/21" && init?.method === "PATCH")
+          return Promise.resolve(json({ id: 21, name: "Mio", provisional: false }));
+        return base(input, init);
+      }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderEditor();
+
+    await user.click(await screen.findByPlaceholderText("Add a performer"));
+    await user.keyboard("Mio");
+    await user.click(await screen.findByRole("option", { name: /^#21, .*Add as Mio/ }));
+
+    expect(await screen.findByText("Performers: add Mio to 2 videos")).toBeTruthy();
+    const unnamed = await screen.findByRole("list", { name: "Unnamed performers" });
+    expect(
+      within(unnamed)
+        .getAllByRole("button")
+        .map((tile) => tile.getAttribute("aria-label")),
+    ).toEqual(["#22, on 1 of 3 videos, will be merged into Mio"]);
+
+    await user.click(screen.getByRole("button", { name: "Apply to 3 videos" }));
+    await waitFor(() => expect(server.apply).toHaveBeenCalled());
+    // The person is named before the edit that merges into them.
+    expect(sent.filter((line) => !line.startsWith("GET"))).toEqual(
+      expect.arrayContaining(["PATCH /api/people/21"]),
+    );
+    expect(sent.indexOf("PATCH /api/people/21")).toBeLessThan(
+      sent.indexOf("POST /api/video-edits"),
+    );
+    expect(server.apply.mock.calls[0]?.[0]).toMatchObject({
+      credits: [{ kind: "person", role: "performer", add: [21] }],
+      merges: [{ into: 21, sourceIds: [22] }],
+    });
   });
 });

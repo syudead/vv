@@ -84,6 +84,15 @@ func (s *CreditStore) relinkFaceAppearances(
 	if err != nil {
 		return domain.FaceMove{}, err
 	}
+	c := &changes{}
+	var undoID int64
+	if !created {
+		var merged []domain.Event
+		if merged, undoID, err = mergeEmptiedProvisional(ctx, tx, c, personID, targetID, now); err != nil {
+			return domain.FaceMove{}, err
+		}
+		events = append(events, merged...)
+	}
 	target, err := creditByID(ctx, tx, creditTablesByKind[domain.CreditPerson], targetID)
 	if err != nil {
 		return domain.FaceMove{}, err
@@ -96,12 +105,30 @@ func (s *CreditStore) relinkFaceAppearances(
 		}
 		events = append(events, queued...)
 	}
-	c := &changes{}
 	c.matchesChanged()
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.FaceMove{}, fmt.Errorf("cannot move face appearances %v from person %d: %w", appearanceIDs, personID, err)
 	}
-	return domain.FaceMove{Person: target, Restore: taken}, nil
+	return domain.FaceMove{Person: target, Restore: taken, UndoActivityID: undoID}, nil
+}
+
+// mergeEmptiedProvisional merges the moved-from person into the target when the move left it provisional, credited
+// nowhere and without a face that is not dropped, so no empty person stays behind and its candidate pairs go to the
+// target. The merge is the owner's face_merge, whose undo brings the person back before the reverse move; a person
+// holding an external ID stays, since that undo cannot restore one. It returns the merge's events and entry id.
+func mergeEmptiedProvisional(ctx context.Context, tx *sql.Tx, c *changes, personID, targetID int64, now time.Time) (
+	[]domain.Event, int64, error,
+) {
+	unused, err := unusedProvisionalPerson(ctx, tx, personID)
+	if err != nil || !unused {
+		return nil, 0, err
+	}
+	source, err := creditByID(ctx, tx, creditTablesByKind[domain.CreditPerson], personID)
+	if err != nil || len(source.ExternalIDs) > 0 {
+		return nil, 0, err
+	}
+	_, events, undoID, err := mergeProvisional(ctx, tx, c, personID, targetID, domain.ActivityByOwner, now)
+	return events, undoID, err
 }
 
 // readSplitAppearances returns the videos of the appearances, all still linked to the person, and with withCrop the

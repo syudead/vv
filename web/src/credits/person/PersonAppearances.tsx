@@ -164,6 +164,8 @@ export interface AppearanceActions {
     appearanceIds: readonly number[],
     restore: readonly FaceMoveCredit[],
   ) => Promise<void>;
+  /** Undoes the merge a move made of the emptied shown person, bringing the person back; once per merge. */
+  undoMerge: (activityId: number) => Promise<void>;
   onGone: () => void;
 }
 
@@ -173,6 +175,8 @@ interface Relink {
   kind: "split" | "moved";
   /** The credits a move took that only its undo can put back. */
   restore?: readonly FaceMoveCredit[];
+  /** The merge of the emptied shown person into the move's target, undone before the faces move back. */
+  undoActivityId?: number;
   /** The split or move that sent it, so Undo takes back that one alone. */
   operation: number;
 }
@@ -235,6 +239,12 @@ function useSplits(
       .map(([id]) => id);
     await track(ids, async () => {
       try {
+        // A later move may have emptied the shown person and merged it away; any undo needs the person back first.
+        const merge = [...splits.values()].find(
+          (other) => other.undoActivityId !== undefined,
+        );
+        if (merge?.undoActivityId !== undefined)
+          await actions.undoMerge(merge.undoActivityId);
         if (relink.kind === "split") await actions.undoSplit(relink.person);
         else await actions.undoMove(relink.person, ids, relink.restore ?? []);
         rescored();
@@ -403,6 +413,7 @@ export function PersonAppearances({
                 person: moved.person,
                 kind: "moved",
                 restore: moved.restoreCredits,
+                undoActivityId: moved.undoActivityId,
               },
             );
             setSelected(new Set());
