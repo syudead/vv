@@ -64,14 +64,16 @@ function useFolderData<T>(
         setQuietGeneration((value) => value + 1);
       }
     };
+    // A load that ignores its signal can still settle after abort; drop that stale result.
     request(controller.signal)
       .then((value) => {
+        if (controller.signal.aborted) return;
         setData(value);
         setLoading(false);
         settle();
       })
       .catch((failure: unknown) => {
-        if (isAborted(failure)) return;
+        if (controller.signal.aborted || isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
           setNotFound(true);
         } else {
@@ -97,12 +99,13 @@ function useFolderData<T>(
     quietController.current = controller;
     request(controller.signal)
       .then((value) => {
+        if (controller.signal.aborted) return;
         setData(value);
         setNotFound(false);
         setError(null);
       })
       .catch((failure: unknown) => {
-        if (isAborted(failure)) return;
+        if (controller.signal.aborted || isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
           setNotFound(true);
           setData(null);
