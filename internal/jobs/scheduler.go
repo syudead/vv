@@ -171,7 +171,7 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 	if err != nil {
 		return turn{}, fmt.Errorf("cannot list the media folders: %w", err)
 	}
-	s.roots.refresh(folders, now, func(folder domain.MediaFolder) bool { return s.populated(ctx, folder) })
+	s.roots.refresh(ctx, folders, now, s.populated)
 	var t turn
 	var readSlots map[string]int
 	t.groups, readSlots = s.roots.snapshot()
@@ -188,14 +188,17 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 }
 
 // populated reports whether the library holds a location under the folder; a lookup that fails counts the folder as
-// new, so an empty folder is then readable rather than parked.
-func (s *Scheduler) populated(ctx context.Context, folder domain.MediaFolder) bool {
+// new, so an empty folder is then readable rather than parked. It fails only when ctx ended the lookup.
+func (s *Scheduler) populated(ctx context.Context, folder domain.MediaFolder) (bool, error) {
 	populated, err := s.folders.HasLocationsUnder(ctx, folder.ID)
-	if err != nil && ctx.Err() == nil {
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
 		s.logger.Warn("could not check whether the media folder holds videos", slog.String("path", folder.Path),
 			slog.Any("error", err))
 	}
-	return populated
+	return populated, nil
 }
 
 // grantClass visits the disks round robin from where the last turn stopped, so a disk with a long queue takes turns

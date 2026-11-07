@@ -41,11 +41,17 @@ const (
 func GenerateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
 	processCtx, cancel := context.WithTimeout(ctx, seekThumbnailTimeout)
 	defer cancel()
-	err := generateSeekSprite(processCtx, videoPath, outputDir, layout)
-	if ctx.Err() != nil {
+	return seekSpriteOutcome(ctx, processCtx, generateSeekSprite(processCtx, videoPath, outputDir, layout))
+}
+
+// seekSpriteOutcome keeps a finished generation even when a context ended right after it.
+func seekSpriteOutcome(ctx, processCtx context.Context, err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case ctx.Err() != nil:
 		return fmt.Errorf("seek thumbnail generation was interrupted: %w", ctx.Err())
-	}
-	if processCtx.Err() != nil {
+	case processCtx.Err() != nil:
 		return fmt.Errorf("%w: seek thumbnail generation took longer than %v", domain.ErrFailureRepeats, seekThumbnailTimeout)
 	}
 	return err

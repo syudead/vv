@@ -2,9 +2,12 @@ package media
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 func TestGenerateSeekThumbnailSetWritesSpriteIntoOutputDir(t *testing.T) {
@@ -24,5 +27,17 @@ func TestGenerateSeekThumbnailSetWritesSpriteIntoOutputDir(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != "000.jpg" {
 		t.Fatalf("出力が %v（000.jpg の 1 個のはず）", entries)
+	}
+}
+
+func TestSeekSpriteOutcomeKeepsSuccessAfterTheDeadline(t *testing.T) {
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := seekSpriteOutcome(context.Background(), expired, nil); err != nil {
+		t.Fatalf("finished generation = %v, want success", err)
+	}
+	failed := errors.New("ffmpeg was killed")
+	if err := seekSpriteOutcome(context.Background(), expired, failed); !errors.Is(err, domain.ErrFailureRepeats) {
+		t.Fatalf("failure after the deadline = %v, want ErrFailureRepeats", err)
 	}
 }

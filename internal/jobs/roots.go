@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"cmp"
+	"context"
 	"log/slog"
 	"slices"
 	"sync"
@@ -76,19 +77,25 @@ func (r *roots) requestRecheck() {
 	r.recheck = true
 }
 
+// populatedLookup reports whether the library holds a location under a folder; its error means only that ctx ended
+// the lookup.
+type populatedLookup func(ctx context.Context, folder domain.MediaFolder) (bool, error)
+
 // refresh resolves the folders that need it and forgets removed ones; it runs on the scheduler's loop only. populated
-// reports whether the library holds a location under a folder, read only for the folders resolved now and inside
-// their resolution. A resolution that outlasts DiskResolveTimeout parks its folder until it answers, because a read
-// from an unresponsive share or a stalled library lookup can block without end.
-func (r *roots) refresh(folders []domain.MediaFolder, now time.Time, populated func(domain.MediaFolder) bool) {
+// is read only for the folders resolved now and inside their resolution. A resolution that outlasts
+// DiskResolveTimeout parks its folder until it answers, because a read from an unresponsive share or a stalled
+// library lookup can block without end; the lookup is canceled then, so its folder is rechecked like any other.
+func (r *roots) refresh(ctx context.Context, folders []domain.MediaFolder, now time.Time, populated populatedLookup) {
 	pending := r.pending(folders, now)
 	if len(pending) == 0 {
 		return
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	done := make(chan struct{}, len(pending))
 	for _, folder := range pending {
 		go func() {
-			r.resolveOne(folder, populated(folder))
+			r.resolveOne(ctx, folder, populated)
 			done <- struct{}{}
 		}()
 	}
@@ -104,8 +111,12 @@ func (r *roots) refresh(folders []domain.MediaFolder, now time.Time, populated f
 	}
 }
 
-func (r *roots) resolveOne(folder domain.MediaFolder, populated bool) {
-	disk, err := r.resolve(folder.Path, populated)
+func (r *roots) resolveOne(ctx context.Context, folder domain.MediaFolder, lookup populatedLookup) {
+	var disk domain.Disk
+	populated, err := lookup(ctx, folder)
+	if err == nil {
+		disk, err = r.resolve(folder.Path, populated)
+	}
 	r.mu.Lock()
 	state, ok := r.known[folder.ID]
 	if !ok || !state.resolving || state.path != folder.Path {

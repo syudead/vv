@@ -115,7 +115,7 @@ type Scanner struct {
 	reporter   Reporter
 	readSlots  ReadSlots
 	logger     *slog.Logger
-	contentKey func(string) (string, error)
+	contentKey func(path string, want fs.FileInfo) (string, error)
 	walkDir    func(string, fs.WalkDirFunc) error
 	lstat      func(string) (fs.FileInfo, error)
 	// Replaceable creation-time reader for tests.
@@ -139,7 +139,7 @@ func New(opts Options) *Scanner {
 		reporter:   opts.Reporter,
 		readSlots:  opts.ReadSlots,
 		logger:     logger,
-		contentKey: ContentKey,
+		contentKey: contentKeyOf,
 		walkDir:    filepath.WalkDir,
 		lstat:      os.Lstat,
 		createdAt:  fileCreatedAt,
@@ -647,7 +647,7 @@ func (s *Scanner) readTarget(
 		return domain.VideoFile{}, nil, failFile(unreadableKind(err), 0, err)
 	}
 
-	key, err := s.readContentKey(ctx, pass, path)
+	key, err := s.readContentKey(ctx, pass, path, info)
 	if ctx.Err() != nil {
 		return domain.VideoFile{}, nil, ctx.Err()
 	}
@@ -681,9 +681,9 @@ func (s *Scanner) readTarget(
 
 // readContentKey holds a read slot of the file's media folder disk while it reads the content key. A file outside
 // every media folder has no disk to read within, so it is not read.
-func (s *Scanner) readContentKey(ctx context.Context, pass *scanPass, path string) (string, error) {
+func (s *Scanner) readContentKey(ctx context.Context, pass *scanPass, path string, info fs.FileInfo) (string, error) {
 	if s.readSlots == nil {
-		return s.contentKey(path)
+		return s.contentKey(path, info)
 	}
 	root := pass.rootOf(path)
 	if root == "" {
@@ -694,7 +694,7 @@ func (s *Scanner) readContentKey(ctx context.Context, pass *scanPass, path strin
 		return "", err
 	}
 	defer release()
-	return s.contentKey(path)
+	return s.contentKey(path, info)
 }
 
 // rootOf returns the innermost media folder that holds path, or "" for none.
@@ -738,7 +738,7 @@ func sameFile(existing domain.IndexedVideo, info fs.FileInfo) bool {
 // Only disappearance or replacement by a nonregular file proves a mid-import change; permission and
 // I/O failures remain unreadable.
 func unreadableKind(err error) domain.ScanIssueKind {
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) || errors.Is(err, errReplaced) {
 		return domain.IssueChangedDuringImport
 	}
 	return domain.IssueUnreadable

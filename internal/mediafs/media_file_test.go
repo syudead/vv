@@ -134,3 +134,31 @@ func TestMediaFileWithoutRoots(t *testing.T) {
 		t.Fatalf("error = %v, want ErrMediaFileUnavailable", err)
 	}
 }
+
+func TestOpenMediaFileRejectsASymlinkSwappedInBeforeOpening(t *testing.T) {
+	root, inside, _, outside := mediaTree(t)
+	swapped := filepath.Join(filepath.Dir(outside), "swapped")
+	if err := os.Mkdir(swapped, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(swapped, "movie.mp4"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Dir(inside)
+	// The validated directory becomes a symlink out of the root between validation and open.
+	open := func(name string) (*os.File, error) {
+		if err := os.Rename(sub, sub+".old"); err != nil {
+			t.Fatal(err)
+		}
+		symlink(t, swapped, sub)
+		return os.Open(name)
+	}
+	file, _, err := openMediaFile([]string{root}, inside, open)
+	if err == nil {
+		_ = file.Close()
+		t.Fatal("opened the file the swapped symlink points to")
+	}
+	if !errors.Is(err, domain.ErrMediaFileOutsideRoot) {
+		t.Fatalf("error = %v, want ErrMediaFileOutsideRoot", err)
+	}
+}
