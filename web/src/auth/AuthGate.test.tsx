@@ -100,6 +100,7 @@ describe("AuthGate", () => {
     ["/history?watch=watched", "/login?next=%2Fhistory%3Fwatch%3Dwatched"],
     ["/playlists", "/login?next=%2Fplaylists"],
     ["/playlists/7", "/login?next=%2Fplaylists%2F7"],
+    ["/smart-folders", "/login?next=%2Fsmart-folders"],
     ["/videos/7/edit", "/login?next=%2Fvideos%2F7%2Fedit"],
     ["/settings?tab=a", "/login?next=%2Fsettings%3Ftab%3Da"],
     ["/setup", "/"],
@@ -137,12 +138,15 @@ describe("AuthGate", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/api/auth/session?next=%2Ftags");
   });
 
-  it("guest は同じ画面をゲストとして描く", async () => {
-    answer({ state: "guest" });
-    renderGate("/folders");
-    expect(await screen.findByText("library as guest")).toBeDefined();
-    expect(currentLocation).toBe("/folders");
-  });
+  it.each(["/folders", "/smart-folders/3"])(
+    "guest は %s を同じ画面のままゲストとして描く",
+    async (path) => {
+      answer({ state: "guest" });
+      renderGate(path);
+      expect(await screen.findByText("library as guest")).toBeDefined();
+      expect(currentLocation).toBe(path);
+    },
+  );
 
   it("owner で /login を開くと、next を送ってサーバーが返した redirectTo へ移る", async () => {
     answer({ state: "owner", redirectTo: "/videos/12?t=30" });

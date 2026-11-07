@@ -515,6 +515,7 @@ changes from its row, the selection bar, the video page or the folder's page.
 | Filtered to favorites | Item stays until the next fetch                                          |
 | Guests                | Not shown                                                                |
 | Smart folder page     | `Favorite` pill before `Play` and `More`; heart alone below `sm`         |
+| Smart folder list     | The row heart of each root folder at `/smart-folders`                    |
 
 The mark changes only after the server answers:
 
@@ -663,6 +664,18 @@ with `All smart folders` leading to `/smart-folders`. A promoted cover opens
 playback; the resting card, title and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
 `/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
 hash intact.
+
+The owner's `Smart folders` entry, after `Folders` and before `History`, opens
+`/smart-folders` and stays lit on the folder pages below it. The 56px rail
+square shows the short label `Smart` and keeps `Smart folders` as the link's
+accessible name; the drawer row shows the full label. The page lists
+the root smart folders in the name order of `GET /api/smart-folders` as the
+home's list-view rows without the check and group cells, with `New smart
+folder` opening the folder dialog with an empty rule. It reads the list again
+after a creation, on every `smartFolder` and `peerItems` event and on
+reconnection, and the creation focuses the new folder's row. `/smart-folders`
+is an owner-only path of the auth gate; the folder pages below it check their
+own folder for a guest.
 
 While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's

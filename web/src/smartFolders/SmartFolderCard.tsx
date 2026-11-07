@@ -243,20 +243,48 @@ export const SmartFolderCard = memo(function SmartFolderCard(
   );
 });
 
+/** The owner's favorite and playlist cells of a row, then the group column's cell when the table has one. */
+function SmartFolderRowOwnerCells({
+  folder,
+  read,
+  groupCell,
+}: {
+  folder: SmartFolderSummary;
+  read: { favorite?: boolean };
+  groupCell: boolean;
+}) {
+  // Playlists stay on each node; the empty cell keeps the columns aligned.
+  const remote = isRemoteId(folder.id);
+  return (
+    <>
+      <TableCell className="w-8 px-0">
+        <SmartFolderFavorite folder={folder} read={read} variant="row" />
+      </TableCell>
+      <TableCell className="hidden w-8 px-0 sm:table-cell">
+        {!remote && <SmartFolderAddToPlaylist folder={folder} variant="row" />}
+      </TableCell>
+      {groupCell && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
+    </>
+  );
+}
+
 export const SmartFolderRow = memo(function SmartFolderRow({
   folder,
   backTo,
   owner,
+  folderList = false,
   selected = false,
   selectionMode = false,
   onSelect,
-}: SmartFolderCardProps & { owner: boolean }) {
+}: SmartFolderCardProps & {
+  owner: boolean;
+  /** The smart folder list's row: no check and no group cell, as its header has neither. */
+  folderList?: boolean;
+}) {
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
   if (gone) return null;
   const cover = values?.previews[0];
   const empty = values?.videoCount === 0;
-  // Playlists stay on each node; the empty cell keeps the columns aligned.
-  const remote = isRemoteId(folder.id);
   return (
     <TableRow
       ref={ref}
@@ -271,7 +299,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
           onSelect={(next) => onSelect(folder.id, next)}
         />
       ) : (
-        owner && <TableCell className="w-10 pl-3" />
+        owner && !folderList && <TableCell className="w-10 pl-3" />
       )}
       <TableCell className="w-list-thumb-cell">
         <VideoThumbnail className="w-list-thumb rounded-sm">
@@ -308,16 +336,12 @@ export const SmartFolderRow = memo(function SmartFolderRow({
         </span>
       </TableCell>
       {owner && (
-        <TableCell className="w-8 px-0">
-          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
-        </TableCell>
+        <SmartFolderRowOwnerCells
+          folder={folder}
+          read={values ?? folder}
+          groupCell={!folderList}
+        />
       )}
-      {owner && (
-        <TableCell className="hidden w-8 px-0 sm:table-cell">
-          {!remote && <SmartFolderAddToPlaylist folder={folder} variant="row" />}
-        </TableCell>
-      )}
-      {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
         itemId={folder.id}
         state={facts.state}

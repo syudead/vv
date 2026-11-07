@@ -732,16 +732,23 @@ function LibraryEmpty({
   return allFoldersOff ? <AllFoldersOff /> : <EmptyLibrary />;
 }
 
-export function LibraryTableHeader({ owner }: { owner: boolean }) {
+/** `folderList` drops the check and group columns, which the smart folder list's rows lack. */
+export function LibraryTableHeader({
+  owner,
+  folderList = false,
+}: {
+  owner: boolean;
+  folderList?: boolean;
+}) {
   return (
     <TableHeader>
       <TableRow className="hover:bg-transparent">
-        {owner && <TableHead className="w-10" />}
+        {owner && !folderList && <TableHead className="w-10" />}
         <TableHead className="w-list-thumb-cell" />
         <TableHead className="pr-4">{t.library.columns.title}</TableHead>
         {owner && <TableHead className="w-8" />}
         {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-        {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+        {owner && !folderList && <TableHead className="hidden w-8 sm:table-cell" />}
         <TableHead className="hidden w-16 pr-4 sm:table-cell" />
         <TableHead className="w-list-number pr-4 text-right">
           {t.library.columns.duration}
