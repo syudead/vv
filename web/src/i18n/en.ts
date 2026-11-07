@@ -678,6 +678,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         profilePage: "Profile page",
+        shelf: "Shelf",
         faceGrid: "Face grid",
         groupedList: "Grouped list",
         stepsPage: "Steps page",
@@ -866,6 +867,11 @@ export const en = {
       profilePageAgeValue: "34–35",
       profilePagePerformer: "Performer",
       profilePageCount: "4 videos",
+      shelfRowTitle: "Favorite collections",
+      shelfRowCount: "6 favorites",
+      shelfRowAll: "All collections",
+      shelfGridTitle: "Recently added",
+      shelfGridCount: "8 videos",
       faceGridLabel: "People",
       faceGridLoading: "Loading people",
       faceGridPeople: [
@@ -3628,6 +3634,26 @@ export const en = {
     deleted: (name: string) => `Deleted "${name}"`,
     open: "Open",
     listFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+    list: {
+      title: "Smart folders",
+      documentTitle: "Smart folders",
+      count: smartFolders,
+      table: "Smart folders",
+      new: "New smart folder",
+      empty: {
+        title: "No smart folders yet",
+        description: "A smart folder keeps the videos that match its conditions.",
+      },
+    },
+    band: {
+      title: "Favorite smart folders",
+      count: (n: number) =>
+        selectPlural(n, {
+          one: `${formatNumber(n)} favorite`,
+          other: `${formatNumber(n)} favorites`,
+        }),
+      all: "All smart folders",
+    },
     dialog: {
       newTitle: "New smart folder",
       newChildTitle: (parent: string) => `New smart folder in "${parent}"`,
@@ -3672,6 +3698,7 @@ export const en = {
         })[kind],
     },
     detail: {
+      favorite: "Favorite",
       edit: "Edit…",
       newChild: "New child smart folder…",
       delete: "Delete…",
@@ -3970,6 +3997,8 @@ export const en = {
       home: "Home",
       library: "Library",
       folders: "Folders",
+      smartFolders: "Smart folders",
+      smartFoldersShort: "Smart",
       tags: "Tags",
       people: "People",
       organizations: "Organizations",

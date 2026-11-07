@@ -43,6 +43,8 @@ function useCloseDrawer(): () => void {
 function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
   const location = useLocation();
   const closeDrawer = useCloseDrawer();
+  const { isMobile, state } = useSidebar();
+  const railLabel = !isMobile && state === "collapsed" ? entry.railLabel : undefined;
   const Icon = entry.icon;
   const end = entry.matchDescendants !== true;
   const active =
@@ -52,9 +54,14 @@ function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active}>
-        <NavLink to={entry.to} end={end} onClick={closeDrawer}>
+        <NavLink
+          to={entry.to}
+          end={end}
+          onClick={closeDrawer}
+          {...(railLabel === undefined ? {} : { "aria-label": entry.label })}
+        >
           <Icon aria-hidden="true" />
-          <span>{entry.label}</span>
+          <span>{railLabel ?? entry.label}</span>
         </NavLink>
       </SidebarMenuButton>
       {count !== undefined && (

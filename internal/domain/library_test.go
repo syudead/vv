@@ -58,36 +58,3 @@ func TestShuffleKey(t *testing.T) {
 		t.Errorf("seed=1 と seed=2 で同じ並びになった")
 	}
 }
-
-func TestVideoQueryListsSmartFolders(t *testing.T) {
-	for _, q := range []VideoQuery{
-		{},
-		{Sort: SortTitleAsc, Seed: 3, Cursor: "c", Limit: 10},
-		{Query: "   "},
-		{FavoriteOnly: true},
-		{Kind: VideoKindAll},
-	} {
-		if !q.ListsSmartFolders() {
-			t.Errorf("%+v.ListsSmartFolders() = false, want true", q)
-		}
-	}
-	for _, q := range []VideoQuery{
-		{Query: "cat"},
-		{TagIDs: []int64{1}},
-		{Person: 1},
-		{Organization: 1},
-		{TagKindID: 1},
-		{FavoriteOnly: true, TagIDs: []int64{1}},
-		{Kind: VideoKindFile},
-		{Kind: VideoKindVirtual},
-		{VideoConditions: VideoConditions{MinDurationMs: new(int64(1))}},
-		{VideoConditions: VideoConditions{MaxDurationMs: new(int64(0))}},
-		{VideoConditions: VideoConditions{AddedFrom: "2025-01-01"}},
-		{VideoConditions: VideoConditions{AddedTo: "2025-01-01"}},
-		{VideoConditions: VideoConditions{WatchState: WatchStateWatched}},
-	} {
-		if q.ListsSmartFolders() {
-			t.Errorf("%+v.ListsSmartFolders() = true, want false", q)
-		}
-	}
-}

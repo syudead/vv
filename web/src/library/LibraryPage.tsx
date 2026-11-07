@@ -23,6 +23,7 @@ import {
 } from "../api/listSnapshot";
 import { itemKey, itemVideo } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
+import { listsSmartFolders, type VideosCriteria } from "../api/videosCriteria";
 import { useAudience } from "../auth/audience";
 import { GroupChangedContext } from "../groups/groupChanges";
 import { t } from "../i18n";
@@ -35,7 +36,7 @@ import {
 import { useScanControls } from "../shell/ScanProvider";
 import { SmartFolderCardsProvider } from "../smartFolders/cardValues";
 import { SmartFolderCard, SmartFolderRow } from "../smartFolders/SmartFolderCard";
-import { loadedVideoIds } from "../smartFolders/pageRules";
+import { loadedSmartFolderIds, loadedVideoIds } from "../smartFolders/pageRules";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
@@ -67,6 +68,7 @@ import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryFilter } from "../smartFolders/smartRule";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary, { AllFoldersOff } from "./EmptyLibrary";
+import { FavoriteFolderBand, useFavoriteFolders } from "./FavoriteFolderBand";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
   DraggableGroupRow,
@@ -77,6 +79,7 @@ import {
 import LibraryToolbar from "./LibraryToolbar";
 import {
   retainVideos,
+  keepSmartFolders,
   favoriteTargets,
   selectionTargets,
   reconcileGroups,
@@ -190,6 +193,15 @@ export default function LibraryPage() {
     [captureAnchor, preferences, resetPreview, savePreferences],
   );
 
+  const listCriteria: VideosCriteria = {
+    ...criteria,
+    tag: tagIds,
+    ...credits,
+    ...conditions,
+  };
+  // The band follows the rule that once led the list with folders: no search or filter but favorites.
+  const band = useFavoriteFolders(owner && listsSmartFolders(listCriteria));
+
   const [restored] = useState(() =>
     takeListSnapshot({ ...criteria, tags: tagIds, ...credits, ...conditions }),
   );
@@ -208,11 +220,7 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos(
-    { ...criteria, tag: tagIds, ...credits, ...conditions },
-    restored,
-    "library",
-  );
+  } = useVideos(listCriteria, restored, "library");
   const filters = useLibraryFilters({
     owner,
     criteria,
@@ -273,7 +281,12 @@ export default function LibraryPage() {
     undo,
   });
   const shown = drops.shown;
-  useLayoutEffect(() => show(shown));
+  // The band's folders come first in display order, so ranges and boxes run across both.
+  const displayed = useMemo(
+    () => (band.items.length === 0 ? shown : [...band.items, ...shown]),
+    [band.items, shown],
+  );
+  useLayoutEffect(() => show(displayed));
 
   // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
@@ -296,6 +309,18 @@ export default function LibraryPage() {
   useEffect(() => {
     setSelection((current) => reconcileGroups(current, items));
   }, [items, setSelection]);
+
+  // The band and the list are every listed item, the band first.
+  const listed = useMemo(
+    () => (band.items.length === 0 ? items : [...band.items, ...items]),
+    [band.items, items],
+  );
+  // A folder that leaves the band (unfavorited here or elsewhere, or a failed read) leaves the
+  // selection, so a bulk action cannot reach a folder no longer shown.
+  const listedFolders = useMemo(() => loadedSmartFolderIds(listed), [listed]);
+  useEffect(() => {
+    setSelection((current) => keepSmartFolders(current, listedFolders));
+  }, [listedFolders, setSelection]);
 
   // Clear selection whenever conditions change, even when some videos match both views.
   const conditionsSignature = [criteriaKey(criteria), filters.signature].join("\u0000");
@@ -412,8 +437,8 @@ export default function LibraryPage() {
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const favoriteSelection = useMemo(() => favoriteTargets(selection), [selection]);
   const editTargets = useMemo(
-    () => selectionTargets(selection, items, t.library.selection.unknownTarget),
-    [selection, items],
+    () => selectionTargets(selection, listed, t.library.selection.unknownTarget),
+    [selection, listed],
   );
 
   const empty = !loading && error === null && items.length === 0;
@@ -532,7 +557,7 @@ export default function LibraryPage() {
   const withDrag = (content: ReactNode) =>
     owner ? (
       <LibraryDragLayer
-        items={shown}
+        items={displayed}
         list={view === "list"}
         selection={selection}
         onto={drops.onto}
@@ -568,21 +593,16 @@ export default function LibraryPage() {
   ) : (
     <div ref={list} onClick={saveSnapshot}>
       {withSmartFolderCards(
-        withDrag(
-          view === "grid" ? (
-            // Share one width observer for all tag rows in the list.
-            <TagRowMeasureProvider>
-              <Grid zoom={zoom}>
-                {}
-                {shown.map(card)}
-              </Grid>
-            </TagRowMeasureProvider>
-          ) : (
-            <DataTable label={t.library.title}>
-              <LibraryTableHeader owner={owner} />
-              <TableBody>{shown.map(row)}</TableBody>
-            </DataTable>
-          ),
+        view === "grid" ? (
+          // Share one width observer for all tag rows in the list.
+          <TagRowMeasureProvider>
+            <Grid zoom={zoom}>{shown.map(card)}</Grid>
+          </TagRowMeasureProvider>
+        ) : (
+          <DataTable label={t.library.title}>
+            <LibraryTableHeader owner={owner} />
+            <TableBody>{shown.map(row)}</TableBody>
+          </DataTable>
         ),
       )}
     </div>
@@ -644,27 +664,46 @@ export default function LibraryPage() {
           className="flex min-w-0 flex-col gap-3"
         >
           {marqueeBox}
-          {/* Home itself needs no heading or count; only filtered results get them. */}
-          {conditioned && (
-            <PageHeader
-              title={t.library.resultsLabel}
-              headingLevel={2}
-              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
-              count={
-                initialLoadFailed ? undefined : (
-                  <span
-                    role="status"
-                    aria-label={t.library.resultsLabel}
-                    aria-live="polite"
-                  >
-                    {resultStatus}
-                  </span>
-                )
-              }
-            />
+          {/* One drag layer spans the band and the list, so a drag over a band card is refused. */}
+          {withDrag(
+            <>
+              <FavoriteFolderBand
+                state={band.state}
+                onRetry={band.retry}
+                cardProps={(folder) => ({
+                  ...smartFolderProps(folder),
+                  tagsRow: undefined,
+                  refusesDrop: true,
+                })}
+              />
+              {/* Home itself needs no heading or count; only filtered results get them. */}
+              {conditioned && (
+                <PageHeader
+                  title={t.library.resultsLabel}
+                  headingLevel={2}
+                  actions={saveSmartFolderAction(
+                    owner,
+                    conditioned,
+                    smartFolderFilter,
+                    sort,
+                  )}
+                  count={
+                    initialLoadFailed ? undefined : (
+                      <span
+                        role="status"
+                        aria-label={t.library.resultsLabel}
+                        aria-live="polite"
+                      >
+                        {resultStatus}
+                      </span>
+                    )
+                  }
+                />
+              )}
+              {filters.activeFilters}
+              {body}
+            </>,
           )}
-          {filters.activeFilters}
-          {body}
           {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
           {error !== null && items.length > 0 && (
             <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
@@ -693,16 +732,23 @@ function LibraryEmpty({
   return allFoldersOff ? <AllFoldersOff /> : <EmptyLibrary />;
 }
 
-export function LibraryTableHeader({ owner }: { owner: boolean }) {
+/** `folderList` drops the check and group columns, which the smart folder list's rows lack. */
+export function LibraryTableHeader({
+  owner,
+  folderList = false,
+}: {
+  owner: boolean;
+  folderList?: boolean;
+}) {
   return (
     <TableHeader>
       <TableRow className="hover:bg-transparent">
-        {owner && <TableHead className="w-10" />}
+        {owner && !folderList && <TableHead className="w-10" />}
         <TableHead className="w-list-thumb-cell" />
         <TableHead className="pr-4">{t.library.columns.title}</TableHead>
         {owner && <TableHead className="w-8" />}
         {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-        {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+        {owner && !folderList && <TableHead className="hidden w-8 sm:table-cell" />}
         <TableHead className="hidden w-16 pr-4 sm:table-cell" />
         <TableHead className="w-list-number pr-4 text-right">
           {t.library.columns.duration}

@@ -442,7 +442,7 @@ full name in `title`. On `/folders` the owner also sees each media folder's
 path, truncated to favour its end, full in `title`. An empty registered root
 says to place files there and import.
 
-The library reads `GET /api/library`, which pages the owner's smart folders and then mixed
+The library reads `GET /api/library`, which pages mixed
 video and group keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
@@ -453,15 +453,16 @@ On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
-For the owner, root smart folders lead the unfiltered library by name, ahead of
-its groups and videos in any sort (favorites only keeps the favorited ones),
-and child folders lead a smart folder page by name. Guests see no smart folders
-there. The list carries only each folder's name; a card draws a `Skeleton` count
+For the owner, the favorite smart folders stand in a band above the home's list
+([Favorite smart folder band](home.md#favorite-smart-folder-band)), and child
+folders lead a smart folder page by name. Guests see no smart folders there.
+The list carries only each folder's name; a card draws a `Skeleton` count
 panel until it scrolls into view, and the cards then on screen are read 60 at a
 time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
-answer per card, and makes the unfiltered library reload its loaded pages, so
-a folder created, moved or renamed in another tab appears. A folder left out of
+answer per card, makes the home's band read the folder list again, so a folder
+favorited, renamed or deleted in another tab joins, changes or leaves it, and
+makes the unfiltered library reload its loaded pages. A folder left out of
 the answer loses its card. A smart folder card cannot be dragged, and dropping
 on it shows `Can't drop here`.
 
@@ -501,9 +502,9 @@ visit.
 ### Favorite mark
 
 The owner's favorite mark is one heart that is both mark and toggle, in the
-list rows of videos, groups and smart folders and on the video page. Grid
-cards carry none, so a card's favorite changes from its row, the selection bar
-or the video page.
+list rows of videos, groups and smart folders, on the video page and in the
+smart folder page's header. Grid cards carry none, so a card's favorite
+changes from its row, the selection bar, the video page or the folder's page.
 
 | Aspect                | Rule                                                                     |
 | --------------------- | ------------------------------------------------------------------------ |
@@ -513,6 +514,8 @@ or the video page.
 | Pressing              | Does not open the row's link or select it                                |
 | Filtered to favorites | Item stays until the next fetch                                          |
 | Guests                | Not shown                                                                |
+| Smart folder page     | `Favorite` pill before `Play` and `More`; heart alone below `sm`         |
+| Smart folder list     | The row heart of each root folder at `/smart-folders`                    |
 
 The mark changes only after the server answers:
 
@@ -525,6 +528,10 @@ flowchart LR
 ```
 
 A group is refetched with `GET /api/groups/{id}`.
+
+The smart folder page keeps the answered state until its next read; the
+`smartFolder` event that every favorite change raises re-reads the folder, so
+the toggle adds no refetch of its own.
 
 ### List view and selection
 
@@ -649,13 +656,28 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen. `Home` opens `/`, which combines the
-searchable library list with inline smart-folder cards
-([Home library and setup](home.md)). Smart-folder cards follow the list order and use the same one-column stacked
-artwork as groups. A promoted cover opens playback; the resting card, title
-and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
+Each sidebar item goes to its screen. `Home` opens `/`, the searchable library
+list of videos and groups under the owner's band of favorite smart folders
+([Home library and setup](home.md#favorite-smart-folder-band)). The band's
+cards use the same one-column stacked artwork as groups in one sideways row,
+with `All smart folders` leading to `/smart-folders`. A promoted cover opens
+playback; the resting card, title and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
 `/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
 hash intact.
+
+The owner's `Smart folders` entry, after `Folders` and before `History`, opens
+`/smart-folders` and stays lit on the folder pages below it. The 56px rail
+square shows the short label `Smart` and keeps `Smart folders` as the link's
+accessible name; the drawer row shows the full label. The page lists
+the root smart folders in the name order of `GET /api/smart-folders` as the
+home's list-view rows without the check and group cells, with `New smart
+folder` opening the folder dialog with an empty rule. It reads the list again
+after a creation, on every `smartFolder` and `peerItems` event and on
+reconnection. A created root folder gets the focus on its new row; a folder
+created with a parent has no row there, so the page opens that folder's page
+with `/smart-folders` as its return target. `/smart-folders` is an owner-only
+path of the auth gate; the folder pages below it check their own folder for a
+guest.
 
 While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's

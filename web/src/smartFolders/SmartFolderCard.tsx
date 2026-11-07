@@ -48,6 +48,8 @@ export interface SmartFolderCardProps {
   tagsRow?: (tags: readonly VideoTag[], folderId: number) => ReactNode;
   /** Inside an owner drag layer, this card neither lifts nor accepts drops. */
   refusesDrop?: boolean;
+  /** False leaves out the rule's condition chips, so a row of cards keeps one height. */
+  conditionChips?: boolean;
 }
 
 const noValues = { videoCount: 0 };
@@ -77,18 +79,18 @@ function SmartFolderMark() {
 }
 
 /**
- * Apply optimistic favorite state only to the current read object; discard it on every new read
+ * Apply the answered favorite state only to the current read object; discard it on every new read
  * identity, even if values match. Otherwise a later change from another tab can remain hidden.
  */
-function SmartFolderFavorite({
+export function SmartFolderFavorite({
   folder,
   read,
   variant,
 }: {
-  folder: SmartFolderSummary;
-  /** A new object on every read; initially the summary, then card values. */
+  folder: Pick<SmartFolderSummary, "id" | "name">;
+  /** A new object on every read; initially the summary, then card values or the page's read. */
   read: { favorite?: boolean };
-  variant: "card" | "row";
+  variant: "card" | "row" | "page";
 }) {
   const [toggled, setToggled] = useState<{ read: object; favorite: boolean }>();
   const favorite =
@@ -98,7 +100,11 @@ function SmartFolderFavorite({
   return (
     <FavoriteToggle
       favorite={favorite}
-      label={t.library.smartFolder.favorite(folder.name)}
+      label={
+        variant === "page"
+          ? t.smartFolders.detail.favorite
+          : t.library.smartFolder.favorite(folder.name)
+      }
       onToggle={async () => {
         await updateFavorites([], [], !favorite, { smartFolderIds: [folder.id] });
         setToggled({ read, favorite: !favorite });
@@ -150,6 +156,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
     backTo,
     tagsRow,
     refusesDrop = false,
+    conditionChips = true,
     selected = false,
     selectionMode = false,
     onSelect,
@@ -226,7 +233,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags, folder.id)}</div>
       )}
-      <RuleConditionChips conditions={values?.conditions} />
+      {conditionChips && <RuleConditionChips conditions={values?.conditions} />}
     </article>
   );
   return refusesDrop ? (
@@ -236,20 +243,48 @@ export const SmartFolderCard = memo(function SmartFolderCard(
   );
 });
 
+/** The owner's favorite and playlist cells of a row, then the group column's cell when the table has one. */
+function SmartFolderRowOwnerCells({
+  folder,
+  read,
+  groupCell,
+}: {
+  folder: SmartFolderSummary;
+  read: { favorite?: boolean };
+  groupCell: boolean;
+}) {
+  // Playlists stay on each node; the empty cell keeps the columns aligned.
+  const remote = isRemoteId(folder.id);
+  return (
+    <>
+      <TableCell className="w-8 px-0">
+        <SmartFolderFavorite folder={folder} read={read} variant="row" />
+      </TableCell>
+      <TableCell className="hidden w-8 px-0 sm:table-cell">
+        {!remote && <SmartFolderAddToPlaylist folder={folder} variant="row" />}
+      </TableCell>
+      {groupCell && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
+    </>
+  );
+}
+
 export const SmartFolderRow = memo(function SmartFolderRow({
   folder,
   backTo,
   owner,
+  folderList = false,
   selected = false,
   selectionMode = false,
   onSelect,
-}: SmartFolderCardProps & { owner: boolean }) {
+}: SmartFolderCardProps & {
+  owner: boolean;
+  /** The smart folder list's row: no check and no group cell, as its header has neither. */
+  folderList?: boolean;
+}) {
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
   if (gone) return null;
   const cover = values?.previews[0];
   const empty = values?.videoCount === 0;
-  // Playlists stay on each node; the empty cell keeps the columns aligned.
-  const remote = isRemoteId(folder.id);
   return (
     <TableRow
       ref={ref}
@@ -264,7 +299,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
           onSelect={(next) => onSelect(folder.id, next)}
         />
       ) : (
-        owner && <TableCell className="w-10 pl-3" />
+        owner && !folderList && <TableCell className="w-10 pl-3" />
       )}
       <TableCell className="w-list-thumb-cell">
         <VideoThumbnail className="w-list-thumb rounded-sm">
@@ -301,16 +336,12 @@ export const SmartFolderRow = memo(function SmartFolderRow({
         </span>
       </TableCell>
       {owner && (
-        <TableCell className="w-8 px-0">
-          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
-        </TableCell>
+        <SmartFolderRowOwnerCells
+          folder={folder}
+          read={values ?? folder}
+          groupCell={!folderList}
+        />
       )}
-      {owner && (
-        <TableCell className="hidden w-8 px-0 sm:table-cell">
-          {!remote && <SmartFolderAddToPlaylist folder={folder} variant="row" />}
-        </TableCell>
-      )}
-      {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
         itemId={folder.id}
         state={facts.state}
