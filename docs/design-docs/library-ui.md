@@ -501,9 +501,9 @@ visit.
 ### Favorite mark
 
 The owner's favorite mark is one heart that is both mark and toggle, in the
-list rows of videos, groups and smart folders and on the video page. Grid
-cards carry none, so a card's favorite changes from its row, the selection bar
-or the video page.
+list rows of videos, groups and smart folders, on the video page and in the
+smart folder page's header. Grid cards carry none, so a card's favorite
+changes from its row, the selection bar, the video page or the folder's page.
 
 | Aspect                | Rule                                                                     |
 | --------------------- | ------------------------------------------------------------------------ |
@@ -513,6 +513,7 @@ or the video page.
 | Pressing              | Does not open the row's link or select it                                |
 | Filtered to favorites | Item stays until the next fetch                                          |
 | Guests                | Not shown                                                                |
+| Smart folder page     | `Favorite` pill before `Play` and `More`; heart alone below `sm`         |
 
 The mark changes only after the server answers:
 
@@ -525,6 +526,10 @@ flowchart LR
 ```
 
 A group is refetched with `GET /api/groups/{id}`.
+
+The smart folder page keeps the answered state until its next read; the
+`smartFolder` event that every favorite change raises re-reads the folder, so
+the toggle adds no refetch of its own.
 
 ### List view and selection
 
