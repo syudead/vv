@@ -56,7 +56,7 @@ The band narrows the plan in one place:
 
 | Plan said | This design | Why |
 | --- | --- | --- |
-| Band items are the library's smart folder cards and rows ([plan.md, Home band of favorite folders](plan.md#home-band-of-favorite-folders)) | Cards in both views, in a row that scrolls sideways | One frame at one height in both views; selection, playlist and the favorite of a band folder stay through the selection bar, and the folder page gets its own heart |
+| Band items are the library's smart folder cards and rows ([plan.md, Home band of favorite folders](plan.md#home-band-of-favorite-folders)) | Cards in both views, in a row that scrolls sideways | One frame at one height in both views; selection, the favorite and, for a local folder, the playlist of a band folder stay through the selection bar, and the folder page gets its own heart |
 
 The list page is a `ListPage` whose body is the home's list-view rows, because
 requirement 5 needs a heart on each folder and grid cards carry none
@@ -145,7 +145,7 @@ flowchart TB
 | --- | --- |
 | Section | A `Shelf` in the row layout of [Shelf row](#shelf-row): the heading `Favorite smart folders` (`h2`), the count `6 favorites`, and the action `All smart folders`, a `ghost` `sm` `Button` around a router link to `/smart-folders` with lucide `ChevronRight` after the text |
 | Cards | The library's smart folder cards, `card-0` wide at every zoom, in the name order of the folder list, at any depth; no tag row and no condition chips, so every card is its art and its name and the row is one height |
-| Card behaviour | As on the home today: cover promotion opens playback, the resting card and the name open the folder page with `state.from` the home, the check on hover selects the folder, Shift ranges run across the band and the list in display order, and the selection bar offers favorite, playlist, tag and visibility actions on it |
+| Card behaviour | As on the home today: cover promotion opens playback, the resting card and the name open the folder page with `state.from` the home, the check on hover selects the folder, Shift ranges run across the band and the list in display order, and the selection bar offers on it what it offers on a folder card today: favorite, tag and visibility actions on every folder, and `Add to playlist` only while every selected item is on this node, since playlists stay on each node, so a selection with a linked library's folder has no playlist action |
 | Scrolling | The row scrolls sideways with a swipe, a trackpad, Shift+wheel, the scrollbar and Tab (the focused card scrolls into view); the body's edge cuts the card that does not fit, so a cut card says more follow; no arrow buttons |
 | Marquee | A box drawn on the home selects the band cards it overlaps; a card scrolled out of the row is not selected |
 | Drag | A card dragged over a band card shows `Can't drop here`, as over a folder card today |
