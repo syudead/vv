@@ -1,23 +1,56 @@
 # Home library
 
-Home is a single library list containing videos, groups and smart-folder cards.
-There is no separate shelf section and no Add to home/Remove from home action.
-Existing smart folders, rules and videos are retained.
+Home is a single library list of videos and groups, with the owner's favorite
+smart folders in a band above it. There is no Add to home/Remove from home
+action. Existing smart folders, rules and videos are retained.
 
-`/` uses the library's existing filtering and sorting. Root smart folders appear
-among the other items when unfiltered; favorite-only listings include favorite
-folders at any depth. Folder cards follow the same sort order as other items,
-using their matching-video aggregates. No card is pinned to the top.
+`/` uses the library's existing filtering and sorting, and its list holds no
+smart folders. Former `/library` bookmarks redirect to `/`, preserving query and
+hash.
 
-In grid view smart folders use the same one-column card and stacked thumbnails
-as groups. Up to four video covers appear, followed by a More sheet when videos
-remain. Moving the mouse across the artwork brings a cover forward; clicking
-opens that video with autoplay, the current return URL and collection playback
-context. More, the title, a resting card, touch and keyboard activation open the
-collection page. Selection mode disables cover promotion and direct playback.
-The existing card-values request supplies thumbnails and titles; no separate
-home/shelf read runs. List view retains the compact folder row. Former
-`/library` bookmarks redirect to `/`, preserving query and hash.
+## Favorite smart folder band
+
+The band holds every smart folder the owner favorited, at any depth, in the
+natural-name order of `GET /api/smart-folders`. The home reads that list in
+full and keeps the folders with `favorite`; the list is unpaginated, so the band
+needs no cursor and never counts toward the library's `limit` or `total`, and
+many favorites never fill the list's first page.
+
+```mermaid
+flowchart LR
+  home[Home opened] --> owner{Owner, and no search, tag, person, organization, kind or video condition?}
+  owner -->|no| none[No band, no read]
+  owner -->|yes| read[GET /api/smart-folders]
+  read --> keep[Keep favorite folders]
+  keep --> band[Band above the list]
+  band -->|smartFolder, peerItems, reconnection| read
+```
+
+The band is read and drawn only for the owner while the criteria list smart
+folders: `Favorites only`, the sort and the zoom keep it, and any other filter
+or a search removes it. Guests get neither the read nor the band. With no
+favorite folder the band is not drawn and the list starts at the top of the
+body. The whole list is read again on every `smartFolder` event, which a
+favorite change raises for every folder, on every `peerItems` event, since the
+list merges each connected link's folders, and on reconnection; the band is
+rewritten in place, never from the event's ids. While the first read is pending
+nothing is drawn, because the band may turn out absent; a failed read shows its
+heading and link over an `ErrorState` with Retry.
+
+The band is a `Shelf` in the row layout: the heading `Favorite smart folders`,
+the count, a `ghost` link to `/smart-folders`, one line of the library's smart
+folder cards that scrolls sideways, then a `Separator`. The cards are `card-0`
+wide at every zoom and in both the grid and the list view, without the tag row
+or the condition chips, so the band is one card high however many folders are
+favorites. A card behaves as the library's: up to four video covers, then a
+More sheet when videos remain; moving the mouse across the artwork brings a
+cover forward, and clicking opens that video with autoplay, the current return
+URL and collection playback context. More, the title, a resting card, touch and
+keyboard activation open the folder page. The card values come from the lazy
+card-values request. The band's folders lead the list in display order for the
+page's selection, so Shift ranges run from a band card into the list, a drawn
+box selects the band cards it overlaps but not the part of the row scrolled out
+of view, and a drag over a band card shows `Can't drop here`.
 
 ## Collection information and paging
 
@@ -45,7 +78,9 @@ counts without traversing descendants or aggregating members. Search and
 member filters still match videos in SQL to decide whether a group is wholly
 matched or should appear as individual videos.
 
-The library lists no smart folders, for any audience or filter. Guests see no
+The library lists no smart folders, for any audience or filter; the home's band
+reads them from `GET /api/smart-folders` instead
+([Favorite smart folder band](#favorite-smart-folder-band)). Guests see no
 smart folders in the folder list or the card values; a folder page opened by
 its URL checks that folder alone.
 

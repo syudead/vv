@@ -453,15 +453,16 @@ On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
-For the owner, root smart folders lead the unfiltered library by name, ahead of
-its groups and videos in any sort (favorites only keeps the favorited ones),
-and child folders lead a smart folder page by name. Guests see no smart folders
-there. The list carries only each folder's name; a card draws a `Skeleton` count
+For the owner, the favorite smart folders stand in a band above the home's list
+([Favorite smart folder band](home.md#favorite-smart-folder-band)), and child
+folders lead a smart folder page by name. Guests see no smart folders there.
+The list carries only each folder's name; a card draws a `Skeleton` count
 panel until it scrolls into view, and the cards then on screen are read 60 at a
 time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
-answer per card, and makes the unfiltered library reload its loaded pages, so
-a folder created, moved or renamed in another tab appears. A folder left out of
+answer per card, makes the home's band read the folder list again, so a folder
+favorited, renamed or deleted in another tab joins, changes or leaves it, and
+makes the unfiltered library reload its loaded pages. A folder left out of
 the answer loses its card. A smart folder card cannot be dragged, and dropping
 on it shows `Can't drop here`.
 
@@ -654,11 +655,12 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen. `Home` opens `/`, which combines the
-searchable library list with inline smart-folder cards
-([Home library and setup](home.md)). Smart-folder cards follow the list order and use the same one-column stacked
-artwork as groups. A promoted cover opens playback; the resting card, title
-and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
+Each sidebar item goes to its screen. `Home` opens `/`, the searchable library
+list of videos and groups under the owner's band of favorite smart folders
+([Home library and setup](home.md#favorite-smart-folder-band)). The band's
+cards use the same one-column stacked artwork as groups in one sideways row,
+with `All smart folders` leading to `/smart-folders`. A promoted cover opens
+playback; the resting card, title and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
 `/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
 hash intact.
 

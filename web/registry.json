@@ -975,7 +975,7 @@
       "name": "shelf",
       "type": "registry:ui",
       "title": "Shelf",
-      "description": "Section: a heading with a count over a wrapping grid of every card of one kind.",
+      "description": "Section: a heading with a count and actions over a wrapping grid of every card of one kind, or over one line of card-0 cards that scrolls sideways.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -1318,6 +1318,19 @@
         {
           "path": "src/ui/patterns/profile-page.tsx",
           "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "shelf-example",
+      "type": "registry:block",
+      "title": "Shelf example",
+      "description": "A row shelf of a few highlighted cards with its count and a quiet link to all of them, a hairline, then a wrapping shelf of every card.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/shelf-example.tsx",
+          "type": "registry:component"
         }
       ]
     },

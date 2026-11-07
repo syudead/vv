@@ -2,11 +2,11 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "shelf",
   "title": "Shelf",
-  "description": "Section: a heading with a count over a wrapping grid of every card of one kind.",
+  "description": "Section: a heading with a count and actions over a wrapping grid of every card of one kind, or over one line of card-0 cards that scrolls sideways.",
   "files": [
     {
       "path": "src/ui/patterns/shelf.tsx",
-      "content": "import type { ReactNode } from \"react\";\n\nimport { PageHeader } from \"./page-header\";\n\n// One kind of item under a heading with its count; see web/registry/rules/patterns.md, Sections.\n\nexport interface ShelfProps {\n  /** The heading (`h2`). */\n  title: ReactNode;\n  /** The number of items, after the heading. */\n  count?: ReactNode;\n  /** A `CardGrid` of every item, then its `LoadMoreRow`; or one state block. */\n  children: ReactNode;\n}\n\nexport function Shelf({ title, count, children }: ShelfProps) {\n  return (\n    <section data-slot=\"shelf\" className=\"flex min-w-0 flex-col gap-3\">\n      <PageHeader title={title} headingLevel={2} count={count} />\n      {children}\n    </section>\n  );\n}\n",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { PageHeader } from \"./page-header\";\n\n// One kind of item under a heading with its count; see web/registry/rules/patterns.md, Sections.\n\nexport interface ShelfProps {\n  /** The heading (`h2`). */\n  title: ReactNode;\n  /** The number of items, after the heading. */\n  count?: ReactNode;\n  /** Drawn at the right end of the heading row. */\n  actions?: ReactNode;\n  /**\n   * `grid` (default): the children are a `CardGrid` of every item, then its `LoadMoreRow`, or one\n   * state block. `row`: each child is a card, `card-0` wide, in one line that scrolls sideways.\n   */\n  layout?: \"grid\" | \"row\";\n  children: ReactNode;\n}\n\nexport function Shelf({ title, count, actions, layout = \"grid\", children }: ShelfProps) {\n  return (\n    <section data-slot=\"shelf\" className=\"flex min-w-0 flex-col gap-3\">\n      <PageHeader title={title} headingLevel={2} count={count} actions={actions} />\n      {layout === \"row\" ? (\n        <div\n          data-slot=\"shelf-row\"\n          // Box selection skips the cards this row clips.\n          data-scroll-row=\"\"\n          className=\"flex min-w-0 gap-3 overflow-x-auto pb-1 *:w-card-0 *:shrink-0\"\n        >\n          {children}\n        </div>\n      ) : (\n        children\n      )}\n    </section>\n  );\n}\n",
       "type": "registry:ui"
     }
   ],

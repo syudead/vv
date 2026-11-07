@@ -89,6 +89,9 @@ function install() {
     }
     if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
     if (url.pathname === "/api/peer") return Promise.resolve(json(server.peer));
+    if (url.pathname === "/api/smart-folders") {
+      return Promise.resolve(json({ smartFolders: [] }));
+    }
     if (url.pathname === "/api/library") {
       server.libraryReads += 1;
       const shown = [...(server.peerListed ? [local, remote] : [local]), ...server.extra];
