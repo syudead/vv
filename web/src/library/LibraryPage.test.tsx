@@ -112,13 +112,15 @@ async function asTagsResponse(response: Response): Promise<Response> {
 }
 
 /**
- * Return empty tag kinds and credit searches here; LibraryTagKindFilter.test.tsx covers kind
- * filtering and LibrarySearchSuggestions.test.tsx the search suggestions.
+ * Return empty tag kinds, credit searches and smart folders here; LibraryTagKindFilter.test.tsx
+ * covers kind filtering, LibrarySearchSuggestions.test.tsx the search suggestions and
+ * FavoriteFolderBand.test.tsx the band of favorite folders.
  */
 function libraryFetch(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): typeof fetch {
   return (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
     if (path === "/api/tag-kinds") return Promise.resolve(json({ items: [] }));
+    if (path === "/api/smart-folders") return Promise.resolve(json({ smartFolders: [] }));
     if (path === "/api/people" || path === "/api/organizations") {
       return Promise.resolve(json({ items: [], total: 0, totalAll: 0 }));
     }

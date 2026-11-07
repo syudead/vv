@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "shelf-example",
+  "title": "Shelf example",
+  "description": "A row shelf of a few highlighted cards with its count and a quiet link to all of them, a hairline, then a wrapping shelf of every card.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/shelf-example.tsx",
+      "content": "import { ChevronRight } from \"lucide-react\";\n\nimport { t } from \"@/i18n\";\nimport { CardGrid } from \"@/ui/patterns/card-grid\";\nimport { Shelf } from \"@/ui/patterns/shelf\";\nimport { Button } from \"@/ui/shadcn/button\";\nimport { Separator } from \"@/ui/shadcn/separator\";\n\n// registry:block shelf-example. See web/registry/rules/patterns.md, Sections.\n\nfunction SampleCard({ title }: { title: string }) {\n  return (\n    <div className=\"flex min-w-0 flex-col gap-2\">\n      <span className=\"aspect-video w-full rounded-md bg-card\" />\n      <span className=\"truncate text-sm font-medium\">{title}</span>\n    </div>\n  );\n}\n\n/** A row shelf of a few highlighted items, its hairline, then a wrapping shelf of every item. */\nexport function ShelfExample() {\n  const p = t.designSystem.pattern;\n  const titles = Object.values(p.videoTitles);\n  return (\n    <div className=\"flex min-w-0 flex-col gap-3 p-4\">\n      <Shelf\n        title={p.shelfRowTitle}\n        count={p.shelfRowCount}\n        layout=\"row\"\n        actions={\n          <Button variant=\"ghost\" size=\"sm\">\n            {p.shelfRowAll}\n            <ChevronRight aria-hidden=\"true\" />\n          </Button>\n        }\n      >\n        {titles.slice(0, 6).map((title) => (\n          <SampleCard key={title} title={title} />\n        ))}\n      </Shelf>\n      <Separator />\n      <Shelf title={p.shelfGridTitle} count={p.shelfGridCount}>\n        <CardGrid size={0}>\n          {titles.map((title) => (\n            <SampleCard key={title} title={title} />\n          ))}\n        </CardGrid>\n      </Shelf>\n    </div>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:block"
+}

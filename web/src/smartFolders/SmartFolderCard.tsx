@@ -48,6 +48,8 @@ export interface SmartFolderCardProps {
   tagsRow?: (tags: readonly VideoTag[], folderId: number) => ReactNode;
   /** Inside an owner drag layer, this card neither lifts nor accepts drops. */
   refusesDrop?: boolean;
+  /** False leaves out the rule's condition chips, so a row of cards keeps one height. */
+  conditionChips?: boolean;
 }
 
 const noValues = { videoCount: 0 };
@@ -154,6 +156,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
     backTo,
     tagsRow,
     refusesDrop = false,
+    conditionChips = true,
     selected = false,
     selectionMode = false,
     onSelect,
@@ -230,7 +233,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags, folder.id)}</div>
       )}
-      <RuleConditionChips conditions={values?.conditions} />
+      {conditionChips && <RuleConditionChips conditions={values?.conditions} />}
     </article>
   );
   return refusesDrop ? (

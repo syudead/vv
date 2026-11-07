@@ -16,6 +16,7 @@ import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { RecordPageExample } from "./blocks/record-page-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
+import { ShelfExample } from "./blocks/shelf-example";
 import { SidePanelExample } from "./blocks/side-panel-example";
 import { StepsPageExample } from "./blocks/steps-page-example";
 
@@ -215,6 +216,13 @@ export default function Patterns() {
         items={["profile-page", "profile-page-example", "shelf", "person-face"]}
       >
         <ProfilePageExample />
+      </Pattern>
+      <Pattern
+        id="shelf"
+        name={p.names.shelf}
+        items={["shelf", "card-grid", "separator", "shelf-example"]}
+      >
+        <ShelfExample />
       </Pattern>
       <Pattern
         id="face-grid"
