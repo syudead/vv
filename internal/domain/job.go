@@ -56,6 +56,10 @@ const (
 
 var ErrNoJob = errors.New("no job to process")
 
+// ErrJobNotRunning reports that a claimed job is no longer running, so recording its outcome cannot succeed and
+// retrying cannot help; another operation already settled it.
+var ErrJobNotRunning = errors.New("the job is no longer running")
+
 type Job struct {
 	ID         int64
 	Kind       JobKind
