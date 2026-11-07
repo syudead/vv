@@ -37,7 +37,11 @@ type fakeQueue struct {
 	claimRecords []domain.JobClaim
 	completed    []domain.Job
 	failures     []jobFailure
-	observe      func(string)
+	// completeFailures makes CompleteClaimedJob fail this many times before it records the completion.
+	completeFailures int
+	// completeErr makes every CompleteClaimedJob fail with this error.
+	completeErr error
+	observe     func(string)
 	// runAfter holds a kind's jobs back until that time, as a retry delay does.
 	runAfter time.Time
 	// claimDelay passes after each claim answers, so time moves on between a turn's claims and its lookup.
@@ -134,6 +138,16 @@ func (q *fakeQueue) claimCount() int {
 
 func (q *fakeQueue) CompleteClaimedJob(_ context.Context, job domain.Job) error {
 	q.mu.Lock()
+	if q.completeErr != nil {
+		err := q.completeErr
+		q.mu.Unlock()
+		return err
+	}
+	if q.completeFailures > 0 {
+		q.completeFailures--
+		q.mu.Unlock()
+		return errors.New("transient completion failure")
+	}
 	q.completed = append(q.completed, job)
 	q.mu.Unlock()
 	if q.observe != nil {
@@ -641,6 +655,48 @@ func TestSchedulerRetriesClaimFailure(t *testing.T) {
 		synctest.Wait()
 		if got, want := queue.completedIDs(), []int64{job.ID}; !slices.Equal(got, want) {
 			t.Fatalf("after retry: completed=%v, want %v", got, want)
+		}
+	})
+}
+
+// A transient storage failure while recording completion must not leave the job running; the scheduler retries.
+func TestSchedulerRetriesCompletionRecording(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		job := domain.Job{ID: 9, Kind: domain.JobProbe}
+		queue := newFakeQueue(job)
+		queue.completeFailures = 2
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1,
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+		})
+		defer stop()
+		synctest.Wait()
+		if got := queue.completedIDs(); len(got) != 0 {
+			t.Fatalf("completed before the retries = %v", got)
+		}
+		// The first retry waits one second and the second two.
+		time.Sleep(3 * time.Second)
+		synctest.Wait()
+		if got, want := queue.completedIDs(), []int64{job.ID}; !slices.Equal(got, want) {
+			t.Fatalf("after the retries: completed=%v, want %v", got, want)
+		}
+	})
+}
+
+// A job another operation already settled is not retried, so the scheduler does not spin on it.
+func TestSchedulerStopsRetryingASettledJob(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		job := domain.Job{ID: 10, Kind: domain.JobProbe}
+		queue := newFakeQueue(job)
+		queue.completeErr = domain.ErrJobNotRunning
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1,
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+		})
+		defer stop()
+		synctest.Wait()
+		if got := queue.completedIDs(); len(got) != 0 {
+			t.Fatalf("completed = %v, want none", got)
 		}
 	})
 }
