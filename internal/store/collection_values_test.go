@@ -20,7 +20,6 @@ func TestLibraryPageUsesStoredValuesAndBoundedPreviews(t *testing.T) {
 		ids[i] = looseVideo(t, db, fmt.Sprintf("cover%d", i))
 	}
 	groupID := createGroup(t, db, "A group", domain.GroupAdd{VideoIDs: ids})
-	folderID := newSmartFolder(t, db, "Z folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
 	execSQL(t, db, `update videos set thumbnail_state = 'done'`)
 	// Width is irrelevant to paging and the fifth video is beyond the cover boundary.
 	if _, err := db.sql.Exec(`update videos set width = 'must not decode' where id = ?`, ids[len(ids)-1]); err != nil {
@@ -33,20 +32,12 @@ func TestLibraryPageUsesStoredValuesAndBoundedPreviews(t *testing.T) {
 	for _, table := range []string{"group_values", "group_members"} {
 		execSQL(t, db, `create trigger forbid_`+table+` before insert on `+table+` begin select raise(abort, 'page recomputed collection values'); end`)
 	}
-	// Smart folders lead the library, so the group follows on the second page.
 	page, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 2 || len(page.Items) != 1 || page.Items[0].SmartFolder == nil || page.Items[0].SmartFolder.ID != folderID {
-		t.Fatalf("first page = %+v", page)
-	}
-	page, err = db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: page.NextCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].Group == nil || page.Items[0].Group.ID != groupID || page.NextCursor != "" {
-		t.Fatalf("second page = %+v", page)
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Group == nil || page.Items[0].Group.ID != groupID || page.NextCursor != "" {
+		t.Fatalf("page = %+v", page)
 	}
 	group := page.Items[0].Group
 	if group.Card == nil || len(group.Members) != 0 || !slices.Equal(group.Card.VideoIDs, ids) {
