@@ -681,6 +681,14 @@ paths:
               schema:
                 type: string
           content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            video/webm:
+              schema:
+                type: string
+                format: binary
             application/octet-stream:
               schema:
                 type: string

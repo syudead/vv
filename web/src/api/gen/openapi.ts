@@ -9595,6 +9595,8 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "video/mp4": string;
+                    "video/webm": string;
                     "application/octet-stream": string;
                 };
             };
