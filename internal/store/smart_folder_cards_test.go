@@ -11,6 +11,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+func favoriteSmartFolder(t *testing.T, db *DB, id, at int64) {
+	t.Helper()
+	if _, err := db.sql.Exec(`insert into smart_folder_favorites (smart_folder_id, favorited_at) values (?, ?)`, id, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func smartFolderCards(t *testing.T, db *DB, audience domain.Audience, ids ...int64) []domain.SmartFolderCard {
 	t.Helper()
 	cards, err := db.SmartFolders().SmartFolderCards(context.Background(), audience, ids)

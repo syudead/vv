@@ -442,7 +442,7 @@ full name in `title`. On `/folders` the owner also sees each media folder's
 path, truncated to favour its end, full in `title`. An empty registered root
 says to place files there and import.
 
-The library reads `GET /api/library`, which pages the owner's smart folders and then mixed
+The library reads `GET /api/library`, which pages mixed
 video and group keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share

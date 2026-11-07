@@ -243,7 +243,7 @@ func itemOrder(sort domain.VideoSort) listOrder {
 	return order
 }
 
-// ListLibrary reads counts, items, members and registered folders from one snapshot; callers validate audience permissions for filters.
+// ListLibrary reads videos and groups with their counts, members and registered folders from one snapshot; callers validate audience permissions for filters.
 func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
 	if err := s.db.RefreshCollectionValues(ctx); err != nil {
 		return domain.LibraryPage{}, err
@@ -262,12 +262,7 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	// Stored group values follow this node's switches, so an explicit folder scope computes its groups.
 	_, explicit := audience.ExcludedFolders()
 	spec.storedCollections = !explicit
-	list := listLibraryPageTx
-	// Guests do not see smart folders.
-	if audience.IsOwner() && q.ListsSmartFolders() {
-		list = listLibraryWithFolders
-	}
-	page, err := list(ctx, tx, spec)
+	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}

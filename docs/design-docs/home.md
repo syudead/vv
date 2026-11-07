@@ -45,13 +45,9 @@ counts without traversing descendants or aggregating members. Search and
 member filters still match videos in SQL to decide whether a group is wholly
 matched or should appear as individual videos.
 
-In the owner's unfiltered library, smart folders lead: the top-level folders,
-or every favorited folder in favorites-only mode, by name and then ID, ahead of
-the sorted items and within the same page limit. A cursor inside them names the
-last folder shown. Listing them evaluates no folder rule; ordering folders by
-their matching videos' values would evaluate every rule against the library on
-each request. Guests see no smart folders in the library, the folder list or
-the card values; a folder page opened by its URL checks that folder alone.
+The library lists no smart folders, for any audience or filter. Guests see no
+smart folders in the folder list or the card values; a folder page opened by
+its URL checks that folder alone.
 
 Selected group cards read their saved values, member IDs for existing selection
 actions, a union of member tags, and at most four cover videos. They do not load
@@ -65,7 +61,6 @@ on the selected groups' size. Paging does not imply constant database work.
 flowchart LR
   write[Video or collection change] --> marked[Mark affected groups]
   marked --> saved[Next list read refreshes marked groups and ancestors]
-  folders[Owner's smart folders by name] --> keys
   saved --> keys[SQL combines and pages video and group keys]
   keys --> page[Load selected cards and bounded group covers]
   page --> lazy[Load visible smart-folder card details]
