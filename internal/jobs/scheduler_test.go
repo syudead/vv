@@ -689,12 +689,18 @@ func TestSchedulerStopsRetryingASettledJob(t *testing.T) {
 		job := domain.Job{ID: 10, Kind: domain.JobProbe}
 		queue := newFakeQueue(job)
 		queue.completeErr = domain.ErrJobNotRunning
+		var finished atomic.Int32
 		_, stop := startScheduler(Options{
 			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+			Finished: func(domain.Job) { finished.Add(1) },
 		})
 		defer stop()
 		synctest.Wait()
+		// Finished runs only after recordOutcome returns, so a retry loop blocked on its timer would leave it at zero.
+		if got := finished.Load(); got != 1 {
+			t.Fatalf("finished calls before stop = %d, want 1", got)
+		}
 		if got := queue.completedIDs(); len(got) != 0 {
 			t.Fatalf("completed = %v, want none", got)
 		}
