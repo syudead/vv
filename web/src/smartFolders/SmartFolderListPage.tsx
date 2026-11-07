@@ -1,5 +1,6 @@
 import { FolderSearch, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { LibraryTableHeader } from "../library/LibraryPage";
 import { t } from "../i18n";
@@ -16,13 +17,15 @@ import { DEFAULT_SORT } from "../videoList/listCriteria";
 import { SmartFolderCardsProvider } from "./cardValues";
 import { SmartFolderRow } from "./SmartFolderCard";
 import SmartFolderDialog from "./SmartFolderDialog";
+import { smartFolderPagePath } from "./smartFolderPaths";
 import { useSmartFolderList } from "./useSmartFolderList";
 
 const listPath = "/smart-folders";
 
 /**
  * The owner's root smart folders in the server's name order. A creation reads the list again
- * instead of inserting locally, since the server's name order folds width, case and kana.
+ * instead of inserting locally, since the server's name order folds width, case and kana. A child
+ * folder has no row here, so the page opens the new folder's page instead.
  */
 export default function SmartFolderListPage() {
   const { state, read, reload } = useSmartFolderList(true);
@@ -30,6 +33,7 @@ export default function SmartFolderListPage() {
   const [focusId, setFocusId] = useState<number | null>(null);
   const table = useRef<HTMLDivElement | null>(null);
   const toast = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const previous = document.title;
@@ -134,6 +138,12 @@ export default function SmartFolderListPage() {
           onDone={(created) => {
             setCreating(false);
             toast(t.smartFolders.created(created.name));
+            if (created.parentId !== undefined) {
+              void navigate(smartFolderPagePath(created.id), {
+                state: { from: listPath },
+              });
+              return;
+            }
             setFocusId(created.id);
             read();
           }}
