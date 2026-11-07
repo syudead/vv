@@ -2,6 +2,7 @@ import {
   Activity,
   Building2,
   Folder,
+  FolderSearch,
   History,
   House,
   Layers,
@@ -34,6 +35,14 @@ export function navEntries(): readonly NavEntry[] {
       icon: Folder,
       to: "/folders",
       matchDescendants: true,
+    },
+    {
+      id: "smartFolders",
+      label: t.shell.nav.smartFolders,
+      icon: FolderSearch,
+      to: "/smart-folders",
+      matchDescendants: true,
+      ownerOnly: true,
     },
     {
       id: "history",

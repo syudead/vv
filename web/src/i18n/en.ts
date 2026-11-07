@@ -3634,6 +3634,17 @@ export const en = {
     deleted: (name: string) => `Deleted "${name}"`,
     open: "Open",
     listFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+    list: {
+      title: "Smart folders",
+      documentTitle: "Smart folders",
+      count: smartFolders,
+      table: "Smart folders",
+      new: "New smart folder",
+      empty: {
+        title: "No smart folders yet",
+        description: "A smart folder keeps the videos that match its conditions.",
+      },
+    },
     band: {
       title: "Favorite smart folders",
       count: (n: number) =>
@@ -3986,6 +3997,7 @@ export const en = {
       home: "Home",
       library: "Library",
       folders: "Folders",
+      smartFolders: "Smart folders",
       tags: "Tags",
       people: "People",
       organizations: "Organizations",

@@ -65,9 +65,13 @@ const PlaylistPage = await deferredRoute(
   (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
 const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/groups");
+const SmartFolderListPage = await deferredRoute(
+  () => import("../smartFolders/SmartFolderListPage"),
+  (pathname) => matchesExactPath(pathname, "/smart-folders"),
+);
 const SmartFolderPage = await deferredRoute(
   () => import("../smartFolders/SmartFolderPage"),
-  "/smart-folders",
+  (pathname) => matchesBelowPath(pathname, "/smart-folders"),
 );
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
@@ -224,6 +228,14 @@ function AppRoutes() {
             element={
               <ShellPage>
                 <GroupPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path="/smart-folders"
+            element={
+              <ShellPage>
+                <SmartFolderListPage />
               </ShellPage>
             }
           />

@@ -1,16 +1,15 @@
 import { ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router";
 
 import type { LibraryItem, SmartFolderSummary } from "../api/client";
-import { subscribeServerEvents } from "../api/serverEvents";
-import { listSmartFolders } from "../api/smartFolders";
-import { errorText, t } from "../i18n";
+import { t } from "../i18n";
 import { SmartFolderCardsProvider } from "../smartFolders/cardValues";
 import {
   SmartFolderCard,
   type SmartFolderCardProps,
 } from "../smartFolders/SmartFolderCard";
+import { useSmartFolderList } from "../smartFolders/useSmartFolderList";
 import { ErrorState } from "../ui/patterns/error-state";
 import { Shelf } from "../ui/patterns/shelf";
 import { Button } from "../ui/shadcn/button";
@@ -25,53 +24,17 @@ export type FavoriteFolders =
 const none: FavoriteFolders = { kind: "none" };
 const noItems: readonly LibraryItem[] = [];
 
-/**
- * The owner's favorite smart folders at any depth, in the list's name order. The whole list is
- * read again on every `smartFolder` and `peerItems` event and on reconnection, since a favorite
- * change names every folder and a link that connects or drops changes the merged list.
- */
+/** The owner's favorite smart folders at any depth, in the list's name order. */
 export function useFavoriteFolders(enabled: boolean) {
-  const [state, setState] = useState<FavoriteFolders>(none);
-  const current = useRef<AbortController | null>(null);
-
-  const read = useCallback(() => {
-    current.current?.abort();
-    const controller = new AbortController();
-    current.current = controller;
-    listSmartFolders(controller.signal).then(
-      (folders) => {
-        if (controller.signal.aborted) return;
-        setState({
-          kind: "content",
-          folders: folders.filter((folder) => folder.favorite === true),
-        });
-      },
-      (error: unknown) => {
-        if (controller.signal.aborted) return;
-        setState({ kind: "failed", reason: errorText(error) });
-      },
-    );
-  }, []);
-
-  useEffect(() => {
-    if (!enabled) {
-      setState(none);
-      return;
-    }
-    read();
-    const unsubscribe = subscribeServerEvents({
-      smartFolder: read,
-      peerItems: read,
-      open: (reconnected) => {
-        if (reconnected) read();
-      },
-    });
-    return () => {
-      unsubscribe();
-      current.current?.abort();
-      current.current = null;
+  const list = useSmartFolderList(enabled);
+  const state = useMemo((): FavoriteFolders => {
+    if (list.state.kind === "loading") return none;
+    if (list.state.kind === "failed") return list.state;
+    return {
+      kind: "content",
+      folders: list.state.folders.filter((folder) => folder.favorite === true),
     };
-  }, [enabled, read]);
+  }, [list.state]);
 
   const items = useMemo(
     () =>
@@ -83,7 +46,7 @@ export function useFavoriteFolders(enabled: boolean) {
         : noItems,
     [state],
   );
-  return { state, items, retry: read };
+  return { state, items, retry: list.read };
 }
 
 /** Above the home's list; the cards are the library's, so selection and previews stay. */

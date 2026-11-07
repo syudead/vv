@@ -247,10 +247,15 @@ export const SmartFolderRow = memo(function SmartFolderRow({
   folder,
   backTo,
   owner,
+  folderList = false,
   selected = false,
   selectionMode = false,
   onSelect,
-}: SmartFolderCardProps & { owner: boolean }) {
+}: SmartFolderCardProps & {
+  owner: boolean;
+  /** The smart folder list's row: no check and no group cell, as its header has neither. */
+  folderList?: boolean;
+}) {
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
   if (gone) return null;
   const cover = values?.previews[0];
@@ -271,7 +276,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
           onSelect={(next) => onSelect(folder.id, next)}
         />
       ) : (
-        owner && <TableCell className="w-10 pl-3" />
+        owner && !folderList && <TableCell className="w-10 pl-3" />
       )}
       <TableCell className="w-list-thumb-cell">
         <VideoThumbnail className="w-list-thumb rounded-sm">
@@ -317,7 +322,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
           {!remote && <SmartFolderAddToPlaylist folder={folder} variant="row" />}
         </TableCell>
       )}
-      {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
+      {owner && !folderList && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
         itemId={folder.id}
         state={facts.state}

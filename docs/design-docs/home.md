@@ -114,7 +114,9 @@ leaves the owner's routes accessible.
 Picking interests reuses tags by name or synonym, creates missing tags and
 assigns `Genre` to untyped tags. In the same transaction it creates ordinary
 root smart folders for their tag rules, reusing existing root folders with the
-same rules. There is no shelf registration, ordering or organizer ownership.
+same rules. The folders are not favorites, so they are rows of the smart
+folder list at `/smart-folders` and not cards of the home's band. There is no
+shelf registration, ordering or organizer ownership.
 When auto-tagging is enabled, picking interests queues the library again so the
 classifier can consider the new tags. This happens only on the explicit setup
 action. Settings' Library page provides Start setup.

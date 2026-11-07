@@ -269,15 +269,35 @@ describe("Sidebar", () => {
     expect((entry as HTMLButtonElement).disabled).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
   });
-  it("所有者の上段は「Folders」の後に「History」と「Playlists」、「Tags」の後に「People」「Organizations」「Duplicates」を置き、ゲストには出さない", () => {
+  it.each<SidebarMode>(["rail", "drawer"])(
+    "所有者には「Folders」の直後に「Smart folders」を置いてフォルダのページでも点け、ゲストには出さない（%s）",
+    (mode) => {
+      const { unmount } = renderSidebar({ mode, path: "/smart-folders/3" });
+      const main = screen.getByRole("complementary", { name: "Main navigation" });
+      const names = within(main)
+        .getAllByRole("link")
+        .map((link) => link.textContent);
+      expect(names.slice(1, 4)).toEqual(["Folders", "Smart folders", "History"]);
+      const entry = within(main).getByRole("link", { name: "Smart folders" });
+      expect(entry.getAttribute("href")).toBe("/smart-folders");
+      expect(entry.getAttribute("data-active")).toBe("true");
+      unmount();
+
+      renderSidebar({ audience: "guest", mode, path: "/smart-folders/3" });
+      expect(screen.queryByRole("link", { name: "Smart folders" })).toBeNull();
+    },
+  );
+
+  it("所有者の上段は「Folders」の後に「Smart folders」「History」「Playlists」、「Tags」の後に「People」「Organizations」「Duplicates」を置き、ゲストには出さない", () => {
     const { unmount } = renderSidebar({ mode: "rail" });
     const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = within(main)
       .getAllByRole("link")
       .map((link) => link.textContent);
-    expect(names.slice(0, 8)).toEqual([
+    expect(names.slice(0, 9)).toEqual([
       "Home",
       "Folders",
+      "Smart folders",
       "History",
       "Playlists",
       "Tags",

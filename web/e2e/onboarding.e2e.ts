@@ -180,10 +180,11 @@ async function waitForVideos(request: APIRequestContext): Promise<Map<string, Vi
   return found;
 }
 
-function interestCard(page: Page, title: string) {
+/** interestLink は、スマートフォルダの一覧での分野のフォルダの名前のリンクである。 */
+function interestLink(page: Page, name: string) {
   return page
-    .locator("article[data-smart-folder-id]")
-    .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+    .getByRole("table", { name: "Smart folders" })
+    .getByRole("link", { name: new RegExp(`^${name}, smart folder`) });
 }
 
 test.describe.serial("onboarding", () => {
@@ -279,10 +280,12 @@ test.describe.serial("onboarding", () => {
         }
       });
 
-      await test.step("3: 分野の動画にタグが付くと、ライブラリ内のスマートフォルダに表示される", async () => {
-        await page.goto("/");
-
-        await expect(interestCard(page, cooking)).toBeVisible();
+      await test.step("3: 分野の動画にタグが付くと、スマートフォルダの一覧から開くフォルダに表示される", async () => {
+        // 分野のフォルダはお気に入りではないので、ホームの帯ではなくこの一覧に並ぶ。
+        await page.goto("/smart-folders");
+        for (const name of interests) {
+          await expect(interestLink(page, name)).toBeVisible();
+        }
 
         const [cookingTag] = await tagsNamed(request, cooking);
         expect(cookingTag).toBeDefined();
@@ -301,9 +304,8 @@ test.describe.serial("onboarding", () => {
         ]);
 
         await page.reload();
-        await interestCard(page, cooking)
-          .getByRole("heading", { name: cooking, exact: true })
-          .click();
+        await interestLink(page, cooking).click();
+        await expect(page).toHaveURL(/\/smart-folders\/\d+$/);
         const folder = page.locator("main");
         await expect(
           folder.getByRole("link", { name: taggedTitle, exact: true }),
