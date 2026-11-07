@@ -168,7 +168,7 @@ child `card-0` wide; the heading row takes `actions`, drawn at its right end
 as `PageHeader`'s. It is for a few highlighted items above a list; a list of
 every item of a kind keeps the wrapping `CardGrid`.
 
-### States
+### Band states
 
 | State | What the screen shows |
 | --- | --- |
@@ -234,7 +234,7 @@ not change. After the read the new folder's row stands where the server's
 name order puts it, and the focus moves to its name link so a keyboard owner
 is on the folder they just made.
 
-### States
+### List page states
 
 | State | What the screen shows |
 | --- | --- |
