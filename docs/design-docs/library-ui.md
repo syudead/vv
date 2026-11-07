@@ -666,7 +666,9 @@ playback; the resting card, title and More sheet open the collection. Every in-a
 hash intact.
 
 The owner's `Smart folders` entry, after `Folders` and before `History`, opens
-`/smart-folders` and stays lit on the folder pages below it. The page lists
+`/smart-folders` and stays lit on the folder pages below it. The 56px rail
+square shows the short label `Smart` and keeps `Smart folders` as the link's
+accessible name; the drawer row shows the full label. The page lists
 the root smart folders in the name order of `GET /api/smart-folders` as the
 home's list-view rows without the check and group cells, with `New smart
 folder` opening the folder dialog with an empty rule. It reads the list again

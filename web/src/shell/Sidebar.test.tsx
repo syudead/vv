@@ -269,15 +269,18 @@ describe("Sidebar", () => {
     expect((entry as HTMLButtonElement).disabled).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
   });
-  it.each<SidebarMode>(["rail", "drawer"])(
-    "所有者には「Folders」の直後に「Smart folders」を置いてフォルダのページでも点け、ゲストには出さない（%s）",
-    (mode) => {
+  it.each<[SidebarMode, string]>([
+    ["rail", "Smart"],
+    ["drawer", "Smart folders"],
+  ])(
+    "所有者には「Folders」の直後に「Smart folders」を置いてフォルダのページでも点け、ゲストには出さない（%s は「%s」と表示）",
+    (mode, shown) => {
       const { unmount } = renderSidebar({ mode, path: "/smart-folders/3" });
       const main = screen.getByRole("complementary", { name: "Main navigation" });
       const names = within(main)
         .getAllByRole("link")
         .map((link) => link.textContent);
-      expect(names.slice(1, 4)).toEqual(["Folders", "Smart folders", "History"]);
+      expect(names.slice(1, 4)).toEqual(["Folders", shown, "History"]);
       const entry = within(main).getByRole("link", { name: "Smart folders" });
       expect(entry.getAttribute("href")).toBe("/smart-folders");
       expect(entry.getAttribute("data-active")).toBe("true");
@@ -297,7 +300,7 @@ describe("Sidebar", () => {
     expect(names.slice(0, 9)).toEqual([
       "Home",
       "Folders",
-      "Smart folders",
+      "Smart",
       "History",
       "Playlists",
       "Tags",

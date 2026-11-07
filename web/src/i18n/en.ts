@@ -3998,6 +3998,7 @@ export const en = {
       library: "Library",
       folders: "Folders",
       smartFolders: "Smart folders",
+      smartFoldersShort: "Smart",
       tags: "Tags",
       people: "People",
       organizations: "Organizations",

@@ -269,7 +269,7 @@ describe("App", () => {
     expect(names).toEqual([
       "Home",
       "Folders",
-      "Smart folders",
+      "Smart",
       "History",
       "Playlists",
       "Tags",
