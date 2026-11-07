@@ -32,6 +32,9 @@ const progressLifetime = 15 * time.Minute
 // Limit text messages; discard binary previews without reading them.
 const maxProgressMessageBytes = 1 << 20
 
+// A socket may report other clients' prompts, so keep only the most recently first-seen IDs.
+const maxTrackedProgress = 32
+
 // The socket opens before a run ID exists, so filter cached progress by ID when reading.
 type progressWatch struct {
 	stop context.CancelFunc
@@ -41,6 +44,7 @@ type progressWatch struct {
 
 	mu     sync.Mutex
 	steps  map[string]domain.ImageEditProgress
+	order  []string
 	closed bool
 }
 
@@ -61,9 +65,17 @@ func (w *progressWatch) waitReady(ctx context.Context) {
 func (w *progressWatch) record(id string, step domain.ImageEditProgress) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !w.closed {
-		w.steps[id] = step
+	if w.closed {
+		return
 	}
+	if _, ok := w.steps[id]; !ok {
+		if len(w.order) == maxTrackedProgress {
+			delete(w.steps, w.order[0])
+			w.order = w.order[1:]
+		}
+		w.order = append(w.order, id)
+	}
+	w.steps[id] = step
 }
 
 // Discard stale progress on disconnect because no further updates can arrive.
@@ -72,6 +84,7 @@ func (w *progressWatch) disconnect() {
 	defer w.mu.Unlock()
 	w.closed = true
 	clear(w.steps)
+	w.order = nil
 }
 
 func (w *progressWatch) step(id string) (domain.ImageEditProgress, bool) {

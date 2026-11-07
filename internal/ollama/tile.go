@@ -21,6 +21,13 @@ const maxCellWidth = 640
 
 const tileQuality = 85
 
+// Bound the decoded sources and the grid canvas so a request cannot allocate without limit.
+const (
+	maxTileImages       = 64
+	maxTileSourcePixels = 64 << 20
+	maxTilePixels       = 16 << 20
+)
+
 // encodeImages encodes images as base64, tiling them into one grid when there are more than limit.
 func encodeImages(images [][]byte, limit int) ([]string, error) {
 	if len(images) > limit {
@@ -40,8 +47,18 @@ func encodeImages(images [][]byte, limit int) ([]string, error) {
 // Tile draws the images in order into a near-square grid of cells sized from the first image, at most maxCellWidth
 // wide, and encodes it as a JPEG; an image of another aspect ratio is fitted with black padding.
 func Tile(images [][]byte) ([]byte, error) {
+	if len(images) == 0 || len(images) > maxTileImages {
+		return nil, fmt.Errorf("cannot tile %d images; the limit is %d", len(images), maxTileImages)
+	}
 	decoded := make([]image.Image, len(images))
 	for i, b := range images {
+		config, _, err := image.DecodeConfig(bytes.NewReader(b))
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode image %d: %w", i, err)
+		}
+		if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxTileSourcePixels {
+			return nil, fmt.Errorf("image %d is %dx%d, outside the tiling limit", i, config.Width, config.Height)
+		}
 		img, _, err := image.Decode(bytes.NewReader(b))
 		if err != nil {
 			return nil, fmt.Errorf("cannot decode image %d: %w", i, err)
@@ -51,11 +68,14 @@ func Tile(images [][]byte) ([]byte, error) {
 	first := decoded[0].Bounds()
 	cellW, cellH := first.Dx(), first.Dy()
 	if cellW > maxCellWidth {
-		cellH = cellH * maxCellWidth / cellW
+		cellH = max(1, cellH*maxCellWidth/cellW)
 		cellW = maxCellWidth
 	}
 	cols := int(math.Ceil(math.Sqrt(float64(len(decoded)))))
 	rows := (len(decoded) + cols - 1) / cols
+	if int64(cols*cellW)*int64(rows*cellH) > maxTilePixels {
+		return nil, fmt.Errorf("a %dx%d grid of %dx%d cells exceeds the tiling limit", cols, rows, cellW, cellH)
+	}
 	out := image.NewRGBA(image.Rect(0, 0, cols*cellW, rows*cellH))
 	for i, img := range decoded {
 		cell := image.Rect(0, 0, cellW, cellH).Add(image.Pt((i%cols)*cellW, (i/cols)*cellH))

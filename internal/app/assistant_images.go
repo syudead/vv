@@ -31,6 +31,9 @@ const viewImageMaxSide = 1024
 
 const viewImageJPEGQuality = 85
 
+// maxToolImages bounds the images one clef call or one round of view_images calls reads and sends.
+const maxToolImages = 16
+
 const imageReferencesSchema = `{"type":"array","items":{"type":"string"},"description":"Image references, the ` +
 	`\"image\" strings that image tools answered, such as \"getVideoFrame?id=7&positionMs=1000\"."}`
 
@@ -141,6 +144,9 @@ func (l *turnLoop) viewImages(ctx context.Context, raw json.RawMessage) (string,
 	if err := decodeImageArguments(raw, &args); err != nil || len(args.Images) == 0 {
 		return "", "view_images takes images as an array of image reference strings"
 	}
+	if len(l.attached)+len(args.Images) > maxToolImages {
+		return "", fmt.Sprintf("view_images attaches at most %d images in one round", maxToolImages)
+	}
 	images, failure := l.readImages(ctx, args.Images)
 	if failure != "" {
 		return "", failure
@@ -180,6 +186,9 @@ func decodeImageArguments(raw json.RawMessage, args any) error {
 
 // readImages reads every reference before anything is sent, so one unreadable reference fails the whole call.
 func (l *turnLoop) readImages(ctx context.Context, references []string) ([][]byte, string) {
+	if len(references) > maxToolImages {
+		return nil, fmt.Sprintf("one call takes at most %d images", maxToolImages)
+	}
 	images := make([][]byte, len(references))
 	for i, reference := range references {
 		image, err := l.runner.Image(ctx, reference)

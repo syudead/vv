@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -72,7 +73,11 @@ func statusMessage(status int, message string) string {
 		return fmt.Sprintf("ollama answered %d", status)
 	}
 	if len(message) > 300 {
-		message = message[:300]
+		cut := 300
+		for cut > 0 && !utf8.RuneStart(message[cut]) {
+			cut--
+		}
+		message = message[:cut]
 	}
 	return fmt.Sprintf("ollama answered %d: %s", status, message)
 }

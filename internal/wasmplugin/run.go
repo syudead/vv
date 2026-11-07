@@ -234,7 +234,7 @@ func (rn *runner) compiled(ctx context.Context, digest string, module []byte) (w
 	if c, ok := rn.cache[digest]; ok {
 		return c, nil
 	}
-	layout, err := readLayout(module)
+	layout, err := runnableLayout(module)
 	if err != nil {
 		rn.logger.Info("work-info plugin is malformed", "digest", digest, "error", err)
 		return nil, &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
@@ -262,6 +262,21 @@ func (rn *runner) compiled(ctx context.Context, digest string, module []byte) (w
 	rn.cache[digest] = c
 	rn.order = append(rn.order, digest)
 	return c, nil
+}
+
+// Run reapplies Inspect's size and table bounds, since a stored module may not match what was inspected.
+func runnableLayout(module []byte) (moduleLayout, error) {
+	if len(module) > domain.WorkInfoPluginModuleMaxBytes {
+		return moduleLayout{}, domain.ErrWorkInfoPluginTooLarge
+	}
+	layout, err := readLayout(module)
+	if err != nil {
+		return moduleLayout{}, err
+	}
+	if problem := checkTables(layout); problem != "" {
+		return moduleLayout{}, fmt.Errorf("work-info plugin check: %s", problem)
+	}
+	return layout, nil
 }
 
 func (rn *runner) logStderr(digest string, stderr *keptOutput) {

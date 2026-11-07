@@ -61,3 +61,23 @@ func TestReadRejectsFrameShorterThanItsSize(t *testing.T) {
 		t.Fatalf("read %#v from a short frame", m)
 	}
 }
+
+func TestReadRejectsFrameSizeOutsideItsBytes(t *testing.T) {
+	cases := []struct {
+		name string
+		m    DetectRequest
+	}{
+		{"zero width", DetectRequest{Width: 0, Height: 2}},
+		// 3*w*h wraps int64 to 26, which a product computed in int64 would accept.
+		{"overflowing size", DetectRequest{Width: 2154230017, Height: 2854344542, Pix: make([]byte, 26)}},
+	}
+	for _, c := range cases {
+		var stream bytes.Buffer
+		if err := Write(&stream, c.m); err != nil {
+			t.Fatal(err)
+		}
+		if m, err := Read(&stream); err == nil {
+			t.Errorf("%s: read %dx%d with %d bytes", c.name, m.(DetectRequest).Width, m.(DetectRequest).Height, len(m.(DetectRequest).Pix))
+		}
+	}
+}
