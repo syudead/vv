@@ -180,7 +180,7 @@ async function waitForVideos(request: APIRequestContext): Promise<Map<string, Vi
   return found;
 }
 
-/** interestLink は、スマートフォルダの一覧での分野のフォルダの名前のリンクである。 */
+/** Link to an interest's folder in the smart folder list. */
 function interestLink(page: Page, name: string) {
   return page
     .getByRole("table", { name: "Smart folders" })
@@ -281,7 +281,7 @@ test.describe.serial("onboarding", () => {
       });
 
       await test.step("3: 分野の動画にタグが付くと、スマートフォルダの一覧から開くフォルダに表示される", async () => {
-        // 分野のフォルダはお気に入りではないので、ホームの帯ではなくこの一覧に並ぶ。
+        // Interest folders are not favorites, so they appear here rather than in the home band.
         await page.goto("/smart-folders");
         for (const name of interests) {
           await expect(interestLink(page, name)).toBeVisible();
