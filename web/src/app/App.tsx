@@ -5,7 +5,6 @@ import { useAudience } from "../auth/audience";
 import AuthGate from "../auth/AuthGate";
 import { LIBRARY_PATH } from "../library/libraryPath";
 import LibraryPage from "../library/LibraryPage";
-import VideoPage from "../player/VideoPage";
 import AssistantPanel from "../assistant/AssistantPanel";
 import { AssistantProvider } from "../assistant/AssistantProvider";
 import AppShell from "../shell/AppShell";
@@ -21,7 +20,12 @@ import { isPersonEditPath } from "../lib/personEditPath";
 import { isVideoEditPath } from "../lib/videoEditPath";
 import { OnboardingGate } from "../onboarding/OnboardingGate";
 import { ONBOARDING_PATH } from "../onboarding/onboardingRoute";
-import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
+import {
+  deferredRoute,
+  matchesBelowPath,
+  matchesExactPath,
+  prefetchWhenIdle,
+} from "./deferredRoute";
 import LibraryRedirect from "./LibraryRedirect";
 const FolderPage = await deferredRoute(() => import("../folders/FolderPage"), "/folders");
 const SettingsPage = await deferredRoute(
@@ -89,6 +93,14 @@ const ReviewPage = await deferredRoute(
   () => import("../assistant/ReviewPage"),
   "/assistant/reviews",
 );
+// The player carries video.js, about 60% of what every page used to load before its first request; other
+// pages fetch it once idle so opening a video stays immediate.
+const loadVideoPage = () => import("../player/VideoPage");
+const VideoPage = await deferredRoute(
+  loadVideoPage,
+  (pathname) => matchesBelowPath(pathname, "/videos") && !isVideoEditPath(pathname),
+);
+prefetchWhenIdle(loadVideoPage);
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
   isVideoEditPath,

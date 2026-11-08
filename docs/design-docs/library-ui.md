@@ -89,6 +89,13 @@ restoration in virtual coordinates. Pages load 60 items
 ([`PAGE_SIZE`](../../web/src/api/client.ts)), so the DOM holds only what the
 user loaded. **Revisit only after measuring what is slow.**
 
+Every page but the library is loaded with its route
+([`deferredRoute`](../../web/src/app/deferredRoute.tsx)). The video page, which
+carries video.js, was the exception and made up about 40% of the code every
+page read before its first request; other pages now fetch it three seconds
+after they finish loading, once idle, so opening a video stays immediate
+without the download competing with the first screen.
+
 The tag admin list (`/tags`) is the measured exception: with thousands of tags,
 opening, search and scrolling froze, so it draws only the rows near the
 viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither

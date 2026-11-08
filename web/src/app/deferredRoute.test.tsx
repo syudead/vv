@@ -7,6 +7,7 @@ import {
   matchesBelowPath,
   matchesExactPath,
   matchesPath,
+  prefetchWhenIdle,
 } from "./deferredRoute";
 
 function Page() {
@@ -103,5 +104,20 @@ describe("deferredRoute", () => {
 
     expect(await screen.findByText("読み込んだ画面")).toBeDefined();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("prefetchWhenIdle", () => {
+  it("loads the page only when the settled trigger fires, and ignores a failed download", async () => {
+    let fire: () => void = () => undefined;
+    const idle = (callback: () => void) => {
+      fire = callback;
+    };
+    const load = vi.fn(() => Promise.reject(new Error("offline")));
+    prefetchWhenIdle(load, idle);
+    expect(load).not.toHaveBeenCalled();
+    fire();
+    expect(load).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
   });
 });
