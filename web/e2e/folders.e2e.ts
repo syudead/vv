@@ -141,7 +141,10 @@ test.describe.serial("folder browser", () => {
       for (const width of [360, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/folders");
-        const card = page.getByRole("link", { name: new RegExp(`^${name}, 0 videos`) });
+        const card = page.getByRole("link", {
+          name: `${name}, ${emptyPath}`,
+          exact: true,
+        });
         await expect(card).toBeVisible();
         await card.click();
         await expect(page).toHaveURL(folderUrl(empty.id));
