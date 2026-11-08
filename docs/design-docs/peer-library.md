@@ -226,8 +226,9 @@ headers passed through, since the browser has no session on the peer.
 
 The video, library, folder-root and smart-folder lists, the watch history and
 the related videos merge the local part and one part per link, in slot order.
-The parts of one page are requested concurrently, so a page waits for its
-slowest link within the 10 s response timeout instead of the sum of the links.
+The local part and the links' parts of one page are read concurrently, so a
+page waits for its slowest side within the 10 s response timeout instead of the
+sum of the sides.
 One composite cursor (prefix `m2.`) holds a cursor, a done flag and a skipped
 flag for each side by slot; a cursor of the one-peer form (`m1.`) is refused as
 `invalid_cursor` like any cursor of another list, which restarts the list. A

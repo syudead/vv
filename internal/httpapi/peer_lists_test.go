@@ -197,6 +197,15 @@ func TestMergedLibrarySumsTotalsAndKeepsTheGuestsAudience(t *testing.T) {
 	}
 }
 
+// The local part is read beside the link's, and its failure fails the page instead of leaving that side out.
+func TestMergedLibraryAnswersTheLocalPartsError(t *testing.T) {
+	_, _, b, _ := mergedNodes(t)
+	cursor := domain.MergedCursor{Sides: map[int64]domain.SideCursor{0: {Cursor: "broken"}, 1: {}}}.Encode()
+	rec := b.owner(http.MethodGet, "/api/library?limit=2&cursor="+url.QueryEscape(cursor), "")
+	assertErrorBody(t, "broken local cursor", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonInvalidCursor})
+}
+
 func TestMergedListSendsALocalTagToThePeerByName(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	ctx := context.Background()

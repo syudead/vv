@@ -336,6 +336,20 @@ type mergedPage[T any] struct {
 	missing []int64
 }
 
+// readLocalPart reads this node's side of a merged page; a done side keeps only its total.
+func readLocalPart[T any](read mergedRead[T], filters peerListFilters, side domain.SideCursor, limit int) (listPart[T], error) {
+	if filters.localEmpty {
+		return listPart[T]{}, nil
+	}
+	query := filters.local
+	query.Cursor, query.Limit = side.Cursor, sideLimit(limit, side.Done)
+	local, err := read.local(query)
+	if err != nil || side.Done {
+		local.side = domain.MergeSide[T]{}
+	}
+	return local, err
+}
+
 // readMerged reads this node's part and every link's after the composite cursor and merges them. A side that is
 // done is still read for its total; a link that is not connected on the first page, or fails, is left out for the
 // rest of the listing.
@@ -350,18 +364,14 @@ func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mer
 		return mergedPage[T]{}, err
 	}
 	limit := q.Limit
+	// The local part runs beside the links, so a page waits for the slowest side instead of local plus links.
 	var local listPart[T]
-	if !filters.localEmpty {
-		side := cursor.Side(0)
-		query := filters.local
-		query.Cursor, query.Limit = side.Cursor, sideLimit(limit, side.Done)
-		if local, err = read.local(query); err != nil {
-			return mergedPage[T]{}, err
-		}
-		if side.Done {
-			local.side = domain.MergeSide[T]{}
-		}
-	}
+	var localErr error
+	localSide, localDone := cursor.Side(0), make(chan struct{})
+	go func() {
+		defer close(localDone)
+		local, localErr = readLocalPart(read, filters, localSide, limit)
+	}()
 	parts, cursor := readLinkParts(s, read.path, cursor, func(slot int64, side domain.SideCursor) (listPart[T], error) {
 		if filters.linkEmpty(slot) {
 			return listPart[T]{}, nil
@@ -374,6 +384,10 @@ func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mer
 		}
 		return read.peer(r, slot, query)
 	})
+	<-localDone
+	if localErr != nil {
+		return mergedPage[T]{}, localErr
+	}
 	page := mergedPage[T]{total: local.total, missing: local.missing}
 	sides := []domain.MergeSide[T]{local.side}
 	for _, part := range parts {
