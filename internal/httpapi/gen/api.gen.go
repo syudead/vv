@@ -7077,10 +7077,23 @@ type RenameTagRequest struct {
 // RescanScope What a force rescan reads again: every media folder, one media folder or one video.
 type RescanScope string
 
+// RootFolder defines model for RootFolder.
+type RootFolder struct {
+	// Name Display name: the final absolute-path segment of the registered folder.
+	Name string `json:"name"`
+
+	// Previews Thumbnails of up to four videos anywhere below the folder, most recently added first.
+	Previews []FolderPreview `json:"previews"`
+	RootId   int64           `json:"rootId"`
+
+	// RootPath Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name.
+	RootPath *string `json:"rootPath,omitempty"`
+}
+
 // RootFolderListing defines model for RootFolderListing.
 type RootFolderListing struct {
 	// Folders Registered media folders in natural-name order.
-	Folders []FolderSummary `json:"folders"`
+	Folders []RootFolder `json:"folders"`
 }
 
 // RunThumbnailEditRequest defines model for RunThumbnailEditRequest.

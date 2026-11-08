@@ -34,8 +34,12 @@ type TagStore struct {
 	db        *DB
 }
 
-// AuthStore owns the singleton account, sessions and API tokens without domain notifications.
-type AuthStore struct{ sql *sql.DB }
+// AuthStore owns the singleton account, sessions and API tokens without domain notifications; reads checked on
+// every request use the cached read pool.
+type AuthStore struct {
+	sql    *sql.DB
+	cached *statementCache
+}
 
 // VisibilityStore writes public flags; LibraryStore enforces them on reads.
 type VisibilityStore struct {
@@ -114,7 +118,7 @@ func (db *DB) ScanIndex() *ScanIndexStore { return &ScanIndexStore{db: db} }
 func (db *DB) Settings() *SettingsStore   { return &SettingsStore{db: db} }
 func (db *DB) Playback() *PlaybackStore   { return &PlaybackStore{sql: db.sql, db: db} }
 func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql, read: db.read, db: db} }
-func (db *DB) Auth() *AuthStore           { return &AuthStore{sql: db.sql} }
+func (db *DB) Auth() *AuthStore           { return &AuthStore{sql: db.sql, cached: db.cached} }
 func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql, db: db}
 }

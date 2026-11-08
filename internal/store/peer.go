@@ -45,7 +45,7 @@ func scanLink(row interface{ Scan(...any) error }) (domain.PeerLink, error) {
 
 // Links returns the VVMDMs this node reads, in slot order.
 func (s *PeerStore) Links(ctx context.Context) ([]domain.PeerLink, error) {
-	return readLinks(ctx, s.db.sql)
+	return readLinks(ctx, s.db.cached)
 }
 
 func readLinks(ctx context.Context, q rowsQueryer) ([]domain.PeerLink, error) {
@@ -226,7 +226,7 @@ func (s *PeerStore) AddGrant(ctx context.Context, grant domain.PeerGrant, secret
 
 // GrantBySecret hashes the presented secret and returns the grant it belongs to.
 func (s *PeerStore) GrantBySecret(ctx context.Context, secret string) (domain.PeerGrant, bool, error) {
-	grant, err := scanGrant(s.db.sql.QueryRowContext(ctx,
+	grant, err := scanGrant(s.db.cached.QueryRowContext(ctx,
 		`select `+grantColumns+` from peer_grant where secret_hash = ?`, sessionTokenHash(secret)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.PeerGrant{}, false, nil

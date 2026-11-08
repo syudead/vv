@@ -102,7 +102,9 @@ func (s *IngestStore) GetVideo(ctx context.Context, id int64) (domain.Video, err
 
 // GetVideo returns domain.ErrNotFound for both hidden and missing videos.
 func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error) {
-	return getVideo(ctx, s.db.sql, audience, id)
+	// Reads by id serve every thumbnail and stream request, so they run on the read pool with cached statements
+	// instead of queueing on the single writer connection.
+	return getVideo(ctx, s.db.cached, audience, id)
 }
 
 type videoQueryer interface {

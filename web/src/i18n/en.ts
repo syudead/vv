@@ -1463,6 +1463,7 @@ export const en = {
       folders,
       label: (name: string, videoCount: number, folderCount: number) =>
         `${name}, ${videos(videoCount)}, ${folders(folderCount)}`,
+      rootLabel: (name: string) => name,
       labelWithPath: (label: string, path: string) => `${label}, ${path}`,
     },
     empty: {

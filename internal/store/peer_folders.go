@@ -25,7 +25,7 @@ func scanPeerFolder(row interface{ Scan(...any) error }) (domain.PeerMediaFolder
 // PeerFolders returns the snapshot of the media folders of the link of nodeID, in the link's id order; empty
 // without that link.
 func (s *PeerStore) PeerFolders(ctx context.Context, nodeID string) ([]domain.PeerMediaFolder, error) {
-	return readPeerFolders(ctx, s.db.sql, nodeID)
+	return readPeerFolders(ctx, s.db.cached, nodeID)
 }
 
 func readPeerFolders(ctx context.Context, q rowsQueryer, nodeID string) ([]domain.PeerMediaFolder, error) {

@@ -70,6 +70,7 @@ export type ApiError = components["schemas"]["Error"];
 export type FolderSummary = components["schemas"]["FolderSummary"];
 export type FolderPreview = components["schemas"]["FolderPreview"];
 export type FolderListing = components["schemas"]["FolderListing"];
+export type RootFolder = components["schemas"]["RootFolder"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];
 export type GroupMemberPage = components["schemas"]["GroupMemberPage"];

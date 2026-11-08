@@ -5,9 +5,11 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -91,5 +93,36 @@ func TestRequestPairingSendsOnlyTheCodeAndIdentity(t *testing.T) {
 	var unreachable *domain.PeerUnreachableError
 	if !errors.As(err, &unreachable) || !strings.Contains(unreachable.Message, "older build") {
 		t.Errorf("err = %v, want 古い版を更新するよう伝える PeerUnreachableError", err)
+	}
+}
+
+// Requests to a node reuse one kept-alive connection, and a transport kept for one pin never serves another.
+func TestClientReusesConnectionsPerPin(t *testing.T) {
+	var dialled atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"node":{"id":"n","name":"peer","version":"1.2.0"}}`))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			dialled.Add(1)
+		}
+	}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	ctx := context.Background()
+	client := New(Options{})
+	pinned := domain.PeerTarget{Address: server.URL, PinnedSPKI: Fingerprint(server.Certificate())}
+	for range 3 {
+		if _, err := client.Handshake(ctx, pinned, "vvp_secret"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := dialled.Load(); got != 1 {
+		t.Errorf("connections for 3 handshakes = %d, want 1", got)
+	}
+	var untrusted *domain.CertificateUntrustedError
+	if _, err := client.Handshake(ctx, domain.PeerTarget{Address: server.URL, PinnedSPKI: "changed"}, "vvp_secret"); !errors.As(err, &untrusted) {
+		t.Errorf("another pin after a kept connection: err = %v, want CertificateUntrustedError", err)
 	}
 }
