@@ -18,7 +18,7 @@ flowchart LR
   major -->|no| checks{Checks pass?}
   checks -->|yes| auto[Renovate merges]
   checks -->|no| routine
-  routine -->|cannot| defer[Closed with a revisit condition]
+  routine -->|cannot| defer[Deferred with a revisit condition]
   defer -->|condition met| routine
 ```
 
@@ -106,14 +106,15 @@ A Claude Code Routine runs the
 [renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) skill every
 day at 07:47 JST. It takes every open Renovate PR to one of two ends within
 the same run: merged into `main` through the gates in the skill, major updates
-included, or deferred: closed with the reason and the condition for trying
-again. No PR stays open waiting for a person.
+included, or deferred with the reason and the condition for trying again,
+which the routine checks on every later run. No PR waits for a person to
+notice it.
 
 ```mermaid
 flowchart TD
   start[Daily run] --> watch[Check main after the routine's merges]
   watch -->|E2E or Docker image broke| broken[needs-human on the merged PR, merges paused]
-  watch --> reopen[Tick deferred updates whose condition holds]
+  watch --> reopen[Take up deferred updates whose condition holds]
   reopen --> pr[Next open Renovate PR]
   pr --> ci{CI running?}
   ci -->|yes| wait[Wait for CI]
@@ -123,7 +124,7 @@ flowchart TD
   gate -->|yes| merge[Routine merges]
   state -->|no| worker[Worker merges main, fixes or reviews, pushes]
   worker -->|pushed, attempt 1-3| wait
-  worker -->|blocked, or 3 attempts failed| defer[Comment the revisit condition, close]
+  worker -->|blocked, or 3 attempts failed| defer[Comment the revisit condition, close or label deferred]
   merge --> pr
   defer --> pr
 ```
@@ -149,16 +150,21 @@ flowchart TD
 
 ## Deferred updates
 
-- The routine closes a PR it cannot merge: three attempts did not get it green,
+- The routine defers a PR it cannot merge: three attempts did not get it green,
   the new version has a bug or lacks support upstream, the failure also
   happens on `main`, or the update needs a rewrite or a `renovate.json`
   change. Its last comment gives the reason and a `Revisit when:` condition.
-- A closed PR is listed under "Ignored or Blocked" on the Dependency Dashboard
-  Issue. When the condition is an upstream issue or a package release, the
-  routine checks it every run and ticks the checkbox once it holds, and
-  Renovate recreates the PR. `the next version` needs nothing: Renovate opens
-  the next version by itself. For `a person decides`, do the work (for
-  example the rewrite) or tick the checkbox yourself.
+- A PR for one dependency is closed and listed under "Ignored or Blocked" on
+  the Dependency Dashboard Issue. A group PR stays open with the `deferred`
+  label, because Renovate recreates a closed group PR.
+- Every run, the routine checks each condition it can: an upstream issue
+  closed, a release published, or for a major update a newer version
+  published. Once it holds, the routine ticks the Dashboard checkbox so
+  Renovate recreates the PR, or removes the `deferred` label. A new push from
+  Renovate to a `deferred` PR also takes it up again. For a non-major update,
+  `the next version` needs nothing: Renovate opens it by itself.
+- For `a person decides`, do the work (for example the rewrite), then tick the
+  checkbox or remove the label.
 - A merged PR labelled `needs-human` broke `main`. Fix or revert it yourself;
   the routine removes the label once the failed job passes on `main`.
 - To pause an update, close the PR (the same version is not opened again) or set

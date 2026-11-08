@@ -17,9 +17,10 @@ only Renovate PRs, and never reverts a merge.
 The skill is an orchestrator. It derives the state from GitHub, hands each PR
 that needs work to one `renovate-pr-fixer` worker (`renovate_pr_fixer` on
 Codex), waits for CI, merges what passes the gates, and reports. Every open
-Renovate PR ends the run merged or [deferred](#deferring-a-pr): closed with
-the reason and the condition for trying again, so no PR sits open with
-nothing left to try. It does not read diffs or job logs itself; that is the worker's job.
+Renovate PR ends the run merged or [deferred](#deferring-a-pr) with the
+reason and the condition for trying again, which later runs check, so no PR
+sits unwatched with nothing left to try. It does not read diffs or job logs
+itself; that is the worker's job.
 
 ## Labels and markers
 
@@ -32,10 +33,11 @@ GitHub is the state. Do not write a state file or a tracking Issue.
 | `<!-- renovate-triage:attempt -->` | Comment | Posted by a worker with each push to a Renovate branch; the record of what each attempt changed |
 | `<!-- renovate-triage:merged -->` | Comment | Posted on a PR right before the routine merges it; marks the PRs the post-merge watch checks |
 | `<!-- renovate-triage:broke-main -->` | Comment | Posted on a merged PR whose update broke `main` |
-| `<!-- renovate-triage:deferred -->` | Comment | Posted on a PR right before the routine closes it; carries the reason and the `Revisit when:` condition |
-| `<!-- renovate-triage:reopened -->` | Comment | Posted on a deferred PR when the routine asked Renovate to recreate it |
+| `deferred` label | Open group Renovate PR | Deferred, but Renovate recreates a closed group PR, so it stays open. Skipped until its head commit changes or its `Revisit when:` holds |
+| `<!-- renovate-triage:deferred -->` | Comment | Posted when the routine defers a PR; carries the reason, the `Revisit when:` condition and the head commit it was deferred at |
+| `<!-- renovate-triage:reopened -->` | Comment | Posted on a deferred PR when the routine took it up again |
 
-Create `needs-human` when it does not exist. The routine never puts it on an
+Create `needs-human` and `deferred` when they do not exist. The routine never puts it on an
 open PR. An open Renovate PR that still carries it from an earlier version of
 this skill is processed like any other: remove the label first.
 
@@ -73,28 +75,38 @@ gates stays open, and the report says merges are paused.
 
 ### Reopen deferred updates whose blocker is gone
 
-List the Renovate PRs closed in the last 180 days whose latest
-`renovate-triage` marker is `deferred`. For each one whose `Revisit when:`
-condition is a checkable fact (an upstream issue or PR is closed, or a
-package version that satisfies a stated requirement is published), check it.
-A `Revisit when:` of `the next version` or `a person decides` needs no check:
-Renovate opens the next version by itself, and a person ticks the checkbox
-on the Dependency Dashboard.
+Check the `Revisit when:` condition of each deferred PR: the open ones
+labelled `deferred`, and the closed ones from the last 180 days whose latest
+`renovate-triage` marker is `deferred`.
 
-When the condition holds, tick that PR's checkbox under "Ignored or Blocked"
-in the Dependency Dashboard Issue body (the line with
-`<!-- recreate-branch=<head branch> -->`), and post
-`<!-- renovate-triage:reopened -->` on the closed PR naming what changed.
-Renovate recreates the PR on its next run, and a later run of this routine
-takes it like any other. When the PR is no longer listed there (a newer PR
-for the same update exists), do nothing.
+| `Revisit when:` | Holds when |
+| --- | --- |
+| An upstream issue or PR | It is closed |
+| A package version that meets a requirement | Such a version is published |
+| `the next version`, non-major update | Never checked: Renovate opens the next version itself |
+| `the next version`, major update | A version newer than the PR's target is published. Renovate ignores the rest of a closed major, so it does not open one itself |
+| `a person decides` | Never checked: a person ticks the checkbox or removes the label |
+
+An open `deferred` PR whose head commit differs from the one in its deferred
+comment counts as holding too: Renovate pushed new versions to it.
+
+When the condition holds, post `<!-- renovate-triage:reopened -->` on the PR
+naming what changed, then:
+
+- **Open PR**: remove the `deferred` label. This run takes it like any other.
+- **Closed PR**: tick its checkbox under "Ignored or Blocked" in the Dependency
+  Dashboard Issue body (the line with `<!-- recreate-branch=<head branch> -->`).
+  Renovate recreates the PR on its next run, and a later run of this routine
+  takes it. When the PR is no longer listed there (a newer PR for the same
+  update exists), only post the comment.
 
 ### List the open Renovate PRs
 
 List the open PRs by `app/renovate`. Request only number, title, labels, head
 branch, head commit, mergeable state, the check runs of the head commit, and
 which `renovate-triage` markers its comments carry.
-Order them: `security` label first, then the rest by PR number.
+Order them: `security` label first, then the rest by PR number. Leave out the
+PRs still labelled `deferred`.
 
 ### Drive each PR to an end state
 
@@ -102,7 +114,8 @@ A run does not leave work for the next run. Take the listed PRs one at a time,
 in order, and keep working on each until it reaches one of two end states:
 
 - **Merged** by this routine, through the [merge gates](#merge-gates).
-- **Deferred**: closed by this routine ([Deferring a PR](#deferring-a-pr)).
+- **Deferred** ([Deferring a PR](#deferring-a-pr)): closed, or for a group PR
+  labelled `deferred`.
 
 One at a time, because each merge moves `main` and concurrent workers on
 lockfiles conflict with each other. For the current PR, repeat:
@@ -143,22 +156,29 @@ attempts. Earlier runs' attempts do not count toward the three.
 Defer a PR the routine cannot merge in this run and whose blocker a later run
 cannot remove without something outside the repository changing: an upstream
 bug or missing support, a rewrite the update demands, or a choice that is the
-maintainer's (such as a `renovate.json` change). Post one comment, then close
-the PR:
+maintainer's (such as a `renovate.json` change). Post one comment:
 
 ```markdown
 <!-- renovate-triage:deferred -->
 <one or two lines: why it cannot be merged, linking the worker's comment>
 
 Revisit when: <an upstream issue or PR that is closed | a package version that is published | the next version | a person decides>
+Head: <head commit>
 ```
 
-Closing is reversible and keeps the update visible: Renovate lists a closed
-PR under "Ignored or Blocked" on the Dependency Dashboard and recreates it
-when its checkbox is ticked, and it opens the next version on its own.
+Then end it by the kind of PR:
+
+- **One dependency**: close the PR. Renovate lists it under "Ignored or
+  Blocked" on the Dependency Dashboard and recreates it when its checkbox is
+  ticked.
+- **A group of dependencies**: label it `deferred` and leave it open. Renovate
+  treats a group PR with different versions as immortal and recreates it after
+  a close ([grouped updates](https://docs.renovatebot.com/key-concepts/pull-requests/#grouped-updates-with-different-versions)),
+  so closing would only bring it back to the next run.
+
 [Reopen deferred updates](#reopen-deferred-updates-whose-blocker-is-gone)
-ticks the checkbox once a checkable condition holds. Use `a person decides`
-only when no upstream change would unblock the update.
+takes either up again once its condition holds. Use `a person decides` only
+when no upstream change would unblock the update.
 
 ### Waiting for CI
 
@@ -210,7 +230,8 @@ changed. When the run did nothing, post nothing.
   check to get it green.
 - Change `renovate.json` to stop an update. That is the maintainer's call;
   defer the PR with `Revisit when: a person decides` instead.
-- Leave a PR open labelled `needs-human`.
+- Leave a PR open labelled `needs-human`, or open with nothing left to try
+  without the `deferred` label.
 - Change the excluded dependencies in
   [dependency-updates.md](../../../docs/how-to/dependency-updates.md#excluded-dependencies).
 - Push to `main` directly or rewrite a Renovate branch's history.
