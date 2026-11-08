@@ -70,9 +70,15 @@ registered location; only its reads apply the scope.
 `group_members` and `group_values` are computed with the listed condition for
 the owner and guest roles with this node's switches. A switch updates
 `media_folders`, whose update trigger marks every group for refresh, so the
-next list or group read recomputes them. A library or group-items read whose
-scope is an explicit list computes its groups instead of reading the stored
-values.
+next list or group read recomputes them. A library read whose scope is an
+explicit list reads the stored values when that list leaves out exactly the
+folders the switches leave out (`Audience.ListsAsSwitches`), the usual case
+for a peer, and computes its groups otherwise. A group-items read with an
+explicit list always computes them.
+
+| Rejected | Why |
+| --- | --- |
+| Computing a peer's groups on every library page | Each merged home page took several times longer than the read node's own page |
 
 ## The watch history leaves out switched-off videos
 

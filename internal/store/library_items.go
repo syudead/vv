@@ -258,15 +258,16 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
-	// Stored group values follow this node's switches, so an explicit folder scope computes its groups.
-	_, explicit := audience.ExcludedFolders()
-	spec.storedCollections = !explicit
-	page, err := listLibraryPageTx(ctx, tx, spec)
+	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	roots, err := listMediaFolders(ctx, tx)
+	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
+	// Stored group values follow this node's switches; a peer's explicit scope usually lists the same folders, and
+	// computing every group for it instead made each merged page several times slower.
+	_, explicit := audience.ExcludedFolders()
+	spec.storedCollections = audience.ListsAsSwitches(roots)
+	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
