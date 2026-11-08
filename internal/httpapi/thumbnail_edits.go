@@ -50,9 +50,9 @@ func (s *server) GetVideoFrame(w http.ResponseWriter, r *http.Request, id gen.Vi
 		s.thumbnailPositionError(w, video, err)
 		return
 	}
-	_, path, ok := s.resolveMediaFile(r, video)
-	if !ok {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	_, path, err := s.resolveMediaFile(r, video)
+	if err != nil {
+		s.mediaFileError(w, err)
 		return
 	}
 	frame, err := s.thumbnailEdits.VideoFrame(r.Context(), path, params.PositionMs)
@@ -106,9 +106,9 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 		return
 	}
 	// Use validated resolved paths; edits from an applied thumbnail may proceed without readable source media, while frame extraction still requires it.
-	_, path, ok := s.resolveMediaFile(r, video)
-	if !ok && start.Source == domain.ThumbnailEditFromFrame {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	_, path, err := s.resolveMediaFile(r, video)
+	if err != nil && (start.Source == domain.ThumbnailEditFromFrame || !errors.Is(err, domain.ErrMediaFileUnavailable)) {
+		s.mediaFileError(w, err)
 		return
 	}
 	edit, err := s.thumbnailEdits.Start(r.Context(), video, path, start)

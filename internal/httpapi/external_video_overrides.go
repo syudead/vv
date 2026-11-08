@@ -263,9 +263,13 @@ func (e *externalServer) thumbnailSource(
 		}
 	}
 	// Use the same source rules as streaming and pass the resolved path.
-	location, path, ok := e.s.resolveMediaFile(r, video)
-	if !ok {
+	location, path, err := e.s.resolveMediaFile(r, video)
+	if errors.Is(err, domain.ErrMediaFileUnavailable) {
 		e.fileUnavailableAt(w, step)
+		return domain.Video{}, thumbnailFile{}, false
+	}
+	if err != nil {
+		e.internalErrorAt(w, step, "Could not look up the video's file.", err)
 		return domain.Video{}, thumbnailFile{}, false
 	}
 	return video, thumbnailFile{location: location, path: path}, true

@@ -138,6 +138,25 @@ func TestUploadThumbnailImageMapsApplicationErrors(t *testing.T) {
 	}
 }
 
+// Edit references and uploads share the error writer but not the byte limit, so the message names the one exceeded.
+func TestThumbnailUploadErrorNamesExceededLimit(t *testing.T) {
+	for _, tc := range []struct {
+		limit int
+		want  string
+	}{
+		{domain.ThumbnailEditMaxReferenceBytes, "The image must be at most 20 MiB."},
+		{domain.ThumbnailUploadMaxBytes, "The image must be at most 64 MiB."},
+		{domain.ThumbnailUploadMaxPixels, "The image must be at most 120 megapixels."},
+	} {
+		rec := httptest.NewRecorder()
+		(&server{}).thumbnailUploadError(rec, &domain.ThumbnailUploadTooLargeError{Limit: tc.limit})
+		got := decode[gen.Error](t, rec)
+		if got.Message != tc.want || got.Limit == nil || *got.Limit != tc.limit {
+			t.Errorf("limit %d: message = %q, limit = %v, want %q", tc.limit, got.Message, got.Limit, tc.want)
+		}
+	}
+}
+
 func TestUploadThumbnailImageRejectsMalformedParts(t *testing.T) {
 	calls := 0
 	handler := newUploadHandler(t, func(context.Context, int64, string, []byte) (domain.Video, error) {
@@ -153,6 +172,7 @@ func TestUploadThumbnailImageRejectsMalformedParts(t *testing.T) {
 	}{
 		{"missing image", nil, new(uploadContentVersion), nil},
 		{"missing version", []byte("image"), nil, nil},
+		{"empty version", []byte("image"), new(""), nil},
 		{"long version", []byte("image"), &long, nil},
 		{"unknown part", []byte("image"), new(uploadContentVersion), []string{"prompt"}},
 		{"duplicate image", []byte("image"), new(uploadContentVersion), []string{"image"}},

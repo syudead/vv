@@ -12,11 +12,13 @@ import (
 )
 
 // External tag mutations reuse UI storage operations and take IDs from request bodies; this layer only validates and maps response errors.
+// Missing or null required properties are malformed input, not the 404 their zero IDs would otherwise produce.
 
 // MergeTags is atomic; missing sources are returned in notFoundIds.
 func (e *externalServer) MergeTags(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagMergeRequest
-	if !e.readJSONBody(w, r, &body) {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "targetId", "sourceIds") {
 		return
 	}
 	if len(body.SourceIds) == 0 || len(body.SourceIds) > domain.MaxTagBatch {
@@ -49,7 +51,8 @@ func (e *externalServer) MergeTags(w http.ResponseWriter, r *http.Request) {
 // Renaming a tentative tag confirms it when the name changes.
 func (e *externalServer) RenameTag(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagRenameRequest
-	if !e.readJSONBody(w, r, &body) {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "id", "name") {
 		return
 	}
 	if e.s.tags == nil {
@@ -67,7 +70,8 @@ func (e *externalServer) RenameTag(w http.ResponseWriter, r *http.Request) {
 
 func (e *externalServer) UpdateTagSynonyms(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagSynonymsRequest
-	if !e.readJSONBody(w, r, &body) {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "id", "action", "name") {
 		return
 	}
 	if !body.Action.Valid() {

@@ -36,7 +36,8 @@ type WindowOptions struct {
 	OnEndSession func()
 	// Called on the UI thread for fatal WebView2 errors; the process exits after return.
 	OnFatal func(error)
-	Logger  *slog.Logger
+	// Nil uses slog.Default.
+	Logger *slog.Logger
 }
 
 // Window embeds WebView2; operations other than NewWindow, Run, and Post require the UI thread.
@@ -69,6 +70,9 @@ var (
 func NewWindow(opts WindowOptions) (*Window, error) {
 	if current != nil {
 		return nil, errors.New("the window already exists")
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
 	}
 	w := &Window{opts: opts, destroyedSignal: make(chan struct{})}
 	current = w

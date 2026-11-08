@@ -38,10 +38,9 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	file, info, path, ok := s.openMediaFile(r, video)
-	if !ok {
-		// Mask missing, outside-root, and nonregular targets identically to avoid leaking path existence.
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	file, info, path, err := s.openMediaFile(r, video)
+	if err != nil {
+		s.mediaFileError(w, err)
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -62,51 +61,62 @@ func (s *server) readInForeground(path string) (end func()) {
 	return s.foreground.ReadInForeground(path)
 }
 
+// mediaFileError answers 404 only when no location could be opened, masking missing, outside-root and nonregular
+// targets alike so path existence does not leak; a failed lookup is a 500.
+func (s *server) mediaFileError(w http.ResponseWriter, err error) {
+	if errors.Is(err, domain.ErrMediaFileUnavailable) {
+		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+		return
+	}
+	s.internalError(w, "Could not look up this video's file.", err)
+}
+
 // openMediaFile returns the unresolved location path for filename/Content-Type; MediaFiles validates the opened target.
-func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, bool) {
+func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, error) {
 	var (
 		file *os.File
 		info os.FileInfo
 	)
-	path, ok := s.firstMediaLocation(r, video, func(roots []string, path string) error {
+	path, err := s.firstMediaLocation(r, video, func(roots []string, path string) error {
 		var err error
 		file, info, err = s.files.OpenMediaFile(roots, path)
 		return err
 	})
-	if !ok {
-		return nil, nil, "", false
+	if err != nil {
+		return nil, nil, "", err
 	}
-	return file, info, path, true
+	return file, info, path, nil
 }
 
 // resolveMediaFile returns the validated symlink target for subprocesses plus the original location for later ownership revalidation.
-func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (location, resolved string, ok bool) {
-	location, ok = s.firstMediaLocation(r, video, func(roots []string, path string) error {
+func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (location, resolved string, err error) {
+	location, err = s.firstMediaLocation(r, video, func(roots []string, path string) error {
 		var err error
 		resolved, err = s.files.ResolveMediaFile(roots, path)
 		return err
 	})
-	if !ok {
-		return "", "", false
+	if err != nil {
+		return "", "", err
 	}
-	return location, resolved, true
+	return location, resolved, nil
 }
 
+// firstMediaLocation returns ErrMediaFileUnavailable when no location opens, and lookup failures as they are.
 func (s *server) firstMediaLocation(
 	r *http.Request, video domain.Video, try func(roots []string, path string) error,
-) (string, bool) {
+) (string, error) {
 	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	roots, err := s.mediaFolderPaths(r)
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	for _, location := range locations {
 		err := try(roots, location.Path)
 		if err == nil {
-			return location.Path, true
+			return location.Path, nil
 		}
 		if errors.Is(err, domain.ErrMediaFileOutsideRoot) {
 			s.logger.Warn("link target is outside the media folders",
@@ -115,7 +125,7 @@ func (s *server) firstMediaLocation(
 			s.logger.Debug("cannot open the media file", slog.Int64("video", video.ID), slog.Any("error", err))
 		}
 	}
-	return "", false
+	return "", domain.ErrMediaFileUnavailable
 }
 
 func (s *server) mediaFolderPaths(r *http.Request) ([]string, error) {

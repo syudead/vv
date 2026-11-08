@@ -65,9 +65,13 @@ func ExecLauncher(
 		}
 		out, err := cmd.StdoutPipe()
 		if err != nil {
+			_ = in.Close()
 			return Process{}, err
 		}
+		// exec closes the pipes when its own Start fails, but start may fail before reaching it.
 		if err := start(); err != nil {
+			_ = in.Close()
+			_ = out.Close()
 			return Process{}, err
 		}
 		stop := sync.OnceValue(func() error { return stopCommand(cmd, in, stderr) })

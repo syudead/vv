@@ -170,15 +170,20 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output, poster st
 	if !nonEmptyFile(output) {
 		return fmt.Errorf("thumbnail was not generated (%s)", contentKey)
 	}
+	// The previous poster comes back when the thumbnail cannot follow it, so the pair stays consistent.
+	restorePoster, err := stashFile(posterTarget, filepath.Join(temporary, "previous-poster"+thumbnailExt))
+	if err != nil {
+		return fmt.Errorf("cannot keep the current poster (%s): %w", contentKey, err)
+	}
 	if nonEmptyFile(poster) {
 		if err := moveInto(poster, posterTarget); err != nil {
-			return fmt.Errorf("cannot publish the poster: %w", err)
+			return errors.Join(fmt.Errorf("cannot publish the poster: %w", err), restorePoster())
 		}
 	} else if err := removeFile(posterTarget); err != nil {
 		return fmt.Errorf("cannot delete the poster: %w", err)
 	}
 	if err := moveInto(output, target); err != nil {
-		return fmt.Errorf("cannot publish the thumbnail: %w", err)
+		return errors.Join(fmt.Errorf("cannot publish the thumbnail: %w", err), restorePoster())
 	}
 	return nil
 }

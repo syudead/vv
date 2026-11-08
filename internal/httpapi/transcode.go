@@ -63,9 +63,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	file, info, _, ok := s.openMediaFile(r, video)
-	if !ok {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	file, info, _, err := s.openMediaFile(r, video)
+	if err != nil {
+		s.mediaFileError(w, err)
 		return
 	}
 	defer func() { _ = file.Close() }()

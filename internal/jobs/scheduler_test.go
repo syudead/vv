@@ -1292,6 +1292,46 @@ func TestSchedulerGrantsOtherDisksWhileAFolderLookupDoesNotAnswer(t *testing.T) 
 	})
 }
 
+// hangingFolders is the test folders whose first library lookup for one folder blocks until its context ends.
+type hangingFolders struct {
+	fakeFolders
+	blocked int64
+	hung    *atomic.Bool
+}
+
+func (f hangingFolders) HasLocationsUnder(ctx context.Context, folderID int64) (bool, error) {
+	if folderID == f.blocked && !f.hung.Swap(true) {
+		<-ctx.Done()
+		return false, ctx.Err()
+	}
+	return f.fakeFolders.HasLocationsUnder(ctx, folderID)
+}
+
+func TestSchedulerRechecksAFolderWhoseLookupNeverAnswers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		folders := hangingFolders{fakeFolders: twoFolders, blocked: rootA, hung: &atomic.Bool{}}
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: twoDisks().resolve, Folders: folders,
+		})
+		defer stop()
+		time.Sleep(DiskResolveTimeout)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2}; !slices.Equal(got, want) {
+			t.Fatalf("running while the lookup for folder a hangs = %v, want %v", got, want)
+		}
+		time.Sleep(RootRecheckInterval)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running after the recheck = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerKeepsAFailureUnderAReadableFolder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})

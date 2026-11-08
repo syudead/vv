@@ -242,7 +242,7 @@ func (s *LibraryStore) ContentKeyReferenced(ctx context.Context, key string) (bo
 
 func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, error) {
 	var referenced int
-	if err := q.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ?)`, key).
+	if err := q.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ? and content_key <> '')`, key).
 		Scan(&referenced); err != nil {
 		return false, fmt.Errorf("cannot check references to the content key: %w", err)
 	}

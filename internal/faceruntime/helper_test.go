@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -44,5 +46,23 @@ func TestHelperRestartsAHelperThatExitedMidRequest(t *testing.T) {
 	}
 	if launches != 2 || len(got.Faces) != 1 || got.Faces[0].W != 9 {
 		t.Fatalf("launches = %d, Detect = %+v; want 2 launches and the second helper's answer", launches, got)
+	}
+}
+
+// A start that fails before the process exists still closes the parent's pipe ends.
+func TestExecLauncherClosesPipesWhenStartFails(t *testing.T) {
+	failed := errors.New("start failed")
+	var cmd *exec.Cmd
+	launch := ExecLauncher(context.Background(), func(ctx context.Context, name string, args ...string) (*exec.Cmd, func() error) {
+		cmd = exec.CommandContext(ctx, name, args...)
+		return cmd, func() error { return failed }
+	})
+	if _, err := launch(HelperCommand{Path: "helper"}); !errors.Is(err, failed) {
+		t.Fatalf("launch error = %v, want the start error", err)
+	}
+	child := cmd.Stdout.(*os.File)
+	t.Cleanup(func() { _ = child.Close() })
+	if _, err := child.Write([]byte{1}); err == nil {
+		t.Error("the helper's stdout accepted a write, so the parent end is still open")
 	}
 }

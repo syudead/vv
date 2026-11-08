@@ -21,6 +21,13 @@ const maxCellWidth = 640
 
 const tileQuality = 85
 
+// Bound the decoded sources and the grid canvas so a request cannot allocate without limit.
+const (
+	maxTileImages       = 64
+	maxTileSourcePixels = 64 << 20
+	maxTilePixels       = 16 << 20
+)
+
 // encodeImages encodes images as base64, tiling them into one grid when there are more than limit.
 func encodeImages(images [][]byte, limit int) ([]string, error) {
 	if len(images) > limit {
@@ -40,6 +47,24 @@ func encodeImages(images [][]byte, limit int) ([]string, error) {
 // Tile draws the images in order into a near-square grid of cells sized from the first image, at most maxCellWidth
 // wide, and encodes it as a JPEG; an image of another aspect ratio is fitted with black padding.
 func Tile(images [][]byte) ([]byte, error) {
+	if len(images) == 0 || len(images) > maxTileImages {
+		return nil, fmt.Errorf("cannot tile %d images; the limit is %d", len(images), maxTileImages)
+	}
+	configs := make([]image.Config, len(images))
+	for i, b := range images {
+		config, _, err := image.DecodeConfig(bytes.NewReader(b))
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode image %d: %w", i, err)
+		}
+		if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxTileSourcePixels {
+			return nil, fmt.Errorf("image %d is %dx%d, outside the tiling limit", i, config.Width, config.Height)
+		}
+		configs[i] = config
+	}
+	g, err := gridFor(len(images), configs[0].Width, configs[0].Height, maxTilePixels)
+	if err != nil {
+		return nil, err
+	}
 	decoded := make([]image.Image, len(images))
 	for i, b := range images {
 		img, _, err := image.Decode(bytes.NewReader(b))
@@ -48,15 +73,8 @@ func Tile(images [][]byte) ([]byte, error) {
 		}
 		decoded[i] = img
 	}
-	first := decoded[0].Bounds()
-	cellW, cellH := first.Dx(), first.Dy()
-	if cellW > maxCellWidth {
-		cellH = cellH * maxCellWidth / cellW
-		cellW = maxCellWidth
-	}
-	cols := int(math.Ceil(math.Sqrt(float64(len(decoded)))))
-	rows := (len(decoded) + cols - 1) / cols
-	out := image.NewRGBA(image.Rect(0, 0, cols*cellW, rows*cellH))
+	cols, cellW, cellH := g.cols, g.cellW, g.cellH
+	out := image.NewRGBA(image.Rect(0, 0, cols*cellW, g.rows*cellH))
 	for i, img := range decoded {
 		cell := image.Rect(0, 0, cellW, cellH).Add(image.Pt((i%cols)*cellW, (i/cols)*cellH))
 		drawFit(out, cell, img)
@@ -66,6 +84,24 @@ func Tile(images [][]byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+type grid struct{ cols, rows, cellW, cellH int }
+
+// gridFor lays n images out in a near-square grid of cells sized from the first image's width and height, and
+// refuses a canvas over maxPixels before anything is decoded.
+func gridFor(n, width, height int, maxPixels int64) (grid, error) {
+	cellW, cellH := width, height
+	if cellW > maxCellWidth {
+		cellH = max(1, cellH*maxCellWidth/cellW)
+		cellW = maxCellWidth
+	}
+	cols := int(math.Ceil(math.Sqrt(float64(n))))
+	rows := (n + cols - 1) / cols
+	if int64(cols*cellW)*int64(rows*cellH) > maxPixels {
+		return grid{}, fmt.Errorf("a %dx%d grid of %dx%d cells exceeds the tiling limit", cols, rows, cellW, cellH)
+	}
+	return grid{cols: cols, rows: rows, cellW: cellW, cellH: cellH}, nil
 }
 
 // drawFit preserves aspect ratio and averages source pixels when downsampling.
