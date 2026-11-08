@@ -142,10 +142,6 @@ func TestSetFolderGrouping(t *testing.T) {
 	for _, child := range listing.Folders {
 		assertGrouping(t, "子フォルダ "+child.Name, child.Grouping, gen.FolderGroupingModeAuto, true)
 	}
-	roots := decode[gen.RootFolderListing](t, f.env.get("/api/folders", f.owner))
-	if len(roots.Folders) != 1 || roots.Folders[0].Grouping == nil || roots.Folders[0].Grouping.Mode != gen.FolderGroupingModeGroupDirect {
-		t.Errorf("GET /api/folders の grouping = %+v", roots.Folders)
-	}
 
 	cases := []struct {
 		name, rel, body string
@@ -215,16 +211,15 @@ func TestFolderGroupingForGuest(t *testing.T) {
 		t.Errorf("ゲストの要求で一覧が変わった: %v", names)
 	}
 
-	for _, target := range []string{"/api/folders", "/api/folders/" + strconv.FormatInt(f.rootID, 10)} {
-		rec := f.env.get(target)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s: status = %d: %s", target, rec.Code, rec.Body)
-		}
-		if strings.Contains(rec.Body.String(), `"grouping"`) {
-			t.Errorf("%s: ゲストの応答に grouping がある: %s", target, rec.Body)
-		}
+	target := "/api/folders/" + strconv.FormatInt(f.rootID, 10)
+	rec := f.env.get(target)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: status = %d: %s", target, rec.Code, rec.Body)
 	}
-	if rec := f.env.get("/api/folders", f.owner); !strings.Contains(rec.Body.String(), `"grouping"`) {
+	if strings.Contains(rec.Body.String(), `"grouping"`) {
+		t.Errorf("%s: ゲストの応答に grouping がある: %s", target, rec.Body)
+	}
+	if rec := f.env.get(target, f.owner); !strings.Contains(rec.Body.String(), `"grouping"`) {
 		t.Errorf("所有者の応答に grouping が無い: %s", rec.Body)
 	}
 }

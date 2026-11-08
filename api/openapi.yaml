@@ -5496,10 +5496,10 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List top-level registered media folders"
-      description: "Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations."
+      description: "Lists the registered media folders the audience's folder scope includes, in natural name order, each with the thumbnails of its most recently added videos. Empty registered folders are included. Version bundles show only their effective representative. Guests see public videos only and the list omits roots without public-video locations."
       responses:
         "200":
-          description: "Registered-folder summaries"
+          description: "Registered media folders"
           content:
             application/json:
               schema:
@@ -12215,6 +12215,27 @@ components:
           items:
             $ref: "#/components/schemas/FolderSummary"
 
+    RootFolder:
+      type: object
+      required: [rootId, name, previews]
+      additionalProperties: false
+      properties:
+        rootId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: "Display name: the final absolute-path segment of the registered folder."
+        rootPath:
+          type: string
+          description: "Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name."
+        previews:
+          type: array
+          maxItems: 4
+          description: "Thumbnails of up to four videos anywhere below the folder, most recently added first."
+          items:
+            $ref: "#/components/schemas/FolderPreview"
+
     RootFolderListing:
       type: object
       required: [folders]
@@ -12224,7 +12245,7 @@ components:
           type: array
           description: "Registered media folders in natural-name order."
           items:
-            $ref: "#/components/schemas/FolderSummary"
+            $ref: "#/components/schemas/RootFolder"
 
     Video:
       type: object

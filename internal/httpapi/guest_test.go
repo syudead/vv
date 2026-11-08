@@ -330,7 +330,7 @@ func TestGuestFoldersHideFoldersWithoutPublicVideos(t *testing.T) {
 		t.Fatalf("ゲストの登録フォルダ = %d 件, want 1: %s", len(folders), roots.Body)
 	}
 	listing := decode[gen.RootFolderListing](t, roots)
-	if root := listing.Folders[0]; root.RootId != f.rootID || root.VideoCount != 1 || root.FolderCount != 1 {
+	if root := listing.Folders[0]; root.RootId != f.rootID {
 		t.Errorf("ゲストの登録フォルダ = %+v", root)
 	}
 	if _, ok := folders[0]["rootPath"]; ok {

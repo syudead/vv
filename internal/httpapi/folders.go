@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -14,11 +15,13 @@ type Folders interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error)
 	HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error)
+	RecentFolderPreviews(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderPreview, error)
 	ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error)
 }
 
 const folderNotFoundMessage = "Folder not found."
 
+// ListRootFolders reads each root's recent thumbnails only; counts and child folders belong to the folder page.
 func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	if s.folders == nil {
 		s.internalError(w, "Folder queries are not configured.", nil)
@@ -31,36 +34,57 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audience := audienceFrom(r.Context())
-	summaries := make([]domain.FolderSummary, 0, len(roots))
+	folders := make([]gen.RootFolder, 0, len(roots))
 	for _, root := range roots {
 		// A switched-off root leaves the page instead of staying as an empty card.
 		if !audience.ListsFolder(root) {
 			continue
 		}
-		locations, err := s.folders.FolderLocations(r.Context(), audience, root.Path)
+		folder, visible, err := s.rootFolder(r.Context(), audience, root)
 		if err != nil {
 			s.folderError(w, r, "Could not load folders.", err)
 			return
 		}
-		listing, _ := domain.SummarizeFolder(root, "", locations)
-		if !audience.IsOwner() && !listingHasVideos(listing) {
-			continue
+		if visible {
+			folders = append(folders, folder)
 		}
-		summaries = append(summaries, listing.Folder)
 	}
-	domain.SortFolders(summaries)
-	groupings, err := s.folderGroupings(r.Context(), audience, summaries)
-	if err != nil {
-		s.folderError(w, r, "Could not load folders.", err)
-		return
-	}
-
-	folders := s.apiFolders(r.Context(), audience, summaries, groupings)
+	sortRootFolders(folders)
 	if s.readsPeer(r.Context()) {
 		folders = s.withPeerRoots(r, folders)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: folders}, s.logger)
+}
+
+// rootFolder hides a root without public videos from guests, so they cannot enumerate registered root IDs.
+func (s *server) rootFolder(ctx context.Context, audience domain.Audience, root domain.MediaFolder) (gen.RootFolder, bool, error) {
+	recent, err := s.folders.RecentFolderPreviews(ctx, audience, root.Path)
+	if err != nil {
+		return gen.RootFolder{}, false, err
+	}
+	if len(recent) == 0 && !audience.IsOwner() {
+		found, err := s.folders.HasFolderLocations(ctx, audience, root.Path)
+		if err != nil || !found {
+			return gen.RootFolder{}, false, err
+		}
+	}
+	folder := gen.RootFolder{
+		RootId:   root.ID,
+		Name:     domain.FolderName(root.Path, ""),
+		Previews: s.folderPreviews(ctx, previewVideos(recent)),
+	}
+	if audience.IsOwner() {
+		rootPath := root.Path
+		folder.RootPath = &rootPath
+	}
+	return folder, true, nil
+}
+
+func sortRootFolders(folders []gen.RootFolder) {
+	slices.SortStableFunc(folders, func(a, b gen.RootFolder) int {
+		return domain.CompareFolders(a.Name, valueOrEmpty(a.RootPath), b.Name, valueOrEmpty(b.RootPath))
+	})
 }
 
 func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.GetFolderParams) {

@@ -270,9 +270,6 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 	var ids []int64
 	for _, root := range roots.Folders {
 		ids = append(ids, root.RootId)
-		if domain.IsRemoteID(root.RootId) && root.Grouping != nil {
-			t.Errorf("remote root %d carries its grouping", root.RootId)
-		}
 	}
 	remoteRoot := domain.RemoteID(1, fa.rootID)
 	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.RemoteID(1, fa.otherID)} {

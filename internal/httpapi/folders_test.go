@@ -24,7 +24,9 @@ type fakeFolders struct {
 	locations []domain.FolderLocation
 	page      domain.VideoPage
 	lastQuery domain.FolderVideoQuery
-	listErr   error
+	// recentDirs are the directories RecentFolderPreviews was asked for.
+	recentDirs []string
+	listErr    error
 }
 
 func (f *fakeFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
@@ -47,6 +49,26 @@ func (f *fakeFolders) FolderLocations(_ context.Context, audience domain.Audienc
 func (f *fakeFolders) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
 	locations, err := f.FolderLocations(ctx, audience, dir)
 	return len(locations) > 0, err
+}
+
+// RecentFolderPreviews treats later fixture locations as more recently added.
+func (f *fakeFolders) RecentFolderPreviews(_ context.Context, audience domain.Audience, dir string) ([]domain.FolderPreview, error) {
+	if err := requireOwner(audience); err != nil {
+		return nil, err
+	}
+	f.recentDirs = append(f.recentDirs, dir)
+	previews := []domain.FolderPreview{}
+	prefix := strings.TrimRight(dir, "/") + "/"
+	for _, location := range slices.Backward(f.locations) {
+		if strings.HasPrefix(location.Path, prefix) && location.ThumbnailState == domain.ThumbnailStateDone &&
+			len(previews) < domain.MaxFolderPreviews {
+			previews = append(previews, domain.FolderPreview{
+				VideoID: location.VideoID, ContentKey: location.ContentKey, PreviewState: location.PreviewState,
+				ThumbnailPositionMs: location.ThumbnailPositionMs, ThumbnailRevision: location.ThumbnailRevision,
+			})
+		}
+	}
+	return previews, nil
 }
 
 func (f *fakeFolders) ListFolderVideos(_ context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
@@ -90,7 +112,8 @@ func TestListRootFoldersIncludesEveryRegisteredFolder(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("fixture uses slash-separated absolute paths")
 	}
-	handler := newTestServer(t, Options{Folders: folderFixture()})
+	folders := folderFixture()
+	handler := newTestServer(t, Options{Folders: folders})
 
 	rec := do(t, handler, http.MethodGet, "/api/folders")
 	if rec.Code != http.StatusOK {
@@ -106,19 +129,32 @@ func TestListRootFoldersIncludesEveryRegisteredFolder(t *testing.T) {
 			t.Fatalf("所有者の応答に rootPath が無い: %+v", folder)
 		}
 		got = append(got, folder.Name+"@"+*folder.RootPath)
-		if folder.Path != "" {
-			t.Errorf("root path = %q, want empty", folder.Path)
-		}
 	}
 	if want := []string{"empty@/empty", "movies@/a/movies", "movies@/b/movies"}; !slices.Equal(got, want) {
 		t.Errorf("roots = %q, want %q", got, want)
 	}
-	if b := listing.Folders[2]; b.RootId != 7 || b.VideoCount != 1 || b.FolderCount != 0 || len(b.Previews) != 1 {
-		t.Errorf("/b/movies = %+v", b)
+	if b := listing.Folders[2]; b.RootId != 7 || len(b.Previews) != 1 || b.Previews[0].VideoId != 1 {
+		t.Errorf("/b/movies = %+v, want its one thumbnailed video", b)
 	}
-	if empty := listing.Folders[0]; empty.VideoCount != 0 || empty.Previews == nil {
-		t.Errorf("/empty = %+v, want zero counts and an empty previews array", empty)
+	// /a/movies holds thumbnailed videos at every depth; the most recent come first.
+	if a := listing.Folders[1]; !slices.Equal(rootPreviewIDs(a), []int64{3, 2, 1}) {
+		t.Errorf("/a/movies previews = %v, want [3 2 1]", rootPreviewIDs(a))
 	}
+	if empty := listing.Folders[0]; empty.Previews == nil || len(empty.Previews) != 0 {
+		t.Errorf("/empty = %+v, want an empty previews array", empty)
+	}
+	slices.Sort(folders.recentDirs)
+	if want := []string{"/a/movies", "/b/movies", "/empty"}; !slices.Equal(folders.recentDirs, want) {
+		t.Errorf("recent previews read for %q, want each root once", folders.recentDirs)
+	}
+}
+
+func rootPreviewIDs(folder gen.RootFolder) []int64 {
+	ids := []int64{}
+	for _, preview := range folder.Previews {
+		ids = append(ids, preview.VideoId)
+	}
+	return ids
 }
 
 func TestListRootFoldersLeavesOutASwitchedOffRoot(t *testing.T) {

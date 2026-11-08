@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +93,72 @@ func TestFolderLocationsIgnoresUnregisteredLocations(t *testing.T) {
 	found, err := db.Library().HasFolderLocations(ctx, domain.AudienceOwner, fixturePath("/media/A"))
 	if err != nil || found {
 		t.Errorf("HasFolderLocations = %v, %v; want false", found, err)
+	}
+}
+
+func markThumbnailed(t *testing.T, db *DB, ids ...int64) {
+	t.Helper()
+	for _, id := range ids {
+		if err := db.Ingest().SetThumbnailState(context.Background(), id, domain.ThumbnailStateDone); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRecentFolderPreviewsTakeTheNewestThumbnailsBelowTheFolder(t *testing.T) {
+	names := []string{"A/old.mp4", "A/B/C/deep.mp4", "A/B/mid.mp4", "A/top.mp4", "A/newest.mp4", "A/unthumbnailed.mp4", "AB/sibling.mp4"}
+	files := make([]domain.VideoFile, 0, len(names))
+	for index, name := range names {
+		files = append(files, sampleFile(fixturePath("/media/"+name), name, "key-"+strconv.Itoa(index), 1, 0))
+	}
+	db, ids := folderFixture(t, files...)
+	id := func(name string) int64 { return ids[fixturePath("/media/"+name)] }
+	for index, name := range names {
+		// Later names were added later.
+		execSQL(t, db, `update videos set added_at = ? where id = ?`, int64(1000+index), id(name))
+		if name != "A/unthumbnailed.mp4" {
+			markThumbnailed(t, db, id(name))
+		}
+	}
+
+	// Newest first at any depth, skipping the unthumbnailed video and the AB sibling, four at most.
+	want := []int64{id("A/newest.mp4"), id("A/top.mp4"), id("A/B/mid.mp4"), id("A/B/C/deep.mp4")}
+	for _, byRange := range []bool{true, false} {
+		previews, err := db.Library().recentFolderPreviews(context.Background(), domain.AudienceOwner, fixturePath("/media/A"), byRange)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []int64
+		for _, preview := range previews {
+			got = append(got, preview.VideoID)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("byRange=%v: previews = %v, want %v", byRange, got, want)
+		}
+	}
+	if previews, err := db.Library().RecentFolderPreviews(context.Background(), domain.AudienceOwner, fixturePath("/media/empty")); err != nil || len(previews) != 0 || previews == nil {
+		t.Errorf("empty folder previews = %v, %v; want an empty list", previews, err)
+	}
+}
+
+func TestRecentFolderPreviewsShowGuestsPublicVideosOnly(t *testing.T) {
+	db, ids := visibilityFixture(t)
+	for _, id := range ids {
+		markThumbnailed(t, db, id)
+	}
+	previews, err := db.Library().RecentFolderPreviews(context.Background(), guest, fixturePath("/media"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, preview := range previews {
+		got = append(got, preview.VideoID)
+	}
+	slices.Sort(got)
+	want := []int64{ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")], ids[fixturePath("/media/f.mp4")]}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("guest previews = %v, want the public videos %v", got, want)
 	}
 }
 
