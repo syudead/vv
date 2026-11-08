@@ -97,6 +97,13 @@ a screen earlier, so a page of 60 group cards requested all 240 cover sheets
 and, on a repeat visit, spent about 200 ms of the first commit setting their
 sources from the memory cache; a 1440×900 window now asks for about 110.
 
+Every page but the library is loaded with its route
+([`deferredRoute`](../../web/src/app/deferredRoute.tsx)). The video page, which
+carries video.js, was the exception and made up about 40% of the code every
+page read before its first request; other pages now fetch it three seconds
+after they finish loading, once idle, so opening a video stays immediate
+without the download competing with the first screen.
+
 The tag admin list (`/tags`) is the measured exception: with thousands of tags,
 opening, search and scrolling froze, so it draws only the rows near the
 viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
