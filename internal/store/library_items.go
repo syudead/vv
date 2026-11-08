@@ -188,13 +188,20 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
 	whole := `select distinct hits.group_id from hits where hits.n > 0 and hits.n = hits.total`
 	// Stored group values count every member, so a kind that drops some members must count the matched ones.
-	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds() {
-		whole = storedWholeGroupsSQL(spec, roots)
+	// Matched is read twice, by whole and by the video items, unless whole needs no match; materialize it then.
+	matchedAs := `matched as materialized`
+	switch {
+	case spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds():
+		whole, matchedAs = storedWholeGroupsSQL(spec, roots), `matched as`
+	case spec.storedCollections:
+		// The stored total is known, so grouping the matched members avoids a window over every member row.
+		whole = `select gm.group_id from gm join matched on matched.video_id = gm.video_id
+		group by gm.group_id having count(*) = ` + groupSQL.total
 	}
 	// SQLite 3.54 rejects a statement whose CTE references expand past a fixed size, materialized or not, so reference hits, matched and gm as few times as possible.
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
 	cte += `,
-	matched as (
+	` + matchedAs + ` (
 		select videos.id as video_id, chosen.path as path
 		from chosen join videos on videos.id = chosen.video_id` + where + `),
 	` + groupSQL.members + `,
