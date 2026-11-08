@@ -129,7 +129,10 @@ types (`IngestStore`, `LibraryStore`, `TagStore`, `CreditStore`, `AuthStore`,
 …). Each business operation belongs to exactly one role, so calling it through
 the wrong role does not compile. No role calls another role's public methods; work that
 spans roles runs in one transaction through package-private helpers. SQL never
-leaves `internal/store`.
+leaves `internal/store`. Writes go through one writer connection; reads that
+every request makes (the session, the peer credential and links, a video by
+id) use the read pool with prepared statements kept per query text, so they
+neither queue behind a write nor parse their SQL again.
 
 **Events after commit.** The store publishes a domain event only after its
 transaction commits, never from one that rolled back. Publishers do not know

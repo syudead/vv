@@ -694,6 +694,10 @@
         {
           "path": "src/ui/VideoThumbnail.tsx",
           "type": "registry:ui"
+        },
+        {
+          "path": "src/hooks/useNearViewport.ts",
+          "type": "registry:hook"
         }
       ]
     },

@@ -3,9 +3,11 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
@@ -38,6 +40,19 @@ func (s *autoImportScans) started() int {
 	return s.starts
 }
 
+// waitUntilArmed waits for Start's arming goroutine, which leaves the watch starting until it has listed the
+// folders; a request made before then reads that state.
+func waitUntilArmed(t *testing.T, auto *app.AutoImport) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for auto.Status().State == domain.FolderWatchStarting {
+		if time.Now().After(deadline) {
+			t.Fatal("the watch is still starting")
+		}
+		runtime.Gosched()
+	}
+}
+
 type autoImportFixture struct {
 	env   *authEnv
 	scans *autoImportScans
@@ -55,6 +70,7 @@ func newAutoImportFixture(t *testing.T) *autoImportFixture {
 			t.Fatal(err)
 		}
 		t.Cleanup(auto.Stop)
+		waitUntilArmed(t, auto)
 		return Options{AutoImport: auto}
 	})
 	f.owner = f.env.setup()

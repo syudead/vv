@@ -83,6 +83,7 @@ Its folder scope is the reader's switches for that link, sent in
 | `domain.CheckNewLink` holds the limit and the same-node refusal, and `PeerStore.AddLink` checks it again over the links its transaction reads | Two pairings at once cannot pass the limit or read one node twice |
 | A link refused after the other node answered asks that node to drop the grant it gave (`DELETE /api/peer/pairings/{nodeId}`) | The node id is known only from the answer, and a grant nobody holds would block that node's next pairing |
 | HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it, and the Settings page calls an unpinned certificate untrusted rather than changed | A public certificate rotates every 90 days; a self-signed one is pinned once |
+| The client keeps one keep-alive transport per pin and response-header timeout, with up to 16 idle connections to a node | A page proxies dozens of thumbnails at once; a new connection per request, and a TLS handshake for an HTTPS node, was paid on every one |
 | A forwarded answer keeps its type only for media, subtitles, images, JSON and plain text, and always carries `nosniff` and a sandbox CSP; any other type downloads | The answer is served from this node's origin, where a page from the peer would act with the owner's session |
 
 | Rejected | Why |
