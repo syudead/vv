@@ -3742,7 +3742,7 @@ export interface paths {
         };
         /**
          * List top-level registered media folders
-         * @description Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations.
+         * @description Lists the registered media folders the audience's folder scope includes, in natural name order, each with the thumbnails of its most recently added videos. Empty registered folders are included. Version bundles show only their effective representative. Guests see public videos only and the list omits roots without public-video locations.
          */
         get: operations["listRootFolders"];
         put?: never;
@@ -7041,9 +7041,19 @@ export interface components {
             /** @description Direct child folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
+        RootFolder: {
+            /** Format: int64 */
+            rootId: number;
+            /** @description Display name: the final absolute-path segment of the registered folder. */
+            name: string;
+            /** @description Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name. */
+            rootPath?: string;
+            /** @description Thumbnails of up to four videos anywhere below the folder, most recently added first. */
+            previews: components["schemas"]["FolderPreview"][];
+        };
         RootFolderListing: {
             /** @description Registered media folders in natural-name order. */
-            folders: components["schemas"]["FolderSummary"][];
+            folders: components["schemas"]["RootFolder"][];
         };
         /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo. */
         Video: {
@@ -15180,7 +15190,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Registered-folder summaries */
+            /** @description Registered media folders */
             200: {
                 headers: {
                     [name: string]: unknown;

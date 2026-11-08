@@ -64,3 +64,14 @@ func TestFolderLocationsSearchThePathRange(t *testing.T) {
 		t.Errorf("plan does not search %s:\n%s", index, strings.Join(plan, "\n"))
 	}
 }
+
+// The root list must stop at the newest matches instead of reading every video below a root.
+func TestRecentFolderPreviewsWalkTheAddedIndex(t *testing.T) {
+	db := migratedDB(t)
+	query, args := recentFolderPreviewsQuery(domain.AudienceOwner, fixturePath("/media"))
+	plan := queryPlan(t, db, query, args...)
+	// Only the bundle representative subquery may sort; the outer query reads the index in order.
+	if len(plan) == 0 || plan[0] != "SCAN videos USING INDEX videos_added_at_desc_idx" {
+		t.Errorf("plan does not walk videos_added_at_desc_idx first:\n%s", strings.Join(plan, "\n"))
+	}
+}

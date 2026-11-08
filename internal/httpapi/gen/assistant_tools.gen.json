@@ -7255,7 +7255,7 @@
       "method": "GET",
       "path": "/api/folders",
       "summary": "List top-level registered media folders",
-      "description": "Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations.",
+      "description": "Lists the registered media folders the audience's folder scope includes, in natural name order, each with the thumbnails of its most recently added videos. Empty registered folders are included. Version bundles show only their effective representative. Guests see public videos only and the list omits roots without public-video locations.",
       "owner": true,
       "response": "json",
       "parameters": {

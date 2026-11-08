@@ -63,17 +63,73 @@ func directChildConditionFor(alias string, windows bool) string {
 	return `instr(` + rest + `, char(` + strconv.Itoa(int(os.PathSeparator)) + `)) = 0`
 }
 
-// FolderLocations exposes only audience-visible representative locations; nonrepresentative-only folders appear empty.
-func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
-	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
-	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state,
-			(select ov.thumbnail_position_ms from video_overrides ov
+// folderPreviewColumns version a preview's thumbnail URL as Video does: position override, its revision, the
+// replaced image's revision, then the forced rebuild counts.
+const folderPreviewColumns = `(select ov.thumbnail_position_ms from video_overrides ov
 				where ov.content_key = videos.content_key and videos.content_key <> ''),
 			(select ov.thumbnail_revision from video_overrides ov
 				where ov.content_key = videos.content_key and videos.content_key <> ''),
 			(select ti.revision from thumbnail_images ti
 				where ti.content_key = videos.content_key and videos.content_key <> ''),
-			`+buildColumns+`
+			` + buildColumns
+
+// thumbnailVersion reads folderPreviewColumns' versions; the position revision counts only with a position.
+func thumbnailVersion(position, revision, imageRevision sql.NullInt64) (*int64, int64, int64) {
+	if !position.Valid {
+		return nil, 0, imageRevision.Int64
+	}
+	ms := position.Int64
+	return &ms, revision.Int64, imageRevision.Int64
+}
+
+// RecentFolderPreviews are the MaxFolderPreviews most recently added thumbnailed videos the audience lists anywhere
+// below dir; walking the added-at index stops at the first matches instead of reading the whole folder.
+func (s *LibraryStore) RecentFolderPreviews(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderPreview, error) {
+	query, args := recentFolderPreviewsQuery(audience, dir)
+	rows, err := s.db.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the folder's recent videos: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	previews := []domain.FolderPreview{}
+	for rows.Next() {
+		var item domain.FolderPreview
+		var preview string
+		var position, revision, imageRevision sql.NullInt64
+		if err := rows.Scan(&item.VideoID, &item.ContentKey, &preview, &position, &revision, &imageRevision,
+			&item.Builds.Thumbnail, &item.Builds.SeekThumbnail, &item.Builds.Preview); err != nil {
+			return nil, fmt.Errorf("cannot read the folder's recent videos: %w", err)
+		}
+		item.PreviewState = domain.PreviewState(preview)
+		item.ThumbnailPositionMs, item.ThumbnailRevision, item.ThumbnailImageRevision =
+			thumbnailVersion(position, revision, imageRevision)
+		previews = append(previews, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the folder's recent videos: %w", err)
+	}
+	return previews, nil
+}
+
+func recentFolderPreviewsQuery(audience domain.Audience, dir string) (string, []any) {
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
+	return `select videos.id, videos.content_key, videos.preview_state,
+			` + folderPreviewColumns + `
+		from videos
+		where videos.thumbnail_state = 'done'
+			and exists (select 1 from video_locations l where l.video_id = videos.id and ` + inFolder + ` and ` +
+		listedLocationCondition("l", audience) + `)
+			and ` + listedShownVideoCondition("videos", audience) + `
+		order by videos.added_at desc, videos.id desc
+		limit ` + strconv.Itoa(domain.MaxFolderPreviews), args
+}
+
+// FolderLocations exposes only audience-visible representative locations; nonrepresentative-only folders appear empty.
+func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
+	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state,
+			`+folderPreviewColumns+`
 		from video_locations l join videos on videos.id = l.video_id
 		where `+inFolder+` and `+listedLocationCondition("l", audience)+
 		` and `+listedShownVideoCondition("videos", audience),
@@ -94,12 +150,8 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 		}
 		item.ThumbnailState = domain.ThumbnailState(thumbnail)
 		item.PreviewState = domain.PreviewState(preview)
-		if position.Valid {
-			ms := position.Int64
-			item.ThumbnailPositionMs = &ms
-			item.ThumbnailRevision = revision.Int64
-		}
-		item.ThumbnailImageRevision = imageRevision.Int64
+		item.ThumbnailPositionMs, item.ThumbnailRevision, item.ThumbnailImageRevision =
+			thumbnailVersion(position, revision, imageRevision)
 		locations = append(locations, item)
 	}
 	if err := rows.Err(); err != nil {
