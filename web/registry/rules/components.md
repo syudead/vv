@@ -424,7 +424,10 @@ a virtual video, which has no file, shows `VirtualMark` there instead of a durat
 `VideoThumbnailMark` in a top corner for the selection check (`top-start`) and
 a person's `FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame
 when the video cannot play. A virtual video has no progress, notice or hover
-preview. `selected` rings the frame in `primary`.
+preview. `selected` rings the frame in `primary`. `VideoThumbnailImage` sets
+its `src` only once the frame comes within a viewport of the screen
+(`useNearViewport`), so a page of cards loads only the images it shows; pass
+the URL as `src` and add no loading of your own.
 
 A video card's credits sit in a `VideoThumbnailLayer`, a frame-sized layer
 laid over the thumbnail from outside the card's link, so the face links in it
