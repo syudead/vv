@@ -1,5 +1,6 @@
 import type * as React from "react";
 
+import { useNearViewport } from "@/hooks/useNearViewport";
 import { cn } from "@/lib/cn";
 import { Progress } from "@/ui/shadcn/progress";
 
@@ -30,18 +31,26 @@ function VideoThumbnail({
   );
 }
 
+/**
+ * Sets src only once the frame comes within a viewport of the screen: native lazy loading starts far earlier,
+ * so a page of cards loaded every thumbnail and spent the first commit on them.
+ */
 function VideoThumbnailImage({
   className,
   alt = "",
+  src,
   ...props
 }: React.ComponentProps<"img">) {
+  const [ref, near] = useNearViewport<HTMLImageElement>();
   return (
     <img
+      ref={ref}
       data-slot="video-thumbnail-image"
       alt={alt}
       loading="lazy"
       decoding="async"
       className={cn("relative size-full object-contain", className)}
+      src={near ? src : undefined}
       {...props}
     />
   );

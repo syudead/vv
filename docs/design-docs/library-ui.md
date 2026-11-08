@@ -89,6 +89,14 @@ restoration in virtual coordinates. Pages load 60 items
 ([`PAGE_SIZE`](../../web/src/api/client.ts)), so the DOM holds only what the
 user loaded. **Revisit only after measuring what is slow.**
 
+A loaded page still mounts every card, so a thumbnail sets its `src` only once
+its frame comes within one viewport of the screen
+([`useNearViewport`](../../web/src/hooks/useNearViewport.ts)), the margin at
+which the list asks for its next page. Native `loading="lazy"` starts more than
+a screen earlier, so a page of 60 group cards requested all 240 cover sheets
+and, on a repeat visit, spent about 200 ms of the first commit setting their
+sources from the memory cache; a 1440×900 window now asks for about 110.
+
 The tag admin list (`/tags`) is the measured exception: with thousands of tags,
 opening, search and scrolling froze, so it draws only the rows near the
 viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
