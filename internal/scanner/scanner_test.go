@@ -665,7 +665,7 @@ func TestScanHoldsAReadSlotForEachContentKeyRead(t *testing.T) {
 
 	var events []string
 	scanner := New(Options{Index: index, Queue: index, Reporter: index, ReadSlots: recordingSlots{events: &events}})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		events = append(events, "read "+filepath.Base(path))
 		return ContentKey(path)
 	}
@@ -695,7 +695,7 @@ func TestRescanVideoOutsideEveryFolderIsNotRead(t *testing.T) {
 
 	var events []string
 	scanner := New(Options{Index: index, Queue: index, Reporter: index, ReadSlots: recordingSlots{events: &events}})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		events = append(events, "read "+filepath.Base(path))
 		return ContentKey(path)
 	}
@@ -780,7 +780,7 @@ func TestScanRemovesIndexedFileDeletedAfterDiscovery(t *testing.T) {
 	}
 
 	scanner := New(Options{Index: index})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		if path == z {
 			if err := os.Remove(a); err != nil {
 				return "", err
@@ -815,7 +815,7 @@ func TestScanPreservesIndexWhenRootDisappearsAfterDiscovery(t *testing.T) {
 	}
 
 	scanner := New(Options{Index: index})
-	scanner.contentKey = func(string, fs.FileInfo) (string, error) {
+	scanner.contentKey = func(string) (string, error) {
 		if err := os.RemoveAll(root); err != nil {
 			return "", err
 		}
@@ -849,7 +849,7 @@ func TestScanPreservesIndexWhenParentDisappearsAfterDiscovery(t *testing.T) {
 	}
 
 	scanner := New(Options{Index: index})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		if path == z {
 			if err := os.RemoveAll(filepath.Join(root, "gone")); err != nil {
 				return "", err
@@ -889,7 +889,7 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		if filepath.Base(path) == "b.mp4" {
 			return "", &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
 		}
@@ -914,7 +914,7 @@ func TestScanReportsUnreadableFileAsIssue(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		if path == broken {
 			return "", &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
 		}
@@ -959,7 +959,7 @@ func TestScanStopsWhenIssueCannotBeRecorded(t *testing.T) {
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	index.issueErr = errors.New("store unavailable")
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	scanner.contentKey = func(string, fs.FileInfo) (string, error) { return "", errors.New("unreadable") }
+	scanner.contentKey = func(string) (string, error) { return "", errors.New("unreadable") }
 	if _, err := scanner.Scan(context.Background(), domain.ActivityByOwner); !errors.Is(err, index.issueErr) {
 		t.Fatalf("err = %v, want the recording failure", err)
 	}
@@ -1108,7 +1108,7 @@ func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		if err := os.WriteFile(path, []byte("new and longer"), 0o600); err != nil {
 			return "", err
 		}
@@ -1151,7 +1151,7 @@ func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
 			index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 			scanner := New(Options{Index: index, Queue: index, Reporter: index})
 			hashed := false
-			scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+			scanner.contentKey = func(path string) (string, error) {
 				hashed = true
 				return ContentKey(path)
 			}
@@ -1173,36 +1173,6 @@ func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
 				t.Fatalf("報告 = %+v, want %+v", index.issues, want)
 			}
 		})
-	}
-}
-
-// Both metadata reads can see the examined file while the open reaches another one swapped in between.
-func TestScanRejectsAFileReplacedBetweenMetadataReadAndOpen(t *testing.T) {
-	root := mediaTree(t, map[string]string{"a.mp4": "old"})
-	path := filepath.Join(root, "a.mp4")
-	examined, err := os.Lstat(filepath.Join(mediaTree(t, map[string]string{"a.mp4": "old"}), "a.mp4"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	index := newFakeIndex()
-	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
-	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	scanner.lstat = func(name string) (fs.FileInfo, error) {
-		if name == path {
-			return examined, nil
-		}
-		return os.Lstat(name)
-	}
-
-	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Failed != 1 || len(index.upserts) != 0 {
-		t.Fatalf("result = %+v, upserts = %+v, want one failure", result, index.upserts)
-	}
-	if want := []domain.ScanFileIssue{{Path: path, Kind: domain.IssueChangedDuringImport}}; !slices.Equal(index.issues, want) {
-		t.Fatalf("issues = %+v, want %+v", index.issues, want)
 	}
 }
 

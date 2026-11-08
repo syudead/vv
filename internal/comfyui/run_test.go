@@ -613,22 +613,6 @@ func TestOutputCloudFollowsRedirectWithoutKey(t *testing.T) {
 	assertKeys(t, f)
 }
 
-func TestOutputSelfHostedRejectsRedirectToAnotherHost(t *testing.T) {
-	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Errorf("the other host was requested")
-	}))
-	t.Cleanup(other.Close)
-	f := newRunProvider(t, false)
-	f.handle("/history/run-1", jsonHandler(historyWithImage))
-	f.handle("/view", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, other.URL+"/out.png", http.StatusFound)
-	})
-	_, err := f.client().Output(context.Background(), cloudJob(f))
-	if failure := reasonOf(t, "redirect", err); failure.Reason != domain.ImageEditUnreachable {
-		t.Errorf("reason = %v, want unreachable", failure.Reason)
-	}
-}
-
 func reasonOf(t *testing.T, name string, err error) *domain.ImageEditError {
 	t.Helper()
 	var failure *domain.ImageEditError

@@ -3,10 +3,8 @@ package scanner
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"strconv"
 )
@@ -19,15 +17,6 @@ const readWindow = 1 << 20 // 1MiB
 // moves. Bounded reads make disk I/O and probing dominate hashing, so standard-library SHA-256
 // needs no faster external dependency.
 func ContentKey(path string) (string, error) {
-	return contentKeyOf(path, nil)
-}
-
-// errReplaced reports that the opened file is not the one examined before opening it.
-var errReplaced = errors.New("the file was replaced before it was read")
-
-// contentKeyOf reads the content key from the file at path, which must be the file want describes when want is not
-// nil, so a symlink or another file swapped in after want was read is not hashed in its place.
-func contentKeyOf(path string, want fs.FileInfo) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("could not compute the content key (%s): %w", path, err)
@@ -37,9 +26,6 @@ func contentKeyOf(path string, want fs.FileInfo) (string, error) {
 	info, err := file.Stat()
 	if err != nil {
 		return "", fmt.Errorf("could not compute the content key (%s): %w", path, err)
-	}
-	if want != nil && (!os.SameFile(want, info) || want.Size() != info.Size()) {
-		return "", fmt.Errorf("could not compute the content key (%s): %w", path, errReplaced)
 	}
 
 	key, err := ContentKeyFrom(file, info.Size())

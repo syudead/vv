@@ -158,7 +158,7 @@ func TestScanScopedSupersededRemovesNothing(t *testing.T) {
 	defer cancel(nil)
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		cancel(domain.ErrScanSuperseded)
 		return ContentKey(path)
 	}
@@ -263,7 +263,7 @@ func TestScanScopedSkipsFileThatChangesOrVanishesDuringImport(t *testing.T) {
 			copying := filepath.Join(root, "a", "copying.mp4")
 			index := newFakeIndex()
 			scanner := scopedScanner(root, index)
-			scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+			scanner.contentKey = func(path string) (string, error) {
 				if path == copying {
 					if err := tc.change(path); err != nil {
 						return "", err
@@ -334,7 +334,7 @@ func TestScanScopedKeepsLocationsWhenParentVanishesDuringImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	scanner := scopedScanner(root, index)
-	scanner.contentKey = func(path string, _ fs.FileInfo) (string, error) {
+	scanner.contentKey = func(path string) (string, error) {
 		if path == z {
 			if err := os.Rename(filepath.Join(root, "a", "gone"), filepath.Join(root, "moved")); err != nil {
 				return "", err

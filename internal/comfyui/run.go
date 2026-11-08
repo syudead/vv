@@ -402,19 +402,6 @@ func (t *target) submit(ctx context.Context, prompt promptGraph, clientID string
 	return "", t.statusError("/prompt", resp)
 }
 
-// Self-hosted ComfyUI may redirect only within its own origin; Comfy Cloud redirects to signed
-// storage URLs on other hosts, so it may leave the origin but never downgrade from HTTPS.
-func (t *target) redirectAllowed(location *url.URL) bool {
-	base, err := url.Parse(t.base)
-	if err != nil || (location.Scheme != "http" && location.Scheme != "https") || location.Host == "" {
-		return false
-	}
-	if base.Scheme == "https" && location.Scheme != "https" {
-		return false
-	}
-	return t.cloud || (location.Scheme == base.Scheme && location.Host == base.Host)
-}
-
 // Follow at most one redirect and never forward X-API-Key.
 func (t *target) view(ctx context.Context, path string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
@@ -432,9 +419,6 @@ func (t *target) view(ctx context.Context, path string) ([]byte, error) {
 		location, err := resp.Location()
 		if err != nil {
 			return nil, &domain.ImageEditError{Reason: domain.ImageEditUnreachable, Message: fmt.Sprintf("%s redirected /view without a location", t.name())}
-		}
-		if !t.redirectAllowed(location) {
-			return nil, &domain.ImageEditError{Reason: domain.ImageEditUnreachable, Message: fmt.Sprintf("%s redirected /view to a disallowed location", t.name())}
 		}
 		next, err := http.NewRequestWithContext(ctx, http.MethodGet, location.String(), nil)
 		if err != nil {

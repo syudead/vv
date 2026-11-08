@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"runtime"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/syudead/vv/internal/domain"
@@ -254,31 +252,15 @@ func collectDeletedVideos(rows *sql.Rows, err error) ([]domain.DeletedVideo, err
 	return deleted, rows.Err()
 }
 
-// The driver applies _pragma parameters to every connection. A read-only pool skips journal_mode because the writer
-// already set the persistent WAL mode and a read-only connection cannot change it.
-func dsn(path string, txLock string, readOnly bool) string {
+// The driver applies _pragma parameters to every connection.
+func dsn(path string, txLock string) string {
 	q := url.Values{}
 	// Use immediate writes and deferred snapshots; upgrading a deferred read can fail with SQLITE_BUSY_SNAPSHOT without honoring busy_timeout.
 	q.Set("_txlock", txLock)
-	if readOnly {
-		q.Set("mode", "ro")
-	} else {
-		q.Add("_pragma", "journal_mode(WAL)")
-	}
+	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
 	q.Add("_pragma", "foreign_keys(on)")
-	return fileURI(path, q)
-}
-
-// fileURI percent-encodes the path so '?', '#' and '%' in a data directory name stay part of the file name.
-func fileURI(path string, query url.Values) string {
-	slashed := filepath.ToSlash(path)
-	if filepath.IsAbs(path) && !strings.HasPrefix(slashed, "/") {
-		// A Windows drive path needs a leading slash after SQLite's empty authority.
-		slashed = "/" + slashed
-	}
-	u := url.URL{Scheme: "file", Path: slashed, RawQuery: query.Encode(), OmitHost: !strings.HasPrefix(slashed, "/")}
-	return u.String()
+	return "file:" + path + "?" + q.Encode()
 }
 
 // Open creates the database under the data directory if needed; callers must Close it.
@@ -290,12 +272,12 @@ func Open(dataDir string) (*DB, error) {
 func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 	path := DatabasePath(dataDir)
 
-	handle, err := sql.Open("sqlite", dsn(path, "immediate", false))
+	handle, err := sql.Open("sqlite", dsn(path, "immediate"))
 	if err != nil {
 		return nil, fmt.Errorf("cannot open the database (%s): %w", path, err)
 	}
 
-	read, err := sql.Open("sqlite", dsn(path, "deferred", true))
+	read, err := sql.Open("sqlite", dsn(path, "deferred"))
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("cannot open the read-only database (%s): %w", path, err)
@@ -304,10 +286,6 @@ func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 	// SQLite runs one writer at a time; queue writers in Go instead of in SQLite's busy wait, which also bounds the
 	// connections concurrent requests can open.
 	handle.SetMaxOpenConns(1)
-	// Bound concurrent snapshots so request bursts cannot open unbounded SQLite connections and page caches.
-	readConns := max(4, runtime.NumCPU())
-	read.SetMaxOpenConns(readConns)
-	read.SetMaxIdleConns(readConns)
 	db := &DB{sql: handle, read: read, path: path}
 	if err := db.Ping(ctx); err != nil {
 		_ = handle.Close()

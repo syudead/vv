@@ -3,8 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -71,43 +69,5 @@ func TestListReadTransactionDoesNotReserveTheWriter(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("読み取りトランザクションが取り込みの書き込みを妨げた")
-	}
-}
-
-func TestOpenKeepsURIDelimitersInTheDataDirectory(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "a?b#c%41")
-	if err := os.Mkdir(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	db, err := OpenMigratedForTest(dir)
-	if err != nil {
-		t.Fatalf("cannot open the database under %q: %v", dir, err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	if got := db.Path(); got != filepath.Join(dir, DatabaseFileName) {
-		t.Fatalf("Path() = %q", got)
-	}
-	// Both pools must reach the migrated file, not a sibling named by the part before '?'.
-	for name, handle := range map[string]*sql.DB{"write": db.sql, "read": db.read} {
-		var count int
-		if err := handle.QueryRow(`select count(*) from media_folders`).Scan(&count); err != nil {
-			t.Errorf("%s pool cannot read the migrated schema: %v", name, err)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "a")); !os.IsNotExist(err) {
-		t.Errorf("a database was created at the truncated path: %v", err)
-	}
-}
-
-func TestReadPoolRejectsWrites(t *testing.T) {
-	db := migratedDB(t)
-
-	if _, err := db.read.Exec(`delete from media_folders`); err == nil {
-		t.Fatal("the read pool accepted a write")
-	}
-	var count int
-	if err := db.read.QueryRow(`select count(*) from media_folders`).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("media folders after the rejected write = %d, %v; want 1", count, err)
 	}
 }

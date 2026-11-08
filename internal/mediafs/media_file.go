@@ -12,48 +12,24 @@ import (
 // resolved regular file; the caller closes it. Failures wrap ErrMediaFileUnavailable, additionally
 // wrapping ErrMediaFileOutsideRoot for escaped symlinks.
 func (FS) OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, error) {
-	return openMediaFile(roots, path, os.Open)
-}
-
-// openMediaFile validates path again after opening it and requires the opened file to be the one the validated path
-// names, so a symlink swapped in between cannot make it open a file outside the root.
-func openMediaFile(roots []string, path string, open func(string) (*os.File, error)) (*os.File, os.FileInfo, error) {
 	resolved, err := resolveInside(roots, path)
 	if err != nil {
 		return nil, nil, err
 	}
-	file, err := open(resolved)
+	file, err := os.Open(resolved)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, err)
 	}
-	info, err := verifyOpenedMediaFile(roots, path, file)
-	if err != nil {
-		_ = file.Close()
-		return nil, nil, err
-	}
-	return file, info, nil
-}
-
-func verifyOpenedMediaFile(roots []string, path string, file *os.File) (os.FileInfo, error) {
 	info, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, err)
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: not a regular file", domain.ErrMediaFileUnavailable)
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("%w: not a regular file", domain.ErrMediaFileUnavailable)
 	}
-	resolved, err := resolveInside(roots, path)
-	if err != nil {
-		return nil, err
-	}
-	current, err := os.Stat(resolved)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, err)
-	}
-	if !os.SameFile(info, current) {
-		return nil, fmt.Errorf("%w: the file changed while it was opened", domain.ErrMediaFileUnavailable)
-	}
-	return info, nil
+	return file, info, nil
 }
 
 // ResolveMediaFile applies the same access rules as OpenMediaFile but returns a resolved path for

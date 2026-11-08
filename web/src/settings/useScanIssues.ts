@@ -32,9 +32,6 @@ const empty: Loaded = { scanId: null, items: [], nextCursor: undefined };
 /** Limit same-revision retries when response scanId differs from current Scan.id. */
 const MISMATCH_RETRIES = 2;
 
-/** Progress events refresh status often, so cap failure retries within one scan revision. */
-const FAILURE_RETRIES = 3;
-
 /** Reload through the existing count on same-scan revisions to retain rows and scroll. */
 async function loadPages(
   count: number,
@@ -66,8 +63,8 @@ async function loadPages(
 
 /**
  * Issues are not streamed: reload on scan ID or revision changes, preserving the loaded count
- * within one scan. Mismatched IDs refresh scan status; failures retain rows and retry on a few
- * status refreshes even at the same revision.
+ * within one scan. Mismatched IDs refresh scan status; failures retain rows and retry on status
+ * refresh even at the same revision.
  */
 export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanIssueList {
   const [loaded, setLoaded] = useState<Loaded>(empty);
@@ -79,7 +76,6 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
   // Allow only one refresh or pagination request at a time.
   const controller = useRef<AbortController | null>(null);
   const mismatches = useRef(0);
-  const failureRetries = useRef(0);
   const refreshRef = useRef(refreshScan);
   refreshRef.current = refreshScan;
   const errorRef = useRef(error);
@@ -91,7 +87,6 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
 
   useEffect(() => {
     mismatches.current = 0;
-    failureRetries.current = 0;
   }, [scanId, revision]);
 
   useEffect(() => {
@@ -147,11 +142,9 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
     return () => abort.abort();
   }, [scanId, revision, hasIssues, retry]);
 
-  // After a failure, status refresh retries issues a few times even if the revision is unchanged.
+  // After a failure, successful status refresh retries issues even if the revision is unchanged.
   useEffect(() => {
     if (scan === null || errorRef.current === null || controller.current !== null) return;
-    if (failureRetries.current >= FAILURE_RETRIES) return;
-    failureRetries.current += 1;
     setRetry((value) => value + 1);
   }, [scan]);
 

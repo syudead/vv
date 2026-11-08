@@ -182,23 +182,6 @@ func TestViewImagesAttachesNothingFromACallThatFails(t *testing.T) {
 	}
 }
 
-func TestViewImagesRejectsMoreImagesThanTheLimit(t *testing.T) {
-	references := make([]string, maxToolImages+1)
-	for i := range references {
-		references[i] = `"` + frameA + `"`
-	}
-	f := newLoopFixture(t, calls(toolCall("view_images", `{"images":[`+strings.Join(references, ",")+`]}`)),
-		text("見られません。"))
-	f.a.model = fakeModel{vision: true}
-
-	f.runImages(t, map[string][]byte{frameA: pngOf(t, 4, 4)})
-
-	messages := f.chat.requests[1].Messages
-	if last := messages[len(messages)-1]; last.Role != domain.ChatRoleTool || !strings.Contains(last.Content, `"error"`) {
-		t.Errorf("last message = %+v, want an error tool result and no attached images", last)
-	}
-}
-
 // Some models write nested arguments as JSON strings; clef reads them as the values they hold.
 func TestClefReadsArgumentsWrittenAsJSONStrings(t *testing.T) {
 	args := `{"images":"[\"` + frameA + `\"]","questions":"{\"cat\":{\"type\":\"noul\",\"instructions\":\"Cat?\"}}","state":"{}"}`

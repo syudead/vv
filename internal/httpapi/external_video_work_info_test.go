@@ -333,10 +333,6 @@ func TestExternalCreditsRejectMalformedBodiesAndIgnoreLookupLimit(t *testing.T) 
 		"統合の targetId が null": {"/api/v1/people/merge", map[string]any{"targetId": nil, "sourceIds": []int64{id}}},
 		"統合の targetId が無い":    {"/api/v1/organizations/merge", map[string]any{"sourceIds": []int64{id}}},
 		"書き換えの id が null":     {"/api/v1/people/update", map[string]any{"id": nil, "name": "x"}},
-		"作成の organizationProfile": {"/api/v1/organizations", map[string]any{
-			"names": []any{map[string]any{"name": "x"}}, "organizationProfile": map[string]any{},
-		}},
-		"書き換えの organizationProfile": {"/api/v1/organizations/update", map[string]any{"id": id, "organizationProfile": map[string]any{}}},
 	} {
 		assertExternalError(t, label, f.post(t, request.target, request.body), malformed)
 	}

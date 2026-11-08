@@ -365,7 +365,7 @@ sent on every model call: `clef` whenever the Clef wire is configured, and
 | Tool | Arguments | What the server does | Result |
 | --- | --- | --- | --- |
 | `clef` | Clef's own request: `state` (facts as strings), `images` (references) and `questions` (`{ type: "noul", instructions }` keyed by the model's keys) | Replaces each reference with the bytes of its in-process read and sends the rest unchanged through `app.ClefWire`, which adds the decision model and `keep_alive` | The endpoint's JSON answer (`answers`, each with `noul`), or the error text |
-| `view_images` | `images` (references) | Refuses more than 16 images in one round (`clef` takes at most 16 per call), reads each image, keeps one within 1,024 px on its long side as it is and re-encodes a larger one as a scaled JPEG, and attaches them to one `user` message after the round's tool results, marked as data | `{ "attached": n }` |
+| `view_images` | `images` (references) | Reads each image, keeps one within 1,024 px on its long side as it is and re-encodes a larger one as a scaled JPEG, and attaches them to one `user` message after the round's tool results, marked as data | `{ "attached": n }` |
 
 | Rule | Why |
 | --- | --- |
