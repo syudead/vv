@@ -87,8 +87,8 @@ func thumbnailVersion(position, revision, imageRevision sql.NullInt64) (*int64, 
 const smallFolderLocations = 2048
 
 // RecentFolderPreviews are the MaxFolderPreviews most recently added thumbnailed videos the audience lists anywhere
-// below dir. A small folder reads its path range, so an empty or sparse folder never walks the whole library; a
-// large one walks the added-at index and stops at the first matches instead of reading the whole folder.
+// below dir. A small folder, and every folder a guest reads, uses its path range, so an empty or sparse folder never
+// walks the whole library; the owner's large folder walks the added-at index and stops at the first matches.
 func (s *LibraryStore) RecentFolderPreviews(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderPreview, error) {
 	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
 	var count int
@@ -99,7 +99,8 @@ func (s *LibraryStore) RecentFolderPreviews(ctx context.Context, audience domain
 	if count == 0 {
 		return []domain.FolderPreview{}, nil
 	}
-	return s.recentFolderPreviews(ctx, audience, dir, count <= smallFolderLocations)
+	// A guest may see few of a large folder's videos, so its walk could reach the end of the library.
+	return s.recentFolderPreviews(ctx, audience, dir, count <= smallFolderLocations || !audience.IsOwner())
 }
 
 func (s *LibraryStore) recentFolderPreviews(ctx context.Context, audience domain.Audience, dir string, byRange bool) ([]domain.FolderPreview, error) {
