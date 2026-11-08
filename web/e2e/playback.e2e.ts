@@ -420,10 +420,12 @@ test.describe("live MP4 playback", () => {
     request,
   }) => {
     test.setTimeout(30_000);
-    await page.goto("/");
-    await throttle(page, 128 * 1024);
     const item = video("long-gop");
     await saveProgress(request, item, 5000);
+    // Load the player's lazily loaded code first so the throttle slows only the media.
+    await page.goto(`/videos/${String(item.id)}`);
+    await expect(page.locator(".vjs-big-play-button")).toBeVisible();
+    await throttle(page, 128 * 1024);
     const requests = mediaRequests(page);
 
     const resumed = page.waitForRequest((candidate) =>
