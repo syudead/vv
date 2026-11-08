@@ -165,6 +165,13 @@ An apply writes one `thumbnail_images` row in the transaction that sets
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
 
+Every video listing, and the folder previews, look up `revision` and
+`origin` once per candidate video, so the table is a rowid table whose blob
+columns come last. A `WITHOUT ROWID` table keeps each row inside its key
+B-tree. Each key comparison then reads the whole overflowing row, and a lookup
+that matched nothing cost about a millisecond. Before migration `00099`, the
+root folder list of a library with about 2,800 videos took over two seconds.
+
 ## The player's poster is larger than the card
 
 Cards show the 640 px thumbnail, but the player's poster fills a much wider
