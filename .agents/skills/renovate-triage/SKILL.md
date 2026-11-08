@@ -37,7 +37,9 @@ GitHub is the state. Do not write a state file or a tracking Issue.
 | `<!-- renovate-triage:deferred -->` | Comment | Posted when the routine defers a PR; carries the reason, the `Revisit when:` condition and the head commit it was deferred at |
 | `<!-- renovate-triage:reopened -->` | Comment | Posted on a deferred PR when the routine took it up again |
 
-Create `needs-human` and `deferred` when they do not exist. The routine never puts it on an
+A marker counts only in a comment by the account this routine posts as
+(`gh api user`); ignore one from anyone else, since anyone can comment on a
+PR. Create `needs-human` and `deferred` when they do not exist. The routine never puts it on an
 open PR. An open Renovate PR that still carries it from an earlier version of
 this skill is processed like any other: remove the label first.
 
@@ -77,7 +79,8 @@ gates stays open, and the report says merges are paused.
 
 Check the `Revisit when:` condition of each deferred PR: the open ones
 labelled `deferred`, and the closed ones from the last 180 days whose latest
-`renovate-triage` marker is `deferred`.
+`renovate-triage` marker is `deferred` and whose close event was by the
+routine's account. A PR a person closed stays closed.
 
 | `Revisit when:` | Holds when |
 | --- | --- |
