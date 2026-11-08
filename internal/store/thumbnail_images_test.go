@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -344,6 +345,70 @@ func TestThumbnailImageSourcesMigration(t *testing.T) {
 	if image := thumbnailImageOf(t, db, "key-old"); !bytes.Equal(image, []byte{0xff, 0xd8}) {
 		t.Fatalf("Down のあとの行の画像 = %x", image)
 	}
+}
+
+// The rowid rebuild keeps every value and stores the blobs after the columns per-video lookups read.
+func TestThumbnailImagesRowidMigration(t *testing.T) {
+	db, provider := migrateTo(t, 98)
+	ctx := context.Background()
+	if _, err := db.sql.Exec(`insert into thumbnail_images (content_key, image, source, origin, revision, applied_at)
+		values ('key-a', x'ffd8', x'ffd9', 'uploaded', 7, 9), ('key-b', x'ffda', null, 'generated', 3, 4)`); err != nil {
+		t.Fatal(err)
+	}
+	const rowsQuery = `select content_key, hex(image), iif(source is null, 'null', hex(source)), origin, revision, applied_at
+		from thumbnail_images order by content_key`
+	want := []string{"key-a FFD8 FFD9 uploaded 7 9", "key-b FFDA null generated 3 4"}
+
+	if _, err := provider.UpTo(ctx, 99); err != nil {
+		t.Fatal(err)
+	}
+	if got := queryRowStrings(t, db, rowsQuery); !slices.Equal(got, want) {
+		t.Fatalf("移行後の行 = %v, want %v", got, want)
+	}
+	columns := queryRowStrings(t, db, `select name from pragma_table_info('thumbnail_images') order by cid`)
+	if wantColumns := []string{"content_key", "revision", "applied_at", "origin", "image", "source"}; !slices.Equal(columns, wantColumns) {
+		t.Fatalf("移行後の列の順 = %v, want %v", columns, wantColumns)
+	}
+	if _, err := db.sql.Exec(`select rowid from thumbnail_images`); err != nil {
+		t.Fatalf("移行後も rowid の無い表のまま: %v", err)
+	}
+
+	if _, err := provider.DownTo(ctx, 98); err != nil {
+		t.Fatal(err)
+	}
+	if got := queryRowStrings(t, db, rowsQuery); !slices.Equal(got, want) {
+		t.Fatalf("Down のあとの行 = %v, want %v", got, want)
+	}
+}
+
+// queryRowStrings joins each row's columns with spaces.
+func queryRowStrings(t *testing.T, db *DB, query string) []string {
+	t.Helper()
+	rows, err := db.sql.Query(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	columns, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for rows.Next() {
+		values := make([]any, len(columns))
+		texts := make([]string, len(columns))
+		for i := range values {
+			values[i] = &texts[i]
+		}
+		if err := rows.Scan(values...); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, strings.Join(texts, " "))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func TestCurrentThumbnailSelection(t *testing.T) {
