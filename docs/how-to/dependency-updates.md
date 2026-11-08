@@ -18,7 +18,8 @@ flowchart LR
   major -->|no| checks{Checks pass?}
   checks -->|yes| auto[Renovate merges]
   checks -->|no| routine
-  routine -->|cannot| person[needs-human: person decides]
+  routine -->|cannot| defer[Closed with a revisit condition]
+  defer -->|condition met| routine
 ```
 
 - PRs open early every Monday morning (JST) in 6 groups: Go modules, web npm,
@@ -105,13 +106,15 @@ A Claude Code Routine runs the
 [renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) skill every
 day at 07:47 JST. It takes every open Renovate PR to one of two ends within
 the same run: merged into `main` through the gates in the skill, major updates
-included, or labelled `needs-human`. Nothing is left for the next run.
+included, or deferred: closed with the reason and the condition for trying
+again. No PR stays open waiting for a person.
 
 ```mermaid
 flowchart TD
   start[Daily run] --> watch[Check main after the routine's merges]
   watch -->|E2E or Docker image broke| broken[needs-human on the merged PR, merges paused]
-  watch --> pr[Next open Renovate PR]
+  watch --> reopen[Tick deferred updates whose condition holds]
+  reopen --> pr[Next open Renovate PR]
   pr --> ci{CI running?}
   ci -->|yes| wait[Wait for CI]
   wait --> ci
@@ -120,16 +123,16 @@ flowchart TD
   gate -->|yes| merge[Routine merges]
   state -->|no| worker[Worker merges main, fixes or reviews, pushes]
   worker -->|pushed, attempt 1-3| wait
-  worker -->|blocked, or 3 attempts failed| human[needs-human label]
+  worker -->|blocked, or 3 attempts failed| defer[Comment the revisit condition, close]
   merge --> pr
-  human --> pr
+  defer --> pr
 ```
 
 - The routine takes the PRs one at a time. A worker brings the PR's branch up
   to date with `main`, fixes it and pushes; the routine waits for CI on that
   push in the same run and merges the PR when it is green. A PR still red
-  after three pushes gets `needs-human`. When `main` has moved since a green
-  PR's checks ran, for example because the routine just merged another PR,
+  after three pushes is closed until the next version. When `main` has moved
+  since a green PR's checks ran, for example because the routine just merged another PR,
   the routine updates the branch and waits for CI again before merging.
 - The routine also merges green PRs that Renovate would merge later on its own
   schedule, so none waits for the next day.
@@ -138,19 +141,26 @@ flowchart TD
   handles it, and the verdict `safe to merge`.
 - When an update the routine merged breaks Browser E2E or the Docker image on
   `main`, the next run comments the failed job on the merged PR and labels it
-  `needs-human`. The routine does not revert it. Until a person removes that
-  label, the routine keeps fixing PRs but merges none.
+  `needs-human`. The routine does not revert it. Until that job passes on
+  `main` again, the routine keeps fixing PRs but merges none; it then removes
+  the label itself.
 - Each run that changes anything lists what it did in a comment on Renovate's
   Dependency Dashboard Issue.
 
-## Renovate PRs that need a person
+## Deferred updates
 
-- The routine labels a PR `needs-human` when three attempts did not get it
-  green, when the new version has a bug with no workaround in this repository,
-  or when the failure also happens on `main`. The PR comments say why. Remove
-  the label to hand the PR back to the routine.
-- A merged PR labelled `needs-human` broke `main`. Fix or revert it yourself,
-  then remove the label so the routine merges again.
+- The routine closes a PR it cannot merge: three attempts did not get it green,
+  the new version has a bug or lacks support upstream, the failure also
+  happens on `main`, or the update needs a rewrite or a `renovate.json`
+  change. Its last comment gives the reason and a `Revisit when:` condition.
+- A closed PR is listed under "Ignored or Blocked" on the Dependency Dashboard
+  Issue. When the condition is an upstream issue or a package release, the
+  routine checks it every run and ticks the checkbox once it holds, and
+  Renovate recreates the PR. `the next version` needs nothing: Renovate opens
+  the next version by itself. For `a person decides`, do the work (for
+  example the rewrite) or tick the checkbox yourself.
+- A merged PR labelled `needs-human` broke `main`. Fix or revert it yourself;
+  the routine removes the label once the failed job passes on `main`.
 - To pause an update, close the PR (the same version is not opened again) or set
   `enabled: false` in `packageRules` in `renovate.json`.
 
