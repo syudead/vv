@@ -120,4 +120,29 @@ describe("prefetchWhenIdle", () => {
     expect(load).toHaveBeenCalledTimes(1);
     await Promise.resolve();
   });
+
+  it("by default waits three seconds after load, then for an idle moment", () => {
+    vi.useFakeTimers();
+    try {
+      let idle: IdleRequestCallback = () => undefined;
+      const requestIdle = vi.fn((callback: IdleRequestCallback) => {
+        idle = callback;
+        return 1;
+      });
+      vi.stubGlobal("requestIdleCallback", requestIdle);
+      const load = vi.fn(() => Promise.resolve());
+      prefetchWhenIdle(load);
+
+      vi.advanceTimersByTime(2999);
+      expect(requestIdle).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(requestIdle).toHaveBeenCalledWith(expect.any(Function), { timeout: 3000 });
+      expect(load).not.toHaveBeenCalled();
+      idle({ didTimeout: false, timeRemaining: () => 10 });
+      expect(load).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
 });
