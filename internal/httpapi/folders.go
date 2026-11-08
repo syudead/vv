@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -82,16 +81,9 @@ func (s *server) rootFolder(ctx context.Context, audience domain.Audience, root 
 	return folder, true, nil
 }
 
-// sortRootFolders breaks natural-name ties by original spelling, then absolute root path.
 func sortRootFolders(folders []gen.RootFolder) {
 	slices.SortStableFunc(folders, func(a, b gen.RootFolder) int {
-		if order := domain.CompareNatural(a.Name, b.Name); order != 0 {
-			return order
-		}
-		if order := strings.Compare(a.Name, b.Name); order != 0 {
-			return order
-		}
-		return strings.Compare(valueOrEmpty(a.RootPath), valueOrEmpty(b.RootPath))
+		return domain.CompareFolders(a.Name, valueOrEmpty(a.RootPath), b.Name, valueOrEmpty(b.RootPath))
 	})
 }
 

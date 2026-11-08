@@ -121,17 +121,23 @@ func TestRecentFolderPreviewsTakeTheNewestThumbnailsBelowTheFolder(t *testing.T)
 		}
 	}
 
-	previews, err := db.Library().RecentFolderPreviews(context.Background(), domain.AudienceOwner, fixturePath("/media/A"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []int64
-	for _, preview := range previews {
-		got = append(got, preview.VideoID)
-	}
 	// Newest first at any depth, skipping the unthumbnailed video and the AB sibling, four at most.
-	if want := []int64{id("A/newest.mp4"), id("A/top.mp4"), id("A/B/mid.mp4"), id("A/B/C/deep.mp4")}; !slices.Equal(got, want) {
-		t.Errorf("previews = %v, want %v", got, want)
+	want := []int64{id("A/newest.mp4"), id("A/top.mp4"), id("A/B/mid.mp4"), id("A/B/C/deep.mp4")}
+	for _, byRange := range []bool{true, false} {
+		previews, err := db.Library().recentFolderPreviews(context.Background(), domain.AudienceOwner, fixturePath("/media/A"), byRange)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []int64
+		for _, preview := range previews {
+			got = append(got, preview.VideoID)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("byRange=%v: previews = %v, want %v", byRange, got, want)
+		}
+	}
+	if previews, err := db.Library().RecentFolderPreviews(context.Background(), domain.AudienceOwner, fixturePath("/media/empty")); err != nil || len(previews) != 0 || previews == nil {
+		t.Errorf("empty folder previews = %v, %v; want an empty list", previews, err)
 	}
 }
 

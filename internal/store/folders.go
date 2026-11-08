@@ -82,10 +82,28 @@ func thumbnailVersion(position, revision, imageRevision sql.NullInt64) (*int64, 
 	return &ms, revision.Int64, imageRevision.Int64
 }
 
+// smallFolderLocations is the location count up to which RecentFolderPreviews reads the folder's own path range;
+// above it the folder holds enough videos that walking the newest videos of the library finds its matches early.
+const smallFolderLocations = 2048
+
 // RecentFolderPreviews are the MaxFolderPreviews most recently added thumbnailed videos the audience lists anywhere
-// below dir; walking the added-at index stops at the first matches instead of reading the whole folder.
+// below dir. A small folder reads its path range, so an empty or sparse folder never walks the whole library; a
+// large one walks the added-at index and stops at the first matches instead of reading the whole folder.
 func (s *LibraryStore) RecentFolderPreviews(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderPreview, error) {
-	query, args := recentFolderPreviewsQuery(audience, dir)
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
+	var count int
+	if err := s.db.sql.QueryRowContext(ctx, `select count(*) from (select 1 from video_locations l where `+inFolder+
+		` limit `+strconv.Itoa(smallFolderLocations+1)+`)`, args...).Scan(&count); err != nil {
+		return nil, fmt.Errorf("cannot read the folder's recent videos: %w", err)
+	}
+	if count == 0 {
+		return []domain.FolderPreview{}, nil
+	}
+	return s.recentFolderPreviews(ctx, audience, dir, count <= smallFolderLocations)
+}
+
+func (s *LibraryStore) recentFolderPreviews(ctx context.Context, audience domain.Audience, dir string, byRange bool) ([]domain.FolderPreview, error) {
+	query, args := recentFolderPreviewsQuery(audience, dir, byRange)
 	rows, err := s.db.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the folder's recent videos: %w", err)
@@ -112,16 +130,25 @@ func (s *LibraryStore) RecentFolderPreviews(ctx context.Context, audience domain
 	return previews, nil
 }
 
-func recentFolderPreviewsQuery(audience domain.Audience, dir string) (string, []any) {
+// recentFolderPreviewsQuery drives the read from the folder's path range when byRange is set, and from the
+// added-at index otherwise.
+func recentFolderPreviewsQuery(audience domain.Audience, dir string, byRange bool) (string, []any) {
 	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
+	inFolderVideo := `exists (select 1 from video_locations l where l.video_id = videos.id and ` + inFolder + ` and ` +
+		listedLocationCondition("l", audience) + `)`
+	order := `videos.added_at desc, videos.id desc`
+	if byRange {
+		// The unary + keeps the planner from walking the added-at index instead of the range.
+		inFolderVideo = `videos.id in (select l.video_id from video_locations l where ` + inFolder + ` and ` +
+			listedLocationCondition("l", audience) + `)`
+		order = `+videos.added_at desc, +videos.id desc`
+	}
 	return `select videos.id, videos.content_key, videos.preview_state,
 			` + folderPreviewColumns + `
 		from videos
-		where videos.thumbnail_state = 'done'
-			and exists (select 1 from video_locations l where l.video_id = videos.id and ` + inFolder + ` and ` +
-		listedLocationCondition("l", audience) + `)
+		where videos.thumbnail_state = 'done' and ` + inFolderVideo + `
 			and ` + listedShownVideoCondition("videos", audience) + `
-		order by videos.added_at desc, videos.id desc
+		order by ` + order + `
 		limit ` + strconv.Itoa(domain.MaxFolderPreviews), args
 }
 
