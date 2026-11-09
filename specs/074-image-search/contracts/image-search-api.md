@@ -49,7 +49,8 @@ sequenceDiagram
 | `match.videoId` | integer | The video the match was found in: `video.id` or one of its versions; playback opens this id |
 | `match.rate` | number, 0 to 1 | The match rate ([Image queries](../plan.md#image-queries), [Video queries](../plan.md#video-queries)) |
 | `match.kind` | `frame`, `whole` or `partial` | `frame` for an image query; `whole` or `partial` for a video query |
-| `match.positionMs` | integer | Where playback starts: the matched frame, or the start of the matched section |
+| `match.positionMs` | integer | Where playback starts: the matched frame, or the first matching entry of the matched section |
+| `match.startMs` | integer, video query only | The start of the matched section on `match.videoId`'s timeline ([Video queries](../plan.md#video-queries)) |
 | `match.endMs` | integer, video query only | The end of the matched section on `match.videoId`'s timeline |
 | `match.queryStartMs`, `match.queryEndMs` | integer, video query only | The same section on the query's timeline |
 

@@ -146,7 +146,8 @@ with the query frame nearest to them under one time offset.
 | Seeds: one non-flat query frame per 10 s, at least 64 (all, when fewer) and at most 512, each compared with every index entry; a seed within 12 bits votes for (content, offset), offsets binned by 2 s | Compare every query frame with every entry | 10,800 × 6 million comparisons take minutes; 512 seeds take seconds, spread over the CPUs |
 | A (content, offset bin) with two votes, or one when the query has a single seed, is verified: every index entry of the content inside the overlap is compared with the query frame within 0.5 s of it at that offset, and the offset with the most matching entries is kept | Accept the votes as the result | Votes say where to look; the rate must count the whole overlap |
 | Match rate: matching entries ÷ compared entries in the overlap; listed at 50% or more with at least 3 compared entries (`FingerprintMinComparableFrames`) | The versions frame rule (at most 5% differ) | A partial copy with a logo or subtitles differs in more frames and is still the same footage (requirement 3) |
-| The matched section is the first to the last matching entry on the result video's timeline, and the query's section under the same offset | Every matching run | One section answers "where" and plays from its start (requirements 5, 6) |
+| Each index entry stands for the span up to the next entry; the first entry's span starts at 0 and the last one's ends at the video's end. The matched section runs from the start of the first matching entry's span to the end of the last one's, on the result video's timeline, and the query's section is the same span under the offset, clipped to the query | The first to the last matching entry's time | With keyframes 8 s apart, a 30 s video whose every entry matches would cover only 0 to 24 s, 80%, and a whole re-encode would read as partial |
+| Playback starts at the first matching entry's time | The section's start | The section of a first entry starts at 0, which may be before the matched keyframe (requirements 5, 6) |
 | Whole match when the matched section covers at least 90% of both the result video and the query; otherwise partial | Equal durations | A re-encode trims or pads a few seconds at the ends; 90% of each side still means one is not a part of the other (requirement 7, acceptance 3 and 4) |
 | Up to 4 GiB and 3 hours | A few minutes | Acceptance 3 passes a whole re-encoded video; 3 hours is 10,800 sampled frames |
 
@@ -303,7 +304,8 @@ rate, section, whole or partial) and the order and limit of
 **Acceptance**: Table tests on hand-built hashes: an image at distance 12 is
 listed and at 13 goes to refinement; refinement takes at most the ten
 closest; a query identical to an index with shifted keyframe times is a
-whole match at 100%; a query that is the middle third of an indexed content
+whole match at 100%; a 30 s video with keyframes at 0, 8, 16 and 24 s
+matched in full is a whole match whose section is 0 to 30 s; a query that is the middle third of an indexed content
 is a partial match whose section is that third; an index that is a third of
 a longer query is a partial match; under 3 compared entries or under 50%
 is not listed; order breaks ties by section length then the newer video.
