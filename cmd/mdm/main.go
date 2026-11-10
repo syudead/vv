@@ -155,6 +155,12 @@ func run(opts runOptions) error {
 	scanIndexStore := db.ScanIndex()
 	settingsStore := db.Settings()
 	playbackStore := db.Playback()
+	// A pause saved before the restart holds the scans and the scheduler from the start, so startup recovery's
+	// requeued jobs wait for the owner's resume; see docs/design-docs/background-pause.md.
+	backgroundPaused, err := settingsStore.BackgroundPaused(backgroundCtx)
+	if err != nil {
+		return &startupError{stage: stageDatabase, err: err}
+	}
 
 	// Scan content-key reads take read slots from the scheduler; see docs/design-docs/job-scheduling.md.
 	var scheduler *jobs.Scheduler
@@ -169,10 +175,11 @@ func run(opts runOptions) error {
 				ReadSlots: scanReadSlots{scheduler: &scheduler}, Logger: logger,
 			})
 		},
-		Folders:   scanIndexStore,
-		Context:   backgroundCtx,
-		Publisher: bus,
-		Logger:    logger,
+		Folders:          scanIndexStore,
+		Context:          backgroundCtx,
+		Publisher:        bus,
+		Logger:           logger,
+		BackgroundPaused: backgroundPaused,
 	})
 
 	artifactStore := artifacts.New(cfg.ThumbnailsDir())
@@ -233,6 +240,7 @@ func run(opts runOptions) error {
 		Handlers: handlers,
 		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
 		Paused:   app.PausedJobKinds(autoTagger, faces.analysis, versionJudge),
+		Held:     backgroundPaused,
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -242,6 +250,10 @@ func run(opts runOptions) error {
 	})
 	// Start filesystem watching only after interrupted scans have been recovered and restarted.
 	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+	backgroundPause := app.NewBackgroundPause(app.BackgroundPauseOptions{
+		Settings: settingsStore, Scheduler: scheduler, Scans: scans, Publisher: bus, Paused: backgroundPaused,
+		Logger: logger,
+	})
 
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
@@ -433,6 +445,7 @@ func run(opts runOptions) error {
 		NetworkSettings:   networkSettings,
 		PluginProxy:       pluginProxy,
 		AutoImport:        autoImport,
+		Background:        backgroundPause,
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,

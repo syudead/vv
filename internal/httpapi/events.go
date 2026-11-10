@@ -42,6 +42,7 @@ type eventSubscriber struct {
 	smartFolders map[int64]struct{}
 	onboarding   bool
 	assistant    bool
+	background   bool
 	peer         bool
 	mediaFolders mediaFoldersPending
 	ready        chan struct{}
@@ -81,6 +82,7 @@ type pendingEvents struct {
 	smartFolders []int64
 	onboarding   bool
 	assistant    bool
+	background   bool
 	peer         bool
 	mediaFolders mediaFoldersPending
 }
@@ -91,7 +93,7 @@ func (s *eventSubscriber) take() pendingEvents {
 	pending := pendingEvents{
 		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
 		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), onboarding: s.onboarding,
-		assistant: s.assistant, peer: s.peer, mediaFolders: s.mediaFolders,
+		assistant: s.assistant, background: s.background, peer: s.peer, mediaFolders: s.mediaFolders,
 	}
 	s.peer = false
 	s.mediaFolders = mediaFoldersPending{}
@@ -100,6 +102,7 @@ func (s *eventSubscriber) take() pendingEvents {
 	s.activity = false
 	s.onboarding = false
 	s.assistant = false
+	s.background = false
 	clear(s.videos)
 	clear(s.groups)
 	clear(s.smartFolders)
@@ -206,6 +209,11 @@ func (e *Events) AssistantChanged() {
 	e.publish(func(s *eventSubscriber) { s.assistant = true })
 }
 
+// BackgroundChanged has no payload; the owner's screens read the background work status again.
+func (e *Events) BackgroundChanged() {
+	e.publish(func(s *eventSubscriber) { s.background = true })
+}
+
 // PeerStateChanged has no payload; delivery reads the pairing state for each audience.
 func (e *Events) PeerStateChanged() {
 	e.publish(func(s *eventSubscriber) { s.peer = true })
@@ -265,6 +273,8 @@ func (e *Events) Handle(event domain.Event) {
 		e.OnboardingChanged()
 	case domain.AssistantChanged:
 		e.AssistantChanged()
+	case domain.BackgroundChanged:
+		e.BackgroundChanged()
 	case domain.PeerStateChanged:
 		e.PeerStateChanged()
 	case domain.PeerChanged:
@@ -342,6 +352,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		pending.candidates = false
 		pending.activity = false
 		pending.assistant = false
+		pending.background = false
 		pending.videos = nil
 	}
 	if pending.scan && s.scans != nil {
@@ -377,7 +388,9 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		}
 	}
 	if err := writeSignals(w, signal{pending.assistant, "assistant"},
-		signal{pending.mediaFolders.forViewer(peer), "mediaFolders"}); err != nil {
+		signal{pending.mediaFolders.forViewer(peer), "mediaFolders"},
+		// The switch is this node's own; the paired node's stream does not forward it.
+		signal{pending.background && !peer, "background"}); err != nil {
 		return err
 	}
 	if pending.peer && s.pairing != nil {

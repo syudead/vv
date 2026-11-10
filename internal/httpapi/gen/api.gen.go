@@ -4646,6 +4646,12 @@ type AutoTaggingSettings struct {
 	Threshold float64 `json:"threshold"`
 }
 
+// BackgroundWork State of background work: scans and scheduled jobs
+type BackgroundWork struct {
+	// Paused The saved pause switch; false when it was never saved
+	Paused bool `json:"paused"`
+}
+
 // CheckResult Connection check result; unavailable providers also return 200.
 type CheckResult struct {
 	Available bool `json:"available"`
@@ -7273,6 +7279,12 @@ type SeekThumbnailSprite struct {
 
 	// Sheets Versioned sheet URLs in index order.
 	Sheets []string `json:"sheets"`
+}
+
+// SetBackgroundPauseRequest defines model for SetBackgroundPauseRequest.
+type SetBackgroundPauseRequest struct {
+	// Paused The state to reach
+	Paused bool `json:"paused"`
 }
 
 // SetMediaFolderEnabledRequest defines model for SetMediaFolderEnabledRequest.
@@ -10075,6 +10087,9 @@ type SetupAccountJSONRequestBody = SetupRequest
 // StartAutoTaggingJSONRequestBody defines body for StartAutoTagging for application/json ContentType.
 type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
 
+// SetBackgroundPauseJSONRequestBody defines body for SetBackgroundPause for application/json ContentType.
+type SetBackgroundPauseJSONRequestBody = SetBackgroundPauseRequest
+
 // DeleteCollectionsJSONRequestBody defines body for DeleteCollections for application/json ContentType.
 type DeleteCollectionsJSONRequestBody = CollectionsDeleteRequest
 
@@ -10461,6 +10476,12 @@ type ServerInterface interface {
 	// StartAutoTagging Queue library videos for classification
 	// (POST /api/auto-tagging/runs)
 	StartAutoTagging(w http.ResponseWriter, r *http.Request)
+	// GetBackgroundWork Return the background work pause switch
+	// (GET /api/background)
+	GetBackgroundWork(w http.ResponseWriter, r *http.Request)
+	// SetBackgroundPause Pause or resume background work
+	// (PUT /api/background/pause)
+	SetBackgroundPause(w http.ResponseWriter, r *http.Request)
 	// DeleteCollections Dissolve groups and delete smart folders in bulk
 	// (POST /api/collections/delete)
 	DeleteCollections(w http.ResponseWriter, r *http.Request)
@@ -11849,6 +11870,34 @@ func (siw *ServerInterfaceWrapper) StartAutoTagging(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartAutoTagging(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBackgroundWork operation middleware
+func (siw *ServerInterfaceWrapper) GetBackgroundWork(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBackgroundWork(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetBackgroundPause operation middleware
+func (siw *ServerInterfaceWrapper) SetBackgroundPause(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetBackgroundPause(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -19221,6 +19270,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/background", wrapper.GetBackgroundWork)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/background/pause", wrapper.SetBackgroundPause)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
 
 	return m
