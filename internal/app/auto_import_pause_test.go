@@ -233,3 +233,47 @@ func TestAutoImportFolderChangeDeletesHeldRowsOutsideTheFolders(t *testing.T) {
 		t.Fatalf("再開後の走査 = %v, want [%v]", got, want)
 	}
 }
+
+// A batch whose settle probes are running is in neither the dirty set nor a scan and its rows are already deleted,
+// so the pause must write it; the scan that later takes it deletes the rows again.
+func TestAutoImportPauseWritesTheBatchStillSettling(t *testing.T) {
+	held := newFakeHeldWatchStore()
+	probing, release := make(chan struct{}), make(chan struct{})
+	rig := newAutoImportRigWith(t, true, []string{fixturePath("/media")}, func(o *AutoImportOptions) {
+		o.Held = held
+		o.Probe = func(domain.DirtyDirectory) (time.Time, error) {
+			close(probing)
+			<-release
+			return time.Time{}, nil
+		}
+	})
+	rig.waitState(t, domain.FolderWatchActive)
+	ctx := context.Background()
+	rig.auto.Changed(dirtyDir("/media/a", false))
+	fired := make(chan struct{})
+	go func() {
+		defer close(fired)
+		rig.clock.Advance(autoImportQuiet)
+	}()
+	<-probing
+
+	if err := rig.auto.PauseBackground(ctx); err != nil {
+		t.Fatal(err)
+	}
+	want := dirtyDirs(dirtyDir("/media/a", false))
+	if got := held.held(); !slices.Equal(got, want) {
+		t.Fatalf("保留の行 = %v, want %v", got, want)
+	}
+
+	if err := rig.auto.ResumeBackground(ctx); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	<-fired
+	if got := rig.scans.started(); len(got) != 1 || !slices.Equal(got[0], want) {
+		t.Fatalf("整定後の走査 = %v, want [%v]", got, want)
+	}
+	if rows := held.held(); len(rows) != 0 {
+		t.Fatalf("走査が取った行が残った: %v", rows)
+	}
+}

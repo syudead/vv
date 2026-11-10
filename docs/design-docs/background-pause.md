@@ -153,9 +153,11 @@ flowchart LR
 
 The table `held_watch_directories` mirrors the dirty set while a pause holds
 it. The pause writes the whole set, including directories still in their quiet
-or settle time, and a directory reported during the pause is written when it
-arrives. Startup loads the rows into the dirty set, and the batch that takes a
-directory deletes its row. Turning automatic import off deletes every row, and
+or settle time and a batch whose settle probes are still running, and a
+directory reported during the pause is written when it arrives. Startup loads
+the rows into the dirty set, the batch that takes a directory deletes its row,
+and a scan that starts with a directory the pause wrote during its probes
+deletes that row again. Turning automatic import off deletes every row, and
 the rearm after a folder change deletes the rows, and the dirty directories,
 outside every registered folder.
 

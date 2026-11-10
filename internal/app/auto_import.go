@@ -128,8 +128,10 @@ type AutoImport struct {
 	dirty     []domain.DirtyDirectory
 	dirtyKeys map[domain.DirtyDirectory]struct{}
 	inflight  []domain.DirtyDirectory
-	timer     ClockTimer
-	timerSeq  int
+	// settling holds the batch taken from the dirty set while its settle probes run, so a pause can write it.
+	settling []domain.DirtyDirectory
+	timer    ClockTimer
+	timerSeq int
 	// rerun records scheduling requests received while batching.
 	batching bool
 	rerun    bool
@@ -278,14 +280,14 @@ func (a *AutoImport) persistHeld(ctx context.Context) {
 	a.writeHeld(ctx, pending)
 }
 
-// holdPendingLocked marks, before the write, the dirty directories without a row, so that a batch taking them in the
+// holdPendingLocked marks, before the write, the dirty and settling directories without a row, so that a batch taking them in the
 // meantime releases them after the write. The caller holds heldMu.
 func (a *AutoImport) holdPendingLocked() []domain.DirtyDirectory {
 	if !a.pauseHold || a.held == nil {
 		return nil
 	}
 	var pending []domain.DirtyDirectory
-	for _, dir := range a.dirty {
+	for _, dir := range slices.Concat(a.dirty, a.settling) {
 		if _, ok := a.heldKeys[dir]; !ok {
 			a.markHeldLocked(dir)
 			pending = append(pending, dir)
@@ -725,6 +727,8 @@ func (a *AutoImport) fire(seq int) {
 	settled, unsettled, wait := a.settledSplit(taken)
 
 	a.mu.Lock()
+	// The settled directories stay visible to a pause until start moves them on.
+	a.settling = settled
 	if a.enabled && !a.stopped {
 		a.addDirtyLocked(unsettled...)
 		if len(unsettled) > 0 {
@@ -746,7 +750,7 @@ func (a *AutoImport) fire(seq int) {
 		}
 	}
 	a.mu.Unlock()
-	// A pause that arrived during the batch has not seen the directories the batch returned to the dirty set.
+	// Retry the rows of directories the batch returned to the dirty set after a pause whose write failed.
 	a.persistHeld(ctx)
 }
 
@@ -773,11 +777,13 @@ func (a *AutoImport) takeBatch(seq int) (taken []domain.DirtyDirectory, finishes
 	a.batching = true
 	raw := a.takeDirtyLocked()
 	released := a.unholdLocked(raw)
+	taken = domain.NormalizeDirtyDirectories(raw)
+	a.settling = taken
 	ctx := a.ctx
 	finishes = a.finishes
 	a.mu.Unlock()
 	a.releaseHeld(ctx, released)
-	return domain.NormalizeDirtyDirectories(raw), finishes, true
+	return taken, finishes, true
 }
 
 // Serialize status check and scan start under startMu so disabling, shutdown, or folder changes
@@ -785,19 +791,9 @@ func (a *AutoImport) takeBatch(seq int) (taken []domain.DirtyDirectory, finishes
 func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory, finishes int) {
 	a.startMu.Lock()
 	defer a.startMu.Unlock()
-	a.mu.Lock()
-	if a.stopped || !a.enabled {
-		a.mu.Unlock()
+	if !a.claimSettled(ctx, settled) {
 		return
 	}
-	if a.holding > 0 {
-		// FoldersChanged will reschedule after the active change finishes.
-		a.addDirtyLocked(settled...)
-		a.mu.Unlock()
-		return
-	}
-	a.inflight = settled
-	a.mu.Unlock()
 
 	_, started, err := a.scans.StartWatchScan(ctx, settled)
 	if err == nil && started {
@@ -821,6 +817,30 @@ func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory,
 	default:
 		// ScanFinished reschedules once the other scan ends.
 	}
+}
+
+// claimSettled moves the settled directories out of the settling set: back to the dirty set while starts are held,
+// or into inflight with the held rows a pause wrote during the probes deleted. It reports whether the scan may start.
+func (a *AutoImport) claimSettled(ctx context.Context, settled []domain.DirtyDirectory) bool {
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
+	a.mu.Lock()
+	a.settling = nil
+	if a.stopped || !a.enabled {
+		a.mu.Unlock()
+		return false
+	}
+	if a.holding > 0 {
+		// FoldersChanged and ResumeBackground reschedule after the hold ends.
+		a.addDirtyLocked(settled...)
+		a.mu.Unlock()
+		return false
+	}
+	a.inflight = settled
+	released := a.unholdLocked(settled)
+	a.mu.Unlock()
+	a.releaseHeld(ctx, released)
+	return true
 }
 
 // Unreadable directories count as settled so the scanner can record their actual access failure.
