@@ -139,7 +139,9 @@ In force mode the scanner recomputes the content key of a file whose size and
 modification time are unchanged, because a replaced file with the same size and
 time would otherwise keep stale artifacts. A file that differs takes the
 ordinary path first; then every video the walk reaches is forced once per scan
-and marked `forced` in the scan's video set.
+and marked `forced` in the scan's video set. An unchanged file whose video the
+scan has already marked `forced` is not read again, so a scan reopened after a
+pause reads only what is left ([background pause](background-pause.md#scans)).
 
 ## Resume after a restart
 
@@ -147,4 +149,7 @@ Startup resumes an interrupted force rescan like an interrupted manual scan
 ([process lifecycle](process-lifecycle.md)): the new scan keeps the scope and
 the `forced` marks, so the walk skips the videos the interrupted run already
 queued. A `folder` rescan whose media folder now points elsewhere fails instead
-of reading the new tree.
+of reading the new tree. A force rescan stopped by a pause keeps its row: the
+resume reopens it under the same id with the same scope and marks, and a
+`folder` rescan whose folder was removed or moved during the pause fails the
+same way.

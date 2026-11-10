@@ -53,13 +53,14 @@ func (s *ScanStore) startScan(ctx context.Context, start scanStart) (scan domain
 	if folderCount == 0 {
 		return domain.Scan{}, false, domain.ErrNoMediaFolders
 	}
-	if running, err := s.scanBy(ctx,
-		`select `+scanColumns+` from scans where state = 'running' limit 1`,
+	// A paused scan waits for the resume of background work, so it stands for the next request as a running one does.
+	if open, err := s.scanBy(ctx,
+		`select `+scanColumns+` from scans where state in ('running', 'paused') order by state = 'running' desc limit 1`,
 	); err == nil {
 		if start.exclusive {
 			return domain.Scan{}, false, domain.ErrScanRunning
 		}
-		return running, false, nil
+		return open, false, nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return domain.Scan{}, false, err
 	}
@@ -72,12 +73,18 @@ func (s *ScanStore) startScan(ctx context.Context, start scanStart) (scan domain
 		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Read the pause in the transaction, so a pause saved before the scan row commits makes the scan wait.
+	paused, err := readTrueSetting(ctx, tx, backgroundPausedKey)
+	if err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
+	}
 	kind, folderID, path, videoID := rescanColumns(start.rescan)
 	res, err := tx.ExecContext(ctx,
 		`insert into scans (state, origin, started_at, total, completed, failed,
 			rescan_scope, rescan_folder_id, rescan_path, rescan_video_id)
-		values ('running', ?, ?, 0, 0, 0, ?, ?, ?, ?)`,
-		string(start.origin), time.Now().Unix(), kind, folderID, path, videoID)
+		values (?, ?, ?, 0, 0, 0, ?, ?, ?, ?)`,
+		string(domain.InitialScanState(start.origin, paused)), string(start.origin), time.Now().Unix(),
+		kind, folderID, path, videoID)
 	if err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
@@ -294,7 +301,7 @@ func (s *ScanStore) FinishScan(
 	return nil
 }
 
-// CurrentScan returns the running or latest finished scan, or ErrNotFound before any scan.
+// CurrentScan returns the running scan, or else the latest scan (paused or finished), or ErrNotFound before any scan.
 func (s *ScanStore) CurrentScan(ctx context.Context) (domain.Scan, error) {
 	return s.scanBy(ctx, `
 		select `+scanColumns+` from scans

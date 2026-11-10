@@ -226,3 +226,59 @@ func TestRescanVideoReportsAMissingLocationAndKeepsIt(t *testing.T) {
 			result, index.deleted, index.forceJobs)
 	}
 }
+
+// pauseAfter cancels the scan with ErrScanPaused once it has processed files, as a pause between files does.
+type pauseAfter struct {
+	*fakeIndex
+	files int
+	pause context.CancelCauseFunc
+}
+
+func (p pauseAfter) ReportScanProgress(ctx context.Context, result domain.ScanResult) error {
+	if result.Processed == p.files {
+		p.pause(domain.ErrScanPaused)
+	}
+	return p.fakeIndex.ReportScanProgress(ctx, result)
+}
+
+// A force rescan stopped by a pause after two of four files and run again for the same scan reads the content key of
+// the other two only: the first two are unchanged and their videos are already marked forced.
+func TestRescanRunAgainAfterAPauseReadsOnlyTheFilesLeft(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b", "c.mp4": "c", "d.mp4": "d"})
+	index := newFakeIndex()
+	seedIndex(t, index, root)
+	library := domain.RescanScope{Kind: domain.RescanLibrary}
+	var read []string
+	readKey := func(path string) (string, error) {
+		read = append(read, filepath.Base(path))
+		return ContentKey(path)
+	}
+	ctx, pause := context.WithCancelCause(context.Background())
+	first := New(Options{Index: index, Queue: index, Reporter: pauseAfter{fakeIndex: index, files: 2, pause: pause}})
+	first.contentKey = readKey
+	if _, err := first.Rescan(ctx, rescanID, library, domain.ActivityByOwner); err == nil {
+		t.Fatal("the paused rescan finished, want the cancellation")
+	}
+	if len(read) != 2 || len(index.marked) != 2 {
+		t.Fatalf("before the pause: read %v, marked %v, want two of each", read, index.marked)
+	}
+	for _, mark := range index.marked {
+		index.forcedBefore = append(index.forcedBefore, mark.videoID)
+	}
+	before := slices.Clone(read)
+	read = nil
+
+	again := New(Options{Index: index, Queue: index, Reporter: index})
+	again.contentKey = readKey
+	if _, err := again.Rescan(context.Background(), rescanID, library, domain.ActivityByOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	left := slices.DeleteFunc([]string{"a.mp4", "b.mp4", "c.mp4", "d.mp4"}, func(name string) bool {
+		return slices.Contains(before, name)
+	})
+	slices.Sort(read)
+	if !slices.Equal(read, left) {
+		t.Fatalf("content keys read after the resume = %v, want only %v", read, left)
+	}
+}

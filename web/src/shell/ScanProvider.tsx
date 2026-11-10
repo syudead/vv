@@ -33,6 +33,8 @@ export interface ScanContextValue {
   startError: UiText | null;
   starting: boolean;
   running: boolean;
+  /** A manual scan waits for the resume of background work; it blocks another start but no folder change. */
+  waiting: boolean;
   canStart: boolean;
   /** False while the folder count remains unknown. */
   noMediaFolders: boolean;
@@ -112,6 +114,11 @@ export function inProgress(scan: Scan): boolean {
   return scan.status === "finding" || scan.status === "running";
 }
 
+/** The scan has not ended: it runs, or waits for the resume of background work under the same id. */
+export function scanOpen(scan: Scan): boolean {
+  return scan.state === "running" || scan.state === "paused";
+}
+
 /** Retain missing activity only within the same unfinished scan. */
 export function nextActivity(
   previous: { scanId: number; activity: ScanActivity } | null,
@@ -185,7 +192,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (
       previousScanId !== undefined &&
       current.id !== previousScanId &&
-      current.state !== "running"
+      !scanOpen(current)
     ) {
       setFinished(current);
     }
@@ -193,7 +200,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     const recoveryBaseline = recoveryBaselineScanId.current;
     const recovered =
       recoveryBaseline !== undefined &&
-      (current.state === "running" || current.id !== recoveryBaseline);
+      (scanOpen(current) || current.id !== recoveryBaseline);
     if (recovered) {
       recoveryBaselineScanId.current = undefined;
       setStartError(null);
@@ -202,7 +209,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       notify?.();
     }
 
-    if (current.state === "running") {
+    if (scanOpen(current)) {
       observedRunningScanId.current = current.id;
       return;
     }
@@ -332,7 +339,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         if (requestedAt === scanRevision.current) {
           scanRevision.current += 1;
           requestedScanId.current = started.id;
-          if (started.state === "running") {
+          if (scanOpen(started)) {
             observedRunningScanId.current = started.id;
           }
           apply(started);
@@ -381,6 +388,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       startError,
       starting,
       running: starting || (scan?.state === "running" && !isWatchScan(scan)),
+      waiting: !starting && scan?.state === "paused",
       canStart: folderCount !== null && folderCount > 0,
       noMediaFolders: folderCount === 0,
       start,

@@ -21,9 +21,9 @@ type forcePass struct {
 }
 
 // Rescan is the manual scan in force mode over scope, recorded in scan scanID. It reads the content key of an
-// unchanged file again, and every video it reaches that the scan has not forced yet gets forced probe,
-// thumbnail and seek_thumbnail jobs and is marked forced. A folder scope removes missing locations only under
-// that folder; a video scope removes nothing.
+// unchanged file again unless the scan already forced its video, and every video it reaches that the scan has not
+// forced yet gets forced probe, thumbnail and seek_thumbnail jobs and is marked forced. A folder scope removes
+// missing locations only under that folder; a video scope removes nothing.
 func (s *Scanner) Rescan(
 	ctx context.Context, scanID int64, scope domain.RescanScope, decider domain.ActivityDecider,
 ) (domain.ScanResult, error) {
@@ -92,9 +92,30 @@ func (s *Scanner) rescanVideo(ctx context.Context, pass *scanPass, videoID int64
 			}
 			continue
 		}
-		pass.targets = append(pass.targets, scanTarget{path: path, unchanged: sameFile(pass.indexed[path], info)})
+		existing := pass.indexed[path]
+		if !sameFile(existing, info) {
+			pass.targets = append(pass.targets, scanTarget{path: path})
+			continue
+		}
+		if pass.rereadsUnchanged(videoID) {
+			pass.targets = append(pass.targets, scanTarget{path: path, unchanged: true})
+			continue
+		}
+		if err := s.keepUnchanged(ctx, pass, path, info, existing); err != nil {
+			return pass.result, err
+		}
 	}
 	return s.ingestPass(ctx, pass)
+}
+
+// rereadsUnchanged reports whether the pass reads the content key of an unchanged file of the video again: force mode
+// does, except for a video the scan already forced, such as one forced before a pause of background work.
+func (p *scanPass) rereadsUnchanged(videoID int64) bool {
+	if p.force == nil {
+		return false
+	}
+	_, forced := p.force.done[videoID]
+	return !forced
 }
 
 // forceUnchanged handles a force-mode file whose size, mtime and content key all match the index: it takes the

@@ -4048,6 +4048,7 @@ export const en = {
         starting: "Starting",
         finding: "Scanning",
         running: "Scanning",
+        paused: "Waiting for resume",
         done: "Done",
         partial: "Some failed",
         failed: "Scan failed",
@@ -4061,6 +4062,9 @@ export const en = {
         "Counts changed files and videos that still needed preparing, not the whole library.",
       noChanges: "No changed files were found.",
       lookingForFiles: "Looking for files…",
+      // A scan waiting for the resume of background work, before and after it read its first file.
+      waitingToStart: "Starts when background work resumes.",
+      waitingToContinue: "Continues when background work resumes.",
       activity: {
         registering: "Adding to the library",
         probe: "Analyzing",
@@ -4728,6 +4732,8 @@ export const en = {
       start: "Scan library",
       starting: "Scanning…",
       runningReason: "A scan is running. You can start another when it finishes.",
+      waitingReason:
+        "A scan is waiting for resume. You can start another when it finishes.",
       needsMediaFolder: { before: "Add a media folder in ", after: " to scan." },
       forceRescan: "Force rescan",
       rescanDialog: {
