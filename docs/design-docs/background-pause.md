@@ -214,10 +214,14 @@ is listed without one.
 ### Background event
 
 `domain.BackgroundChanged` reports that the status may have changed: the switch,
-a job starting or returning, the scan's registered file, and a change to the
-held watch directories publish it. `cmd/mdm/events.go` also counts
-`JobsQueued`, `ProcessingChanged` and `ScanChanged`, which follow a job row's
-commit or a scan's change, and passes all of them to
+a job starting or returning, the scan's registered file, a change to the
+held watch directories, a save of the auto-tagging, face recognition or
+duplicate judging switch and a face runtime becoming ready publish it, the last
+two because they move `featureOff` while a pause runs nothing.
+`cmd/mdm/events.go` also counts `JobsQueued`, `ProcessingChanged`,
+`ScanChanged` and `MediaFoldersChanged`, which follow a job row's commit, a
+scan's change or a folder change that moves the counts, and passes all of them
+to
 [`app.BackgroundEvents`](../../internal/app/background_events.go), which sends
 the screens' `background` event.
 

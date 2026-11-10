@@ -40,7 +40,7 @@ func faceRecognizer(ctx context.Context, q rowQueryer) (domain.FaceRecognizer, e
 // SaveFaceSettings expects settings validated by domain.ValidateFaceSettings. A changed recognizer, in the same
 // transaction, increases face.generation so a result computed for the old recognizer is refused, clears the old
 // recognizer's vectors, queues again every video that has a face analysis result and queues the embedding of every
-// face.
+// face. A save publishes domain.BackgroundChanged, since the switch decides the face group's featureOff.
 func (s *SettingsStore) SaveFaceSettings(ctx context.Context, settings domain.FaceSettings) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -66,6 +66,7 @@ func (s *SettingsStore) SaveFaceSettings(ctx context.Context, settings domain.Fa
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return fmt.Errorf("cannot save the face recognition settings: %w", err)
 	}
+	s.db.publishEvents(domain.BackgroundChanged{})
 	return nil
 }
 

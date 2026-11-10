@@ -24,16 +24,19 @@ type faceRecognition struct {
 }
 
 // newFaceRecognition wakes the job scheduler through wake, also when the runtime becomes ready, which ends the pause
-// of the face lane.
+// of the face lane; readiness also publishes domain.BackgroundChanged, since it clears the face group's featureOff.
 func newFaceRecognition(
-	ctx context.Context, dataDir string, db *store.DB, wake func(), logger *slog.Logger,
+	ctx context.Context, dataDir string, db *store.DB, wake func(), publisher app.Publisher, logger *slog.Logger,
 ) faceRecognition {
 	faceRuntime := faceruntime.New(faceruntime.Options{
 		Dir:     filepath.Join(dataDir, "face"),
 		Catalog: faceruntime.DefaultCatalog(runtime.GOOS, runtime.GOARCH),
 		Launch:  faceruntime.ExecLauncher(ctx, lowPriorityCommand),
 		Logger:  logger,
-		Ready:   wake,
+		Ready: func() {
+			wake()
+			publisher.Publish(domain.BackgroundChanged{})
+		},
 	})
 	analysis := app.NewFaceRecognizer(app.FaceRecognizerOptions{
 		Queue: db.Faces(), Images: db.Faces(), Settings: db.Settings(), Runtime: faceRuntime,

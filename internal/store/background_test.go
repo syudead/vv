@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -69,5 +70,32 @@ func TestBackgroundRemainingCountsUnfinishedWorkTheOwnerLists(t *testing.T) {
 	}
 	if !maps.Equal(got, want) {
 		t.Fatalf("remaining = %v, want %v", got, want)
+	}
+}
+
+// A feature's switch decides its group's featureOff, so each save tells the background status even when no job row
+// changes.
+func TestFeatureSwitchesTellTheBackgroundStatus(t *testing.T) {
+	ctx := context.Background()
+	for name, save := range map[string]func(*SettingsStore) error{
+		"auto_tag": func(s *SettingsStore) error {
+			return s.SaveAutoTagSettings(ctx, domain.AutoTagSettings{Threshold: 0.8, TentativeThreshold: 0.5})
+		},
+		"face": func(s *SettingsStore) error {
+			return s.SaveFaceSettings(ctx, domain.FaceSettings{Recognizer: domain.DefaultFaceRecognizer})
+		},
+		"version_judge": func(s *SettingsStore) error { return s.SaveVersionJudgingEnabled(ctx, false) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := migratedDB(t)
+			recorder := &eventRecorder{}
+			db.PublishTo(recorder)
+			if err := save(db.Settings()); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(recorder.events, domain.Event(domain.BackgroundChanged{})) {
+				t.Fatalf("events = %v, want BackgroundChanged", recorder.events)
+			}
+		})
 	}
 }

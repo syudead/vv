@@ -209,7 +209,7 @@ func run(opts runOptions) error {
 	})
 	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
 	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
-	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, bus, logger)
 	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
 	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{

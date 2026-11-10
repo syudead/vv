@@ -17,7 +17,7 @@ type eventSubscribers struct {
 	// activity events; overrides do not wake workers.
 	Screen func(domain.Event)
 	// Background is told of every change that can move the background work status: the switch, the running work,
-	// a queued or settled job and a scan. It throttles the owner's background event; see
+	// a queued or settled job, a scan, a media folder and a feature's switch or runtime. It throttles the owner's background event; see
 	// docs/design-docs/background-pause.md.
 	Background       func()
 	Workers          map[domain.JobKind]waker
@@ -118,6 +118,8 @@ func subscribeBackground(bus *eventbus.Bus, changed func()) (stop func()) {
 		eventbus.On(bus, "background status after queued jobs", func(domain.JobsQueued) { changed() }),
 		eventbus.On(bus, "background status after job results", func(domain.ProcessingChanged) { changed() }),
 		eventbus.On(bus, "background status after scans", func(domain.ScanChanged) { changed() }),
+		// Counts leave out videos only under a removed or switched-off folder.
+		eventbus.On(bus, "background status after media folders", func(domain.MediaFoldersChanged) { changed() }),
 	}
 	return func() {
 		for _, stop := range stops {
