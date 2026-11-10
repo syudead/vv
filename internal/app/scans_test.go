@@ -416,6 +416,26 @@ func TestBusy(t *testing.T) {
 	}
 }
 
+// While background work is paused, queued jobs wait for the resume, so the close prompt does not count them.
+func TestBusyIgnoresQueuedJobsWhilePaused(t *testing.T) {
+	scans, store, _ := newTestScans(t, context.Background(), &fakeScanner{})
+	ctx := context.Background()
+	store.setUnfinished(true, nil)
+
+	if err := scans.PauseBackground(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if busy, err := scans.Busy(ctx); err != nil || busy {
+		t.Fatalf("Busy() while paused = %v, %v; want false", busy, err)
+	}
+	if err := scans.ResumeBackground(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if busy, err := scans.Busy(ctx); err != nil || !busy {
+		t.Fatalf("Busy() after the resume = %v, %v; want true", busy, err)
+	}
+}
+
 func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	baseCtx, stop := context.WithCancel(context.Background())
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}

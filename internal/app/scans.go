@@ -97,6 +97,8 @@ type ScansOptions struct {
 	Publisher Publisher
 	// Nil uses slog.Default.
 	Logger *slog.Logger
+	// BackgroundPaused starts Scans paused, as PauseBackground does, for a pause saved before startup.
+	BackgroundPaused bool
 }
 
 type Scans struct {
@@ -127,7 +129,9 @@ type Scans struct {
 	onStart func(ScanNotice)
 	// Later starts are canceled immediately after lifecycle shutdown.
 	stopped bool
-	done    sync.WaitGroup
+	// backgroundPaused is the owner's pause of background work; see docs/design-docs/background-pause.md.
+	backgroundPaused bool
+	done             sync.WaitGroup
 }
 
 func NewScans(opts ScansOptions) *Scans {
@@ -140,6 +144,8 @@ func NewScans(opts ScansOptions) *Scans {
 		lifetime:  opts.Context,
 		publisher: opts.Publisher,
 		logger:    opts.Logger,
+
+		backgroundPaused: opts.BackgroundPaused,
 	}
 	if s.lifetime == nil {
 		s.lifetime = context.Background()
@@ -390,16 +396,36 @@ func (s *Scans) Wait() {
 	s.done.Wait()
 }
 
-// Busy includes resumable ingestion scans/jobs, excluding live transcoding.
+// PauseBackground records the owner's pause of background work, after which Busy no longer counts queued jobs.
+func (s *Scans) PauseBackground(context.Context) error {
+	s.setBackgroundPaused(true)
+	return nil
+}
+
+// ResumeBackground ends the pause PauseBackground recorded.
+func (s *Scans) ResumeBackground(context.Context) error {
+	s.setBackgroundPaused(false)
+	return nil
+}
+
+func (s *Scans) setBackgroundPaused(paused bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.backgroundPaused = paused
+}
+
+// Busy includes resumable ingestion scans/jobs, excluding live transcoding. While background work is paused, queued
+// jobs wait for the resume, so closing interrupts nothing they do.
 func (s *Scans) Busy(ctx context.Context) (bool, error) {
 	// Watcher scans are background ingestion and do not count as user-visible busy work.
 	s.mu.Lock()
 	running := s.running && s.runOrigin != domain.ScanOriginWatch
+	paused := s.backgroundPaused
 	s.mu.Unlock()
 	if running {
 		return true, nil
 	}
-	if s.pending == nil {
+	if paused || s.pending == nil {
 		return false, nil
 	}
 	pending, err := s.pending.HasUnfinishedJobs(ctx)
