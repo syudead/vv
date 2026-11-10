@@ -249,10 +249,12 @@ func run(opts runOptions) error {
 		Logger: logger,
 	})
 	// Start filesystem watching only after interrupted scans have been recovered and restarted.
-	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+	// Directories held through a pause are kept in the scans role; see docs/design-docs/background-pause.md.
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger,
+		func(o *app.AutoImportOptions) { o.Held, o.Paused = scanStore, backgroundPaused })
 	backgroundPause := app.NewBackgroundPause(app.BackgroundPauseOptions{
-		Settings: settingsStore, Scheduler: scheduler, Scans: scans, Publisher: bus, Paused: backgroundPaused,
-		Logger: logger,
+		Settings: settingsStore, Scheduler: scheduler, AutoImport: autoImport, Scans: scans, Publisher: bus,
+		Paused: backgroundPaused, Logger: logger,
 	})
 
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {

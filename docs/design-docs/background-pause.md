@@ -20,8 +20,9 @@ flowchart LR
 ```
 
 A resume saves `false` and reverses steps 3 and 2. Automatic import and the
-scans take the pause through `app.PausableWork`; the scans stop as described
-in [Scans](#scans), and automatic import is not wired yet. The status is
+scans take the pause through `app.PausableWork`; automatic import holds its
+batches as described in [Automatic import](#automatic-import), and the scans
+stop as described in [Scans](#scans). The status is
 `GET /api/background`; both operations are owner-only, and the `background`
 event of `/api/events` tells the owner's screens to read it again.
 
@@ -128,3 +129,44 @@ when the scan fails, and its queued jobs keep their `waiting` import entries.
 `Scan status` shows a `paused` scan as `Waiting for resume`, keeps its counts
 without animating the bar, and blocks both starts with the reason that a scan
 waits for the resume ([library-ui.md](library-ui.md#scan-entry-and-progress)).
+
+## Automatic import
+
+A pause holds watch-scan starts with the start hold a folder change uses, and
+stops a running batch at the next file; the batch's directories return to the
+dirty set ([folder-watching.md](folder-watching.md#a-manual-scan-or-a-folder-change-supersedes-a-batch)).
+The watches stay armed, so a file added during the pause marks its directory
+dirty and is read after the resume
+([`app.AutoImport`](../../internal/app/auto_import.go)).
+
+The diagram shows where a dirty directory waits through a pause and a restart.
+
+```mermaid
+flowchart LR
+  report[Watcher report] --> dirty[Dirty set]
+  pause[Pause] -->|write the set| held[(held_watch_directories)]
+  report -->|while paused| held
+  held -->|startup| dirty
+  dirty -->|resume, 2 s quiet| batch[Watch scan]
+  batch -->|delete taken rows| held
+```
+
+The table `held_watch_directories` mirrors the dirty set while a pause holds
+it. The pause writes the whole set, including directories still in their quiet
+or settle time and a batch whose settle probes are still running, and a
+directory reported during the pause is written when it arrives. Startup loads
+the rows into the dirty set, the batch that takes a directory deletes its row,
+and a scan that starts with a directory the pause wrote during its probes
+deletes that row again. Turning automatic import off deletes every row, and
+the rearm after a folder change deletes the rows, and the dirty directories,
+outside every registered folder.
+
+| Decision | Rejected | Why |
+| --- | --- | --- |
+| Hold starts with the existing start hold | A separate paused gate in `AutoImport` | A folder change already holds starts and requeues the batch the same way |
+| Write the whole dirty set at the pause | Write only the superseded batch and later reports | A directory reported just before the pause is in neither, and a restart during the pause would drop it |
+| Read the held directories after the resume, not a full scan | Start a full scan at resume after a restart | The full scan stays manual |
+| A failed write of a held row is logged, and the next change retries it | Fail the pause | The scans must still stop; only a restart before the retry loses the directory |
+
+A file changed while the server is down is still not found at the resume:
+nothing reads the media folders while nothing reports a change.
