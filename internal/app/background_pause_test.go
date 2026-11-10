@@ -85,7 +85,7 @@ func newTestBackgroundPause() (*BackgroundPause, *pauseSteps, *fakePublisher) {
 
 func setPaused(t *testing.T, pause *BackgroundPause, paused bool) domain.BackgroundWork {
 	t.Helper()
-	status, err := pause.SetPaused(context.Background(), paused)
+	status, err := pause.SetPaused(context.Background(), domain.AudienceOwner, paused)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,5 +140,29 @@ func TestBackgroundPauseRepeatedRequestChangesNothing(t *testing.T) {
 	}
 	if got := len(publisher.published()); got != events {
 		t.Fatalf("events after a repeated pause = %d, want %d", got, events)
+	}
+}
+
+// reportFake fills the running list and records the audience it was read for.
+type reportFake struct{ audience domain.Audience }
+
+func (r *reportFake) Read(_ context.Context, audience domain.Audience, work *domain.BackgroundWork) error {
+	r.audience = audience
+	work.Running = []domain.BackgroundActivity{{Group: domain.BackgroundImport, Kind: "probe"}}
+	return nil
+}
+
+// The status answers the switch together with the report read for the requester's audience.
+func TestBackgroundPauseStatusCarriesTheReport(t *testing.T) {
+	report := &reportFake{}
+	pause := NewBackgroundPause(BackgroundPauseOptions{Report: report, Paused: true, Logger: discardLogger()})
+	audience := domain.AudienceOwner.WithExcludedFolders([]int64{3})
+
+	status, err := pause.Status(context.Background(), audience)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Paused || len(status.Running) != 1 || report.audience != audience {
+		t.Fatalf("status = %+v read for %v, want paused with the report read for %v", status, report.audience, audience)
 	}
 }

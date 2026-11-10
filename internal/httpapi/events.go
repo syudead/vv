@@ -209,7 +209,8 @@ func (e *Events) AssistantChanged() {
 	e.publish(func(s *eventSubscriber) { s.assistant = true })
 }
 
-// BackgroundChanged has no payload; the owner's screens read the background work status again.
+// BackgroundChanged has no payload; the owner's screens read the background work status again. It is not part of
+// Handle: cmd/mdm sends it through a throttle, since running work and counts change many times a second.
 func (e *Events) BackgroundChanged() {
 	e.publish(func(s *eventSubscriber) { s.background = true })
 }
@@ -273,8 +274,6 @@ func (e *Events) Handle(event domain.Event) {
 		e.OnboardingChanged()
 	case domain.AssistantChanged:
 		e.AssistantChanged()
-	case domain.BackgroundChanged:
-		e.BackgroundChanged()
 	case domain.PeerStateChanged:
 		e.PeerStateChanged()
 	case domain.PeerChanged:

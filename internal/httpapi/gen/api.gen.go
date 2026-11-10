@@ -828,6 +828,36 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for BackgroundGroupName.
+const (
+	BackgroundGroupNameAutoTag      BackgroundGroupName = "auto_tag"
+	BackgroundGroupNameBackfill     BackgroundGroupName = "backfill"
+	BackgroundGroupNameFace         BackgroundGroupName = "face"
+	BackgroundGroupNameImport       BackgroundGroupName = "import"
+	BackgroundGroupNameScan         BackgroundGroupName = "scan"
+	BackgroundGroupNameVersionJudge BackgroundGroupName = "version_judge"
+)
+
+// Valid indicates whether the value is a known member of the BackgroundGroupName enum.
+func (e BackgroundGroupName) Valid() bool {
+	switch e {
+	case BackgroundGroupNameAutoTag:
+		return true
+	case BackgroundGroupNameBackfill:
+		return true
+	case BackgroundGroupNameFace:
+		return true
+	case BackgroundGroupNameImport:
+		return true
+	case BackgroundGroupNameScan:
+		return true
+	case BackgroundGroupNameVersionJudge:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckResultReason.
 const (
 	CheckResultReasonGenerationModelMissing      CheckResultReason = "generation_model_missing"
@@ -4649,10 +4679,55 @@ type AutoTaggingSettings struct {
 	Threshold float64 `json:"threshold"`
 }
 
+// BackgroundActivity One piece of background work running now
+type BackgroundActivity struct {
+	// FileName The file being registered or read, when the work has a location
+	FileName *string `json:"fileName,omitempty"`
+
+	// Group What background work is shown as: a scan, or the jobs of one feature
+	Group BackgroundGroupName `json:"group"`
+
+	// Kind registering for a scan, otherwise the job kind
+	Kind string `json:"kind"`
+
+	// Video The video running work is for; absent when the work names none or the owner's audience leaves it out
+	Video *BackgroundVideo `json:"video,omitempty"`
+}
+
+// BackgroundGroup Background work left in one group
+type BackgroundGroup struct {
+	// FeatureOff The group's feature is off and holds its jobs back, whether or not background work is paused
+	FeatureOff *bool `json:"featureOff,omitempty"`
+
+	// Group What background work is shown as: a scan, or the jobs of one feature
+	Group BackgroundGroupName `json:"group"`
+
+	// Remaining Files for scan, videos for import, jobs otherwise; 0 when nothing is left
+	Remaining int `json:"remaining"`
+
+	// Waiting scan only: a paused scan or held watch directories wait for the resume
+	Waiting *bool `json:"waiting,omitempty"`
+}
+
+// BackgroundGroupName What background work is shown as: a scan, or the jobs of one feature
+type BackgroundGroupName string
+
+// BackgroundVideo The video running work is for; absent when the work names none or the owner's audience leaves it out
+type BackgroundVideo struct {
+	Id    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
 // BackgroundWork State of background work: scans and scheduled jobs
 type BackgroundWork struct {
+	// Groups One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill
+	Groups []BackgroundGroup `json:"groups"`
+
 	// Paused The saved pause switch; false when it was never saved
 	Paused bool `json:"paused"`
+
+	// Running Work running now, oldest first. An entry remains after a pause until its job returns.
+	Running []BackgroundActivity `json:"running"`
 }
 
 // CheckResult Connection check result; unavailable providers also return 200.
@@ -10479,7 +10554,7 @@ type ServerInterface interface {
 	// StartAutoTagging Queue library videos for classification
 	// (POST /api/auto-tagging/runs)
 	StartAutoTagging(w http.ResponseWriter, r *http.Request)
-	// GetBackgroundWork Return the background work pause switch
+	// GetBackgroundWork Return the background work pause switch, the running work and the work left
 	// (GET /api/background)
 	GetBackgroundWork(w http.ResponseWriter, r *http.Request)
 	// SetBackgroundPause Pause or resume background work

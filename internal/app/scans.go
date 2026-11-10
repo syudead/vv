@@ -161,7 +161,7 @@ func NewScans(opts ScansOptions) *Scans {
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
-	s.activity = newActivities(s.activityChanged)
+	s.activity = newActivities(s.activityChanged, s.backgroundChanged)
 	if opts.NewScanner != nil {
 		s.scanner = opts.NewScanner(s)
 	}
@@ -353,17 +353,25 @@ func (s *Scans) ReportScanFile(path string, videoID int64) {
 	}
 	s.activity.begin(scanActivityKey, domain.ScanActivity{
 		Kind: domain.ActivityRegistering, VideoID: videoID, Path: path,
+	}, RunningWork{VideoID: videoID, Path: path})
+}
+
+// JobStarted lists every running job for the background status; the scan status shows only import stages with a
+// location.
+func (s *Scans) JobStarted(job domain.Job) {
+	var shown domain.ScanActivity
+	if kind, ok := domain.ActivityKindOf(job.Kind); ok && job.LocationPath != "" {
+		shown = domain.ScanActivity{Kind: kind, VideoID: job.VideoID, Path: job.LocationPath}
+	}
+	s.activity.begin(jobActivityKey(job), shown, RunningWork{
+		Job: job.Kind, VideoID: job.VideoID, ContentKey: job.ContentKey, Path: job.LocationPath,
 	})
 }
 
-func (s *Scans) JobStarted(job domain.Job) {
-	kind, ok := domain.ActivityKindOf(job.Kind)
-	if !ok || job.LocationPath == "" {
-		return
-	}
-	s.activity.begin(jobActivityKey(job), domain.ScanActivity{
-		Kind: kind, VideoID: job.VideoID, Path: job.LocationPath,
-	})
+// Running returns the running jobs and the file a scan registers, oldest first. A job stays listed until its handler
+// returns, also after a pause cancelled it.
+func (s *Scans) Running() []RunningWork {
+	return s.activity.list()
 }
 
 func (s *Scans) JobFinished(job domain.Job) {
@@ -704,6 +712,13 @@ func (s *Scans) activityChanged() {
 		return
 	}
 	s.publisher.Publish(domain.ScanActivityChanged{})
+}
+
+func (s *Scans) backgroundChanged() {
+	if s.publisher == nil {
+		return
+	}
+	s.publisher.Publish(domain.BackgroundChanged{})
 }
 
 func (s *Scans) scanChanged() {

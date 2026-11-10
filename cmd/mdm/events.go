@@ -15,7 +15,11 @@ type waker interface {
 type eventSubscribers struct {
 	// Screen maps overrides and bundle changes to video events, and activity changes to owner-only
 	// activity events; overrides do not wake workers.
-	Screen           func(domain.Event)
+	Screen func(domain.Event)
+	// Background is told of every change that can move the background work status: the switch, the running work,
+	// a queued or settled job and a scan. It throttles the owner's background event; see
+	// docs/design-docs/background-pause.md.
+	Background       func()
 	Workers          map[domain.JobKind]waker
 	ReleaseArtifacts func(domain.ContentUnreferenced)
 	// Wakes the scheduler for auto-tagging after the seek stage, whose result transaction queued the video;
@@ -40,6 +44,13 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	stops.StopScreen = func() {}
 	if s.Screen != nil {
 		stops.StopScreen = bus.Subscribe("screen notifications", s.Screen)
+	}
+	if s.Background != nil {
+		stopScreen, stopBackground := stops.StopScreen, subscribeBackground(bus, s.Background)
+		stops.StopScreen = func() {
+			stopBackground()
+			stopScreen()
+		}
 	}
 
 	var stopWorkers []func()
@@ -98,4 +109,19 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 		eventbus.On(bus, "artifact release", s.ReleaseArtifacts)
 	}
 	return stops
+}
+
+// subscribeBackground forwards the events after which the background work status can differ.
+func subscribeBackground(bus *eventbus.Bus, changed func()) (stop func()) {
+	stops := []func(){
+		eventbus.On(bus, "background status", func(domain.BackgroundChanged) { changed() }),
+		eventbus.On(bus, "background status after queued jobs", func(domain.JobsQueued) { changed() }),
+		eventbus.On(bus, "background status after job results", func(domain.ProcessingChanged) { changed() }),
+		eventbus.On(bus, "background status after scans", func(domain.ScanChanged) { changed() }),
+	}
+	return func() {
+		for _, stop := range stops {
+			stop()
+		}
+	}
 }

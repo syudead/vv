@@ -50,13 +50,24 @@ func (s *ScanStore) writeHeldWatchDirectories(ctx context.Context, dirs []domain
 		return fmt.Errorf("cannot write the held watch directories: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	var changed int64
 	for _, dir := range dirs {
-		if _, err := tx.ExecContext(ctx, query, dir.Path, dir.Recursive); err != nil {
+		result, err := tx.ExecContext(ctx, query, dir.Path, dir.Recursive)
+		if err != nil {
 			return fmt.Errorf("cannot write the held watch directory %q: %w", dir.Path, err)
 		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("cannot write the held watch directory %q: %w", dir.Path, err)
+		}
+		changed += n
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot write the held watch directories: %w", err)
+	}
+	// The scan group's waiting state follows the held rows.
+	if changed > 0 {
+		s.db.publishEvents(domain.BackgroundChanged{})
 	}
 	return nil
 }

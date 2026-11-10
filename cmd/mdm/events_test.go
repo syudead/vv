@@ -329,3 +329,19 @@ func TestWaitAtMost(t *testing.T) {
 		t.Fatalf("上限で諦めていない: %s", elapsed)
 	}
 }
+
+// The switch, the running work, queued and settled jobs and scans move the background status; other events do not.
+func TestSubscribeEventsForwardsBackgroundChanges(t *testing.T) {
+	bus := newTestBus()
+	var changed atomic.Int32
+	subscribeEvents(bus, eventSubscribers{Background: func() { changed.Add(1) }})
+
+	bus.Publish(domain.BackgroundChanged{}, domain.JobsQueued{Kinds: []domain.JobKind{domain.JobAutoTag}},
+		domain.ProcessingChanged{}, domain.ScanChanged{}, domain.VideoIngestChanged{VideoID: 1})
+	// Close delivers every pending event before it returns.
+	bus.Close()
+
+	if got := changed.Load(); got != 4 {
+		t.Fatalf("background changes = %d, want 4", got)
+	}
+}
