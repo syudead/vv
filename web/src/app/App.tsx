@@ -12,6 +12,7 @@ import PeerNotice, { usePeerNoticeShown } from "../shell/PeerNotice";
 import { PeerProvider } from "../shell/PeerProvider";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
+import { BackgroundProvider } from "../shell/BackgroundProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -315,13 +316,15 @@ function LibraryApp() {
   return (
     <TooltipProvider>
       <ScanProvider>
-        <ScanNoticeProvider>
-          <PeerProvider>
-            <AssistantProvider>
-              <AppRoutes />
-            </AssistantProvider>
-          </PeerProvider>
-        </ScanNoticeProvider>
+        <BackgroundProvider>
+          <ScanNoticeProvider>
+            <PeerProvider>
+              <AssistantProvider>
+                <AppRoutes />
+              </AssistantProvider>
+            </PeerProvider>
+          </ScanNoticeProvider>
+        </BackgroundProvider>
       </ScanProvider>
     </TooltipProvider>
   );

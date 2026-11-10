@@ -26,7 +26,7 @@ function pageList(): HTMLElement {
 }
 
 const pages: [string, string, string[]][] = [
-  ["/settings/scan", "Scan", ["Scan status", "Auto-import"]],
+  ["/settings/scan", "Scan", ["Background work", "Scan status", "Auto-import"]],
   [
     "/settings/library",
     "Library",

@@ -28,6 +28,8 @@ export interface ServerEventHandlers {
   peerItems?: () => void;
   /** A media folder was added, replaced, removed or switched; reread the folders and reload open lists. */
   mediaFolders?: () => void;
+  /** Owner streams only: the pause switch, the running work or a remaining count changed. */
+  background?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -108,6 +110,7 @@ function connect(): void {
   current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("onboarding", () => dispatch("onboarding"));
   current.addEventListener("assistant", () => dispatch("assistant"));
+  current.addEventListener("background", () => dispatch("background"));
   current.addEventListener("mediaFolders", () => {
     // A saved list may hold a switched-off folder's videos, and no open screen reloads it.
     clearListSnapshot();

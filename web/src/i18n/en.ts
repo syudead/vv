@@ -12,6 +12,7 @@ type ErrorReason = components["schemas"]["ErrorReason"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 type ScanActivityKind = components["schemas"]["ScanActivityKind"];
+type BackgroundGroupName = components["schemas"]["BackgroundGroupName"];
 type FolderWatchProblem = NonNullable<components["schemas"]["FolderWatch"]["problem"]>;
 type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
@@ -174,6 +175,20 @@ function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
     other: `${formatNumber(count)} videos`,
+  });
+}
+
+function files(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} file`,
+    other: `${formatNumber(count)} files`,
+  });
+}
+
+function tasks(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} task`,
+    other: `${formatNumber(count)} tasks`,
   });
 }
 
@@ -4034,6 +4049,44 @@ export const en = {
       guestBody: "Some videos aren't shown until it is.",
       openPairing: "Open Pairing",
     },
+    // Shared by the Settings section and the bottom-right indicator's summary.
+    background: {
+      switchLabel: "Pause background work",
+      pausing: "Pausing…",
+      resuming: "Resuming…",
+      pauseFailed: (reason: string) => `Couldn't pause background work: ${reason}`,
+      resumeFailed: (reason: string) => `Couldn't resume background work: ${reason}`,
+      countsLabel: "Left to do",
+      groups: {
+        scan: "Scan",
+        import: "Import",
+        auto_tag: "Auto-tagging",
+        face: "Face recognition",
+        version_judge: "Duplicate check",
+        backfill: "Catch-up",
+      } satisfies Record<BackgroundGroupName, string>,
+      // Scan counts files, import counts videos, and the other groups count tasks.
+      remaining: {
+        scan: files,
+        import: videos,
+        auto_tag: tasks,
+        face: tasks,
+        version_judge: tasks,
+        backfill: tasks,
+      } satisfies Record<BackgroundGroupName, (count: number) => string>,
+      waitingForResume: "Waiting for resume",
+      featureOff: "Off",
+      featureOffNote:
+        "Work for a feature that is off stays here until you turn the feature on.",
+      // The action of a running entry outside scan and import, worded by its group.
+      groupAction: {
+        auto_tag: "Auto-tagging",
+        face: "Analysing faces",
+        version_judge: "Judging duplicates",
+        backfill: "Catching up older videos",
+      },
+      stopping: "Stopping",
+    },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
       rescanFailed: (reason: string) => `Couldn't start the force rescan: ${reason}`,
@@ -4721,6 +4774,17 @@ export const en = {
           }`,
         failed: (reason: string) => `Couldn't delete the people: ${reason}`,
       },
+    },
+    backgroundWork: {
+      heading: "Background work",
+      state: { paused: "Paused", running: "Running", idle: "Idle" },
+      switchDescription:
+        "Stops scans, imports and analysis until you turn this off. Playback, browsing and editing keep working.",
+      runningLabel: "Running now",
+      nothingRunning: "Nothing is running.",
+      nothingRunsWhilePaused: "Nothing runs while paused.",
+      loading: "Loading background work",
+      loadFailed: (reason: string) => `Couldn't load background work: ${reason}`,
     },
     scanStatus: {
       heading: "Scan status",
