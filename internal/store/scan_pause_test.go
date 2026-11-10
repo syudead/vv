@@ -130,7 +130,7 @@ func TestReopenScanKeepsThePausedScansWork(t *testing.T) {
 }
 
 // During a pause Scan library creates the scan as paused and a second request answers it; a force rescan is refused
-// while it waits, and media folders can be added and deleted.
+// while it waits, and media folders can be added and deleted. Both answers hold after the last folder is deleted.
 func TestStartScanWhileBackgroundWorkIsPaused(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -157,6 +157,24 @@ func TestStartScanWhileBackgroundWorkIsPaused(t *testing.T) {
 	}
 	if err := db.Settings().DeleteMediaFolder(ctx, folder.ID, folder.Version); err != nil {
 		t.Fatalf("DeleteMediaFolder while paused = %v", err)
+	}
+
+	folders, err := db.Settings().ListMediaFolders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range folders {
+		if err := db.Settings().DeleteMediaFolder(ctx, f.ID, f.Version); err != nil {
+			t.Fatalf("DeleteMediaFolder of the last folder while paused = %v", err)
+		}
+	}
+	third, started, err := db.Scans().StartScan(ctx)
+	if err != nil || started || third.ID != first.ID {
+		t.Fatalf("StartScan without folders = #%d, started %v, err %v; want #%d", third.ID, started, err, first.ID)
+	}
+	if _, err := db.Scans().StartRescan(ctx, domain.RescanScope{Kind: domain.RescanLibrary}); !errors.Is(
+		err, domain.ErrScanRunning) {
+		t.Fatalf("StartRescan without folders = %v, want ErrScanRunning", err)
 	}
 }
 
