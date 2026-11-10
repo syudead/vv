@@ -150,6 +150,28 @@ func TestMatchVideoQuerySections(t *testing.T) {
 			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchPartial, Rate: 1, PositionMs: 0,
 				StartMs: 0, EndMs: 30_000, QueryStartMs: 30_000, QueryEndMs: 60_000},
 		},
+		{
+			name:  "種ごとのずれが秒の境界の両側に分かれる",
+			query: secondQuery(scenes[:30]),
+			// Each seed votes 400 or -400 ms; only the offset between them puts every entry within 0.5 s of its frame.
+			content: ImageSearchContent{VideoID: 1, DurationMs: 30_000, Frames: []ImageSearchFrame{
+				{TimeMs: 400, Hash: scenes[0]}, {TimeMs: 8_600, Hash: scenes[9]},
+				{TimeMs: 16_400, Hash: scenes[16]}, {TimeMs: 24_600, Hash: scenes[25]},
+			}},
+			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchWhole, Rate: 1, PositionMs: 400,
+				StartMs: 0, EndMs: 30_000, QueryStartMs: 0, QueryEndMs: 30_000},
+		},
+		{
+			name:  "同じ一致数なら出せるオフセット",
+			query: secondQuery(scenes[:3]),
+			// Offset 0 compares three entries and 10 s compares two, both with two matching.
+			content: ImageSearchContent{VideoID: 1, DurationMs: 12_000, Frames: []ImageSearchFrame{
+				{TimeMs: 0, Hash: scenes[0]}, {TimeMs: 1_000, Hash: scenes[1]}, {TimeMs: 2_000, Hash: scenes[3]},
+				{TimeMs: 10_000, Hash: scenes[0]}, {TimeMs: 11_000, Hash: scenes[1]},
+			}},
+			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchPartial, Rate: 2.0 / 3, PositionMs: 0,
+				StartMs: 0, EndMs: 2_000, QueryStartMs: 0, QueryEndMs: 2_000},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := MatchVideoQuery(tc.query, []ImageSearchContent{tc.content})

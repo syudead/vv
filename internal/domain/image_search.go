@@ -197,13 +197,13 @@ func (m VideoQueryMatcher) Match(content ImageSearchContent) (ImageSearchMatch, 
 			best = v
 		}
 	}
-	if best.compared < FingerprintMinComparableFrames || 2*best.matched < best.compared {
+	if !best.listable() {
 		return ImageSearchMatch{}, false
 	}
 	return m.section(content, best), true
 }
 
-// votedOffsets returns, in increasing order, the offsets (content time minus query time) of the 2 s bins enough distinct seeds voted for.
+// votedOffsets returns, in increasing order, the offsets (content time minus query time) of the 2 s bins enough distinct seeds voted for, with their sampling centres.
 func (m VideoQueryMatcher) votedOffsets(content ImageSearchContent) []int64 {
 	seedsByBin := map[int64]map[int]struct{}{}
 	offsetsByBin := map[int64][]int64{}
@@ -228,7 +228,24 @@ func (m VideoQueryMatcher) votedOffsets(content ImageSearchContent) []int64 {
 		}
 	}
 	slices.Sort(offsets)
-	return slices.Compact(offsets)
+	return withSamplingCentres(slices.Compact(offsets))
+}
+
+// withSamplingCentres adds the centre of each run of offsets spanning at most twice the frame tolerance, since every vote is off the true offset by up to that tolerance.
+func withSamplingCentres(offsets []int64) []int64 {
+	out := slices.Clone(offsets)
+	last := 0
+	for i, low := range offsets {
+		last = max(last, i)
+		for last+1 < len(offsets) && offsets[last+1]-low <= 2*imageSearchFrameToleranceMs {
+			last++
+		}
+		if last > i {
+			out = append(out, low+(offsets[last]-low)/2)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 type offsetVerification struct {
@@ -237,12 +254,23 @@ type offsetVerification struct {
 	first, last       int
 }
 
-// better prefers more matching entries, then fewer compared ones; offsets arrive in increasing order, so ties keep the earlier one.
+// better prefers more matching entries, then a listable verification, then fewer compared ones; offsets arrive in increasing order, so ties keep the earlier one.
 func (v offsetVerification) better(than offsetVerification) bool {
 	if v.matched != than.matched {
 		return v.matched > than.matched
 	}
-	return v.matched > 0 && v.compared < than.compared
+	if v.matched == 0 {
+		return false
+	}
+	if v.listable() != than.listable() {
+		return v.listable()
+	}
+	return v.compared < than.compared
+}
+
+// listable reports a rate of at least 50% over at least FingerprintMinComparableFrames entries.
+func (v offsetVerification) listable() bool {
+	return v.compared >= FingerprintMinComparableFrames && 2*v.matched >= v.compared
 }
 
 // verify compares each entry inside the overlap with the non-flat query frame within 0.5 s of it under offset.
