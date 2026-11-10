@@ -209,7 +209,7 @@ func run(opts runOptions) error {
 	})
 	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
 	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
-	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, bus, logger)
 	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
 	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
@@ -232,6 +232,7 @@ func run(opts runOptions) error {
 		handlers[kind] = faces.analysis.HandleJob
 	}
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
+	featureOff := app.PausedJobKinds(autoTagger, faces.analysis, versionJudge)
 	addBackfillHandlers(handlers, ingestStore, sources, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
@@ -239,7 +240,7 @@ func run(opts runOptions) error {
 		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
 		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
-		Paused:   app.PausedJobKinds(autoTagger, faces.analysis, versionJudge),
+		Paused:   featureOff,
 		Held:     backgroundPaused,
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
@@ -255,6 +256,9 @@ func run(opts runOptions) error {
 	backgroundPause := app.NewBackgroundPause(app.BackgroundPauseOptions{
 		Settings: settingsStore, Scheduler: scheduler, AutoImport: autoImport, Scans: scans, Publisher: bus,
 		Paused: backgroundPaused, Logger: logger,
+		Report: app.NewBackgroundStatus(app.BackgroundStatusOptions{
+			Counts: ingestStore, Scans: scanStore, Videos: libraryStore, Running: scans, FeatureOff: featureOff,
+		}),
 	})
 
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
@@ -310,8 +314,12 @@ func run(opts runOptions) error {
 			domain.ActivityFaceMerge:        app.NewFaceMergeActivity(db.Activity()),
 		},
 	})
+	// The background event reaches the screens at most once a second.
+	backgroundEvents := app.NewBackgroundEvents(events.BackgroundChanged, nil)
+	defer backgroundEvents.Stop()
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
+		Background:       backgroundEvents.Changed,
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 		ImagesFinished: func(videoID int64) {

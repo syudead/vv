@@ -34,12 +34,19 @@ type BackgroundPauseOptions struct {
 	// Nil leaves automatic import running through a pause.
 	AutoImport PausableWork
 	Scans      PausableWork
+	// Nil answers the switch with empty running work and groups.
+	Report BackgroundReport
 	// Nil disables events.
 	Publisher Publisher
 	// Paused is the saved state at startup, which the scheduler and the scans were created with.
 	Paused bool
 	// Nil uses slog.Default.
 	Logger *slog.Logger
+}
+
+// BackgroundReport is BackgroundStatus: it fills the running work and the groups of a status.
+type BackgroundReport interface {
+	Read(ctx context.Context, audience domain.Audience, work *domain.BackgroundWork) error
 }
 
 // BackgroundPause is the owner's switch over every scan and scheduled job. Requests are applied one at a time, and the
@@ -49,6 +56,7 @@ type BackgroundPause struct {
 	scheduler  BackgroundScheduler
 	autoImport PausableWork
 	scans      PausableWork
+	report     BackgroundReport
 	publisher  Publisher
 	logger     *slog.Logger
 
@@ -64,6 +72,7 @@ func NewBackgroundPause(opts BackgroundPauseOptions) *BackgroundPause {
 		scheduler:  opts.Scheduler,
 		autoImport: opts.AutoImport,
 		scans:      opts.Scans,
+		report:     opts.Report,
 		publisher:  opts.Publisher,
 		logger:     opts.Logger,
 	}
@@ -74,19 +83,29 @@ func NewBackgroundPause(opts BackgroundPauseOptions) *BackgroundPause {
 	return b
 }
 
-// Status answers the switch.
-func (b *BackgroundPause) Status(context.Context) (domain.BackgroundWork, error) {
-	return domain.BackgroundWork{Paused: b.paused.Load()}, nil
+// Status answers the switch, the running work and the work left per group as the audience sees them.
+func (b *BackgroundPause) Status(ctx context.Context, audience domain.Audience) (domain.BackgroundWork, error) {
+	work := domain.BackgroundWork{
+		Paused: b.paused.Load(), Running: []domain.BackgroundActivity{}, Groups: domain.EmptyBackgroundGroups(),
+	}
+	if b.report == nil {
+		return work, nil
+	}
+	if err := b.report.Read(ctx, audience, &work); err != nil {
+		return domain.BackgroundWork{}, fmt.Errorf("cannot read the background work status: %w", err)
+	}
+	return work, nil
 }
 
-// SetPaused saves the switch and applies it. A request for the current state changes nothing. The request's
-// cancellation does not stop an apply that has begun, so a closed tab never leaves the work half paused.
-func (b *BackgroundPause) SetPaused(ctx context.Context, paused bool) (domain.BackgroundWork, error) {
+// SetPaused saves the switch, applies it and answers the status as the audience sees it. A request for the current
+// state changes nothing. The request's cancellation does not stop an apply that has begun, so a closed tab never
+// leaves the work half paused.
+func (b *BackgroundPause) SetPaused(ctx context.Context, audience domain.Audience, paused bool) (domain.BackgroundWork, error) {
 	ctx = context.WithoutCancel(ctx)
 	b.apply.Lock()
 	defer b.apply.Unlock()
 	if b.paused.Load() == paused {
-		return b.Status(ctx)
+		return b.Status(ctx, audience)
 	}
 	if err := b.settings.SaveBackgroundPaused(ctx, paused); err != nil {
 		return domain.BackgroundWork{}, fmt.Errorf("cannot save the background pause: %w", err)
@@ -105,7 +124,7 @@ func (b *BackgroundPause) SetPaused(ctx context.Context, paused bool) (domain.Ba
 		return domain.BackgroundWork{}, err
 	}
 	b.logger.Info("changed the background pause", slog.Bool("paused", paused))
-	return b.Status(ctx)
+	return b.Status(ctx, audience)
 }
 
 // pause holds the scheduler first: stopping automatic import and the scan waits for the file being read, and the

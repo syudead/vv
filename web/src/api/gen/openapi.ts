@@ -4209,8 +4209,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Return the background work pause switch
-         * @description Answers whether background work (scans and scheduled jobs) is paused. Cache-Control is no-store; the background event of /api/events tells the screens to read it again.
+         * Return the background work pause switch, the running work and the work left
+         * @description Answers whether background work (scans and scheduled jobs) is paused, the work running now and the work left per group. Counts leave out jobs of videos only under switched-off folders. Cache-Control is no-store; the background event of /api/events tells the screens to read it again.
          */
         get: operations["getBackgroundWork"];
         put?: never;
@@ -4250,7 +4250,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners after the background work pause switch changes; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4444,6 +4444,40 @@ export interface components {
         BackgroundWork: {
             /** @description The saved pause switch; false when it was never saved */
             paused: boolean;
+            /** @description Work running now, oldest first. An entry remains after a pause until its job returns. */
+            running: components["schemas"]["BackgroundActivity"][];
+            /** @description One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill */
+            groups: components["schemas"]["BackgroundGroup"][];
+        };
+        /**
+         * @description What background work is shown as: a scan, or the jobs of one feature
+         * @enum {string}
+         */
+        BackgroundGroupName: "scan" | "import" | "auto_tag" | "face" | "version_judge" | "backfill";
+        /** @description One piece of background work running now */
+        BackgroundActivity: {
+            group: components["schemas"]["BackgroundGroupName"];
+            /** @description registering for a scan, otherwise the job kind */
+            kind: string;
+            video?: components["schemas"]["BackgroundVideo"];
+            /** @description The file being registered or read, when the work has a location */
+            fileName?: string;
+        };
+        /** @description The video running work is for; absent when the work names none or the owner's audience leaves it out */
+        BackgroundVideo: {
+            /** Format: int64 */
+            id: number;
+            title: string;
+        };
+        /** @description Background work left in one group */
+        BackgroundGroup: {
+            group: components["schemas"]["BackgroundGroupName"];
+            /** @description Files for scan, videos for import, jobs otherwise; 0 when nothing is left */
+            remaining: number;
+            /** @description scan only: a paused scan or held watch directories wait for the resume */
+            waiting?: boolean;
+            /** @description The group's feature is off and holds its jobs back, whether or not background work is paused */
+            featureOff?: boolean;
         };
         SetBackgroundPauseRequest: {
             /** @description The state to reach */

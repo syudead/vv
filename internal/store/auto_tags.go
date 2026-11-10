@@ -50,14 +50,19 @@ func (s *SettingsStore) AutoTagSettings(ctx context.Context) (domain.AutoTagSett
 	return settings, nil
 }
 
-// SaveAutoTagSettings expects values validated by domain.ValidateAutoTagSettings.
+// SaveAutoTagSettings expects values validated by domain.ValidateAutoTagSettings. A save publishes
+// domain.BackgroundChanged, since the switch decides the auto_tag group's featureOff.
 func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain.AutoTagSettings) error {
-	return writeSettings(ctx, s.db.sql, []settingValue{
+	if err := writeSettings(ctx, s.db.sql, []settingValue{
 		{autoTagFeatureKey, strconv.FormatBool(settings.Enabled)},
 		{autoTagAfterImportKey, strconv.FormatBool(settings.AfterImport)},
 		{autoTagThresholdKey, strconv.FormatFloat(settings.Threshold, 'f', -1, 64)},
 		{autoTagTentativeThresholdKey, strconv.FormatFloat(settings.TentativeThreshold, 'f', -1, 64)},
-	})
+	}); err != nil {
+		return err
+	}
+	s.db.publishEvents(domain.BackgroundChanged{})
+	return nil
 }
 
 // OllamaSettings uses domain defaults when no connection is saved.

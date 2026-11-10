@@ -23,8 +23,9 @@ A resume saves `false` and reverses steps 3 and 2. Automatic import and the
 scans take the pause through `app.PausableWork`; automatic import holds its
 batches as described in [Automatic import](#automatic-import), and the scans
 stop as described in [Scans](#scans). The status is
-`GET /api/background`; both operations are owner-only, and the `background`
-event of `/api/events` tells the owner's screens to read it again.
+`GET /api/background` ([Status](#status)); both operations are owner-only, and
+the `background` event of `/api/events` tells the owner's screens to read it
+again.
 
 ## Pause state
 
@@ -170,3 +171,61 @@ outside every registered folder.
 
 A file changed while the server is down is still not found at the resume:
 nothing reads the media folders while nothing reports a change.
+
+## Status
+
+`GET /api/background` answers the switch, the work running now and the work
+left per group, read by
+[`app.BackgroundStatus`](../../internal/app/background_status.go) for the
+requester's `domain.Audience`. `domain.JobGroup` maps every scheduled kind to
+one group, and a domain test fails for a kind without one.
+
+| Group | Kinds or source | Remaining |
+| --- | --- | --- |
+| `scan` | The latest scan row | Files not yet read of a `running` or `paused` scan |
+| `import` | `probe`, `thumbnail`, `seek_thumbnail`, `preview`, `fingerprint` | Videos with an unfinished job of these kinds |
+| `auto_tag` | `auto_tag` | Unfinished jobs |
+| `face` | `face`, `face_image`, `face_cast`, `queue_face_images` | Unfinished jobs |
+| `version_judge` | `version_judge` | Unfinished jobs |
+| `backfill` | `keyframes`, `media_info`, `queue_keyframes`, `queue_media_info`, `virtual_thumbnails` | Unfinished jobs |
+
+`scan` carries `waiting` while a scan is `paused` or a held watch directory
+exists; every job group carries `featureOff` while its feature holds one of its
+kinds back (`app.JobPauser`), paused or not. The count read is
+`IngestStore.BackgroundRemaining` ([`internal/store`](../../internal/store/background.go)).
+
+| Decision | Rejected | Why |
+| --- | --- | --- |
+| `import` counts videos, the other groups count jobs | Count jobs everywhere | A video's stages are queued one after another, so its job count rises while it progresses; a count of videos only falls |
+| Unfinished means `queued` or `running`, including a job waiting out a retry delay or parked under an unreadable folder | Count due jobs only | A job in a retry delay is still left to do |
+| A job that names a video the audience does not list is not counted; a job that names none is | Count every row | Counts leave a switched-off folder out. A video is named by `video_id`, or by content key for `auto_tag`, `face` and both keys of `version_judge` |
+| A `queue_*` job counts as one until it runs and queues its per-video jobs | Run the queueing kinds during a pause | A pause runs nothing |
+| `featureOff` is reported also while not paused | A text on the feature's page only | A count that does not fall after a resume needs its reason where the count is |
+
+The running list holds every running job and the file a scan registers, oldest
+first. `app.Scans` tracks them from the scheduler's `Started` and `Finished`
+callbacks and from the scanner's file reports; the scan status still shows only
+the newest import-stage job. A job stays listed until its handler returns, so a
+job a pause cancelled leaves the list when it has stopped. An entry carries its
+video, with its title, only when the audience lists it: an `auto_tag` or `face`
+job names its video by content key, and a `version_judge` job, which names two,
+is listed without one.
+
+### Background event
+
+`domain.BackgroundChanged` reports that the status may have changed: the switch,
+a job starting or returning, the scan's registered file, a change to the
+held watch directories, a save of the auto-tagging, face recognition or
+duplicate judging switch and a face runtime becoming ready publish it, the last
+two because they move `featureOff` while a pause runs nothing.
+`cmd/mdm/events.go` also counts `JobsQueued`, `ProcessingChanged`,
+`ScanChanged` and `MediaFoldersChanged`, which follow a job row's commit, a
+scan's change or a folder change that moves the counts, and passes all of them
+to
+[`app.BackgroundEvents`](../../internal/app/background_events.go), which sends
+the screens' `background` event.
+
+| Decision | Rejected | Why |
+| --- | --- | --- |
+| Send at once when no event went out within a second, and otherwise one trailing event at the second's end | An event per change | A probe backlog finishes tens of jobs a second, and each event makes every owner's screen read the status again |
+| Same | Polling | The screens already follow `/api/events` |

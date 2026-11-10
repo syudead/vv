@@ -164,9 +164,9 @@ type AutoImportSettings interface {
 
 // BackgroundWork is app.BackgroundPause.
 type BackgroundWork interface {
-	Status(ctx context.Context) (domain.BackgroundWork, error)
+	Status(ctx context.Context, audience domain.Audience) (domain.BackgroundWork, error)
 	// SetPaused applies one request at a time; a request for the current state changes nothing.
-	SetPaused(ctx context.Context, paused bool) (domain.BackgroundWork, error)
+	SetPaused(ctx context.Context, audience domain.Audience, paused bool) (domain.BackgroundWork, error)
 }
 
 type VersionJudging interface {
