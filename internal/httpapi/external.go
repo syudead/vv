@@ -169,6 +169,10 @@ func toExternalScan(scan domain.Scan) extgen.ExternalScan {
 		Status:    extgen.ExternalScanStatus(scan.Import.Status),
 		StartedAt: scan.StartedAt.UTC(),
 	}
+	// The versioned contract has no paused status; its running already means that work remains.
+	if scan.State == domain.ScanPaused {
+		out.Status = extgen.Running
+	}
 	if !scan.FinishedAt.IsZero() {
 		finishedAt := scan.FinishedAt.UTC()
 		out.FinishedAt = &finishedAt

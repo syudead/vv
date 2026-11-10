@@ -357,9 +357,13 @@ on the `Scan` step of onboarding at `/welcome`
 ([Home and onboarding](home.md)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
-disabled while a scan runs (including one started in another tab) and while
-no media folder exists, with the reason in a line it references through
-`aria-describedby`. A failed start request appears as an alert in the same
+disabled while a scan runs (including one started in another tab), while a
+scan waits for the resume of background work, and while no media folder
+exists, with the reason in a line it references through `aria-describedby`.
+A waiting scan (state `paused`) shows `Waiting for resume` with a still
+`Pause` icon, keeps the counts read before the pause on a bar that does not
+animate, and says that it starts or continues when background work resumes
+([background pause](background-pause.md#scans)). A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
 empty folder is a link to `/settings/scan#scan-status` and starts nothing. The
 owner's action on an empty library, and on a home with no video, is `Set up

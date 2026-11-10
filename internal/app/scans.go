@@ -25,6 +25,11 @@ type ScanStore interface {
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan persists ScanFailure code/location and the initiating decider for failed scans.
 	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider) error
+	// PauseScan closes the running scan as paused, keeping its scope, counters, videos, issues and forced marks.
+	PauseScan(ctx context.Context, id int64) error
+	// ReopenScan sets the latest paused scan back to running and deletes the scan-sourced issues its scope covers;
+	// it returns ErrScanRunning while another scan runs.
+	ReopenScan(ctx context.Context, id int64) (domain.Scan, error)
 	FailInterruptedScans(ctx context.Context) (int64, error)
 	RecordScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
 	// Exclude issues whose locations belong to no registered folder.
@@ -116,12 +121,14 @@ type Scans struct {
 
 	// The database's partial unique index owns running-scan exclusivity; mu only prevents duplicate
 	// goroutines.
-	mu          sync.Mutex
-	running     bool
-	cancelRun   context.CancelCauseFunc
-	runOrigin   domain.ScanOrigin
-	runPartial  bool
-	runRequeue  bool
+	mu         sync.Mutex
+	running    bool
+	cancelRun  context.CancelCauseFunc
+	runOrigin  domain.ScanOrigin
+	runPartial bool
+	runRequeue bool
+	// runBase is the completed count a reopened scan kept from before the pause; its pass counts on top of it.
+	runBase     int
 	runFinished chan struct{}
 	// Optional callback invoked under the scan lock after closure.
 	onFinish func(ScanNotice)
@@ -248,7 +255,9 @@ func (s *Scans) start(
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.running {
+	// A scan requested during a pause waits as a paused row, which the resume reopens.
+	if s.running || scan.State == domain.ScanPaused {
+		s.scanChanged()
 		scan, err = s.withImport(ctx, scan)
 		return scan, true, err
 	}
@@ -262,12 +271,16 @@ func (s *Scans) start(
 	s.runOrigin = domain.ScanOriginManual
 	s.runPartial = scan.Rescan != nil && scan.Rescan.Partial()
 	s.runRequeue = false
+	s.runBase = scan.Completed
 	s.runFinished = make(chan struct{})
 	if dirs != nil {
 		s.runOrigin = domain.ScanOriginWatch
 	}
 	if s.stopped {
 		cancel(nil)
+	} else if s.backgroundPaused && s.runOrigin == domain.ScanOriginManual {
+		// The store read the pause before it was saved; the run closes as paused at once.
+		cancel(domain.ErrScanPaused)
 	}
 	if s.onStart != nil {
 		s.onStart(ScanNotice{Origin: s.runOrigin, Partial: s.runPartial})
@@ -368,7 +381,7 @@ func (s *Scans) ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue)
 
 // Keep progress updates to one row so listing and playback remain responsive.
 func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult) error {
-	if err := s.store.UpdateScanProgress(ctx, s.currentScanID(ctx), progressOf(result)); err != nil {
+	if err := s.store.UpdateScanProgress(ctx, s.currentScanID(ctx), s.progressOf(result)); err != nil {
 		return err
 	}
 	s.scanChanged()
@@ -396,22 +409,38 @@ func (s *Scans) Wait() {
 	s.done.Wait()
 }
 
-// PauseBackground records the owner's pause of background work, after which Busy no longer counts queued jobs.
-func (s *Scans) PauseBackground(context.Context) error {
-	s.setBackgroundPaused(true)
-	return nil
-}
-
-// ResumeBackground ends the pause PauseBackground recorded.
-func (s *Scans) ResumeBackground(context.Context) error {
-	s.setBackgroundPaused(false)
-	return nil
-}
-
-func (s *Scans) setBackgroundPaused(paused bool) {
+// PauseBackground records the owner's pause of background work, after which Busy no longer counts queued jobs, and
+// stops a running manual scan or force rescan at the next file; it returns once the scan has closed as paused. A watch
+// scan is left to automatic import's hold.
+func (s *Scans) PauseBackground(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.backgroundPaused = paused
+	s.backgroundPaused = true
+	if !s.running || s.runOrigin != domain.ScanOriginManual || s.cancelRun == nil {
+		s.mu.Unlock()
+		return nil
+	}
+	finished := s.runFinished
+	s.cancelRun(domain.ErrScanPaused)
+	s.mu.Unlock()
+	select {
+	case <-finished:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// ResumeBackground ends the pause PauseBackground recorded and reopens the paused scan, or resumes the interrupted
+// scan when there is none. A scan that cannot be reopened is logged rather than returned, so it does not keep the
+// scheduler held; it is reopened at the next startup.
+func (s *Scans) ResumeBackground(ctx context.Context) error {
+	s.mu.Lock()
+	s.backgroundPaused = false
+	s.mu.Unlock()
+	if _, err := s.resumeWaiting(ctx); err != nil {
+		s.logger.Warn("could not resume the waiting scan", slog.Any("error", err))
+	}
+	return nil
 }
 
 // Busy includes resumable ingestion scans/jobs, excluding live transcoding. While background work is paused, queued
@@ -458,15 +487,29 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 }
 
 // ResumeInterrupted runs once after recovery and worker startup, resuming only the latest
-// interrupted manual scan. Carry prior target membership and stage issues because unchanged files
-// do not requeue exhausted work.
+// interrupted manual scan, or reopening a paused scan left by a resume that did not finish. Carry prior target
+// membership and stage issues because unchanged files do not requeue exhausted work. While background work is paused
+// it resumes nothing; the owner's resume does.
 func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
+	s.mu.Lock()
+	paused := s.backgroundPaused
+	s.mu.Unlock()
+	if paused {
+		return false, nil
+	}
+	return s.resumeWaiting(ctx)
+}
+
+func (s *Scans) resumeWaiting(ctx context.Context) (bool, error) {
 	latest, err := s.store.CurrentScan(ctx)
 	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	if latest.State == domain.ScanPaused {
+		return s.reopen(ctx, latest.ID)
 	}
 	// Do not resume watcher scans at startup; manual scans handle changes made while offline.
 	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted ||
@@ -484,6 +527,24 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 			slog.Int64("interrupted_scan", latest.ID), slog.Int64("scan", scan.ID))
 	}
 	return started, nil
+}
+
+// reopen runs the paused scan id again under its own id, superseding a watch scan as StartScan does.
+func (s *Scans) reopen(ctx context.Context, id int64) (bool, error) {
+	const attempts = 3
+	for attempt := 1; ; attempt++ {
+		s.SupersedeWatchScan(ctx)
+		_, started, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
+			scan, err := s.store.ReopenScan(ctx, id)
+			return scan, err == nil, err
+		}, nil, domain.ActivityByOwner)
+		if !errors.Is(err, domain.ErrScanRunning) || attempt >= attempts {
+			if started {
+				s.logger.Info("reopened the paused scan", slog.Int64("scan", id))
+			}
+			return started, err
+		}
+	}
 }
 
 // Failure to find the current ID returns zero so progress writes match nothing while scanning
@@ -541,22 +602,8 @@ func (s *Scans) run(ctx context.Context, plan scanRun, finished chan struct{}) {
 	// Always clear current registration activity, including interrupted scans.
 	s.activity.end(scanActivityKey)
 
-	// Shutdown closes failed/interrupted for restart recovery, taking precedence over scanner-specific
-	// errors.
-	state := domain.ScanDone
-	if errors.Is(scanErr, domain.ErrScanSuperseded) && s.lifetime.Err() == nil {
-		// Superseded scans delete nothing and close done rather than failed.
-		s.logger.Info("the watch scan was superseded", slog.Int("added", result.Added))
-		scanErr = nil
-	}
-	if scanErr != nil {
-		state = domain.ScanFailed
-		if ctx.Err() != nil || s.lifetime.Err() != nil {
-			scanErr = domain.NewScanFailure(domain.ScanErrorInterrupted, "",
-				fmt.Errorf("the scan was stopped before it finished: %w", scanErr))
-		}
-		s.logger.Warn("scan did not finish", slog.Any("error", scanErr))
-	} else {
+	state, scanErr := s.closingState(ctx, result, scanErr)
+	if state == domain.ScanDone {
 		s.logger.Info("scan finished",
 			slog.Int("total", result.Total),
 			slog.Int("added", result.Added),
@@ -570,7 +617,7 @@ func (s *Scans) run(ctx context.Context, plan scanRun, finished chan struct{}) {
 	// Detach cancellation for final writes so shutdown cannot leave scans stuck running.
 	closeCtx := context.WithoutCancel(ctx)
 
-	if err := s.store.UpdateScanProgress(closeCtx, scanID, progressOf(result)); err != nil {
+	if err := s.store.UpdateScanProgress(closeCtx, scanID, s.progressOf(result)); err != nil {
 		s.logger.Warn("could not record scan progress", slog.Any("error", err))
 	}
 
@@ -578,12 +625,49 @@ func (s *Scans) run(ctx context.Context, plan scanRun, finished chan struct{}) {
 	// filesystem.
 	s.rebuildFolderIndex(closeCtx)
 
-	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr, decider); err != nil {
+	if err := s.closeScan(closeCtx, scanID, state, scanErr, decider); err != nil {
 		s.logger.Warn("could not record the end of the scan", slog.Any("error", err))
 	} else {
 		endState = state
 	}
 	s.scanChanged()
+}
+
+// closingState decides how a run closes. Shutdown closes failed/interrupted for restart recovery, taking precedence
+// over a supersession, a pause and scanner-specific errors.
+func (s *Scans) closingState(
+	ctx context.Context, result domain.ScanResult, scanErr error,
+) (domain.ScanState, error) {
+	if scanErr == nil {
+		return domain.ScanDone, nil
+	}
+	if s.lifetime.Err() == nil {
+		switch {
+		case errors.Is(scanErr, domain.ErrScanSuperseded):
+			// Superseded scans delete nothing and close done rather than failed.
+			s.logger.Info("the watch scan was superseded", slog.Int("added", result.Added))
+			return domain.ScanDone, nil
+		case errors.Is(context.Cause(ctx), domain.ErrScanPaused):
+			s.logger.Info("background work was paused; the scan waits for the resume",
+				slog.Int("completed", result.Completed()))
+			return domain.ScanPaused, nil
+		}
+	}
+	if ctx.Err() != nil || s.lifetime.Err() != nil {
+		scanErr = domain.NewScanFailure(domain.ScanErrorInterrupted, "",
+			fmt.Errorf("the scan was stopped before it finished: %w", scanErr))
+	}
+	s.logger.Warn("scan did not finish", slog.Any("error", scanErr))
+	return domain.ScanFailed, scanErr
+}
+
+func (s *Scans) closeScan(
+	ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider,
+) error {
+	if state == domain.ScanPaused {
+		return s.store.PauseScan(ctx, id)
+	}
+	return s.store.FinishScan(ctx, id, state, cause, decider)
 }
 
 func (s *Scans) runScanner(ctx context.Context, plan scanRun) (result domain.ScanResult, err error) {
@@ -629,10 +713,10 @@ func (s *Scans) scanChanged() {
 	s.publisher.Publish(domain.ScanChanged{})
 }
 
-func progressOf(result domain.ScanResult) domain.ScanProgress {
-	return domain.ScanProgress{
-		Total:     result.Total,
-		Completed: result.Completed(),
-		Failed:    result.Failed,
-	}
+// progressOf counts the running pass on top of the completed files its scan kept from before a pause.
+func (s *Scans) progressOf(result domain.ScanResult) domain.ScanProgress {
+	s.mu.Lock()
+	base := s.runBase
+	s.mu.Unlock()
+	return domain.ResumedScanProgress(base, result)
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -34,10 +35,18 @@ type fakeScanStore struct {
 	watchDirs     [][]domain.DirtyDirectory
 	unfinished    bool
 	unfinishedErr error
+	// backgroundPaused is the saved pause the store reads when it creates a scan; paused and reopened log the
+	// transitions of a pause and a resume.
+	backgroundPaused bool
+	paused           chan domain.Scan
+	reopened         []int64
 }
 
 func newFakeScanStore() *fakeScanStore {
-	return &fakeScanStore{progress: map[int64][]domain.ScanProgress{}, finished: make(chan domain.Scan, 4)}
+	return &fakeScanStore{
+		progress: map[int64][]domain.ScanProgress{}, finished: make(chan domain.Scan, 4),
+		paused: make(chan domain.Scan, 4),
+	}
 }
 
 func (f *fakeScanStore) StartScan(ctx context.Context) (domain.Scan, bool, error) {
@@ -55,10 +64,10 @@ func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, 
 	return f.begin(from, domain.ScanOriginManual, rescan)
 }
 
-// StartRescan refuses any running scan, as the store does.
+// StartRescan refuses any running or paused scan, as the store does.
 func (f *fakeScanStore) StartRescan(_ context.Context, scope domain.RescanScope) (domain.Scan, error) {
 	f.mu.Lock()
-	running := f.hasScan && f.current.State == domain.ScanRunning
+	running := f.hasScan && f.current.State.Open()
 	f.mu.Unlock()
 	if running {
 		return domain.Scan{}, domain.ErrScanRunning
@@ -77,12 +86,15 @@ func (f *fakeScanStore) StartWatchScan(_ context.Context, dirs []domain.DirtyDir
 func (f *fakeScanStore) begin(from int64, origin domain.ScanOrigin, rescan *domain.RescanScope) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.hasScan && f.current.State == domain.ScanRunning {
+	if f.hasScan && f.current.State.Open() {
 		return f.current, false, nil
 	}
 	f.nextID++
 	f.resumedFrom = append(f.resumedFrom, from)
-	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, Origin: origin, StartedAt: time.Now(), Rescan: rescan}
+	f.current = domain.Scan{
+		ID: f.nextID, State: domain.InitialScanState(origin, f.backgroundPaused), Origin: origin,
+		StartedAt: time.Now(), Rescan: rescan,
+	}
 	f.hasScan = true
 	return f.current, true, nil
 }
@@ -126,6 +138,41 @@ func (f *fakeScanStore) FinishScan(
 	f.mu.Unlock()
 	f.finished <- scan
 	return nil
+}
+
+func (f *fakeScanStore) PauseScan(_ context.Context, id int64) error {
+	f.mu.Lock()
+	if err := domain.CheckScanPause(f.current.State); err != nil || f.current.ID != id {
+		f.mu.Unlock()
+		return fmt.Errorf("cannot pause scan %d: %w", id, err)
+	}
+	f.current.State = domain.ScanPaused
+	scan := f.current
+	f.mu.Unlock()
+	f.paused <- scan
+	return nil
+}
+
+func (f *fakeScanStore) ReopenScan(_ context.Context, id int64) (domain.Scan, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := domain.CheckScanReopen(f.current.State, f.current.ID == id, false); err != nil {
+		return domain.Scan{}, err
+	}
+	f.reopened = append(f.reopened, id)
+	f.current.State = domain.ScanRunning
+	return f.current, nil
+}
+
+func (f *fakeScanStore) waitPaused(t *testing.T) domain.Scan {
+	t.Helper()
+	select {
+	case scan := <-f.paused:
+		return scan
+	case <-time.After(5 * time.Second):
+		t.Fatal("the scan did not close as paused")
+		return domain.Scan{}
+	}
 }
 
 func (f *fakeScanStore) RecordScanIssue(_ context.Context, issue domain.ScanFileIssue) error {

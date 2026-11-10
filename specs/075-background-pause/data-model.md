@@ -7,8 +7,9 @@ The rest of the model is unchanged:
 
 One migration, numbered after the latest on the feature branch when the unit
 is implemented. It rebuilds `scans` to widen the `state` check, because SQLite
-cannot alter a check constraint, and creates `held_watch_directories`. The
-rebuild keeps every row, the ids, and the unique index on the `running` state.
+cannot alter a check constraint, and creates `scan_read_locations` and
+`held_watch_directories`. The rebuild keeps every row, the ids, and the unique
+index on the `running` state.
 `scan_videos` and `scan_issues` reference `scans` with `on delete cascade`,
 and the store opens connections with `foreign_keys(on)`, so dropping the old
 table would delete their rows: the migration copies both tables' rows aside
@@ -27,10 +28,25 @@ rebuild of a table with cascading references.
 | --- | --- | --- | --- |
 | `state` | text | no | Gains the value `paused`: the scan stopped for a pause, or was requested during one, and no scanner runs for it |
 
-A `paused` row keeps its scope, progress counters, video set, issues and
-`forced` marks. `finished_at` stays null. Reopening it keeps `completed` as the
-base of the resumed pass's counts and deletes the scan-sourced issues its
-scope covers ([Scans](plan.md#scans)).
+A `paused` row keeps its scope, progress counters, video set, issues,
+`forced` marks and read locations. `finished_at` stays null. Reopening it
+keeps `completed` as the base of the resumed pass's counts and deletes the
+scan-sourced issues its scope covers ([Scans](plan.md#scans)).
+
+## `scan_read_locations`
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `scan_id` | integer | no | The force rescan, `references scans(id) on delete cascade` |
+| `path` | text | no | A location the scan read the content key of, as the index stores it |
+
+The primary key is (`scan_id`, `path`). The scanner writes a row after it
+forces the location's video, and a reopened or resumed force rescan skips the
+content key of an unchanged location with a row. A video's `forced` mark in
+`scan_videos` only keeps the scan from queueing its forced jobs twice; it does
+not stand for the video's other locations ([Scans](plan.md#scans)). Starting a
+scan deletes the rows of every other scan, and the resume of an interrupted
+scan copies its rows to the new scan, as `scan_videos` does.
 
 ## `held_watch_directories`
 
@@ -54,6 +70,7 @@ the registered folders.
 | At most one scan is `paused`, and it is the latest scan | The store transaction that closes or creates a paused scan |
 | A scan becomes `paused` only from `running`, or at creation while the setting is on | `internal/domain` rule, re-read in the store transaction |
 | Only the latest `paused` scan is reopened, and only while no scan is `running` | The store transaction that reopens it |
+| Only the latest scan has read locations | The store transaction that starts a scan |
 | A media folder change is refused while a scan is `running`, not while one is `paused` | The existing store check, unchanged |
 | A held directory row exists only for a directory in the dirty set | `AutoImport`, which writes and deletes the rows with the set |
 

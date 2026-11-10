@@ -827,7 +827,7 @@ export interface paths {
         put?: never;
         /**
          * Start import
-         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background.
+         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background. While background work is paused, the new scan is answered in the state paused and runs after the resume.
          */
         post: operations["startScan"];
         delete?: never;
@@ -847,7 +847,7 @@ export interface paths {
         put?: never;
         /**
          * Start a force rescan
-         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
+         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan, or a paused scan, returns 409 scan_in_progress, and while background work is paused the new rescan is answered in the state paused. No media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
          */
         post: operations["startRescan"];
         delete?: never;
@@ -7942,10 +7942,10 @@ export interface components {
             settledAt?: string;
             activity?: components["schemas"]["ScanActivity"];
             /**
-             * @description Traversal state, used to refresh listings and determine whether another import can start.
+             * @description Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
              * @enum {string}
              */
-            state: "running" | "done" | "failed";
+            state: "running" | "paused" | "done" | "failed";
             /** @description Free-text scan failure reason; the UI builds its explanation from errorCode and errorPath instead of displaying this text. */
             error?: string;
             errorCode?: components["schemas"]["ScanErrorCode"];
@@ -10458,7 +10458,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description A manual scan or force rescan is running (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
+            /** @description A manual scan or force rescan is running or paused (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
             409: {
                 headers: {
                     [name: string]: unknown;

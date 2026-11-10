@@ -2278,6 +2278,7 @@ func (e ScanOrigin) Valid() bool {
 const (
 	ScanStateDone    ScanState = "done"
 	ScanStateFailed  ScanState = "failed"
+	ScanStatePaused  ScanState = "paused"
 	ScanStateRunning ScanState = "running"
 )
 
@@ -2287,6 +2288,8 @@ func (e ScanState) Valid() bool {
 	case ScanStateDone:
 		return true
 	case ScanStateFailed:
+		return true
+	case ScanStatePaused:
 		return true
 	case ScanStateRunning:
 		return true
@@ -7141,7 +7144,7 @@ type Scan struct {
 	// SettledAt Timestamp when all target videos settled; returned only for done or partial status.
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 
-	// State Traversal state, used to refresh listings and determine whether another import can start.
+	// State Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
 	State ScanState `json:"state"`
 
 	// Status User-visible import status, first matching rule: failed for traversal failure; finding while counting; running while traversal or pending work remains; partial for failed issues; otherwise done.
@@ -7154,7 +7157,7 @@ type Scan struct {
 // ScanOrigin Import initiator; watch means a folder-watcher import limited to changed folders.
 type ScanOrigin string
 
-// ScanState Traversal state, used to refresh listings and determine whether another import can start.
+// ScanState Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
 type ScanState string
 
 // ScanActivity Current import activity, the most recently started when concurrent; omitted from Scan when idle. The SPA derives user-facing text from kind.

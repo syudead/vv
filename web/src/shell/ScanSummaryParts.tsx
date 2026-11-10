@@ -1,4 +1,11 @@
-import { AlertTriangle, CheckCircle2, Info, RefreshCw, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  Pause,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
 
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -19,6 +26,7 @@ export function ScanStatusIcon({
   if (state === "done") return <CheckCircle2 aria-hidden className={classes} />;
   if (state === "partial") return <AlertTriangle aria-hidden className={classes} />;
   if (state === "failed") return <XCircle aria-hidden className={classes} />;
+  if (state === "paused") return <Pause aria-hidden className={classes} />;
   return (
     <RefreshCw
       aria-hidden
