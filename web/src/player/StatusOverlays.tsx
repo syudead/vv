@@ -144,7 +144,8 @@ const stageIcons: Record<StageState, ReactNode> = {
 };
 
 export function ProcessingStages({ video }: { video: Video }) {
-  const paused = useBackgroundPaused();
+  // The status is this node's, so it does not explain a paired node's stages.
+  const paused = useBackgroundPaused() && !isRemoteId(video.id);
   return (
     <Surface>
       <div className="flex w-full max-w-sm flex-col gap-3 text-left">

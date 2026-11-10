@@ -59,7 +59,8 @@ export function useIndicatorPopover() {
     clearPointerCloseTimer();
     pointerCloseTimer.current = window.setTimeout(() => {
       pointerInside.current = false;
-      close();
+      // Focus in the summary keeps it open; blurContent closes it when focus leaves.
+      if (!inside(content.current, document.activeElement)) close();
     }, POINTER_CLOSE_DELAY_MS);
   };
   const focusTrigger = () => {

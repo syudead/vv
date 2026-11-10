@@ -442,7 +442,8 @@ work says `Waiting for resume` instead, with the same icon, colour and
 position: an Activity entry's status icon name and result, a pipeline's
 `Waiting · …` line and a waiting stage row; the first figure of the `Progress`
 queue line of `Auto-tagging` and `Face recognition`; a waiting pair's automatic
-judgement on `Duplicates`; and a waiting stage under `Getting ready to play`.
+judgement on `Duplicates`; and a waiting stage under `Getting ready to play`
+for a video on this node, since the status does not cover a paired node's work.
 The screens read one flag from the provider (`useBackgroundPaused`), so a guest,
 who has no status, keeps the plain texts.
 

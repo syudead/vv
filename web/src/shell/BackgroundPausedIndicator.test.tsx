@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router";
@@ -166,6 +166,33 @@ describe("BackgroundPausedIndicator", () => {
     expect(
       await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ }),
     ).toBeDefined();
+  });
+
+  it("keeps the summary open while focus is on its switch and the pointer leaves", async () => {
+    const user = userEvent.setup();
+    renderIndicators();
+    const trigger = await screen.findByRole("button", { name: pausedName });
+    act(() => trigger.focus());
+    const summary = await screen.findByRole("dialog");
+    await user.tab();
+    const pauseSwitch = within(summary).getByRole("switch", {
+      name: "Pause background work",
+    });
+    expect(document.activeElement).toBe(pauseSwitch);
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerEnter(summary);
+      fireEvent.pointerLeave(summary);
+      await act(async () => vi.advanceTimersByTimeAsync(200));
+      expect(screen.getByRole("dialog")).toBe(summary);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // Focus leaving the summary closes it once the pointer is gone.
+    act(() => screen.getByRole("button", { name: "Page control" }).focus());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("does not show a scan result that came while paused, after the resume", async () => {

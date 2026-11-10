@@ -303,13 +303,14 @@
 /*
  * The bottom-right indicator's offset, raised above a list's bottom selection bar by the height
  * the bar publishes in --selection-bar-height; without a bar it is bottom-4, and bottom-5 from sm.
+ * The fallback cancels the gap above the bar, so a missing bar leaves the base offset.
  */
 @utility bottom-indicator {
-  bottom: max(1rem, calc(var(--selection-bar-height, 0px) + 1.25rem));
+  bottom: max(1rem, calc(var(--selection-bar-height, -1.25rem) + 1.25rem));
 }
 
 @utility bottom-indicator-sm {
-  bottom: max(1.25rem, calc(var(--selection-bar-height, 0px) + 1.5rem));
+  bottom: max(1.25rem, calc(var(--selection-bar-height, -1.5rem) + 1.5rem));
 }
 
 /* DataTable supplies the measured sticky-band bottom through --data-table-head-top. */
