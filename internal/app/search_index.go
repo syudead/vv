@@ -13,8 +13,8 @@ type SearchIndexStore interface {
 	ApplySearchIndexForJob(ctx context.Context, job domain.Job, index domain.SearchIndex) (bool, error)
 }
 
-// KeyframeHashReader reads every keyframe hash of one video file in one sequential pass.
-type KeyframeHashReader func(ctx context.Context, path string) ([]domain.KeyframeHash, error)
+// KeyframeHashReader reads one video file in one sequential pass, giving keep each keyframe hash in order.
+type KeyframeHashReader func(ctx context.Context, path string, keep func(domain.KeyframeHash)) error
 
 // SearchIndexBuilder handles frame_index jobs: a background kind outside import tracking whose failure only leaves
 // the content unsearched. See docs/design-docs/job-scheduling.md.
@@ -39,10 +39,10 @@ func (b *SearchIndexBuilder) Build(ctx context.Context, job domain.Job) error {
 	if err != nil {
 		return err
 	}
-	keyframes, err := b.read(ctx, path)
-	if err != nil {
+	index := domain.NewSearchIndexCollector(durationOf(video))
+	if err := b.read(ctx, path, index.Add); err != nil {
 		return err
 	}
-	_, err = b.store.ApplySearchIndexForJob(ctx, job, domain.NewSearchIndex(durationOf(video), keyframes))
+	_, err = b.store.ApplySearchIndexForJob(ctx, job, index.Index())
 	return err
 }

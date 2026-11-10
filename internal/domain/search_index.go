@@ -43,27 +43,58 @@ var ErrInvalidSearchIndex = errors.New("the search index data is malformed")
 
 // SearchIndexSpacingMs is the least time between kept entries of a video of durationMs; an unknown duration is zero.
 func SearchIndexSpacingMs(durationMs int64) int64 {
-	return max(SearchIndexMinSpacingMs, durationMs/SearchIndexMaxEntries)
+	return searchIndexSpacingMs(durationMs, SearchIndexMaxEntries)
+}
+
+func searchIndexSpacingMs(durationMs int64, maxEntries int) int64 {
+	return max(SearchIndexMinSpacingMs, durationMs/int64(maxEntries))
 }
 
 // NewSearchIndex keeps, in order, each keyframe that is not flat and comes at least the spacing after the last kept
 // one, up to SearchIndexMaxEntries. A keyframe out of order or outside the encodable time range is dropped.
 func NewSearchIndex(durationMs int64, keyframes []KeyframeHash) SearchIndex {
-	spacing := SearchIndexSpacingMs(durationMs)
-	entries := make([]SearchIndexEntry, 0, min(len(keyframes), SearchIndexMaxEntries))
+	collector := NewSearchIndexCollector(durationMs)
 	for _, keyframe := range keyframes {
-		if len(entries) == SearchIndexMaxEntries {
-			break
-		}
-		if keyframe.Frame.Flat || keyframe.TimeMs < 0 || keyframe.TimeMs > math.MaxUint32 {
-			continue
-		}
-		if len(entries) > 0 && keyframe.TimeMs < entries[len(entries)-1].TimeMs+spacing {
-			continue
-		}
-		entries = append(entries, SearchIndexEntry{TimeMs: keyframe.TimeMs, Hash: keyframe.Frame.Hash})
+		collector.Add(keyframe)
 	}
-	return SearchIndex{Version: SearchIndexVersion, Entries: entries}
+	return collector.Index()
+}
+
+// SearchIndexCollector applies NewSearchIndex's rule one keyframe at a time, so a reader of a file with any number of
+// keyframes holds at most SearchIndexMaxEntries of them.
+type SearchIndexCollector struct {
+	spacing    int64
+	maxEntries int
+	entries    []SearchIndexEntry
+}
+
+func NewSearchIndexCollector(durationMs int64) *SearchIndexCollector {
+	return newSearchIndexCollector(durationMs, SearchIndexMaxEntries)
+}
+
+func newSearchIndexCollector(durationMs int64, maxEntries int) *SearchIndexCollector {
+	return &SearchIndexCollector{
+		spacing:    searchIndexSpacingMs(durationMs, maxEntries),
+		maxEntries: maxEntries,
+		entries:    []SearchIndexEntry{},
+	}
+}
+
+func (c *SearchIndexCollector) Add(keyframe KeyframeHash) {
+	if len(c.entries) == c.maxEntries {
+		return
+	}
+	if keyframe.Frame.Flat || keyframe.TimeMs < 0 || keyframe.TimeMs > math.MaxUint32 {
+		return
+	}
+	if len(c.entries) > 0 && keyframe.TimeMs < c.entries[len(c.entries)-1].TimeMs+c.spacing {
+		return
+	}
+	c.entries = append(c.entries, SearchIndexEntry{TimeMs: keyframe.TimeMs, Hash: keyframe.Frame.Hash})
+}
+
+func (c *SearchIndexCollector) Index() SearchIndex {
+	return SearchIndex{Version: SearchIndexVersion, Entries: c.entries}
 }
 
 // Encode stores each entry as a four-byte big-endian time in milliseconds and the eight-byte big-endian hash; the

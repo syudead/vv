@@ -53,19 +53,17 @@ func TestNewSearchIndexKeepsKeyframesOneSecondApartAndDropsFlatOnes(t *testing.T
 	}
 }
 
-// A ten-hour video keeps one keyframe per 1.8 s, which would be one entry over the cap.
-func TestNewSearchIndexCapsLongVideos(t *testing.T) {
+// With a cap of four, a 7.2 s video keeps one keyframe per 1.8 s, which would be one entry over the cap. The frame_index
+// handler's test shows the production cap through the spacing of a long video.
+func TestSearchIndexCollectorCapsLongVideos(t *testing.T) {
 	t.Parallel()
-	const durationMs = 10 * 3600 * 1000
-	keyframes := make([]KeyframeHash, 0, durationMs/900+1)
-	for ms := int64(0); ms <= durationMs; ms += 900 {
-		keyframes = append(keyframes, KeyframeHash{TimeMs: ms, Frame: FrameHash{Hash: uint64(ms)}})
+	collector := newSearchIndexCollector(7200, 4)
+	for ms := int64(0); ms <= 7200; ms += 900 {
+		collector.Add(KeyframeHash{TimeMs: ms, Frame: FrameHash{Hash: uint64(ms)}})
 	}
-	entries := NewSearchIndex(durationMs, keyframes).Entries
-	if len(entries) != SearchIndexMaxEntries {
-		t.Fatalf("entries = %d, want %d", len(entries), SearchIndexMaxEntries)
-	}
-	if gap := entries[1].TimeMs - entries[0].TimeMs; gap != 1800 {
-		t.Fatalf("first gap = %d ms, want 1800", gap)
+	want := []SearchIndexEntry{{TimeMs: 0, Hash: 0}, {TimeMs: 1800, Hash: 1800}, {TimeMs: 3600, Hash: 3600},
+		{TimeMs: 5400, Hash: 5400}}
+	if got := collector.Index().Entries; !reflect.DeepEqual(got, want) {
+		t.Fatalf("entries = %+v, want %+v", got, want)
 	}
 }

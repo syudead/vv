@@ -9,6 +9,7 @@ import (
 	"image"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,8 +28,9 @@ const (
 
 // KeyframeHashes reads the video's first video stream that is not a cover picture once, in order, decoding only its
 // keyframes at the seek sprite's size in full-range gray, and hashes each by the fingerprint's rule. Times are from
-// the start of the video; a keyframe without a time gets -1.
-func KeyframeHashes(ctx context.Context, videoPath string) ([]domain.KeyframeHash, error) {
+// the start of the video; a keyframe without a time gets -1. Each keyframe goes to keep as soon as its time is known,
+// so the read holds no list of every keyframe; keep may already have some when an error is returned.
+func KeyframeHashes(ctx context.Context, videoPath string, keep func(domain.KeyframeHash)) error {
 	run, cancel := context.WithTimeout(ctx, keyframeHashesTimeout)
 	defer cancel()
 	cmd := command(run, PriorityLow, thumbnailCommand, keyframeHashArgs(videoPath)...)
@@ -36,41 +38,67 @@ func KeyframeHashes(ctx context.Context, videoPath string) ([]domain.KeyframeHas
 	cmd.Stderr = stderr
 	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("cannot run %s (%s): %w", thumbnailCommand, videoPath, err)
+		return fmt.Errorf("cannot run %s (%s): %w", thumbnailCommand, videoPath, err)
 	}
-	frames, readErr := readGrayFrameHashes(bufio.NewReaderSize(out, 1<<20))
+	pairs := keyframePairs{times: stderr, keep: keep}
+	readErr := readGrayFrameHashes(bufio.NewReaderSize(out, 1<<20), pairs.add)
 	if readErr != nil {
 		// Stop ffmpeg when reading ended early, so Wait does not block on a full pipe.
 		cancel()
 	}
 	waitErr := cmd.Wait()
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return err
 	}
 	if errors.Is(run.Err(), context.DeadlineExceeded) {
-		return nil, fmt.Errorf("%w: reading keyframes took longer than %v (%s)", domain.ErrFailureRepeats,
+		return fmt.Errorf("%w: reading keyframes took longer than %v (%s)", domain.ErrFailureRepeats,
 			keyframeHashesTimeout, videoPath)
 	}
 	if waitErr != nil {
 		output := []byte(stderr.tail.String())
-		return nil, exitFailure(fmt.Errorf("%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(output)), output)
+		return exitFailure(fmt.Errorf("%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(output)), output)
 	}
 	if readErr != nil {
-		return nil, readErr
+		return readErr
 	}
-	times := stderr.timesMs()
-	if len(times) != len(frames) {
-		return nil, fmt.Errorf("%s reported %d keyframe times for %d frames (%s)", thumbnailCommand, len(times),
-			len(frames), videoPath)
+	if times, frames := pairs.finish(); times != frames {
+		return fmt.Errorf("%s reported %d keyframe times for %d frames (%s)", thumbnailCommand, times, frames,
+			videoPath)
 	}
-	hashes := make([]domain.KeyframeHash, len(frames))
-	for i, frame := range frames {
-		hashes[i] = domain.KeyframeHash{TimeMs: times[i], Frame: frame}
+	return nil
+}
+
+// keyframePairs gives each frame, in order, the next time showinfo reported. showinfo logs a frame before ffmpeg
+// writes it, so a frame waits only until standard error is copied and few are ever held.
+type keyframePairs struct {
+	times   *keyframeTimes
+	keep    func(domain.KeyframeHash)
+	pending []domain.FrameHash
+	frames  int
+}
+
+func (p *keyframePairs) add(frame domain.FrameHash) {
+	p.frames++
+	p.pending = append(p.pending, frame)
+	p.pair()
+}
+
+func (p *keyframePairs) pair() {
+	times := p.times.take(len(p.pending))
+	for i, timeMs := range times {
+		p.keep(domain.KeyframeHash{TimeMs: timeMs, Frame: p.pending[i]})
 	}
-	return hashes, nil
+	p.pending = p.pending[len(times):]
+}
+
+// finish pairs the frames still waiting once standard error is complete and returns how many times and frames ffmpeg
+// reported in all.
+func (p *keyframePairs) finish() (times, frames int) {
+	p.pair()
+	return p.times.reported(), p.frames
 }
 
 // showinfo reports each frame's time on standard error, in the order the frames reach standard output.
@@ -90,17 +118,16 @@ func keyframeHashArgs(videoPath string) []string {
 	}
 }
 
-// readGrayFrameHashes hashes every binary PGM frame of r; a stream that ends inside a frame is an error.
-func readGrayFrameHashes(r *bufio.Reader) ([]domain.FrameHash, error) {
-	var frames []domain.FrameHash
+// readGrayFrameHashes hashes every binary PGM frame of r in order; a stream that ends inside a frame is an error.
+func readGrayFrameHashes(r *bufio.Reader, add func(domain.FrameHash)) error {
 	var pix []byte
 	for {
 		width, height, err := readPGMHeader(r)
 		if errors.Is(err, io.EOF) {
-			return frames, nil
+			return nil
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 		size := width * height
 		if cap(pix) < size {
@@ -108,10 +135,10 @@ func readGrayFrameHashes(r *bufio.Reader) ([]domain.FrameHash, error) {
 		}
 		pix = pix[:size]
 		if _, err := io.ReadFull(r, pix); err != nil {
-			return nil, fmt.Errorf("cannot read a keyframe: %w", err)
+			return fmt.Errorf("cannot read a keyframe: %w", err)
 		}
 		gray := luma{rect: image.Rect(0, 0, width, height), stride: width, pix: pix}
-		frames = append(frames, gray.frameHash(gray.rect))
+		add(gray.frameHash(gray.rect))
 	}
 }
 
@@ -165,8 +192,10 @@ func readPGMField(r *bufio.Reader) (string, error) {
 type keyframeTimes struct {
 	mu      sync.Mutex
 	partial []byte
-	times   []int64
-	tail    tailWriter
+	// times are reported but not yet taken; total counts every reported time.
+	times []int64
+	total int
+	tail  tailWriter
 }
 
 func (k *keyframeTimes) Write(p []byte) (int, error) {
@@ -199,15 +228,26 @@ func (k *keyframeTimes) line(line string) {
 	}
 	value, _, _ := strings.Cut(after, " ")
 	seconds, err := strconv.ParseFloat(value, 64)
-	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
-		k.times = append(k.times, -1)
-		return
+	timeMs := int64(-1)
+	if err == nil && !math.IsNaN(seconds) && !math.IsInf(seconds, 0) {
+		timeMs = int64(math.Round(seconds * 1000))
 	}
-	k.times = append(k.times, int64(math.Round(seconds*1000)))
+	k.times = append(k.times, timeMs)
+	k.total++
 }
 
-func (k *keyframeTimes) timesMs() []int64 {
+// take removes and returns up to n of the earliest times not yet taken.
+func (k *keyframeTimes) take(n int) []int64 {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	return k.times
+	n = min(n, len(k.times))
+	taken := slices.Clone(k.times[:n])
+	k.times = k.times[n:]
+	return taken
+}
+
+func (k *keyframeTimes) reported() int {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.total
 }

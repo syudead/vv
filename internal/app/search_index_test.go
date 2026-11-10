@@ -30,12 +30,14 @@ func (s *searchIndexTestStore) ApplySearchIndexForJob(_ context.Context, job dom
 func TestSearchIndexBuilderSavesTheKeyframesOfTheJobsFile(t *testing.T) {
 	store := &searchIndexTestStore{durationMs: 30_000_000}
 	job := domain.Job{ID: 3, VideoID: 5, LocationPath: "/media/a.mkv"}
-	read := func(_ context.Context, path string) ([]domain.KeyframeHash, error) {
+	read := func(_ context.Context, path string, keep func(domain.KeyframeHash)) error {
 		if path != "resolved:/media/a.mkv" {
 			t.Errorf("path = %q", path)
 		}
-		return []domain.KeyframeHash{{TimeMs: 0, Frame: domain.FrameHash{Hash: 1}}, {TimeMs: 1000,
-			Frame: domain.FrameHash{Hash: 2}}, {TimeMs: 2000, Frame: domain.FrameHash{Hash: 3}}}, nil
+		for i, timeMs := range []int64{0, 1000, 2000} {
+			keep(domain.KeyframeHash{TimeMs: timeMs, Frame: domain.FrameHash{Hash: uint64(i + 1)}})
+		}
+		return nil
 	}
 	if err := NewSearchIndexBuilder(store, testSources(), read).Build(context.Background(), job); err != nil {
 		t.Fatal(err)
@@ -52,7 +54,10 @@ func TestSearchIndexBuilderSavesNothingWhenTheFileCannotBeRead(t *testing.T) {
 	failed := errors.New("ffmpeg failed")
 	for name, path := range map[string]string{"refused": "/elsewhere/a.mkv", "unreadable": "/media/a.mkv"} {
 		store := &searchIndexTestStore{}
-		read := func(context.Context, string) ([]domain.KeyframeHash, error) { return nil, failed }
+		read := func(_ context.Context, _ string, keep func(domain.KeyframeHash)) error {
+			keep(domain.KeyframeHash{Frame: domain.FrameHash{Hash: 1}})
+			return failed
+		}
 		err := NewSearchIndexBuilder(store, testSources(), read).Build(context.Background(), domain.Job{LocationPath: path})
 		if err == nil || len(store.jobs) != 0 {
 			t.Errorf("%s: build = %v, saved %v, want an error and nothing saved", name, err, store.jobs)
