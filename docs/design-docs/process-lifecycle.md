@@ -83,6 +83,7 @@ unfinished from an earlier run:
 | --- | --- |
 | `queue_keyframes` | Queues a `keyframes` job per H.264 video whose keyframe sample is missing, of an older version, or for another file size or modification time ([live-transcode-seek.md](live-transcode-seek.md#bounded-keyframe-sampling)) |
 | `queue_media_info` | Queues a `media_info` job per video without media information of this version, unless reading the same file failed at this version ([media-information.md](media-information.md#videos-imported-earlier-are-read-again-in-the-background)) |
+| `queue_frame_index` | Queues a `frame_index` job per content with a file and without a search index of the current version ([job-scheduling.md](job-scheduling.md#each-kind-declares-a-demand)) |
 | `virtual_thumbnails` | Publishes each virtual video's missing thumbnail file from its stored image |
 
 A video with a probe pending is left to the import. Nothing polls for this

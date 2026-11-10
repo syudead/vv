@@ -143,8 +143,8 @@ worker or a scan.
 **One owner for opening files.** `internal/mediafs` alone decides whether a
 file may be opened: inside a registered media folder, after resolving symbolic
 links, and a regular file. Streaming, live transcoding, subtitles, opening in
-the default app, the directory picker, the import stages, the backfills and
-face analysis all go through it, and a location that fails the check is
+the default app, the directory picker, the import stages, the backfills, the
+search index's keyframe read (`frame_index`) and face analysis all go through it, and a location that fails the check is
 answered like a missing file.
 
 **One owner for generated files.** `internal/artifacts` alone places, publishes,

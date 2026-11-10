@@ -486,7 +486,7 @@ func run(opts runOptions) error {
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
 }
 
-// addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
+// addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.
 func addBackfillHandlers(
 	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
 ) {
@@ -499,6 +499,9 @@ func addBackfillHandlers(
 	handlers[domain.JobVirtualThumbnails] = func(ctx context.Context, _ domain.Job) error {
 		return ingest.RepublishVirtualThumbnails(ctx)
 	}
+	searchIndex := app.NewSearchIndexBuilder(ingestStore, sources, media.KeyframeHashes)
+	handlers[domain.JobQueueFrameIndex] = searchIndex.QueueAll
+	handlers[domain.JobFrameIndex] = searchIndex.Build
 }
 
 // recoverActivity marks interrupted processing as attention/interrupted, leaving waiting records
