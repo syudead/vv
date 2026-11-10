@@ -85,9 +85,11 @@ type Scheduler struct {
 // hold is the pause of background work: while held nothing is granted, and every running job's context is cancelled
 // with domain.ErrJobPaused. The mutex orders a grant against Hold, so a job claimed during a hold never runs.
 type hold struct {
-	mu     sync.Mutex
-	held   bool
-	cancel map[int64]context.CancelCauseFunc
+	mu   sync.Mutex
+	held bool
+	// Each entry is the current claim's registration: a job snoozed by a hold can be claimed again before its
+	// earlier run returns, and that run must not remove the new one.
+	cancel map[int64]*context.CancelCauseFunc
 }
 
 func NewScheduler(opts Options) *Scheduler {
@@ -107,7 +109,7 @@ func NewScheduler(opts Options) *Scheduler {
 		logger:   logger,
 		capacity: newCapacity(opts.CPUSlots),
 		nextKind: map[string]int{},
-		hold:     hold{held: opts.Held, cancel: map[int64]context.CancelCauseFunc{}},
+		hold:     hold{held: opts.Held, cancel: map[int64]*context.CancelCauseFunc{}},
 	}
 	s.roots = newRoots(opts.Disks, logger, s.Wake)
 	return s
@@ -124,7 +126,7 @@ func (s *Scheduler) Hold() {
 	defer s.hold.mu.Unlock()
 	s.hold.held = true
 	for _, cancel := range s.hold.cancel {
-		cancel(domain.ErrJobPaused)
+		(*cancel)(domain.ErrJobPaused)
 	}
 	s.logger.Info("held the background jobs", slog.Int("cancelled", len(s.hold.cancel)))
 }
@@ -151,10 +153,13 @@ func (s *Scheduler) track(id int64, cancel context.CancelCauseFunc) (untrack fun
 	if s.hold.held {
 		cancel(domain.ErrJobPaused)
 	}
-	s.hold.cancel[id] = cancel
+	registration := &cancel
+	s.hold.cancel[id] = registration
 	return func() {
 		s.hold.mu.Lock()
-		delete(s.hold.cancel, id)
+		if s.hold.cancel[id] == registration {
+			delete(s.hold.cancel, id)
+		}
 		s.hold.mu.Unlock()
 		cancel(nil)
 	}

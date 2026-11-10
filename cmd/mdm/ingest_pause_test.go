@@ -7,14 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/mediafs"
-	"github.com/syudead/vv/internal/store"
 )
 
 // pausedPreview writes part of the preview and is then stopped by a pause, as an encode cancelled mid-run is.
@@ -32,49 +30,42 @@ func (g pausedPreview) Preview(ctx context.Context, _, output string, _ int64) e
 	return ctx.Err()
 }
 
+// previewReady answers the reads a preview stage makes before it encodes: a probed video whose content is current.
+// Any other store call panics on the nil interface, since the stopped stage must record nothing.
+type previewReady struct {
+	app.IngestStore
+	duration int64
+}
+
+func (s previewReady) GetVideo(_ context.Context, id int64) (domain.Video, error) {
+	return domain.Video{ID: id, ProbeState: domain.ProbeStateDone, DurationMs: &s.duration}, nil
+}
+
+func (previewReady) ContentKeyCurrent(context.Context, int64, string) (bool, error) { return true, nil }
+
+type oneMediaFolder string
+
+func (f oneMediaFolder) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	return []domain.MediaFolder{{ID: 1, Path: string(f)}}, nil
+}
+
 // A preview stage stopped by a pause leaves nothing of its partial output in the artifact store's temporary
 // directory.
 func TestIngestPreviewCancelledMidRunLeavesNoTemporaryFile(t *testing.T) {
-	ctx := context.Background()
-	dataDir := t.TempDir()
-	db, err := store.OpenMigratedForTest(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
 	mediaDir := t.TempDir()
-	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
-		t.Fatal(err)
-	}
 	path := filepath.Join(mediaDir, "movie.mp4")
 	if err := os.WriteFile(path, []byte("video"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: path, Title: "movie", ContentKey: "paused-preview", SizeBytes: 5, MTime: time.Unix(1, 0), Container: "mp4",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	probe := domain.Probe{DurationMs: 10_000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID, domain.ActivityByRule); err != nil {
-		t.Fatal(err)
-	}
-	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jobCtx, pause := context.WithCancelCause(ctx)
-	thumbnails := Config{DataDir: dataDir}.ThumbnailsDir()
+	jobCtx, pause := context.WithCancelCause(context.Background())
+	thumbnails := Config{DataDir: t.TempDir()}.ThumbnailsDir()
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: db.Ingest(), Generator: pausedPreview{Assets: media.NewAssets(), pause: pause},
+		Store: previewReady{duration: 10_000}, Generator: pausedPreview{Assets: media.NewAssets(), pause: pause},
 		Artifacts: artifacts.New(thumbnails),
-		Sources:   app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()},
+		Sources:   app.MediaFiles{Folders: oneMediaFolder(mediaDir), Resolver: mediafs.New()},
 		Logger:    slog.New(slog.DiscardHandler),
 	})
+	job := domain.Job{ID: 1, Kind: domain.JobPreview, VideoID: 1, ContentKey: "paused-preview", LocationPath: path}
 
 	if err := ingest.Preview(jobCtx, job); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Preview = %v, want the cancellation", err)

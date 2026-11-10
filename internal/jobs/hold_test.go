@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -152,4 +153,25 @@ func TestSchedulerCreatedHeldGrantsAfterReleaseExceptFeaturePausedKinds(t *testi
 			t.Fatalf("claims of a kind whose feature is off = %d, want 0", n)
 		}
 	})
+}
+
+// A job snoozed by a hold and claimed again before its earlier run returned stays cancellable by the next hold: the
+// earlier run's untrack removes only its own registration.
+func TestSchedulerEarlierRunKeepsTheNewClaimCancellable(t *testing.T) {
+	scheduler := NewScheduler(Options{Logger: slog.New(slog.DiscardHandler)})
+	earlier, cancelEarlier := context.WithCancelCause(context.Background())
+	untrackEarlier := scheduler.track(1, cancelEarlier)
+	scheduler.Hold()
+	scheduler.Release()
+	reclaimed, cancelReclaimed := context.WithCancelCause(context.Background())
+	defer scheduler.track(1, cancelReclaimed)()
+
+	untrackEarlier()
+	scheduler.Hold()
+	if !errors.Is(context.Cause(earlier), domain.ErrJobPaused) {
+		t.Fatalf("earlier run's cause = %v, want the pause", context.Cause(earlier))
+	}
+	if got := context.Cause(reclaimed); !errors.Is(got, domain.ErrJobPaused) {
+		t.Fatalf("reclaimed run's cause after the second hold = %v, want the pause", got)
+	}
 }
