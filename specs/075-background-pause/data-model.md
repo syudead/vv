@@ -9,6 +9,11 @@ One migration, numbered after the latest on the feature branch when the unit
 is implemented. It rebuilds `scans` to widen the `state` check, because SQLite
 cannot alter a check constraint, and creates `held_watch_directories`. The
 rebuild keeps every row, the ids, and the unique index on the `running` state.
+`scan_videos` and `scan_issues` reference `scans` with `on delete cascade`,
+and the store opens connections with `foreign_keys(on)`, so dropping the old
+table would delete their rows: the migration copies both tables' rows aside
+before the drop and writes them back after the rename. This is the first
+rebuild of a table with cascading references.
 
 ## `settings`
 
@@ -23,7 +28,9 @@ rebuild keeps every row, the ids, and the unique index on the `running` state.
 | `state` | text | no | Gains the value `paused`: the scan stopped for a pause, or was requested during one, and no scanner runs for it |
 
 A `paused` row keeps its scope, progress counters, video set, issues and
-`forced` marks. `finished_at` stays null.
+`forced` marks. `finished_at` stays null. Reopening it keeps `completed` as the
+base of the resumed pass's counts and deletes the scan-sourced issues its
+scope covers ([Scans](plan.md#scans)).
 
 ## `held_watch_directories`
 

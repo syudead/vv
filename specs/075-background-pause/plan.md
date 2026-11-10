@@ -9,8 +9,8 @@
 The owner stops every scan and every scheduler job with one switch, sees what
 runs and how much is left per kind of work, and resumes when they choose. One
 use case in `internal/app`, `BackgroundPause`, saves the switch, tells the
-scheduler to hold, closes the running scan as `paused` and holds automatic
-import; resuming reverses each. A status read reports the running work and the
+scheduler to hold, holds automatic import and closes the running scan as
+`paused`; resuming reverses each. A status read reports the running work and the
 remaining counts, and the screens follow it through one SSE event.
 
 The diagram shows what a pause request stops, in order.
@@ -19,11 +19,11 @@ The diagram shows what a pause request stops, in order.
 flowchart LR
   owner[Owner switch] -->|PUT /api/background/pause| pause[BackgroundPause]
   pause -->|1 save| setting[(settings.background.paused)]
-  pause -->|2 hold starts, requeue the batch| auto[Automatic import]
-  pause -->|3 stop at the next file| scan[Scans]
-  scan --> row[(Scan row closes as paused)]
-  pause -->|4 hold, cancel running jobs| sch[Scheduler]
+  pause -->|2 hold, cancel running jobs| sch[Scheduler]
   sch -->|snooze| jobs[(jobs back to queued)]
+  pause -->|3 hold starts, save the dirty set| auto[Automatic import]
+  pause -->|4 stop at the next file| scan[Scans]
+  scan --> row[(Scan row closes as paused)]
   pause -->|5 background event| screens[Screens]
 ```
 
@@ -88,6 +88,7 @@ No gate is at stake after Phase 1; `## Complexity Tracking` is left out.
 | --- | --- | --- |
 | The switch is the setting `settings.background.paused`; an absent key is not paused | Memory only | Requirement 6: a restart or a crash keeps the pause |
 | A pause saves the setting before it stops anything | Stop first, then save | A crash between the two steps would restart unpaused with work the owner stopped |
+| After the save, a pause holds the scheduler before it holds automatic import or stops a scan | Hold the scheduler last | Holding automatic import and stopping a scan wait for the scan to finish the file it reads, and `scanner.ContentKey` takes no context, so a share that stopped answering would let the scheduler start jobs during the wait |
 | `BackgroundPause` runs pause and resume one at a time, and the last request decides the state; a request for the current state changes nothing and answers the status | Reject a request while another is applied | Two tabs or a fast double press must end in the last state without an error (the Issue's edge case) |
 | A pause answers once the setting is saved, the scan run has closed and the running jobs are cancelled; it does not wait for the jobs to return | Wait for every job | A read from a share that stopped answering does not return on cancellation, and the status shows a job as running until it returns |
 | The desktop close prompt does not count queued jobs or a paused scan as busy while paused | Keep `Scans.Busy` as is | The prompt warns that closing interrupts an import; while paused nothing runs that closing would interrupt |
@@ -124,6 +125,9 @@ new state `paused`; a resume reopens that row ([data-model.md](data-model.md#sca
 | A pause cancels a running manual scan or force rescan with the cause `domain.ErrScanPaused`; it stops at the next file, removes nothing and closes as `paused` | Keep the row `running` and block the scanner at a gate | Media folder changes are refused while a scan is `running`, and the Issue's edge case applies them during a pause; a blocked goroutine also does not survive a restart |
 | Same | Close it `failed` with a `paused` reason and resume it as an interrupted scan | Every reader of `failed` (the result notice, the activity log, the import status) would need an exception so that a pause is not shown as a failure |
 | A resume sets the same row back to `running` and runs the scanner for it with the row's scope, video set, issues and `forced` marks | Start a new scan through `ResumeScan` | Each pause and resume would end one scan and start another, so the indicator's per-scan dismissal and the result notice would fire on every toggle |
+| The reopened row keeps its `completed` count as a base: the resumed pass reports `total` and `completed` as that base plus its own counts, and `failed` as its own count | Let the resumed pass overwrite the counters | The pass skips the files read before the pause, and `UpdateScanProgress` replaces the counters, so 4 of 10 files read before the pause and 6 after would end at 6 of 6 |
+| Same | Keep `failed` as a base too | A file that failed is not indexed or not repaired, so the resumed pass reads it again and would count it twice; a file read before the pause and changed during it is read again and counted again, as a new change |
+| Reopening deletes the row's scan-sourced issues (`ScanIssueKind.FromScan`) that its scope covers, the rule `carryPreviousIssues` applies to a new scan, and keeps stage issues and those carried from outside the scope | Keep every issue of the row | A successful ingest clears no issue, so a file repaired during the pause would keep its issue; the resumed pass reports again each file that still fails |
 | The reopened scan lists the directories again and reads no file whose size and modification time match the index; in force mode it also skips the content key of an unchanged file whose video the scan already marked `forced` | Store a walk position | Directory order is not stable across a change, and listing reads no file; the size and time check already identifies what was read (requirement 3) |
 | `Scan library` during a pause creates the row as `paused` and answers it; a second request answers the same row. A force rescan creates its row as `paused` too, and is refused with `409 scan_in_progress` while a paused scan exists | Queue any number of requests | The one-scan rule already says which request wins, and one waiting scan is what the screen can name (requirement 5) |
 | A paused scan does not block media folder changes. On resume a manual scan reads the folders registered then; a `folder` rescan whose folder is gone or points elsewhere fails as a resumed one does today | Refuse folder changes while a scan is paused | The Issue's edge case |
@@ -137,7 +141,7 @@ new state `paused`; a resume reopens that row ([data-model.md](data-model.md#sca
 | --- | --- | --- |
 | The watches stay armed during a pause and the watcher keeps reporting dirty directories | Remove the watches | Requirement 4: a file added during the pause must be imported after it; the watcher reads directory entries only when something changes |
 | A pause holds watch-scan starts with the existing start hold and supersedes a running batch, whose directories return to the dirty set | A separate paused flag in `AutoImport` | Folder changes already hold starts and requeue the batch the same way |
-| Dirty directories reported while paused, and those of a superseded batch, are also written to `held_watch_directories`; startup loads the table into the dirty set, and a batch deletes the rows it takes | Keep them in memory | A restart during the pause would drop them, against requirements 4 and 6 |
+| Once the batch is back in the dirty set, a pause writes the whole set to `held_watch_directories`, including directories still in their quiet or settle time; directories reported while paused are written as they arrive; startup loads the table into the dirty set, and a batch deletes the rows it takes | Write only the directories reported while paused and the superseded batch | A directory reported just before the pause is in neither, and a restart during the pause would drop it, against requirements 4 and 6 |
 | Same | Start a full scan at resume after a restart | The full scan stays manual ([folder-watching.md](../../docs/design-docs/folder-watching.md)) |
 | Turning automatic import off, or rearming after a folder change, deletes the held rows that the dirty set drops | Leave the rows | They would start a batch for a folder the owner removed or stopped watching |
 | A file changed while the server is down is not found at resume, as today | Compare the tree at startup | Nothing reads the media folders while nothing reports a change |
@@ -256,8 +260,9 @@ handler, the queue records a snooze and no attempt, and no job is granted
 until `Release`; a hold during a round grants nothing after it; a kind paused
 by a feature stays unclaimed after `Release`; a scheduler created held grants
 nothing. A store test: a job snoozed by a pause three times keeps its
-attempts. Use-case tests with fakes: pause saves the setting before the hold;
-pause, resume and pause in a row end held once; a repeated pause changes
+attempts. Use-case tests with fakes: pause saves the setting before the hold,
+and holds the scheduler before it holds automatic import or waits for the
+scan; pause, resume and pause in a row end held once; a repeated pause changes
 nothing; `Busy` is false while paused with queued jobs. Handler tests: both
 operations answer the status, an invalid body `400`, and no session `401`.
 An ingest test with the real artifact store: a preview stage cancelled
@@ -280,14 +285,21 @@ scan as `paused` and removes nothing; a resume reopens the same id with its
 scope; `Scan library` during a pause answers a `paused` scan and a second
 request answers the same one; a force rescan over a paused scan gets
 `ErrScanRunning`; startup while paused resumes nothing and a later resume
-resumes the interrupted scan. Store tests: the migration keeps existing rows
-and accepts `paused`; reopening keeps the video set, the issues and the
-`forced` marks; a media folder can be added and deleted while a scan is
+resumes the interrupted scan. A domain test of the tally: a base of 4
+completed with a resumed pass of 6 gives 10 of 10; a file added during the
+pause adds one to `total`; a failed file read again counts once. Store tests:
+the migration keeps existing rows with their `scan_videos` and `scan_issues`
+rows and accepts `paused`; reopening keeps the video set, the stage issues and
+the `forced` marks, and deletes the scan-sourced issues in scope while keeping
+those outside it; a media folder can be added and deleted while a scan is
 `paused`. A scanner test on a temporary tree: a force rescan stopped after two
 of four files and run again reads the content key of the other two only. A
-`cmd/mdm` test with the real stack: a scan paused mid-walk and resumed
-registers every file once. A component test: `Scan status` shows the waiting
-text for a `paused` scan. The screen changes, so the implementation owes a
+use-case test with a fake scanner: a file whose read failed before the pause
+and succeeds after the resume has no issue when the scan ends, and one that
+fails again has one. A `cmd/mdm` test with the real stack: a scan paused
+mid-walk and resumed registers every file once and ends with `completed`
+equal to `total`. A component test: `Scan status` shows the waiting text for
+a `paused` scan. The screen changes, so the implementation owes a
 visual review.
 
 ### Hold automatic import while background work is paused
@@ -302,9 +314,11 @@ deleting held directories. Updates folder-watching.md and background-pause.md.
 **Acceptance**: `AutoImport` tests with the fake clock and fake scans: a
 change reported while paused starts no watch scan after the quiet time and
 starts one after the resume; a pause during a batch supersedes it and its
-directories are scanned after the resume; a new `AutoImport` over a store with
-held rows scans them after a resume; turning automatic import off deletes the
-rows. A store test: the rows round-trip and a taken batch deletes them.
+directories are scanned after the resume; a change reported before a pause
+and still in its quiet time is written to the held rows by the pause; a new
+`AutoImport` over a store with held rows scans them after a resume; turning
+automatic import off deletes the rows. A store test: the rows round-trip and
+a taken batch deletes them.
 
 ### Report running background work and remaining counts per kind
 
