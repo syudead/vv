@@ -388,8 +388,9 @@ The counts are one component
 ([`BackgroundCounts.tsx`](../../web/src/shell/BackgroundCounts.tsx)), so every
 place that shows them agrees. One provider beside `ScanProvider`
 ([`BackgroundProvider.tsx`](../../web/src/shell/BackgroundProvider.tsx)) reads
-the status once and again on each `background` event and reconnect; for a
-guest it reads nothing and the section is absent.
+the status once and again on each `background` event and each open of
+`/api/events`, the first included, because the stream sends no background
+state on connect; for a guest it reads nothing and the section is absent.
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))

@@ -12,7 +12,7 @@ import { subscribeServerEvents } from "../api/serverEvents";
 import { useAudience } from "../auth/audience";
 import { type SettingsSource, useSettingsSource } from "../settings/useSettingsSource";
 
-/** The background work status: read once, then again on each `background` event and reconnect. */
+/** The background work status: read once, then again on each `background` event and stream open. */
 export type BackgroundSource = SettingsSource<BackgroundWork>;
 
 const BackgroundContext = createContext<BackgroundSource | null>(null);
@@ -37,13 +37,8 @@ function OwnerBackgroundProvider({ children }: { children: ReactNode }) {
       }
       void load();
     };
-    // The provider's first read covers the initial connection; a reconnect may have missed events.
-    return subscribeServerEvents({
-      background: reload,
-      open: (reconnected) => {
-        if (reconnected) reload();
-      },
-    });
+    // The stream sends no background state on connect, so any open, including the first, rereads.
+    return subscribeServerEvents({ background: reload, open: reload });
   }, [load]);
 
   const value = useMemo<BackgroundSource>(

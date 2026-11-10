@@ -101,17 +101,21 @@ describe("BackgroundWorkSection", () => {
     expect(count("Import")).toBe("12 videos");
   });
 
-  it("reads the status again on a background event and on reconnect", async () => {
+  it("reads the status again on connecting, on a background event and on reconnect", async () => {
     renderSection();
     await screen.findByText("Running");
     expect(count("Import")).toBe("12 videos");
 
+    // A change between the first read and the stream's first open sends no event.
     current = work({ groups: groups({ import: { remaining: 3 } }) });
-    await emitServerEvent("background");
+    await emitServerEvent("open");
     await waitFor(() => expect(count("Import")).toBe("3 videos"));
     expect(screen.getByText("Idle")).toBeDefined();
 
-    await emitServerEvent("open");
+    current = work({ groups: groups({ import: { remaining: 5 } }) });
+    await emitServerEvent("background");
+    await waitFor(() => expect(count("Import")).toBe("5 videos"));
+
     current = work({ paused: true, groups: groups({ scan: { waiting: true } }) });
     await emitServerEvent("open");
     await screen.findByText("Paused");
