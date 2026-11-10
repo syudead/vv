@@ -19,6 +19,10 @@ func (s *searchIndexTestStore) GetVideo(_ context.Context, id int64) (domain.Vid
 	return domain.Video{ID: id, DurationMs: &s.durationMs}, nil
 }
 
+func (*searchIndexTestStore) QueueFrameIndexJobs(context.Context, domain.JobPriority) (int, error) {
+	return 0, nil
+}
+
 func (s *searchIndexTestStore) ApplySearchIndexForJob(_ context.Context, job domain.Job, index domain.SearchIndex) (bool, error) {
 	s.jobs = append(s.jobs, job)
 	s.indexes = append(s.indexes, index)

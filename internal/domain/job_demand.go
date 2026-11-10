@@ -43,6 +43,7 @@ var jobConcurrency = map[JobKind]int{
 	JobFrameIndex:        1,
 	JobQueueKeyframes:    1,
 	JobQueueMediaInfo:    1,
+	JobQueueFrameIndex:   1,
 	JobVirtualThumbnails: 1,
 }
 

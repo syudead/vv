@@ -320,7 +320,7 @@ the domain tables and the next startup queues the work again. A `keyframes`,
 `media_info` or `frame_index` job whose video gained or lost a location, or
 whose file changed, during the read saved nothing, so it is queued again, as an import
 stage is. A
-`queue_keyframes`, `queue_media_info` or `virtual_thumbnails` job names no
+`queue_keyframes`, `queue_media_info`, `queue_frame_index` or `virtual_thumbnails` job names no
 video, so each claim is one attempt.
 
 An owner request over a job that is already queued raises it to class 0 and

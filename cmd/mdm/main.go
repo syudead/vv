@@ -499,7 +499,9 @@ func addBackfillHandlers(
 	handlers[domain.JobVirtualThumbnails] = func(ctx context.Context, _ domain.Job) error {
 		return ingest.RepublishVirtualThumbnails(ctx)
 	}
-	handlers[domain.JobFrameIndex] = app.NewSearchIndexBuilder(ingestStore, sources, media.KeyframeHashes).Build
+	searchIndex := app.NewSearchIndexBuilder(ingestStore, sources, media.KeyframeHashes)
+	handlers[domain.JobQueueFrameIndex] = searchIndex.QueueAll
+	handlers[domain.JobFrameIndex] = searchIndex.Build
 }
 
 // recoverActivity marks interrupted processing as attention/interrupted, leaving waiting records

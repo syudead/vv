@@ -37,6 +37,9 @@ const (
 	JobQueueMediaInfo JobKind = "queue_media_info"
 	// JobFrameIndex reads one video's keyframes into its content's search index, outside import tracking.
 	JobFrameIndex JobKind = "frame_index"
+	// JobQueueFrameIndex queues one JobFrameIndex job per content without a current-version search index, and then
+	// finishes.
+	JobQueueFrameIndex JobKind = "queue_frame_index"
 	// JobVirtualThumbnails publishes each virtual video's missing thumbnail file from its stored image.
 	JobVirtualThumbnails JobKind = "virtual_thumbnails"
 )
@@ -112,7 +115,7 @@ var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, J
 
 // StartupJobKinds are the jobs every start queues once, in the backfill class, with no subject. See
 // docs/design-docs/process-lifecycle.md.
-var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobVirtualThumbnails}
+var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobQueueFrameIndex, JobVirtualThumbnails}
 
 // BackfillJobKinds only refresh stored results: StartupJobKinds, the jobs they queue and the search index.
 var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo, JobFrameIndex}, StartupJobKinds...)

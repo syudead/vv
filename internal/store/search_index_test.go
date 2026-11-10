@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -128,5 +130,38 @@ func TestApplySearchIndexForJobWritesOnlyForTheClaimedContent(t *testing.T) {
 	}
 	if _, ok := storedSearchIndex(t, db, job.ContentKey); ok {
 		t.Fatal("the index outlived its content's last reference")
+	}
+}
+
+// The backfill queues contents whose index is missing or of another version, never one with a current index or no
+// registered file, and a second pass queues nothing while those jobs wait.
+func TestQueueFrameIndexJobsQueuesOnlyContentsWithoutACurrentIndex(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	for _, path := range []string{"/media/current.mp4", "/media/stale.mp4", "/media/none.mp4", "/other/gone.mp4"} {
+		key := strings.TrimSuffix(path[strings.LastIndex(path, "/")+1:], ".mp4")
+		id := addVideoAt(t, db, path, key)
+		if err := db.Ingest().ApplyProbe(ctx, id, domain.Probe{DurationMs: 60_000, VideoCodec: "h264"},
+			domain.Playability{Playable: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for key, version := range map[string]int{"current": domain.SearchIndexVersion, "stale": domain.SearchIndexVersion + 1} {
+		if _, err := db.sql.Exec(`insert into video_search_index (content_key, version, entries, updated_at)
+			values (?, ?, x'', 0)`, key, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, want := range []int{2, 0} {
+		if n, err := db.Ingest().QueueFrameIndexJobs(ctx, domain.JobPriorityBackfill); err != nil || n != want {
+			t.Fatalf("QueueFrameIndexJobs = %d, %v, want %d", n, err, want)
+		}
+	}
+	got := queryRows(t, db.sql, `select v.content_key, j.priority from jobs j join videos v on v.id = j.video_id
+		where j.kind = 'frame_index' and j.state = 'queued' order by v.content_key`, 2)
+	want := [][]any{{"none", int64(domain.JobPriorityBackfill)}, {"stale", int64(domain.JobPriorityBackfill)}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("queued frame_index jobs = %v, want %v", got, want)
 	}
 }
