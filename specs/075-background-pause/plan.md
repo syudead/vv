@@ -234,6 +234,7 @@ The graph shows the units and what each waits for.
 flowchart LR
   jobs[Pause switch and jobs] --> scans[Scans]
   jobs --> auto[Automatic import]
+  scans --> auto
   scans --> status[Status]
   auto --> status
   status --> section[Settings section]
@@ -309,7 +310,9 @@ visual review.
 `BackgroundPause`, superseding and requeueing the batch, writing, loading and
 deleting held directories. Updates folder-watching.md and background-pause.md.
 
-**Dependencies**: Pause and resume every background job with one owner switch
+**Dependencies**: Pause and resume every background job with one owner switch;
+Pause a running scan and reopen it where it stopped, whose migration creates
+`held_watch_directories`
 
 **Acceptance**: `AutoImport` tests with the fake clock and fake scans: a
 change reported while paused starts no watch scan after the quiet time and
