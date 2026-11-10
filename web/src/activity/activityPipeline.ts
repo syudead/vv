@@ -52,14 +52,24 @@ export function pipelineProgress(item: ActivityListItem): ActivityProgress | und
 }
 
 /** The card's one-line summary of a pipeline, read without expanding it. */
-export function pipelineSummary(item: ActivityListItem, now: Date): EntryResult {
+export function pipelineSummary(
+  item: ActivityListItem,
+  now: Date,
+  paused = false,
+): EntryResult {
   const members = currentMembers(item.members);
   const total = members.length;
   const done = members.filter((member) => member.status === "done").length;
   if (item.status === "running") {
     if (item.reason !== "processing")
       return {
-        parts: [{ text: t.activity.pipeline.waiting(done, total) }],
+        parts: [
+          {
+            text: (paused
+              ? t.activity.pipeline.waitingForResume
+              : t.activity.pipeline.waiting)(done, total),
+          },
+        ],
         tone: "muted",
       };
     const kind = processingMember(item)?.kind ?? item.kind;

@@ -16,6 +16,13 @@ export type CardTone = "default" | "primary" | "destructive" | "warning";
 
 export type StatusMark = "running" | "waiting" | "attention" | "done" | "doneByYou";
 
+/** The status icon's name; a waiting entry waits for the resume while background work is paused. */
+export function markName(mark: StatusMark, paused: boolean): UiText {
+  return mark === "waiting" && paused
+    ? t.shell.background.waitingForResume
+    : t.activity.statusIcon[mark];
+}
+
 export function cardTone(entry: EntryFields): CardTone {
   if (entry.status === "running")
     return entry.reason === "processing" ? "primary" : "default";
@@ -136,8 +143,11 @@ function attentionResult(entry: EntryFields, now: Date): ResultPart[] {
   }
 }
 
-function runningResult(entry: EntryFields): ResultPart[] {
-  if (entry.reason !== "processing") return [text(t.activity.result.waiting)];
+function runningResult(entry: EntryFields, paused: boolean): ResultPart[] {
+  if (entry.reason !== "processing")
+    return [
+      text(paused ? t.shell.background.waitingForResume : t.activity.result.waiting),
+    ];
   if (entry.progress !== undefined) return [text(t.activity.stage[entry.progress.stage])];
   return [text(t.activity.result.running)];
 }
@@ -325,8 +335,10 @@ function missingVideo(entry: EntryFields): boolean {
   );
 }
 
-export function entryResult(entry: EntryFields, now: Date): EntryResult {
-  if (entry.status === "running") return { parts: runningResult(entry), tone: "muted" };
+/** `paused` words a waiting entry as waiting for the resume of background work. */
+export function entryResult(entry: EntryFields, now: Date, paused = false): EntryResult {
+  if (entry.status === "running")
+    return { parts: runningResult(entry, paused), tone: "muted" };
   if (entry.status === "attention") {
     const tone = cardTone(entry) === "warning" ? "warning" : "destructive";
     return { parts: attentionResult(entry, now), tone };

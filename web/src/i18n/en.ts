@@ -3500,6 +3500,11 @@ export const en = {
           one: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} task done`,
           other: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
         }),
+      waitingForResume: (done: number, total: number) =>
+        selectPlural(total, {
+          one: `Waiting for resume · ${formatNumber(done)} of ${formatNumber(total)} task done`,
+          other: `Waiting for resume · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
+        }),
       finished: (total: number) =>
         selectPlural(total, {
           one: `Finished · ${formatNumber(total)} task`,
@@ -4086,6 +4091,14 @@ export const en = {
         backfill: "Catching up older videos",
       },
       stopping: "Stopping",
+      // The bottom-right indicator while paused, and its summary.
+      paused: "Paused",
+      left: (count: number) => `${formatNumber(count)} left`,
+      indicatorName: (total: number) =>
+        total === 0
+          ? "Background work is paused. Open the background work settings"
+          : `Background work is paused, ${formatNumber(total)} left. Open the background work settings`,
+      summaryHeading: "Background work is paused",
     },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
@@ -4986,8 +4999,15 @@ export const en = {
       loading: "Loading the auto-tagging settings",
       loadFailed: (reason: string) =>
         `Couldn't load the auto-tagging settings: ${reason}`,
-      queue: (queued: number, running: number, done: number, failed: number) =>
-        `Waiting ${formatNumber(queued)} · Tagging ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      // While background work is paused, the queued figure waits for its resume.
+      queue: (
+        queued: number,
+        running: number,
+        done: number,
+        failed: number,
+        paused: boolean,
+      ) =>
+        `${paused ? "Waiting for resume" : "Waiting"} ${formatNumber(queued)} · Tagging ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
       lastError: "Last failure",
       runMissing: "Tag videos not yet tagged",
       runAll: "Tag all videos again",
@@ -5012,8 +5032,14 @@ export const en = {
       off: "Face recognition is off.",
       offHint:
         "Turn on “Use face recognition” under Recognition to find people in videos.",
-      queue: (queued: number, running: number, done: number, failed: number) =>
-        `Waiting ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      queue: (
+        queued: number,
+        running: number,
+        done: number,
+        failed: number,
+        paused: boolean,
+      ) =>
+        `${paused ? "Waiting for resume" : "Waiting"} ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
       runMissing: "Analyse videos not yet analysed",
       started: (count: number) =>
         count === 0

@@ -15,11 +15,17 @@ import { type SettingsSource, useSettingsSource } from "../settings/useSettingsS
 /** The background work status: read once, then again on each `background` event and stream open. */
 export type BackgroundSource = SettingsSource<BackgroundWork>;
 
-const BackgroundContext = createContext<BackgroundSource | null>(null);
+/** Exported so tests can supply a fixed status; screens read it through the hooks below. */
+export const BackgroundContext = createContext<BackgroundSource | null>(null);
 
 /** Null for a guest and outside the provider; a guest's screens show no background work. */
 export function useBackground(): BackgroundSource | null {
   return useContext(BackgroundContext);
+}
+
+/** True while the owner's status reports paused; a guest's screens keep today's waiting texts. */
+export function useBackgroundPaused(): boolean {
+  return useContext(BackgroundContext)?.settings?.paused === true;
 }
 
 function OwnerBackgroundProvider({ children }: { children: ReactNode }) {

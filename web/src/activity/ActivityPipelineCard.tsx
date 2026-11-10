@@ -6,6 +6,7 @@ import type {
   ActivityUndoRequest,
 } from "../api/activity";
 import { t } from "../i18n";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { CardListItem, CardListMember } from "../ui/patterns/card-list";
 import { Badge } from "../ui/shadcn/badge";
 import { Actions, ResultWithProgress, StatusIcon, Subject } from "./ActivityCard";
@@ -30,6 +31,7 @@ interface MemberRowProps {
 
 /** A member's kind and result; its tags and full message are on its detail page. */
 function MemberRow({ member, pipeline, now, from, onRetry, onUndo }: MemberRowProps) {
+  const paused = useBackgroundPaused();
   return (
     <CardListMember
       icon={<StatusIcon entry={member} small />}
@@ -48,7 +50,7 @@ function MemberRow({ member, pipeline, now, from, onRetry, onUndo }: MemberRowPr
             <Badge variant="soft">{t.activity.pipeline.matches}</Badge>
           )}
           <ResultWithProgress
-            result={memberResult(member, now)}
+            result={memberResult(member, now, paused)}
             progress={member.status === "running" ? member.progress : undefined}
           />
         </>
@@ -92,6 +94,7 @@ export function ActivityPipelineCard({
   onUndo,
 }: ActivityPipelineCardProps) {
   const expanded = chosen ?? startsExpanded(item);
+  const paused = useBackgroundPaused();
   const time = entryTime(item.createdAt, now);
   const subject = subjectText(item);
   return (
@@ -102,7 +105,7 @@ export function ActivityPipelineCard({
       badge={<Badge variant="secondary">{t.activity.kind.pipeline}</Badge>}
       detail={
         <ResultWithProgress
-          result={pipelineSummary(item, now)}
+          result={pipelineSummary(item, now, paused)}
           progress={pipelineProgress(item)}
         />
       }

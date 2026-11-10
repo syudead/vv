@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ActivityListItem, ActivityMemberSummary } from "../api/activity";
+import { PausedBackground } from "../testing/background";
 import { CardList } from "../ui/patterns/card-list";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ActivityPipelineCard } from "./ActivityPipelineCard";
@@ -88,9 +89,9 @@ const failedTagging = pipeline(
 );
 
 /** Keeps the owner's choice as the page does. */
-function Harness({ item }: { item: ActivityListItem }) {
+function Harness({ item, paused = false }: { item: ActivityListItem; paused?: boolean }) {
   const [chosen, setChosen] = useState<boolean | undefined>(undefined);
-  return (
+  const tree = (
     <MemoryRouter>
       <TooltipProvider>
         <CardList label="Activity log">
@@ -108,6 +109,7 @@ function Harness({ item }: { item: ActivityListItem }) {
       </TooltipProvider>
     </MemoryRouter>
   );
+  return paused ? <PausedBackground>{tree}</PausedBackground> : tree;
 }
 
 function card(): HTMLElement {
@@ -178,6 +180,25 @@ describe("ActivityPipelineCard", () => {
       expect(rows()).toHaveLength(0);
     },
   );
+
+  it("says that waiting work waits for the resume while background work is paused", () => {
+    const { unmount } = render(<Harness item={processing} paused />);
+    const tagging = row("Auto-tagging");
+    expect(within(tagging).getByText("Waiting for resume")).toBeDefined();
+    expect(
+      within(tagging).getByRole("img", { name: "Waiting for resume" }),
+    ).toBeDefined();
+    unmount();
+
+    const waiting = pipeline(
+      { status: "running", reason: "waiting", outcome: undefined },
+      [member(2, { status: "running", reason: "waiting", outcome: undefined })],
+    );
+    render(<Harness item={waiting} paused />);
+    expect(
+      within(card()).getByText("Waiting for resume · 0 of 1 task done"),
+    ).toBeDefined();
+  });
 
   it("lets the owner open a run needing attention to retry the failed task only", async () => {
     const user = userEvent.setup();
