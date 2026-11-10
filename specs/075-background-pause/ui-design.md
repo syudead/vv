@@ -58,7 +58,7 @@ Counts use `formatNumber` and the catalog's plural forms.
 | Group names | `Scan`, `Import`, `Auto-tagging`, `Face recognition`, `Duplicate check`, `Catch-up` | In the contract's order |
 | Count values | `{n} files`, `{n} videos`, `{n} tasks` | Files for `Scan`, videos for `Import`, tasks for the rest |
 | `Scan` waits | `Waiting for resume` after the name | `waiting` is set |
-| `Scan` waits with nothing counted | `Not counted yet` as the value | `waiting` is set and `remaining` is 0 |
+| `Scan` waits with 0 left | No value; `Waiting for resume` after the name stands alone | `waiting` is set and `remaining` is 0, which the status reports both before a paused scan has counted its files and after it has read them all |
 | Feature off | `Off` | A `secondary` `Badge` after the group name |
 | Feature off, under the list | `Work for a feature that is off stays here until you turn the feature on.` | Shown while any group is off |
 | Status loading | `Loading background work` | Name of the skeleton |
