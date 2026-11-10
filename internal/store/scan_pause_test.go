@@ -70,6 +70,9 @@ func startPausedFolderRescan(t *testing.T, db *DB) (domain.Scan, []int64) {
 	if err := db.Scans().MarkForced(ctx, scan.ID, ids[0]); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.ScanIndex().MarkLocationRead(ctx, scan.ID, fixturePath("/media/a.mp4")); err != nil {
+		t.Fatal(err)
+	}
 	failJobToLimit(t, db, domain.JobProbe) // a stage issue on a
 	recordIssue(t, db, ids[1], "/media/b.mp4")
 	if err := db.Scans().UpdateScanProgress(ctx, scan.ID, domain.ScanProgress{Total: 3, Completed: 1, Failed: 1}); err != nil {
@@ -81,8 +84,8 @@ func startPausedFolderRescan(t *testing.T, db *DB) (domain.Scan, []int64) {
 	return scan, ids
 }
 
-// A paused scan keeps its counters and stays unfinished; reopening it keeps its video set, forced marks and stage
-// issues, deletes the scan-sourced issues inside its scope and keeps those carried from outside it. A file that fails
+// A paused scan keeps its counters and stays unfinished; reopening it keeps its video set, forced marks, read
+// locations and stage issues, deletes the scan-sourced issues inside its scope and keeps those carried from outside it. A file that fails
 // again after the resume has one issue.
 func TestReopenScanKeepsThePausedScansWork(t *testing.T) {
 	db := migratedDB(t)
@@ -109,6 +112,10 @@ func TestReopenScanKeepsThePausedScansWork(t *testing.T) {
 	}
 	if forced, err := db.Scans().ForcedVideos(ctx, scan.ID); err != nil || !slices.Equal(forced, ids[:1]) {
 		t.Fatalf("ForcedVideos = %v, err %v, want %v", forced, err, ids[:1])
+	}
+	read, err := db.ScanIndex().ReadLocations(ctx, scan.ID)
+	if want := []string{fixturePath("/media/a.mp4")}; err != nil || !slices.Equal(read, want) {
+		t.Fatalf("ReadLocations = %v, err %v, want %v", read, err, want)
 	}
 	want := []string{fixturePath("/media/a.mp4"), fixturePath("/other/y.mp4")}
 	if got := currentIssuePaths(t, db); !slices.Equal(got, want) {

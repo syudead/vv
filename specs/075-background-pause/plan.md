@@ -58,7 +58,7 @@ which reads leave a switched-off folder out;
 | Dirty directories | Held in memory only, so a restart drops them ([Automatic import](#automatic-import)) |
 | Force mode | Reads the content key of an unchanged file again, also after a resume ([Scans](#scans)) |
 | Current activity | `app.Scans` keeps the running import-stage jobs and shows the newest one; the other kinds are not tracked ([Status](#status)) |
-| New storage | The setting `settings.background.paused`, the scan state `paused`, the table `held_watch_directories` ([data-model.md](data-model.md)) |
+| New storage | The setting `settings.background.paused`, the scan state `paused`, the tables `scan_read_locations` and `held_watch_directories` ([data-model.md](data-model.md)) |
 | Image search (#1927) | Its `frame_index` and `queue_frame_index` kinds are on another feature branch. Every scheduled kind must belong to a group ([Status](#status)), and a domain test fails for a kind without one, so whichever feature reaches `main` second adds the two kinds to the `backfill` group |
 | External API, MCP | Unchanged ([Scans](#scans)) |
 | Paired VVMDM | Unchanged; its work is not paused (the Issue's `対象外`) |
@@ -124,11 +124,12 @@ new state `paused`; a resume reopens that row ([data-model.md](data-model.md#sca
 | --- | --- | --- |
 | A pause cancels a running manual scan or force rescan with the cause `domain.ErrScanPaused`; it stops at the next file, removes nothing and closes as `paused` | Keep the row `running` and block the scanner at a gate | Media folder changes are refused while a scan is `running`, and the Issue's edge case applies them during a pause; a blocked goroutine also does not survive a restart |
 | Same | Close it `failed` with a `paused` reason and resume it as an interrupted scan | Every reader of `failed` (the result notice, the activity log, the import status) would need an exception so that a pause is not shown as a failure |
-| A resume sets the same row back to `running` and runs the scanner for it with the row's scope, video set, issues and `forced` marks | Start a new scan through `ResumeScan` | Each pause and resume would end one scan and start another, so the indicator's per-scan dismissal and the result notice would fire on every toggle |
+| A resume sets the same row back to `running` and runs the scanner for it with the row's scope, video set, issues, `forced` marks and read locations | Start a new scan through `ResumeScan` | Each pause and resume would end one scan and start another, so the indicator's per-scan dismissal and the result notice would fire on every toggle |
 | The reopened row keeps its `completed` count as a base: the resumed pass reports `total` and `completed` as that base plus its own counts, and `failed` as its own count | Let the resumed pass overwrite the counters | The pass skips the files read before the pause, and `UpdateScanProgress` replaces the counters, so 4 of 10 files read before the pause and 6 after would end at 6 of 6 |
 | Same | Keep `failed` as a base too | A file that failed is not indexed or not repaired, so the resumed pass reads it again and would count it twice; a file read before the pause and changed during it is read again and counted again, as a new change |
 | Reopening deletes the row's scan-sourced issues (`ScanIssueKind.FromScan`) that its scope covers, the rule `carryPreviousIssues` applies to a new scan, and keeps stage issues and those carried from outside the scope | Keep every issue of the row | A successful ingest clears no issue, so a file repaired during the pause would keep its issue; the resumed pass reports again each file that still fails |
-| The reopened scan lists the directories again and reads no file whose size and modification time match the index; in force mode it also skips the content key of an unchanged file whose video the scan already marked `forced` | Store a walk position | Directory order is not stable across a change, and listing reads no file; the size and time check already identifies what was read (requirement 3) |
+| The reopened scan lists the directories again and reads no file whose size and modification time match the index; in force mode it also skips the content key of an unchanged file the scan already read, recorded per scan and location in `scan_read_locations`. The video's `forced` mark only keeps the scan from queueing its forced jobs twice | Store a walk position | Directory order is not stable across a change, and listing reads no file; the size and time check already identifies what was read (requirement 3) |
+| Same | Skip every unchanged location of a video already marked `forced` | A video with several locations is marked at its first location, so a pause after it would skip the others unread, and a location replaced with the same size and time would keep its stale content key |
 | `Scan library` during a pause creates the row as `paused` and answers it; a second request answers the same row. A force rescan creates its row as `paused` too, and is refused with `409 scan_in_progress` while a paused scan exists | Queue any number of requests | The one-scan rule already says which request wins, and one waiting scan is what the screen can name (requirement 5) |
 | A paused scan does not block media folder changes. On resume a manual scan reads the folders registered then; a `folder` rescan whose folder is gone or points elsewhere fails as a resumed one does today | Refuse folder changes while a scan is paused | The Issue's edge case |
 | Startup skips resuming an interrupted manual scan while paused; a resume reopens the paused scan, or resumes the interrupted scan when there is none | Resume it at startup | Acceptance 5: nothing runs after a restart until the owner resumes |
@@ -208,9 +209,9 @@ design documents, which the decision rows link. `ui-design.md` is added by the
 | Package | Change |
 | --- | --- |
 | `internal/domain` | `ErrJobPaused`, `ErrScanPaused`, `ScanPaused`, `JobGroup`, the status values, `BackgroundChanged`, the scan tally for a paused scan |
-| `internal/store` | The setting, the migration, closing, creating and reopening a paused scan, the held directories, the group counts |
+| `internal/store` | The setting, the migration, closing, creating and reopening a paused scan, the read locations, the held directories, the group counts |
 | `internal/jobs` | `Hold`, `Release`, the per-job context and the snooze of a paused job |
-| `internal/scanner` | The force-mode skip of a video already marked `forced` |
+| `internal/scanner` | The force-mode skip of a location the scan already read, and marking each location it reads |
 | `internal/app` | `BackgroundPause`, the status read, `Scans` pause and resume, `AutoImport` hold and held directories, the running list, `Busy` while paused |
 | `internal/httpapi` | The two operations and the `background` event |
 | `cmd/mdm` | Wiring, the held start, skipping the scan resume while paused |
@@ -291,10 +292,13 @@ completed with a resumed pass of 6 gives 10 of 10; a file added during the
 pause adds one to `total`; a failed file read again counts once. Store tests:
 the migration keeps existing rows with their `scan_videos` and `scan_issues`
 rows and accepts `paused`; reopening keeps the video set, the stage issues and
-the `forced` marks, and deletes the scan-sourced issues in scope while keeping
+the `forced` marks and read locations, and deletes the scan-sourced issues in scope while keeping
 those outside it; a media folder can be added and deleted while a scan is
 `paused`. A scanner test on a temporary tree: a force rescan stopped after two
-of four files and run again reads the content key of the other two only. A
+of four files and run again reads the content key of the other two only, and
+one stopped after the first location of a two-location video reads, after the
+resume, the second location changed with the same size and time and not the
+first. A
 use-case test with a fake scanner: a file whose read failed before the pause
 and succeeds after the resume has no issue when the scan ends, and one that
 fails again has one. A `cmd/mdm` test with the real stack: a scan paused

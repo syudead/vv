@@ -282,3 +282,66 @@ func TestRescanRunAgainAfterAPauseReadsOnlyTheFilesLeft(t *testing.T) {
 		t.Fatalf("content keys read after the resume = %v, want only %v", read, left)
 	}
 }
+
+// A force rescan stopped after the first location of a two-location video reads, after the resume, the other
+// location, whose content changed during the pause with the same size and modification time, and not the first one
+// again: the video's forced mark does not stand for locations the scan has not read.
+func TestRescanRunAgainAfterAPauseReadsTheOtherLocationOfAForcedVideo(t *testing.T) {
+	for _, scope := range []domain.RescanScopeKind{domain.RescanLibrary, domain.RescanVideo} {
+		t.Run(string(scope), func(t *testing.T) {
+			root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
+			index := newFakeIndex()
+			seedIndex(t, index, root)
+			a, bPath := rowFor(t, index, filepath.Join(root, "a.mp4")), filepath.Join(root, "b.mp4")
+			b := index.rows[bPath]
+			b.ID = a.ID
+			index.rows[bPath] = b
+			var read []string
+			readKey := func(path string) (string, error) {
+				read = append(read, filepath.Base(path))
+				return ContentKey(path)
+			}
+			run := domain.RescanScope{Kind: scope, VideoID: a.ID}
+			ctx, pause := context.WithCancelCause(context.Background())
+			first := New(Options{Index: index, Queue: index, Reporter: pauseAfter{fakeIndex: index, files: 1, pause: pause}})
+			first.contentKey = readKey
+			if _, err := first.Rescan(ctx, rescanID, run, domain.ActivityByOwner); err == nil {
+				t.Fatal("the paused rescan finished, want the cancellation")
+			}
+			if !slices.Equal(read, []string{"a.mp4"}) || len(index.marked) != 1 {
+				t.Fatalf("before the pause: read %v, marked %v, want a.mp4 and its video", read, index.marked)
+			}
+			index.forcedBefore = []int64{a.ID}
+			replaceKeepingSizeAndTime(t, bPath, "B")
+			read = nil
+
+			again := New(Options{Index: index, Queue: index, Reporter: index})
+			again.contentKey = readKey
+			if _, err := again.Rescan(context.Background(), rescanID, run, domain.ActivityByOwner); err != nil {
+				t.Fatal(err)
+			}
+
+			if !slices.Equal(read, []string{"b.mp4"}) {
+				t.Fatalf("content keys read after the resume = %v, want only b.mp4", read)
+			}
+			if want, _ := ContentKey(bPath); index.rows[bPath].ContentKey != want {
+				t.Errorf("b.mp4 content key = %q, want the changed file's %q", index.rows[bPath].ContentKey, want)
+			}
+		})
+	}
+}
+
+// replaceKeepingSizeAndTime writes content of the same length to path and restores its modification time.
+func replaceKeepingSizeAndTime(t *testing.T, path, content string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+}

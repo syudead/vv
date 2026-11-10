@@ -81,8 +81,8 @@ stage cancelled mid-run leaves no partial output: its temporary files under
 A pause cancels a running manual scan or force rescan with the cause
 `domain.ErrScanPaused`. It stops at the next file, removes nothing and closes
 in the scan state `paused`; a resume sets the same row back to `running` and
-runs the scanner for it with the row's scope, video set, issues and `forced`
-marks ([`app.Scans`](../../internal/app/scans.go)). A watch scan is left to
+runs the scanner for it with the row's scope, video set, issues, `forced`
+marks and read locations ([`app.Scans`](../../internal/app/scans.go)). A watch scan is left to
 automatic import.
 
 The diagram shows the states of a scan row around a pause.
@@ -112,7 +112,8 @@ in [`internal/domain`](../../internal/domain/scan_pause.go).
 | The reopened row keeps `completed` as the base of the resumed pass's `total` and `completed`; `failed` is the pass's own | Let the pass overwrite the counters | The pass skips the files read before the pause, so 4 of 10 read before it and 6 after would end at 6 of 6 |
 | Same | Keep `failed` as a base too | A failed file is not indexed, so the pass reads it again and would count it twice |
 | Reopening deletes the scan-sourced issues its scope covers and keeps stage issues and those carried from outside the scope | Keep every issue | A file repaired during the pause would keep its issue; the pass reports again each file that still fails |
-| The reopened pass lists the directories again and skips a file whose size and modification time match the index; in force mode also the content key of an unchanged file whose video is already `forced` | Store a walk position | Directory order is not stable across a change, and the size and time check already identifies what was read |
+| The reopened pass lists the directories again and skips a file whose size and modification time match the index; in force mode also the content key of an unchanged file the scan already read, recorded per scan and location | Store a walk position | Directory order is not stable across a change, and the size and time check already identifies what was read |
+| Same | Skip every unchanged file of a video already `forced` | A video is marked at its first location, so its other locations would be skipped unread |
 | `Scan library` during a pause creates the row as `paused`; a second request answers it, and a force rescan is refused with `409 scan_in_progress` | Queue any number of requests | The one-scan rule already says which request wins |
 | A `paused` scan does not block media folder changes; on resume a manual scan reads the folders registered then, and a `folder` rescan whose folder is gone or moved fails | Refuse folder changes during a pause | Folder changes must take effect during a pause |
 | The screen API's `Scan.state` gains `paused`; the external API reports it as `running` | A new external status | The external contract is versioned, and its `running` already means that work remains |

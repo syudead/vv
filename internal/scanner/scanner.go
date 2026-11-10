@@ -53,6 +53,9 @@ type Index interface {
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
 	// ForcedVideos lists the videos the force rescan has already forced.
 	ForcedVideos(ctx context.Context, scanID int64) ([]int64, error)
+	// ReadLocations lists the files the force rescan has already read; MarkLocationRead records one.
+	ReadLocations(ctx context.Context, scanID int64) ([]string, error)
+	MarkLocationRead(ctx context.Context, scanID int64, path string) error
 }
 
 // Queue all jobs for one video in one call so they share one import activity and decider; nil
@@ -544,7 +547,7 @@ func (s *Scanner) visit(
 	}
 
 	if existing, ok := pass.indexed[path]; ok && sameFile(existing, info) {
-		if pass.rereadsUnchanged(existing.ID) {
+		if pass.rereadsUnchanged(path) {
 			pass.targets = append(pass.targets, scanTarget{path: path, unchanged: true})
 			return nil
 		}
@@ -641,7 +644,7 @@ func (s *Scanner) ingest(ctx context.Context, pass *scanPass, target scanTarget,
 			return failFile(domain.IssueRegisterFailed, upserted.ID, err)
 		}
 	}
-	return s.force(ctx, pass, upserted.ID)
+	return s.forceRead(ctx, pass, target.path, upserted.ID)
 }
 
 // readTarget computes the content key between two stable metadata reads, so a file changed while it is read is

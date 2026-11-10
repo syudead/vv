@@ -39,6 +39,14 @@ insert into scan_issues select * from scan_issues_kept;
 drop table scan_videos_kept;
 drop table scan_issues_kept;
 
+-- The locations a force rescan has read in the scan, so a reopened or resumed pass skips an unchanged one it read and
+-- still reads the other locations of a video it already forced.
+create table scan_read_locations (
+    scan_id integer not null references scans(id) on delete cascade,
+    path    text    not null,
+    primary key (scan_id, path)
+);
+
 -- The dirty directories of automatic import held through a pause, so a restart during it keeps them.
 create table held_watch_directories (
     path      text    not null,
@@ -48,6 +56,7 @@ create table held_watch_directories (
 
 -- +goose Down
 drop table held_watch_directories;
+drop table scan_read_locations;
 
 create table scan_videos_kept as select * from scan_videos;
 create table scan_issues_kept as select * from scan_issues;

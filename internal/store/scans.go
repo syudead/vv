@@ -22,7 +22,7 @@ func (s *ScanStore) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirec
 }
 
 // ResumeScan carries stage failures and substitutions so terminal jobs remain visible; scan-discovered issues are rediscovered instead.
-// A resumed force rescan keeps its scope and the marks of the videos it already forced.
+// A resumed force rescan keeps its scope, the marks of the videos it already forced and of the locations it read.
 func (s *ScanStore) ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
 	return s.startScan(ctx, scanStart{from: from, origin: domain.ScanOriginManual})
 }
@@ -102,6 +102,9 @@ func (s *ScanStore) startScan(ctx context.Context, start scanStart) (scan domain
 	}
 	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `delete from scan_read_locations where scan_id <> ?`, id); err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous scan's read locations: %w", err)
 	}
 	if err := carryPreviousIssues(ctx, tx, id, start); err != nil {
 		return domain.Scan{}, false, err
@@ -410,6 +413,10 @@ func carryInterruptedImport(ctx context.Context, q queryExecer, from, to int64) 
 		select ?, video_id, forced from scan_videos where scan_id = ?
 		on conflict (scan_id, video_id) do update set forced = excluded.forced`, to, from); err != nil {
 		return fmt.Errorf("cannot carry the interrupted import's videos: %w", err)
+	}
+	if _, err := q.ExecContext(ctx, `insert or ignore into scan_read_locations (scan_id, path)
+		select ?, path from scan_read_locations where scan_id = ?`, to, from); err != nil {
+		return fmt.Errorf("cannot carry the interrupted scan's read locations: %w", err)
 	}
 	fromScan := []any{}
 	for _, kind := range domain.ScanIssueKinds() {
