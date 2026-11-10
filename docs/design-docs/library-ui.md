@@ -370,6 +370,28 @@ owner's action on an empty library, and on a home with no video, is `Set up
 library`: it sets the onboarding step to `folders` and opens `/welcome`
 ([`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)).
 
+The owner's `Background work` section
+([`BackgroundWorkSection.tsx`](../../web/src/settings/BackgroundWorkSection.tsx),
+anchor `background-work`) opens the same page, above `Scan status`, because
+the owner decides between stopping and running while reading what is left
+([background pause](background-pause.md)). Its header carries one state badge:
+`Paused` in `warning` with a still `Pause` icon, `Running` in `secondary` with
+a spinner, or `Idle`. Under it come, in order:
+
+| Row | Content |
+| --- | --- |
+| Switch | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import` |
+| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one |
+| `Left to do` | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
+
+The counts are one component
+([`BackgroundCounts.tsx`](../../web/src/shell/BackgroundCounts.tsx)), so every
+place that shows them agrees. One provider beside `ScanProvider`
+([`BackgroundProvider.tsx`](../../web/src/shell/BackgroundProvider.tsx)) reads
+the status once and again on each `background` event and each open of
+`/api/events`, the first included, because the stream sends no background
+state on connect; for a guest it reads nothing and the section is absent.
+
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
 shows the latest import summary. The following rules govern its opening,
