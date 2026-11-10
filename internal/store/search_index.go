@@ -40,6 +40,14 @@ func (s *IngestStore) ApplySearchIndexForJob(ctx context.Context, job domain.Job
 	return true, nil
 }
 
+// QueueFrameIndexJobs queues, in class priority, a frame_index job for each content with a file and without a search
+// index of the current version, so contents imported before the index existed, or indexed by another version, are read.
+func (s *IngestStore) QueueFrameIndexJobs(ctx context.Context, priority domain.JobPriority) (int, error) {
+	return s.queueBackfillJobs(ctx, domain.JobFrameIndex, priority, `v.content_key <> ''
+		and not exists (select 1 from video_search_index i where i.content_key = v.content_key and i.version = ?)`,
+		domain.SearchIndexVersion)
+}
+
 // queueFrameIndexJob queues a backfill-class frame_index job for the video unless its content has a current-version
 // index or another of its videos already has one unfinished, so one content is read once.
 func queueFrameIndexJob(ctx context.Context, tx *sql.Tx, c *changes, videoID int64, contentKey string, now int64) error {
