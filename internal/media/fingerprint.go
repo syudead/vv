@@ -47,7 +47,7 @@ func SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Finger
 			if !rect.In(luma.rect) {
 				return domain.Fingerprint{}, fmt.Errorf("%w: frame %d is outside sheet %d", ErrSpriteMismatch, frame, sheetIndex)
 			}
-			frames = append(frames, domain.HashFrame(luma.shrink(luma.trimBlackBands(rect))))
+			frames = append(frames, luma.frameHash(rect))
 		}
 	}
 	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: sprite.IntervalMs, Frames: frames}, nil
@@ -77,6 +77,12 @@ func lumaPlane(img image.Image) luma {
 		}
 	}
 	return out
+}
+
+// frameHash hashes the frame at rect by the fingerprint rule: black bands trimmed, shrunk to 32x32 luma, then
+// domain.HashFrame. Fingerprints and the search index share it, so their hashes of one frame are comparable.
+func (l luma) frameHash(rect image.Rectangle) domain.FrameHash {
+	return domain.HashFrame(l.shrink(l.trimBlackBands(rect)))
 }
 
 func (l luma) at(x, y int) uint8 {

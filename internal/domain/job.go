@@ -35,6 +35,8 @@ const (
 	// is out of date, and then finish.
 	JobQueueKeyframes JobKind = "queue_keyframes"
 	JobQueueMediaInfo JobKind = "queue_media_info"
+	// JobFrameIndex reads one video's keyframes into its content's search index, outside import tracking.
+	JobFrameIndex JobKind = "frame_index"
 	// JobVirtualThumbnails publishes each virtual video's missing thumbnail file from its stored image.
 	JobVirtualThumbnails JobKind = "virtual_thumbnails"
 )
@@ -112,8 +114,8 @@ var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, J
 // docs/design-docs/process-lifecycle.md.
 var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobVirtualThumbnails}
 
-// BackfillJobKinds only refresh stored results: StartupJobKinds and the jobs they queue.
-var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo}, StartupJobKinds...)
+// BackfillJobKinds only refresh stored results: StartupJobKinds, the jobs they queue and the search index.
+var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo, JobFrameIndex}, StartupJobKinds...)
 
 // ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
 // processed.

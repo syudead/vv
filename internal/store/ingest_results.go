@@ -116,6 +116,10 @@ func (s *IngestStore) ApplyProbeForJob(
 	if err := queueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), followingRun(job), job.Force); err != nil {
 		return false, err
 	}
+	// A forced rescan of the same content finds its index current and queues nothing.
+	if err := queueFrameIndexJob(ctx, tx, &c, job.VideoID, job.ContentKey, now.Unix()); err != nil {
+		return false, err
+	}
 	// If probing finishes after the scan, resolve same-path succession here.
 	succeeded, err := applySuccession(ctx, tx, job.ContentKey, probe.DurationMs)
 	if err != nil {
