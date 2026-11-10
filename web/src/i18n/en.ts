@@ -458,6 +458,12 @@ const errorReasons = {
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
+  image_search_unreadable:
+    "The file isn't a PNG, JPEG or still WebP image or a video of at least a second, or it can't be read.",
+  image_search_uninformative: "The file is too plain to search by.",
+  image_search_too_long: "The video is too long: up to 3 hours.",
+  image_search_too_large:
+    "The file is too large: images up to 64 MB and 120 megapixels, videos up to 4 GB.",
   mixed_nodes:
     "Videos and groups of different VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>

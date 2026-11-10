@@ -45,7 +45,7 @@ flowchart LR
   idx --> auth[Delete expired sessions]
   auth --> rec[Close scans, requeue jobs]
   rec --> act[Mark activity interrupted]
-  act --> tmp[Remove unfinished artifacts]
+  act --> tmp[Remove unfinished artifacts and search uploads]
   tmp --> work[Subscribe and start workers]
   work --> resume[Resume interrupted scan]
   resume --> auto[Start auto-import]
@@ -61,6 +61,7 @@ flowchart LR
 | Folder index | Logged; the previous index stays until the next rebuild  |
 | Marking activity entries interrupted | Logged; the entries stay `running` until the next startup ([activity.md](activity.md)) |
 | Unfinished artifacts under `.tmp` | Logged |
+| Image search uploads under `search-uploads` | Logged ([image-search.md](image-search.md#uploads-leave-nothing-behind)) |
 | Resuming the interrupted scan | Logged; the user can start a scan |
 | Starting auto-import | Logged; the watches are added in the background and never delay the listener, and no scan starts ([folder-watching.md](folder-watching.md)) |
 | Encoder checks | Run in the background and never delay the listener ([hardware-encoding.md](hardware-encoding.md)) |

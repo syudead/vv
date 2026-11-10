@@ -10358,6 +10358,19 @@
       ]
     },
     {
+      "operationId": "searchByImage",
+      "method": "POST",
+      "path": "/api/image-search",
+      "summary": "Search the library by an uploaded image or video",
+      "description": "Owner-only. Accepts exactly one multipart part, `file`: a PNG, JPEG or still WebP image of at most 64 MiB and 120 million pixels, kept in memory, or any other file read as a video of at most 4 GiB and 3 hours, kept in the data directory's search uploads only until the response. Returns the listed videos, version bundle members collapsed to the representative, whose search index holds the same footage, ordered by match rate, then matched section length, then the newer video, at most 50, with the count of listed file videos not indexed yet. Videos in switched-off media folders are not searched. One search runs at a time; another request waits. No `file` part or a second part returns 400 invalid_request; a file that is neither a readable image nor a video stream of at least one second 400 image_search_unreadable; a flat image or a video with fewer than three non-flat frames sampled once a second 400 image_search_uninformative; a video over 3 hours 400 image_search_too_long with limit in milliseconds; an image over 64 MiB or 120 million pixels or a video over 4 GiB 413 image_search_too_large with the exceeded limit. A cancelled request writes no response and ends any ffmpeg run. Nothing it was given is kept, whatever the outcome.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "operationId": "searchPeopleWithPlugin",
       "method": "POST",
       "path": "/api/work-info-plugins/{id}/person-search",

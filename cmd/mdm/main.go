@@ -180,6 +180,11 @@ func run(opts runOptions) error {
 	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
 	}
+	// Empty the image search uploads before the listener opens, so a search a crash interrupted leaves nothing.
+	searchUploads := artifacts.NewSearchUploads(cfg.SearchUploadsDir())
+	if err := searchUploads.Empty(); err != nil {
+		logger.Warn("could not delete interrupted image search uploads", slog.Any("error", err))
+	}
 	sources := app.MediaFiles{Folders: settingsStore, Resolver: mediafs.New()}
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Sources: sources, Publisher: bus,
@@ -445,22 +450,28 @@ func run(opts runOptions) error {
 		ThumbnailEdits:    thumbnailEdits,
 		ThumbnailUploads:  ingest,
 		PersonImages:      personImages,
-		WorkInfoPlugins:   workInfoPlugins,
-		TranscodeProbes:   ingestStore,
-		Artifacts:         artifactStore,
-		Catalog:           catalog,
-		Opener:            fileOpener,
-		Files:             mediaFiles,
-		Foreground:        scheduler,
-		Subtitles:         media.NewSubtitleConverter(),
-		Events:            events,
-		Assets:            web.Dist(),
-		Logger:            logger,
-		Auth:              httpAuthenticator,
-		APITokens:         apiTokens,
-		Pairing:           pairing,
-		PeerLink:          peerLink,
-		TrustedProxies:    cfg.TrustedProxies,
+		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
+			Index: libraryStore, Uploads: searchUploads, Logger: logger,
+			Media: app.ImageSearchMedia{
+				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
+			},
+		}),
+		WorkInfoPlugins: workInfoPlugins,
+		TranscodeProbes: ingestStore,
+		Artifacts:       artifactStore,
+		Catalog:         catalog,
+		Opener:          fileOpener,
+		Files:           mediaFiles,
+		Foreground:      scheduler,
+		Subtitles:       media.NewSubtitleConverter(),
+		Events:          events,
+		Assets:          web.Dist(),
+		Logger:          logger,
+		Auth:            httpAuthenticator,
+		APITokens:       apiTokens,
+		Pairing:         pairing,
+		PeerLink:        peerLink,
+		TrustedProxies:  cfg.TrustedProxies,
 	})
 	assistant.UseRunner(assistantRunner)
 

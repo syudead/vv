@@ -364,6 +364,31 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/image-search:
+    post:
+      operationId: searchByImage
+      summary: "Search the library by an uploaded image or video"
+      description: "Owner-only. Accepts exactly one multipart part, `file`: a PNG, JPEG or still WebP image of at most 64 MiB and 120 million pixels, kept in memory, or any other file read as a video of at most 4 GiB and 3 hours, kept in the data directory's search uploads only until the response. Returns the listed videos, version bundle members collapsed to the representative, whose search index holds the same footage, ordered by match rate, then matched section length, then the newer video, at most 50, with the count of listed file videos not indexed yet. Videos in switched-off media folders are not searched. One search runs at a time; another request waits. No `file` part or a second part returns 400 invalid_request; a file that is neither a readable image nor a video stream of at least one second 400 image_search_unreadable; a flat image or a video with fewer than three non-flat frames sampled once a second 400 image_search_uninformative; a video over 3 hours 400 image_search_too_long with limit in milliseconds; an image over 64 MiB or 120 million pixels or a video over 4 GiB 413 image_search_too_large with the exceeded limit. A cancelled request writes no response and ends any ffmpeg run. Nothing it was given is kept, whatever the outcome."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/SearchByImageRequest"
+      responses:
+        "200":
+          description: "Matching videos"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSearchResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/ImageSearchTooLarge"
+
   /api/videos/{id}:
     get:
       operationId: getVideo
@@ -6839,6 +6864,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ImageSearchTooLarge:
+      description: "Uploaded image search file exceeds a limit (reason image_search_too_large, limit)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     PersonImageTooLarge:
       description: "Uploaded person image body exceeds the byte limit (reason person_image_too_large, limit)"
       content:
@@ -8137,6 +8168,104 @@ components:
           type: string
           maxLength: 64
           description: "Video contentVersion held by the UI when the preview opened."
+
+    SearchByImageRequest:
+      type: object
+      additionalProperties: false
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: "The image or video to search by."
+
+    ImageSearchResult:
+      type: object
+      additionalProperties: false
+      required: [query, items, unindexedCount]
+      properties:
+        query:
+          $ref: "#/components/schemas/ImageSearchQuery"
+        items:
+          type: array
+          maxItems: 50
+          description: "Matching listed videos, best first; empty when nothing matches."
+          items:
+            $ref: "#/components/schemas/ImageSearchItem"
+        unindexedCount:
+          type: integer
+          minimum: 0
+          description: "File videos visible to the owner, version bundle members included, that have no current search index and so were not searched."
+
+    ImageSearchQuery:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [image, video]
+          description: "How the file was read."
+        durationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "The query video's duration; video queries only."
+
+    ImageSearchItem:
+      type: object
+      additionalProperties: false
+      required: [video, match]
+      properties:
+        video:
+          $ref: "#/components/schemas/Video"
+        match:
+          $ref: "#/components/schemas/ImageSearchMatch"
+
+    ImageSearchMatch:
+      type: object
+      additionalProperties: false
+      required: [videoId, rate, kind, positionMs]
+      properties:
+        videoId:
+          type: integer
+          format: int64
+          description: "The video the match was found in: video.id or one of its versions; playback opens this id."
+        rate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: "For an image, (63 - hash distance) / 63; for a video, the share of matching index entries in the overlap."
+        kind:
+          type: string
+          enum: [frame, whole, partial]
+          description: "frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial."
+        positionMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Where playback starts: the matched frame, or the first matching entry of the matched section."
+        startMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Start of the matched section on videoId's timeline; video queries only."
+        endMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "End of the matched section on videoId's timeline; video queries only."
+        queryStartMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Start of the matched section on the query's timeline; video queries only."
+        queryEndMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "End of the matched section on the query's timeline; video queries only."
 
     UploadPersonImageRequest:
       type: object
@@ -15149,3 +15278,7 @@ components:
         - organization_name_taken
         - certificate_untrusted
         - fingerprint_changed
+        - image_search_unreadable
+        - image_search_uninformative
+        - image_search_too_long
+        - image_search_too_large

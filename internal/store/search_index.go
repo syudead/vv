@@ -69,3 +69,55 @@ func queueFrameIndexJob(ctx context.Context, tx *sql.Tx, c *changes, videoID int
 	}
 	return nil
 }
+
+// ImageSearchSnapshot reads, in one snapshot, the current-version index of every file video the audience lists, each
+// with the id the library lists it under, and counts the listed file videos without one. A row that does not decode
+// counts as missing.
+func (s *LibraryStore) ImageSearchSnapshot(ctx context.Context, audience domain.Audience) (domain.ImageSearchSnapshot, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.ImageSearchSnapshot{}, fmt.Errorf("cannot start reading the search index: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var snapshot domain.ImageSearchSnapshot
+	if err := tx.QueryRowContext(ctx, `select count(*) from videos v where `+listedFileVideoCondition("v", audience)+`
+		and not exists (select 1 from video_search_index i where i.content_key = v.content_key and i.version = ?)`,
+		domain.SearchIndexVersion).Scan(&snapshot.UnindexedCount); err != nil {
+		return domain.ImageSearchSnapshot{}, fmt.Errorf("cannot count the videos without a search index: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, `select v.id, case when bm.bundle_id is null then v.id else `+
+		listedRepresentativeExpr("bm.bundle_id", audience)+` end, v.added_at, coalesce(v.duration_ms, 0), i.entries
+		from videos v
+		join video_search_index i on i.content_key = v.content_key and i.version = ?
+		left join video_bundle_members bm on bm.content_key = v.content_key
+		where v.content_key <> '' and `+listedFileVideoCondition("v", audience)+`
+		order by v.id`, domain.SearchIndexVersion)
+	if err != nil {
+		return domain.ImageSearchSnapshot{}, fmt.Errorf("cannot read the search index: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var candidate domain.ImageSearchCandidate
+		var addedAt int64
+		var entries []byte
+		if err := rows.Scan(&candidate.Content.VideoID, &candidate.ListedID, &addedAt, &candidate.Content.DurationMs,
+			&entries); err != nil {
+			return domain.ImageSearchSnapshot{}, fmt.Errorf("cannot read the search index: %w", err)
+		}
+		index, err := domain.DecodeSearchIndex(entries, domain.SearchIndexVersion)
+		if err != nil {
+			snapshot.UnindexedCount++
+			continue
+		}
+		candidate.Content.AddedAt = time.Unix(addedAt, 0)
+		candidate.Content.Frames = make([]domain.ImageSearchFrame, len(index.Entries))
+		for i, entry := range index.Entries {
+			candidate.Content.Frames[i] = domain.ImageSearchFrame(entry)
+		}
+		snapshot.Candidates = append(snapshot.Candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.ImageSearchSnapshot{}, fmt.Errorf("cannot read the search index: %w", err)
+	}
+	return snapshot, nil
+}

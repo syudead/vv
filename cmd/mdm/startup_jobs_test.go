@@ -2,6 +2,8 @@ package main
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -58,15 +60,22 @@ func (l *startupJobLog) firstGrantAfterListening() bool {
 	return listening
 }
 
+// Startup also empties the image search uploads a killed search left.
 func TestRunQueuesBackfillJobsOnlyAfterListening(t *testing.T) {
 	stubMediaCommands(t)
+	cfg := Config{Addr: net.JoinHostPort("127.0.0.1", freePort(t)), DataDir: t.TempDir(), LogLevel: "debug"}
+	left := filepath.Join(cfg.SearchUploadsDir(), "query-left")
+	if err := os.MkdirAll(filepath.Dir(left), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(left, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	logs := &startupJobLog{released: map[domain.JobKind]bool{}, done: make(chan struct{})}
 	stop := make(chan struct{})
 	server := startServer(func() error {
 		return run(runOptions{
-			Config: Config{
-				Addr: net.JoinHostPort("127.0.0.1", freePort(t)), DataDir: t.TempDir(), LogLevel: "debug",
-			},
+			Config:     cfg,
 			LogOutput:  logs,
 			Listener:   newReopenableListener(),
 			NotifyStop: func() (<-chan struct{}, func()) { return stop, nil },
@@ -86,5 +95,8 @@ func TestRunQueuesBackfillJobsOnlyAfterListening(t *testing.T) {
 	}
 	if !logs.firstGrantAfterListening() {
 		t.Fatal("a backfill job was granted before the listener opened")
+	}
+	if _, err := os.Stat(left); !os.IsNotExist(err) {
+		t.Fatalf("the interrupted search upload survived startup: %v", err)
 	}
 }

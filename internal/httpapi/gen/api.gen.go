@@ -1218,6 +1218,10 @@ const (
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
+	ErrorReasonImageSearchTooLarge           ErrorReason = "image_search_too_large"
+	ErrorReasonImageSearchTooLong            ErrorReason = "image_search_too_long"
+	ErrorReasonImageSearchUninformative      ErrorReason = "image_search_uninformative"
+	ErrorReasonImageSearchUnreadable         ErrorReason = "image_search_unreadable"
 	ErrorReasonInsufficientCredits           ErrorReason = "insufficient_credits"
 	ErrorReasonInvalidAddress                ErrorReason = "invalid_address"
 	ErrorReasonInvalidCode                   ErrorReason = "invalid_code"
@@ -1374,6 +1378,14 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonGroupTargetNotFound:
 		return true
 	case ErrorReasonGuestFilterNotAllowed:
+		return true
+	case ErrorReasonImageSearchTooLarge:
+		return true
+	case ErrorReasonImageSearchTooLong:
+		return true
+	case ErrorReasonImageSearchUninformative:
+		return true
+	case ErrorReasonImageSearchUnreadable:
 		return true
 	case ErrorReasonInsufficientCredits:
 		return true
@@ -1746,6 +1758,45 @@ func (e HealthStatus) Valid() bool {
 	case Degraded:
 		return true
 	case Ok:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSearchMatchKind.
+const (
+	ImageSearchMatchKindFrame   ImageSearchMatchKind = "frame"
+	ImageSearchMatchKindPartial ImageSearchMatchKind = "partial"
+	ImageSearchMatchKindWhole   ImageSearchMatchKind = "whole"
+)
+
+// Valid indicates whether the value is a known member of the ImageSearchMatchKind enum.
+func (e ImageSearchMatchKind) Valid() bool {
+	switch e {
+	case ImageSearchMatchKindFrame:
+		return true
+	case ImageSearchMatchKindPartial:
+		return true
+	case ImageSearchMatchKindWhole:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSearchQueryKind.
+const (
+	ImageSearchQueryKindImage ImageSearchQueryKind = "image"
+	ImageSearchQueryKindVideo ImageSearchQueryKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the ImageSearchQueryKind enum.
+func (e ImageSearchQueryKind) Valid() bool {
+	switch e {
+	case ImageSearchQueryKindImage:
+		return true
+	case ImageSearchQueryKindVideo:
 		return true
 	default:
 		return false
@@ -5386,6 +5437,66 @@ type Health struct {
 // HealthStatus ok: storage reachable; degraded: process alive without storage connectivity
 type HealthStatus string
 
+// ImageSearchItem defines model for ImageSearchItem.
+type ImageSearchItem struct {
+	Match ImageSearchMatch `json:"match"`
+
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	Video Video `json:"video"`
+}
+
+// ImageSearchMatch defines model for ImageSearchMatch.
+type ImageSearchMatch struct {
+	// EndMs End of the matched section on videoId's timeline; video queries only.
+	EndMs *int64 `json:"endMs,omitempty"`
+
+	// Kind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
+	Kind ImageSearchMatchKind `json:"kind"`
+
+	// PositionMs Where playback starts: the matched frame, or the first matching entry of the matched section.
+	PositionMs int64 `json:"positionMs"`
+
+	// QueryEndMs End of the matched section on the query's timeline; video queries only.
+	QueryEndMs *int64 `json:"queryEndMs,omitempty"`
+
+	// QueryStartMs Start of the matched section on the query's timeline; video queries only.
+	QueryStartMs *int64 `json:"queryStartMs,omitempty"`
+
+	// Rate For an image, (63 - hash distance) / 63; for a video, the share of matching index entries in the overlap.
+	Rate float64 `json:"rate"`
+
+	// StartMs Start of the matched section on videoId's timeline; video queries only.
+	StartMs *int64 `json:"startMs,omitempty"`
+
+	// VideoId The video the match was found in: video.id or one of its versions; playback opens this id.
+	VideoId int64 `json:"videoId"`
+}
+
+// ImageSearchMatchKind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
+type ImageSearchMatchKind string
+
+// ImageSearchQuery defines model for ImageSearchQuery.
+type ImageSearchQuery struct {
+	// DurationMs The query video's duration; video queries only.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Kind How the file was read.
+	Kind ImageSearchQueryKind `json:"kind"`
+}
+
+// ImageSearchQueryKind How the file was read.
+type ImageSearchQueryKind string
+
+// ImageSearchResult defines model for ImageSearchResult.
+type ImageSearchResult struct {
+	// Items Matching listed videos, best first; empty when nothing matches.
+	Items []ImageSearchItem `json:"items"`
+	Query ImageSearchQuery  `json:"query"`
+
+	// UnindexedCount File videos visible to the owner, version bundle members included, that have no current search index and so were not searched.
+	UnindexedCount int `json:"unindexedCount"`
+}
+
 // Interest defines model for Interest.
 type Interest struct {
 	// HasFolder An ordinary root smart folder already matches this interest tag.
@@ -7249,6 +7360,12 @@ type ScanVideos struct {
 
 	// Total Target count; zero means no changes.
 	Total int `json:"total"`
+}
+
+// SearchByImageRequest defines model for SearchByImageRequest.
+type SearchByImageRequest struct {
+	// File The image or video to search by.
+	File openapi_types.File `json:"file"`
 }
 
 // SeekThumbnailSprite Seek-thumbnail sprite layout; cells beyond frameCount on the final sheet are black and must not be addressed by clients.
@@ -9368,6 +9485,9 @@ type Conflict = Error
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
 
+// ImageSearchTooLarge defines model for ImageSearchTooLarge.
+type ImageSearchTooLarge = Error
+
 // InvalidRequest defines model for InvalidRequest.
 type InvalidRequest = Error
 
@@ -10102,6 +10222,9 @@ type RemoveGroupItemsJSONRequestBody = GroupItemRemove
 // MoveGroupItemJSONRequestBody defines body for MoveGroupItem for application/json ContentType.
 type MoveGroupItemJSONRequestBody = GroupItemMove
 
+// SearchByImageMultipartRequestBody defines body for SearchByImage for multipart/form-data ContentType.
+type SearchByImageMultipartRequestBody = SearchByImageRequest
+
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
@@ -10527,6 +10650,9 @@ type ServerInterface interface {
 	// GetHealth Return health and build information
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// SearchByImage Search the library by an uploaded image or video
+	// (POST /api/image-search)
+	SearchByImage(w http.ResponseWriter, r *http.Request)
 	// ListLibrary List library items (videos and groups)
 	// (GET /api/library)
 	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
@@ -12792,6 +12918,20 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchByImage operation middleware
+func (siw *ServerInterfaceWrapper) SearchByImage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchByImage(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18980,6 +19120,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/account", wrapper.UpdateAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/image-search", wrapper.SearchByImage)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}", wrapper.DeleteVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/virtual-videos", wrapper.CreateVirtualVideo)

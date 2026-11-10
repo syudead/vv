@@ -70,6 +70,7 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "POST", Path: "/api/groups/{id}/items/{itemId}/move", Request: "GroupItemMove", PathParams: []string{"itemId"}},
 	{Method: "POST", Path: "/api/groups/{id}/tag", Response: "GroupTagResult"},
 	{Method: "GET", Path: "/api/health", Response: "Health"},
+	{Method: "POST", Path: "/api/image-search", Response: "ImageSearchResult"},
 	{Method: "GET", Path: "/api/library", Response: "LibraryPage"},
 	{Method: "GET", Path: "/api/media-folders", Response: "[]MediaFolder"},
 	{Method: "POST", Path: "/api/media-folders", Response: "MediaFolder", Request: "CreateMediaFolderRequest"},
