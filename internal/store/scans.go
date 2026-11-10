@@ -46,14 +46,8 @@ type scanStart struct {
 func (s *ScanStore) startScan(ctx context.Context, start scanStart) (scan domain.Scan, started bool, err error) {
 	s.db.folderMu.Lock()
 	defer s.db.folderMu.Unlock()
-	var folderCount int
-	if err := s.db.sql.QueryRowContext(ctx, `select count(*) from media_folders`).Scan(&folderCount); err != nil {
-		return domain.Scan{}, false, err
-	}
-	if folderCount == 0 {
-		return domain.Scan{}, false, domain.ErrNoMediaFolders
-	}
 	// A paused scan waits for the resume of background work, so it stands for the next request as a running one does.
+	// It is looked up before the folder count, since the last folder can be deleted while the scan is paused.
 	if open, err := s.scanBy(ctx,
 		`select `+scanColumns+` from scans where state in ('running', 'paused') order by state = 'running' desc limit 1`,
 	); err == nil {
@@ -63,6 +57,13 @@ func (s *ScanStore) startScan(ctx context.Context, start scanStart) (scan domain
 		return open, false, nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return domain.Scan{}, false, err
+	}
+	var folderCount int
+	if err := s.db.sql.QueryRowContext(ctx, `select count(*) from media_folders`).Scan(&folderCount); err != nil {
+		return domain.Scan{}, false, err
+	}
+	if folderCount == 0 {
+		return domain.Scan{}, false, domain.ErrNoMediaFolders
 	}
 	if start.rescan, err = s.rescanToStart(ctx, start); err != nil {
 		return domain.Scan{}, false, err
