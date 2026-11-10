@@ -214,6 +214,12 @@ type autoImportRig struct {
 
 func newAutoImportRig(t *testing.T, enabled bool, roots ...string) *autoImportRig {
 	t.Helper()
+	return newAutoImportRigWith(t, enabled, roots, nil)
+}
+
+// tune adjusts the options before the AutoImport is created and started.
+func newAutoImportRigWith(t *testing.T, enabled bool, roots []string, tune func(*AutoImportOptions)) *autoImportRig {
+	t.Helper()
 	rig := &autoImportRig{
 		clock:   newStepClock(),
 		watcher: &fakeFolderWatcher{},
@@ -225,7 +231,7 @@ func newAutoImportRig(t *testing.T, enabled bool, roots ...string) *autoImportRi
 	for i, root := range roots {
 		folders = append(folders, domain.MediaFolder{ID: int64(i + 1), Path: root})
 	}
-	rig.auto = NewAutoImport(AutoImportOptions{
+	opts := AutoImportOptions{
 		Store:   rig.store,
 		Folders: fakeActivityFolders{roots: folders},
 		Watcher: rig.watcher,
@@ -235,7 +241,11 @@ func newAutoImportRig(t *testing.T, enabled bool, roots ...string) *autoImportRi
 		},
 		Clock:  rig.clock,
 		Logger: discardLogger(),
-	})
+	}
+	if tune != nil {
+		tune(&opts)
+	}
+	rig.auto = NewAutoImport(opts)
 	if err := rig.auto.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
