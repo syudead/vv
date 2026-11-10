@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from "react-router";
 
 import type { ActivityDetail } from "../api/activity";
 import { formatDateTime, t } from "../i18n";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
 import { type Fact, FactList } from "../ui/patterns/fact-list";
@@ -13,7 +14,7 @@ import { RecordPage } from "../ui/patterns/record-page";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
-import { ResultText, StatusIcon } from "./ActivityCard";
+import { MarkName, ResultText, StatusIcon } from "./ActivityCard";
 import {
   deciderText,
   type DetailNotice,
@@ -177,9 +178,10 @@ function headerOpen(entry: ActivityDetail, here: string): ReactNode {
 
 function ResultFact({ entry, ops }: { entry: ActivityDetail; ops: DetailOperations }) {
   const key = `undo-${String(entry.id)}`;
+  const paused = useBackgroundPaused();
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <ResultText result={entryResult(entry, new Date())} wrap />
+      <ResultText result={entryResult(entry, new Date(), paused)} wrap />
       {entryOperations(entry).undo && (
         <Button
           variant="outline"
@@ -213,7 +215,7 @@ function summaryFacts(
       value: (
         <span className="flex items-center gap-2">
           <StatusIcon entry={entry} small />
-          {t.activity.statusIcon[statusMark(entry)]}
+          <MarkName mark={statusMark(entry)} />
         </span>
       ),
     },

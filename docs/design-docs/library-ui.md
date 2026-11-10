@@ -418,6 +418,35 @@ so a reload or another tab keeps it hidden, and a `storage` event hides it in
 tabs already open. Hiding a scan that is still starting waits for the new
 scan's id. The result of a hidden scan stays readable in `Scan status`.
 
+While background work is paused, the owner's screens show the paused
+indicator
+([`BackgroundPausedIndicator.tsx`](../../web/src/shell/BackgroundPausedIndicator.tsx))
+in this place instead of the scan states, so a stopped library is not
+forgotten: a `warning` `Pause` icon, `Paused` and the total left, which sums
+the groups whose feature is on, because that is what a resume starts. At 360px
+the total is the number alone, and from `sm` it reads `{n} left`. Pressing it
+opens `/settings/scan#background-work`. It has no hide button, a stored
+dismissal does not hide it, and it sits above a list's selection bar by the
+height the bar publishes (`bottom-indicator`). Its summary opens and closes by
+the rules above
+([`useIndicatorPopover.ts`](../../web/src/shell/useIndicatorPopover.ts)) and
+holds `Background work is paused`, the section's count list and its switch;
+`Tab` from the indicator moves into the summary, which stays open while focus
+is inside it. Turning the switch off resumes: the summary shows `Resuming…`
+until the answer, then the scan indicator takes the place again if a scan
+runs. A scan result due while paused is not shown afterwards; `Scan status`
+keeps it.
+
+While the status reports paused, every place that says `Waiting` for queued
+work says `Waiting for resume` instead, with the same icon, colour and
+position: an Activity entry's status icon name and result, a pipeline's
+`Waiting · …` line and a waiting stage row; the first figure of the `Progress`
+queue line of `Auto-tagging` and `Face recognition`; a waiting pair's automatic
+judgement on `Duplicates`; and a waiting stage under `Getting ready to play`
+for a video on this node, since the status does not cover a paired node's work.
+The screens read one flag from the provider (`useBackgroundPaused`), so a guest,
+who has no status, keeps the plain texts.
+
 ### Cards
 
 A video card ([`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)) shows

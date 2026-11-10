@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import type { ProbeErrorCode, Video } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import { ReadFailure } from "./StatusOverlays";
+import { remoteIdOffset } from "../lib/remoteId";
+import { PausedBackground } from "../testing/background";
+import { ProcessingStages, ReadFailure } from "./StatusOverlays";
 
 const failed: Video = {
   id: 7,
@@ -85,5 +87,32 @@ describe("ReadFailure", () => {
       />,
     );
     expectCatalogTextOnly(document.body);
+  });
+});
+
+describe("ProcessingStages", () => {
+  // The probe stage runs, so the thumbnail stage after it waits.
+  const preparing: Video = {
+    ...failed,
+    probeState: "pending",
+    thumbnailState: "pending",
+    previewState: "pending",
+  };
+
+  function thumbnailStageState(video: Video) {
+    render(
+      <PausedBackground>
+        <ProcessingStages video={video} />
+      </PausedBackground>,
+    );
+    return screen.getByText("Thumbnail").nextElementSibling?.textContent;
+  }
+
+  it("says a waiting stage waits for resume while this node is paused", () => {
+    expect(thumbnailStageState(preparing)).toBe("Waiting for resume");
+  });
+
+  it("keeps the plain waiting text for a paired node's video", () => {
+    expect(thumbnailStageState({ ...preparing, id: remoteIdOffset + 7 })).toBe("Waiting");
   });
 });

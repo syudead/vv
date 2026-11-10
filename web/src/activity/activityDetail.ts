@@ -99,11 +99,15 @@ export function memberTitle(
  * A member row reads its result phrase without the message, which its own detail shows in full; a
  * replaced member reads as replaced whatever its own outcome.
  */
-export function memberResult(member: EntryFields, now: Date): EntryResult {
+export function memberResult(
+  member: EntryFields,
+  now: Date,
+  paused = false,
+): EntryResult {
   if (member.replaced === true)
     return { parts: [{ text: t.activity.result.superseded }], tone: "muted" };
   const { detail: _message, ...withoutMessage } = member;
-  return entryResult(withoutMessage, now);
+  return entryResult(withoutMessage, now, paused);
 }
 
 export interface DetailNotice {
