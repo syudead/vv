@@ -353,8 +353,14 @@ folder's own ones as chips after its tags.
 The owner's library search field (on `/` only) also searches by a file: its
 `Search by image or video` button, before the syntax help, opens
 `ImageUploadDialog` with image-and-video wording, and the chosen file starts a
-search ([image-search.md](image-search.md) has the matching rules). Folder,
-group and smart-folder pages, and guests, keep the plain field. While the
+search ([image-search.md](image-search.md) has the matching rules). A file
+dropped on the field, or pasted into the focused field, starts a search too;
+a paste of text only types it. While a file is dragged into the window, the
+field's frame turns dashed `primary` with the placeholder `Drop here to search
+by this file`, and over the field it is solid with a `primary-soft` fill and
+the `ScanSearch` icon. A file dropped anywhere else on the page is refused
+without opening it and starts nothing. Folder, group and smart-folder pages,
+and guests, keep the plain field. While the
 search runs or shows its answer, a query chip (the file's preview, its name
 from `sm` up, and `Clear image search`) sits at the field's start and holds at
 most half its width; the placeholder reads `Or search by text`.

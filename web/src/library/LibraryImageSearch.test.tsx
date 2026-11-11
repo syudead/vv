@@ -131,6 +131,19 @@ async function pick(user: ReturnType<typeof userEvent.setup>, file: File) {
   });
 }
 
+/** A drag of the given files, as the browser describes one from outside the page. */
+function files(given: File[]) {
+  return { dataTransfer: { types: ["Files"], files: given } };
+}
+
+/** The element that takes a drop: the frame around the search input. */
+function searchField(): HTMLElement {
+  const box = screen.getByLabelText("Search videos");
+  const frame = box.parentElement;
+  if (frame === null) throw new Error("search field has no frame");
+  return frame;
+}
+
 function item(id: number, memberId: number, positionMs: number): ImageSearchItem {
   return {
     video: video(id, { title: `動画 ${String(id)}` }),
@@ -318,9 +331,88 @@ describe("ライブラリの画像検索", () => {
     );
   });
 
-  it("ゲストの検索欄にはファイルで検索するボタンがない", async () => {
+  it("検索欄に落としたファイルで 1 回だけ要求する", async () => {
+    renderLibrary();
+    await screen.findByRole("link", { name: /ライブラリの動画/ });
+    const file = png("dropped.png");
+
+    const taken = fireEvent.drop(searchField(), files([file]));
+
+    expect(taken).toBe(false);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]?.file.name).toBe(file.name);
+    expect(imageSearchCount()).toBe(1);
+  });
+
+  it("画像の貼り付けは文字を入れずにその画像で検索し、文字の貼り付けは文字を入れるだけ", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: /ライブラリの動画/ });
+    const box = screen.getByRole<HTMLInputElement>("combobox", { name: "Search videos" });
+
+    await user.click(box);
+    await user.paste("京都");
+    expect(box.value).toBe("京都");
+    expect(imageSearchCount()).toBe(0);
+
+    await user.clear(box);
+    const file = png("pasted.png");
+    const taken = fireEvent.paste(box, { clipboardData: { files: [file] } });
+
+    expect(taken).toBe(false);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]?.file.name).toBe(file.name);
+    expect(box.value).toBe("");
+  });
+
+  it("検索欄の外に落としたファイルはブラウザに開かせず、何も要求しない", async () => {
+    renderLibrary();
+    const card = await screen.findByRole("link", { name: /ライブラリの動画/ });
+
+    expect(fireEvent.dragOver(card, files([png()]))).toBe(false);
+    expect(fireEvent.drop(card, files([png()]))).toBe(false);
+
+    expect(screen.getByRole("link", { name: /ライブラリの動画/ })).toBe(card);
+    expect(screen.queryByRole("region", { name: "Image search" })).toBeNull();
+    expect(imageSearchCount()).toBe(0);
+  });
+
+  it.each([
+    {
+      given: [png("first.png"), png("second.png")],
+      title: "Search with one file at a time",
+      description: "2 files were given.",
+    },
+    {
+      given: [new File(["memo"], "first.png.txt", { type: "text/plain" })],
+      title: "This file can't be searched",
+      description: "Use a PNG, JPEG or WebP image, or a video.",
+    },
+  ])(
+    "$title: 要求せずに最初のファイルと理由を出す",
+    async ({ given, title, description }) => {
+      renderLibrary();
+      await screen.findByRole("link", { name: /ライブラリの動画/ });
+
+      fireEvent.drop(searchField(), files(given));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain(title);
+      expect(alert.textContent).toContain(description);
+      expect(screen.getByRole("button", { name: "Clear image search" })).toBeDefined();
+      expect(screen.getByText(given[0]?.name ?? "")).toBeDefined();
+      expect(imageSearchCount()).toBe(0);
+    },
+  );
+
+  it("ゲストの検索欄にはファイルで検索するボタンがなく、落としても何も始まらない", async () => {
     renderLibrary("guest");
     await screen.findByRole("link", { name: /ライブラリの動画/ });
     expect(screen.queryByRole("button", { name: "Search by image or video" })).toBeNull();
+
+    // The browser's default stays as before, so the drop is not taken.
+    expect(fireEvent.drop(searchField(), files([png()]))).toBe(true);
+    expect(screen.queryByRole("region", { name: "Image search" })).toBeNull();
+    expect(imageSearchCount()).toBe(0);
   });
 });

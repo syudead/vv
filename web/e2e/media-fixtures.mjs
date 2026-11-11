@@ -494,6 +494,24 @@ export function generateSearchFixtures(root) {
   writeFileSync(file("長さ不明.mp4"), "この中身は動画ではない\n".repeat(64));
 }
 
+/** Drifting gradients, unlike every testsrc2 clip, so a frame of it matches only this video and only near its own time; keyframes every 3 s leave most frames between them. */
+export const IMAGE_SEARCH_VIDEO = "画像検索の確認";
+
+export function generateImageSearchFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "gradients=s=320x180:r=10:d=20:speed=0.03:seed=7:n=4",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(root, `${IMAGE_SEARCH_VIDEO}.mp4`),
+  ]);
+}
+
 /** Use distinct 40-second clips so short playback remains outside the 15-second completion tail. */
 export const HISTORY_VIDEOS = ["履歴の確認A", "履歴の確認B"];
 

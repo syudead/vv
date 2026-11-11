@@ -24,6 +24,7 @@ import {
   useSuggestionBox,
 } from "./SearchSuggestions";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
+import { type FileDrag, useFileIntake } from "./useFileIntake";
 
 /** Debounce so each keystroke does not replace the list. */
 export const searchDebounceMs = 250;
@@ -32,6 +33,8 @@ export const searchDebounceMs = 250;
 export interface FileSearchField {
   /** Opens the search-by-file dialog. */
   onPick: () => void;
+  /** Takes the files dropped on the field or pasted into it. */
+  onFiles: (files: File[]) => void;
   /** The query chip while an image search shows; it replaces the search icon. */
   chip?: ReactNode;
   /** Ends the image search: `Enter` with text and `Escape` on an empty field call it while the chip shows. */
@@ -68,6 +71,18 @@ function endPadding(syntaxHelp: boolean, empty: boolean, pick: boolean): string 
   if (!syntaxHelp) return pick ? "pr-16" : "pr-8";
   if (pick) return empty ? "pr-16 sm:pr-24" : "pr-24";
   return empty ? "pr-8 sm:pr-16" : "pr-16";
+}
+
+/** The frame of a field a file is dragged toward: dashed while over the page, filled over the field. */
+function dragFrame(drag: FileDrag): string | false {
+  if (drag === "page") return "border-dashed border-primary hover:border-primary";
+  if (drag === "field") return "border-primary bg-primary-soft hover:border-primary";
+  return false;
+}
+
+function fieldPlaceholder(drag: FileDrag, chip: boolean, placeholder: UiText): UiText {
+  if (drag !== "none") return t.library.imageSearch.dropHere;
+  return chip ? t.library.imageSearch.placeholder : placeholder;
 }
 
 /**
@@ -161,6 +176,7 @@ export default function SearchBox({
     suggestions?.onPick(option);
   };
   const chip = fileSearch?.chip;
+  const intake = useFileIntake(fileSearch?.onFiles);
   // Text ends a shown image search even when it equals the committed query, which commits nothing.
   const searchText = () => {
     const text = normalizeQuery(latest.current, maxLength);
@@ -184,19 +200,20 @@ export default function SearchBox({
 
   return (
     <div
+      {...intake.dropProps}
+      data-file-drag={intake.drag === "none" ? undefined : intake.drag}
       className={cn(
         "relative flex w-full items-center",
         // With a chip the frame holds the chip and the borderless input, so both read as one field.
-        chip !== undefined &&
+        chip !== undefined && [
           "h-8 gap-1 rounded-md border border-input bg-muted pl-0.5 hover:border-muted-foreground",
+          dragFrame(intake.drag),
+        ],
         className,
       )}
     >
       {chip === undefined ? (
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
-        />
+        <FieldIcon drag={intake.drag} />
       ) : (
         <div className="flex max-w-1/2 min-w-0 shrink-0">{chip}</div>
       )}
@@ -216,6 +233,7 @@ export default function SearchBox({
             ),
           );
         }}
+        onPaste={intake.onPaste}
         onCompositionStart={() => setComposing(true)}
         onCompositionEnd={(event) => {
           setComposing(false);
@@ -256,7 +274,7 @@ export default function SearchBox({
             field.current?.blur();
           }
         }}
-        placeholder={chip === undefined ? placeholder : t.library.imageSearch.placeholder}
+        placeholder={fieldPlaceholder(intake.drag, chip !== undefined, placeholder)}
         aria-label={label}
         disabled={disabled}
         autoComplete="off"
@@ -264,7 +282,7 @@ export default function SearchBox({
         className={cn(
           "[&::-webkit-search-cancel-button]:hidden",
           chip === undefined
-            ? "h-8 pl-8"
+            ? ["h-8 pl-8", dragFrame(intake.drag)]
             : "h-full border-0 bg-transparent pl-1 hover:border-0",
           endPadding(syntaxHelp, input === "", fileSearch !== undefined),
         )}
@@ -289,6 +307,19 @@ export default function SearchBox({
       </div>
       {box.list}
     </div>
+  );
+}
+
+function FieldIcon({ drag }: { drag: FileDrag }) {
+  const Icon = drag === "field" ? ScanSearch : Search;
+  return (
+    <Icon
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute left-2 size-4 text-muted-foreground",
+        drag === "field" && "text-primary",
+      )}
+    />
   );
 }
 

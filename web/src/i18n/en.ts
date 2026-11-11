@@ -1060,6 +1060,7 @@ export const en = {
     imageSearch: {
       pick: "Search by image or video",
       placeholder: "Or search by text",
+      dropHere: "Drop here to search by this file",
       clear: "Clear image search",
       dialog: {
         title: "Search by image or video",
