@@ -151,6 +151,7 @@ answered like a missing file.
 opens and removes thumbnails, seek sprites and hover previews. A file becomes
 visible only when complete (it is generated under `.tmp` and renamed into
 place), and it is removed only when the last video referencing its content goes.
+It also holds image search uploads, each removed when its request ends.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
 public flags, favorites, playlist items, groups and their items, smart
@@ -236,6 +237,7 @@ and stops when its context ends.
 | `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One scheduler that grants every ingest stage from shared CPU slots and per-disk read slots over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [job-scheduling.md](docs/design-docs/job-scheduling.md), [Queue workers](#queue-workers) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
+| `internal/app` (`ImageSearch`), `internal/store` (`video_search_index`), `internal/media`, `internal/artifacts` (`SearchUploads`) | Image search: a keyframe hash index per content, matching an uploaded image or video against it in memory under the owner's audience, and holding a video query under `MDM_DATA_DIR/search-uploads` only for its request | [image-search.md](docs/design-docs/image-search.md) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |
 | `internal/store` | SQLite schema, migrations, role types, search keys | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [authentication.md](docs/design-docs/authentication.md), [i18n.md](docs/design-docs/i18n.md) |

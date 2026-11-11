@@ -305,15 +305,8 @@ func (s *server) readMultipart(
 	w http.ResponseWriter, r *http.Request, maxBody int64, tooLarge func(),
 	readPart func(name string, part *multipart.Part) bool,
 ) bool {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "multipart/form-data" {
-		s.invalidRequest(w, "Content-Type must be multipart/form-data.")
-		return false
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-	reader, err := r.MultipartReader()
-	if err != nil {
-		s.invalidRequest(w, "The request body is not valid multipart/form-data.")
+	reader, ok := s.multipartReader(w, r, maxBody)
+	if !ok {
 		return false
 	}
 	seen := map[string]bool{}
@@ -341,6 +334,22 @@ func (s *server) readMultipart(
 			return false
 		}
 	}
+}
+
+// multipartReader checks the content type and caps the body at maxBody, writing the failure itself.
+func (s *server) multipartReader(w http.ResponseWriter, r *http.Request, maxBody int64) (*multipart.Reader, bool) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "multipart/form-data" {
+		s.invalidRequest(w, "Content-Type must be multipart/form-data.")
+		return nil, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	reader, err := r.MultipartReader()
+	if err != nil {
+		s.invalidRequest(w, "The request body is not valid multipart/form-data.")
+		return nil, false
+	}
+	return reader, true
 }
 
 func (s *server) readThumbnailEditPart(w http.ResponseWriter, name string, part io.Reader, input *domain.ThumbnailEditRunInput) bool {

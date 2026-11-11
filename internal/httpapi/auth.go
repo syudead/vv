@@ -707,7 +707,8 @@ type trackedRequest struct {
 	stopWatch func() bool
 }
 
-// abort also expires the write deadline because http.ServeContent does not observe context cancellation.
+// abort also expires the write and read deadlines because http.ServeContent and request body reads do not observe
+// context cancellation.
 func (t *trackedRequest) abort() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -718,6 +719,7 @@ func (t *trackedRequest) abort() {
 	t.cancel()
 	if t.serving {
 		_ = t.controller.SetWriteDeadline(time.Now())
+		_ = t.controller.SetReadDeadline(time.Now())
 	}
 }
 
