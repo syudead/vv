@@ -243,7 +243,8 @@ func (s *ImageSearch) refine(
 // errRefineSkipped marks a content whose file could not be opened or decoded.
 var errRefineSkipped = errors.New("the file cannot be refined")
 
-// refinedFrames decodes the refinement's gap from the first of the content's locations that the media folders allow.
+// refinedFrames decodes the refinement's gap from the first of the content's locations that the media folders allow
+// and that decodes; a refused location or a failed decode moves on to the next, and any other error stops the search.
 func (s *ImageSearch) refinedFrames(
 	ctx context.Context, refinement domain.ImageSearchRefinement,
 ) ([]domain.KeyframeHash, error) {
@@ -251,18 +252,28 @@ func (s *ImageSearch) refinedFrames(
 	if err != nil {
 		return nil, err
 	}
+	var failures []error
 	for _, location := range locations {
 		path, err := s.files.Resolve(ctx, location.Path)
-		if err != nil {
+		if errors.Is(err, domain.ErrMediaFileUnavailable) {
 			continue
 		}
-		frames, err := s.media.Refine(ctx, path, refinement.StartMs, refinement.EndMs)
 		if err != nil {
-			return nil, errors.Join(errRefineSkipped, err)
+			return nil, err
 		}
-		return frames, nil
+		frames, err := s.media.Refine(ctx, path, refinement.StartMs, refinement.EndMs)
+		if err == nil {
+			return frames, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		failures = append(failures, err)
 	}
-	return nil, errors.Join(errRefineSkipped, domain.ErrMediaFileUnavailable)
+	if len(failures) == 0 {
+		return nil, errors.Join(errRefineSkipped, domain.ErrMediaFileUnavailable)
+	}
+	return nil, errors.Join(append([]error{errRefineSkipped}, failures...)...)
 }
 
 // receiveVideo writes the file to the upload area and returns its path, set whenever a file was created, even with

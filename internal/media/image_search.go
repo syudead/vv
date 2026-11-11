@@ -121,19 +121,7 @@ func decodeFrameHashes(ctx context.Context, timeout time.Duration, args []string
 
 // The fps filter takes the frame nearest each tick, starting from the first frame, so frame i is at i intervals.
 func queryFrameArgs(path string, maxFrames int) []string {
-	return []string{
-		"-nostdin", "-hide_banner", "-nostats",
-		"-v", "error",
-		"-i", path,
-		"-map", "0:V:0",
-		"-an", "-sn", "-dn",
-		"-vf", "fps=1000/" + strconv.FormatInt(domain.ImageSearchQueryIntervalMs, 10) + "," + seekSpriteFastScale +
-			",format=gray",
-		"-frames:v", strconv.Itoa(maxFrames),
-		"-c:v", "pgm",
-		"-f", "image2pipe",
-		"pipe:1",
-	}
+	return grayFrameArgs(path, nil, domain.ImageSearchQueryIntervalMs, int64(maxFrames))
 }
 
 // The input seek before -i is exact when decoding, and output times restart at 0 there, so frame i is at i intervals
@@ -141,19 +129,22 @@ func queryFrameArgs(path string, maxFrames int) []string {
 func refineFrameArgs(path string, startMs, endMs int64) []string {
 	seconds := func(ms int64) string { return strconv.FormatFloat(float64(ms)/1000, 'f', 3, 64) }
 	frames := (endMs - startMs + domain.ImageSearchRefineIntervalMs - 1) / domain.ImageSearchRefineIntervalMs
-	return []string{
-		"-nostdin", "-hide_banner", "-nostats",
-		"-v", "error",
-		"-ss", seconds(startMs),
-		"-t", seconds(endMs - startMs),
+	return grayFrameArgs(path, []string{"-ss", seconds(startMs), "-t", seconds(endMs - startMs)},
+		domain.ImageSearchRefineIntervalMs, max(frames, 1))
+}
+
+// grayFrameArgs decodes the first video stream that is not a cover picture once an intervalMs, at most frames, at the
+// search index's size and gray, as PGM frames on standard output; input options go before -i.
+func grayFrameArgs(path string, input []string, intervalMs, frames int64) []string {
+	args := append([]string{"-nostdin", "-hide_banner", "-nostats", "-v", "error"}, input...)
+	return append(args,
 		"-i", path,
 		"-map", "0:V:0",
 		"-an", "-sn", "-dn",
-		"-vf", "fps=1000/" + strconv.FormatInt(domain.ImageSearchRefineIntervalMs, 10) + "," + seekSpriteFastScale +
-			",format=gray",
-		"-frames:v", strconv.FormatInt(max(frames, 1), 10),
+		"-vf", "fps=1000/"+strconv.FormatInt(intervalMs, 10)+","+seekSpriteFastScale+",format=gray",
+		"-frames:v", strconv.FormatInt(frames, 10),
 		"-c:v", "pgm",
 		"-f", "image2pipe",
 		"pipe:1",
-	}
+	)
 }

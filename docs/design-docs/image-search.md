@@ -60,9 +60,10 @@ that keyframe by more than 12 bits. A content whose nearest keyframe is 13 to
 the file through `internal/mediafs` and decodes from that keyframe to the next
 index entry, at most 10 s, at 4 frames a second, hashed as the index is. The
 nearest frame within 12 bits is the match, at that frame's time, so playback
-starts at the scene the query shows; with none, the content is not listed. A
-file that cannot be opened or decoded leaves its content out without failing
-the search.
+starts at the scene the query shows; with none, the content is not listed. The
+search tries the content's locations in turn until one opens and decodes; when
+none does, the content is left out without failing the search. A failure to
+read the media folders or the index fails the search.
 
 ```mermaid
 flowchart LR
