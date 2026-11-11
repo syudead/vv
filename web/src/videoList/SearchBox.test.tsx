@@ -481,4 +481,49 @@ describe("SearchBox with a file search", () => {
     expect(frame.dataset.fileDrag).toBeUndefined();
     expect(box.placeholder).toBe(t.list.search.placeholder);
   });
+
+  function renderSuggestingFileSearch() {
+    const onFiles = vi.fn<(files: File[]) => void>();
+    render(
+      <TooltipProvider>
+        <SearchBox
+          query=""
+          onCommit={vi.fn()}
+          suggestions={{
+            term: "kyo",
+            groups: [],
+            onTermChange: vi.fn(),
+            onPick: vi.fn(),
+          }}
+          fileSearch={{ onPick: vi.fn(), onFiles, onClear: vi.fn() }}
+        />
+      </TooltipProvider>,
+    );
+    const box = screen.getByRole<HTMLInputElement>("combobox", { name: "Search videos" });
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "kyo" } });
+    return { onFiles, box, list: screen.getByRole("listbox") };
+  }
+
+  it("refuses a file dropped on the suggestion list, as anywhere else off the field", () => {
+    const { onFiles, list } = renderSuggestingFileSearch();
+    const drop = {
+      dataTransfer: { types: ["Files"], files: [new File(["x"], "a.png")] },
+    };
+
+    expect(
+      fireEvent.drop(within(list).getAllByRole("option")[0] as HTMLElement, drop),
+    ).toBe(false);
+    expect(onFiles).not.toHaveBeenCalled();
+  });
+
+  it("closes the suggestions when a pasted file starts a search", () => {
+    const { onFiles, box } = renderSuggestingFileSearch();
+    const file = new File(["x"], "a.png", { type: "image/png" });
+
+    fireEvent.paste(box, { clipboardData: { files: [file] } });
+
+    expect(onFiles).toHaveBeenCalledExactlyOnceWith([file]);
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
 });

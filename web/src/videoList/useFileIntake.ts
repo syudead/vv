@@ -22,8 +22,8 @@ export interface FileIntake {
     onDragLeave: (event: ReactDragEvent) => void;
     onDrop: (event: ReactDragEvent) => void;
   };
-  /** Takes the clipboard's files and keeps text pastes as they are. */
-  onPaste: (event: ClipboardEvent) => void;
+  /** Takes the clipboard's files and keeps text pastes as they are; true when it took files. */
+  onPaste: (event: ClipboardEvent) => boolean;
 }
 
 /**
@@ -103,10 +103,11 @@ export function useFileIntake(
       onFiles(Array.from(event.dataTransfer.files));
     },
   };
-  const onPaste = (event: ClipboardEvent) => {
-    if (onFiles === undefined || event.clipboardData.files.length === 0) return;
+  const onPaste = (event: ClipboardEvent): boolean => {
+    if (onFiles === undefined || event.clipboardData.files.length === 0) return false;
     event.preventDefault();
     onFiles(Array.from(event.clipboardData.files));
+    return true;
   };
 
   const drag: FileDrag = !enabled

@@ -199,111 +199,116 @@ export default function SearchBox({
   };
 
   return (
-    <div
-      {...intake.dropProps}
-      data-file-drag={intake.drag === "none" ? undefined : intake.drag}
-      className={cn(
-        "relative flex w-full items-center",
-        // With a chip the frame holds the chip and the borderless input, so both read as one field.
-        chip !== undefined && [
-          "h-8 gap-1 rounded-md border border-input bg-muted pl-0.5 hover:border-muted-foreground",
-          dragFrame(intake.drag),
-        ],
-        className,
-      )}
-    >
-      {chip === undefined ? (
-        <FieldIcon drag={intake.drag} />
-      ) : (
-        <div className="flex max-w-1/2 min-w-0 shrink-0">{chip}</div>
-      )}
-      <Input
-        ref={field}
-        type="search"
-        {...box.inputProps}
-        value={input}
-        onChange={(event) => {
-          box.open();
-          setInput(
-            limitQueryInput(
-              event.target.value,
-              latest.current,
-              event.target.selectionEnd ?? undefined,
-              maxLength,
-            ),
-          );
-        }}
-        onPaste={intake.onPaste}
-        onCompositionStart={() => setComposing(true)}
-        onCompositionEnd={(event) => {
-          setComposing(false);
-          setInput(
-            limitQueryInput(
-              event.currentTarget.value,
-              latest.current,
-              undefined,
-              maxLength,
-            ),
-          );
-        }}
-        onFocus={() => session.current.start()}
-        onBlur={() => {
-          box.close();
-          // Flush any pending commit before ending the typing session.
-          if (!composing && !onEnter) commit(normalizeQuery(latest.current, maxLength));
-          session.current.end();
-        }}
-        onKeyDown={(event) => {
-          // IME Escape cancels composition, not the query.
-          if (isComposingKeyEvent(event)) return;
-          if (box.onKeyDown(event)) return;
-          if (event.key === "Enter" && onEnter) {
-            event.preventDefault();
-            searchText();
-            return;
-          }
-          if (event.key === "Escape" && chip !== undefined && latest.current === "") {
-            event.preventDefault();
-            fileSearch?.onClear();
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            setInput("");
-            commit("");
-            field.current?.blur();
-          }
-        }}
-        placeholder={fieldPlaceholder(intake.drag, chip !== undefined, placeholder)}
-        aria-label={label}
-        disabled={disabled}
-        autoComplete="off"
-        spellCheck={false}
+    // The suggestion list sits outside the drop target, so a file dropped on it is refused like any drop off the field.
+    <div className={cn("relative w-full", className)}>
+      <div
+        {...intake.dropProps}
+        data-file-drag={intake.drag === "none" ? undefined : intake.drag}
         className={cn(
-          "[&::-webkit-search-cancel-button]:hidden",
-          chip === undefined
-            ? ["h-8 pl-8", dragFrame(intake.drag)]
-            : "h-full border-0 bg-transparent pl-1 hover:border-0",
-          endPadding(syntaxHelp, input === "", fileSearch !== undefined),
+          "relative flex w-full items-center",
+          // With a chip the frame holds the chip and the borderless input, so both read as one field.
+          chip !== undefined && [
+            "h-8 gap-1 rounded-md border border-input bg-muted pl-0.5 hover:border-muted-foreground",
+            dragFrame(intake.drag),
+          ],
         )}
-      />
-      <div className="absolute right-1 flex items-center gap-0.5">
-        {input !== "" && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            // Keep focus on mousedown so blur does not commit and add an extra history entry before Clear.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={clear}
-            aria-label={t.list.search.clear}
-            className="size-6"
-          >
-            <X aria-hidden="true" />
-          </Button>
+      >
+        {chip === undefined ? (
+          <FieldIcon drag={intake.drag} />
+        ) : (
+          <div className="flex max-w-1/2 min-w-0 shrink-0">{chip}</div>
         )}
-        {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
-        {fileSearch !== undefined && <PickFileButton onPick={fileSearch.onPick} />}
-        {syntaxHelp && <SearchSyntaxHelp />}
+        <Input
+          ref={field}
+          type="search"
+          {...box.inputProps}
+          value={input}
+          onChange={(event) => {
+            box.open();
+            setInput(
+              limitQueryInput(
+                event.target.value,
+                latest.current,
+                event.target.selectionEnd ?? undefined,
+                maxLength,
+              ),
+            );
+          }}
+          onPaste={(event) => {
+            // An image search replaces the text the suggestions were for.
+            if (intake.onPaste(event)) box.close();
+          }}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={(event) => {
+            setComposing(false);
+            setInput(
+              limitQueryInput(
+                event.currentTarget.value,
+                latest.current,
+                undefined,
+                maxLength,
+              ),
+            );
+          }}
+          onFocus={() => session.current.start()}
+          onBlur={() => {
+            box.close();
+            // Flush any pending commit before ending the typing session.
+            if (!composing && !onEnter) commit(normalizeQuery(latest.current, maxLength));
+            session.current.end();
+          }}
+          onKeyDown={(event) => {
+            // IME Escape cancels composition, not the query.
+            if (isComposingKeyEvent(event)) return;
+            if (box.onKeyDown(event)) return;
+            if (event.key === "Enter" && onEnter) {
+              event.preventDefault();
+              searchText();
+              return;
+            }
+            if (event.key === "Escape" && chip !== undefined && latest.current === "") {
+              event.preventDefault();
+              fileSearch?.onClear();
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setInput("");
+              commit("");
+              field.current?.blur();
+            }
+          }}
+          placeholder={fieldPlaceholder(intake.drag, chip !== undefined, placeholder)}
+          aria-label={label}
+          disabled={disabled}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn(
+            "[&::-webkit-search-cancel-button]:hidden",
+            chip === undefined
+              ? ["h-8 pl-8", dragFrame(intake.drag)]
+              : "h-full border-0 bg-transparent pl-1 hover:border-0",
+            endPadding(syntaxHelp, input === "", fileSearch !== undefined),
+          )}
+        />
+        <div className="absolute right-1 flex items-center gap-0.5">
+          {input !== "" && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              // Keep focus on mousedown so blur does not commit and add an extra history entry before Clear.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={clear}
+              aria-label={t.list.search.clear}
+              className="size-6"
+            >
+              <X aria-hidden="true" />
+            </Button>
+          )}
+          {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
+          {fileSearch !== undefined && <PickFileButton onPick={fileSearch.onPick} />}
+          {syntaxHelp && <SearchSyntaxHelp />}
+        </div>
       </div>
       {box.list}
     </div>
