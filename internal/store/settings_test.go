@@ -170,3 +170,22 @@ func TestWorkInfoPluginProxyURLRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// The pause survives a restart, and a database that never saved it is not paused.
+func TestBackgroundPausedDefaultsToOffAndRoundTrips(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	settings := db.Settings()
+
+	if paused, err := settings.BackgroundPaused(ctx); err != nil || paused {
+		t.Fatalf("paused without a row = %v, %v; want false", paused, err)
+	}
+	for _, want := range []bool{true, false} {
+		if err := settings.SaveBackgroundPaused(ctx, want); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := settings.BackgroundPaused(ctx); err != nil || got != want {
+			t.Fatalf("paused after saving %v = %v, %v", want, got, err)
+		}
+	}
+}

@@ -271,6 +271,8 @@ func TestExternalCurrentScanCounts(t *testing.T) {
 		wantVideos    string
 		wantFinished  string
 		wantErrorCode string
+		// Empty expects the import status.
+		wantStatus domain.ImportStatus
 	}{
 		{
 			name:       "finding",
@@ -293,6 +295,12 @@ func TestExternalCurrentScanCounts(t *testing.T) {
 				Import:    domain.ImportProgress{Status: domain.ImportFailed, Counted: true, Total: 3, Settled: 1},
 			},
 			wantVideos: `3 1`, wantFinished: `"2026-09-01T10:01:00Z"`, wantErrorCode: `"media_folder_unavailable"`,
+		},
+		{
+			// The external contract has no paused status, so a scan waiting for the resume reports running.
+			name:       "paused",
+			scan:       domain.Scan{ID: 4, State: domain.ScanPaused, StartedAt: started, Import: domain.ImportProgress{Status: domain.ImportFinding}},
+			wantVideos: `null null`, wantFinished: `null`, wantErrorCode: `null`, wantStatus: domain.ImportRunning,
 		},
 	}
 	for _, tc := range cases {
@@ -320,7 +328,11 @@ func TestExternalCurrentScanCounts(t *testing.T) {
 			if got := string(raw["startedAt"]); got != `"2026-09-01T10:00:00Z"` {
 				t.Errorf("startedAt = %s", got)
 			}
-			if got := string(raw["status"]); got != `"`+string(tc.scan.Import.Status)+`"` {
+			wantStatus := tc.wantStatus
+			if wantStatus == "" {
+				wantStatus = tc.scan.Import.Status
+			}
+			if got := string(raw["status"]); got != `"`+string(wantStatus)+`"` {
 				t.Errorf("status = %s", got)
 			}
 		})

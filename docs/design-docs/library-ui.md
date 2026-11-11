@@ -408,14 +408,40 @@ on the `Scan` step of onboarding at `/welcome`
 ([Home and onboarding](home.md)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
-disabled while a scan runs (including one started in another tab) and while
-no media folder exists, with the reason in a line it references through
-`aria-describedby`. A failed start request appears as an alert in the same
+disabled while a scan runs (including one started in another tab), while a
+scan waits for the resume of background work, and while no media folder
+exists, with the reason in a line it references through `aria-describedby`.
+A waiting scan (state `paused`) shows `Waiting for resume` with a still
+`Pause` icon, keeps the counts read before the pause on a bar that does not
+animate, and says that it starts or continues when background work resumes
+([background pause](background-pause.md#scans)). A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
 empty folder is a link to `/settings/scan#scan-status` and starts nothing. The
 owner's action on an empty library, and on a home with no video, is `Set up
 library`: it sets the onboarding step to `folders` and opens `/welcome`
 ([`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)).
+
+The owner's `Background work` section
+([`BackgroundWorkSection.tsx`](../../web/src/settings/BackgroundWorkSection.tsx),
+anchor `background-work`) opens the same page, above `Scan status`, because
+the owner decides between stopping and running while reading what is left
+([background pause](background-pause.md)). Its header carries one state badge:
+`Paused` in `warning` with a still `Pause` icon, `Running` in `secondary` with
+a spinner, or `Idle`. Under it come, in order:
+
+| Row | Content |
+| --- | --- |
+| Switch | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import` |
+| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one |
+| `Left to do` | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
+
+The counts are one component
+([`BackgroundCounts.tsx`](../../web/src/shell/BackgroundCounts.tsx)), so every
+place that shows them agrees. One provider beside `ScanProvider`
+([`BackgroundProvider.tsx`](../../web/src/shell/BackgroundProvider.tsx)) reads
+the status once and again on each `background` event and each open of
+`/api/events`, the first included, because the stream sends no background
+state on connect; for a guest it reads nothing and the section is absent.
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
@@ -442,6 +468,35 @@ The hidden scan's id is kept in `localStorage` (`vv.scan-indicator-dismissed`),
 so a reload or another tab keeps it hidden, and a `storage` event hides it in
 tabs already open. Hiding a scan that is still starting waits for the new
 scan's id. The result of a hidden scan stays readable in `Scan status`.
+
+While background work is paused, the owner's screens show the paused
+indicator
+([`BackgroundPausedIndicator.tsx`](../../web/src/shell/BackgroundPausedIndicator.tsx))
+in this place instead of the scan states, so a stopped library is not
+forgotten: a `warning` `Pause` icon, `Paused` and the total left, which sums
+the groups whose feature is on, because that is what a resume starts. At 360px
+the total is the number alone, and from `sm` it reads `{n} left`. Pressing it
+opens `/settings/scan#background-work`. It has no hide button, a stored
+dismissal does not hide it, and it sits above a list's selection bar by the
+height the bar publishes (`bottom-indicator`). Its summary opens and closes by
+the rules above
+([`useIndicatorPopover.ts`](../../web/src/shell/useIndicatorPopover.ts)) and
+holds `Background work is paused`, the section's count list and its switch;
+`Tab` from the indicator moves into the summary, which stays open while focus
+is inside it. Turning the switch off resumes: the summary shows `Resuming…`
+until the answer, then the scan indicator takes the place again if a scan
+runs. A scan result due while paused is not shown afterwards; `Scan status`
+keeps it.
+
+While the status reports paused, every place that says `Waiting` for queued
+work says `Waiting for resume` instead, with the same icon, colour and
+position: an Activity entry's status icon name and result, a pipeline's
+`Waiting · …` line and a waiting stage row; the first figure of the `Progress`
+queue line of `Auto-tagging` and `Face recognition`; a waiting pair's automatic
+judgement on `Duplicates`; and a waiting stage under `Getting ready to play`
+for a video on this node, since the status does not cover a paired node's work.
+The screens read one flag from the provider (`useBackgroundPaused`), so a guest,
+who has no status, keeps the plain texts.
 
 ### Cards
 

@@ -16,6 +16,7 @@ import { probeErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
 import { isRemoteId } from "../lib/remoteId";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { Button } from "../ui/shadcn/button";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import { useOpenFile } from "./useOpenFile";
@@ -143,6 +144,8 @@ const stageIcons: Record<StageState, ReactNode> = {
 };
 
 export function ProcessingStages({ video }: { video: Video }) {
+  // The status is this node's, so it does not explain a paired node's stages.
+  const paused = useBackgroundPaused() && !isRemoteId(video.id);
   return (
     <Surface>
       <div className="flex w-full max-w-sm flex-col gap-3 text-left">
@@ -172,7 +175,9 @@ export function ProcessingStages({ video }: { video: Video }) {
                     stage.state === "active" ? "text-primary" : "text-muted-foreground",
                   )}
                 >
-                  {t.player.stages.states[stage.state]}
+                  {stage.state === "waiting" && paused
+                    ? t.shell.background.waitingForResume
+                    : t.player.stages.states[stage.state]}
                 </span>
               </li>
             ))}

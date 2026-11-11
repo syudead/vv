@@ -7,6 +7,7 @@ export type ScanPresentationState =
   | "starting"
   | "finding"
   | "running"
+  | "paused"
   | "done"
   | "partial"
   | "failed"
@@ -80,6 +81,11 @@ function detailFor(
     case "running":
       if (activity !== null) return activityLine(activity);
       return state === "finding" ? { text: text.lookingForFiles } : null;
+    case "paused":
+      // A scan that has not counted its files has read none of them yet.
+      return {
+        text: scan.status === "finding" ? text.waitingToStart : text.waitingToContinue,
+      };
     case "done":
     case "partial":
       return scan.settledAt === undefined
@@ -160,10 +166,11 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     };
   }
 
-  const state: ScanPresentationState = scan.status;
-  if (scan.origin === "watch") return presentWatchScan(scan, state, loadError);
+  if (scan.origin === "watch") return presentWatchScan(scan, scan.status, loadError);
+  // A paused scan is a state of its own; its import status still tells whether it has counted its files.
+  const state: ScanPresentationState = scan.state === "paused" ? "paused" : scan.status;
   // Do not show counts or percentages during finding.
-  const counted = state !== "finding" && scan.videos !== undefined;
+  const counted = scan.status !== "finding" && scan.videos !== undefined;
   const total = counted ? (scan.videos?.total ?? 0) : 0;
   const videos =
     counted && total > 0
@@ -195,7 +202,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     error: value.error,
     refreshing: loadError !== null,
     watch: false,
-    rescan: inProgressState(state) ? rescanScope(scan) : null,
+    rescan: inProgressState(state) || state === "paused" ? rescanScope(scan) : null,
   };
 }
 

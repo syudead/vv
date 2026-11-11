@@ -53,6 +53,9 @@ type Index interface {
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
 	// ForcedVideos lists the videos the force rescan has already forced.
 	ForcedVideos(ctx context.Context, scanID int64) ([]int64, error)
+	// ReadLocations lists the files the force rescan has already read; MarkLocationRead records one.
+	ReadLocations(ctx context.Context, scanID int64) ([]string, error)
+	MarkLocationRead(ctx context.Context, scanID int64, path string) error
 }
 
 // Queue all jobs for one video in one call so they share one import activity and decider; nil
@@ -544,27 +547,34 @@ func (s *Scanner) visit(
 	}
 
 	if existing, ok := pass.indexed[path]; ok && sameFile(existing, info) {
-		if pass.force != nil {
-			// Force mode reads the content key of an unchanged file again.
+		if pass.rereadsUnchanged(path) {
 			pass.targets = append(pass.targets, scanTarget{path: path, unchanged: true})
 			return nil
 		}
-		if err := s.repairUnchanged(ctx, path, info, existing, pass.decider); err != nil {
-			if ctx.Err() != nil {
-				return err
-			}
-			s.logger.Warn("could not update an indexed file",
-				slog.String("path", path), slog.Any("error", err))
-			pass.result.Total++
-			pass.result.Failed++
-			return s.reportIssue(ctx, domain.ScanFileIssue{
-				VideoID: existing.ID, Path: path, Kind: domain.IssueRegisterFailed,
-			})
-		}
-		return nil
+		return s.keepUnchanged(ctx, pass, path, info, existing)
 	}
 
 	pass.targets = append(pass.targets, scanTarget{path: path})
+	return nil
+}
+
+// keepUnchanged repairs the pending work of a file whose size and mtime match the index, without reading it; a
+// failure is reported as the file's issue.
+func (s *Scanner) keepUnchanged(
+	ctx context.Context, pass *scanPass, path string, info fs.FileInfo, existing domain.IndexedVideo,
+) error {
+	if err := s.repairUnchanged(ctx, path, info, existing, pass.decider); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		s.logger.Warn("could not update an indexed file",
+			slog.String("path", path), slog.Any("error", err))
+		pass.result.Total++
+		pass.result.Failed++
+		return s.reportIssue(ctx, domain.ScanFileIssue{
+			VideoID: existing.ID, Path: path, Kind: domain.IssueRegisterFailed,
+		})
+	}
 	return nil
 }
 
@@ -634,7 +644,7 @@ func (s *Scanner) ingest(ctx context.Context, pass *scanPass, target scanTarget,
 			return failFile(domain.IssueRegisterFailed, upserted.ID, err)
 		}
 	}
-	return s.force(ctx, pass, upserted.ID)
+	return s.forceRead(ctx, pass, target.path, upserted.ID)
 }
 
 // readTarget computes the content key between two stable metadata reads, so a file changed while it is read is

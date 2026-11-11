@@ -828,6 +828,36 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for BackgroundGroupName.
+const (
+	BackgroundGroupNameAutoTag      BackgroundGroupName = "auto_tag"
+	BackgroundGroupNameBackfill     BackgroundGroupName = "backfill"
+	BackgroundGroupNameFace         BackgroundGroupName = "face"
+	BackgroundGroupNameImport       BackgroundGroupName = "import"
+	BackgroundGroupNameScan         BackgroundGroupName = "scan"
+	BackgroundGroupNameVersionJudge BackgroundGroupName = "version_judge"
+)
+
+// Valid indicates whether the value is a known member of the BackgroundGroupName enum.
+func (e BackgroundGroupName) Valid() bool {
+	switch e {
+	case BackgroundGroupNameAutoTag:
+		return true
+	case BackgroundGroupNameBackfill:
+		return true
+	case BackgroundGroupNameFace:
+		return true
+	case BackgroundGroupNameImport:
+		return true
+	case BackgroundGroupNameScan:
+		return true
+	case BackgroundGroupNameVersionJudge:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckResultReason.
 const (
 	CheckResultReasonGenerationModelMissing      CheckResultReason = "generation_model_missing"
@@ -2329,6 +2359,7 @@ func (e ScanOrigin) Valid() bool {
 const (
 	ScanStateDone    ScanState = "done"
 	ScanStateFailed  ScanState = "failed"
+	ScanStatePaused  ScanState = "paused"
 	ScanStateRunning ScanState = "running"
 )
 
@@ -2338,6 +2369,8 @@ func (e ScanState) Valid() bool {
 	case ScanStateDone:
 		return true
 	case ScanStateFailed:
+		return true
+	case ScanStatePaused:
 		return true
 	case ScanStateRunning:
 		return true
@@ -4695,6 +4728,57 @@ type AutoTaggingSettings struct {
 
 	// Threshold Minimum probability for confirmed assignment; defaults to 0.8
 	Threshold float64 `json:"threshold"`
+}
+
+// BackgroundActivity One piece of background work running now
+type BackgroundActivity struct {
+	// FileName The file being registered or read, when the work has a location
+	FileName *string `json:"fileName,omitempty"`
+
+	// Group What background work is shown as: a scan, or the jobs of one feature
+	Group BackgroundGroupName `json:"group"`
+
+	// Kind registering for a scan, otherwise the job kind
+	Kind string `json:"kind"`
+
+	// Video The video running work is for; absent when the work names none or the owner's audience leaves it out
+	Video *BackgroundVideo `json:"video,omitempty"`
+}
+
+// BackgroundGroup Background work left in one group
+type BackgroundGroup struct {
+	// FeatureOff The group's feature is off and holds its jobs back, whether or not background work is paused
+	FeatureOff *bool `json:"featureOff,omitempty"`
+
+	// Group What background work is shown as: a scan, or the jobs of one feature
+	Group BackgroundGroupName `json:"group"`
+
+	// Remaining Files for scan, videos for import, jobs otherwise; 0 when nothing is left
+	Remaining int `json:"remaining"`
+
+	// Waiting scan only: a paused scan or held watch directories wait for the resume
+	Waiting *bool `json:"waiting,omitempty"`
+}
+
+// BackgroundGroupName What background work is shown as: a scan, or the jobs of one feature
+type BackgroundGroupName string
+
+// BackgroundVideo The video running work is for; absent when the work names none or the owner's audience leaves it out
+type BackgroundVideo struct {
+	Id    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+// BackgroundWork State of background work: scans and scheduled jobs
+type BackgroundWork struct {
+	// Groups One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill
+	Groups []BackgroundGroup `json:"groups"`
+
+	// Paused The saved pause switch; false when it was never saved
+	Paused bool `json:"paused"`
+
+	// Running Work running now, oldest first. An entry remains after a pause until its job returns.
+	Running []BackgroundActivity `json:"running"`
 }
 
 // CheckResult Connection check result; unavailable providers also return 200.
@@ -7246,7 +7330,7 @@ type Scan struct {
 	// SettledAt Timestamp when all target videos settled; returned only for done or partial status.
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 
-	// State Traversal state, used to refresh listings and determine whether another import can start.
+	// State Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
 	State ScanState `json:"state"`
 
 	// Status User-visible import status, first matching rule: failed for traversal failure; finding while counting; running while traversal or pending work remains; partial for failed issues; otherwise done.
@@ -7259,7 +7343,7 @@ type Scan struct {
 // ScanOrigin Import initiator; watch means a folder-watcher import limited to changed folders.
 type ScanOrigin string
 
-// ScanState Traversal state, used to refresh listings and determine whether another import can start.
+// ScanState Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
 type ScanState string
 
 // ScanActivity Current import activity, the most recently started when concurrent; omitted from Scan when idle. The SPA derives user-facing text from kind.
@@ -7390,6 +7474,12 @@ type SeekThumbnailSprite struct {
 
 	// Sheets Versioned sheet URLs in index order.
 	Sheets []string `json:"sheets"`
+}
+
+// SetBackgroundPauseRequest defines model for SetBackgroundPauseRequest.
+type SetBackgroundPauseRequest struct {
+	// Paused The state to reach
+	Paused bool `json:"paused"`
 }
 
 // SetMediaFolderEnabledRequest defines model for SetMediaFolderEnabledRequest.
@@ -10195,6 +10285,9 @@ type SetupAccountJSONRequestBody = SetupRequest
 // StartAutoTaggingJSONRequestBody defines body for StartAutoTagging for application/json ContentType.
 type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
 
+// SetBackgroundPauseJSONRequestBody defines body for SetBackgroundPause for application/json ContentType.
+type SetBackgroundPauseJSONRequestBody = SetBackgroundPauseRequest
+
 // DeleteCollectionsJSONRequestBody defines body for DeleteCollections for application/json ContentType.
 type DeleteCollectionsJSONRequestBody = CollectionsDeleteRequest
 
@@ -10584,6 +10677,12 @@ type ServerInterface interface {
 	// StartAutoTagging Queue library videos for classification
 	// (POST /api/auto-tagging/runs)
 	StartAutoTagging(w http.ResponseWriter, r *http.Request)
+	// GetBackgroundWork Return the background work pause switch, the running work and the work left
+	// (GET /api/background)
+	GetBackgroundWork(w http.ResponseWriter, r *http.Request)
+	// SetBackgroundPause Pause or resume background work
+	// (PUT /api/background/pause)
+	SetBackgroundPause(w http.ResponseWriter, r *http.Request)
 	// DeleteCollections Dissolve groups and delete smart folders in bulk
 	// (POST /api/collections/delete)
 	DeleteCollections(w http.ResponseWriter, r *http.Request)
@@ -11975,6 +12074,34 @@ func (siw *ServerInterfaceWrapper) StartAutoTagging(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartAutoTagging(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBackgroundWork operation middleware
+func (siw *ServerInterfaceWrapper) GetBackgroundWork(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBackgroundWork(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetBackgroundPause operation middleware
+func (siw *ServerInterfaceWrapper) SetBackgroundPause(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetBackgroundPause(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -19362,6 +19489,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/background", wrapper.GetBackgroundWork)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/background/pause", wrapper.SetBackgroundPause)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
 
 	return m

@@ -2,6 +2,7 @@ import { CircleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { errorText, t, type UiText } from "../i18n";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { ErrorState } from "../ui/patterns/error-state";
 import { PageSection } from "../ui/patterns/page-section";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
@@ -40,7 +41,13 @@ export function RunProgressSection({
   onStart,
 }: {
   text: RunProgressText & {
-    queue: (queued: number, running: number, done: number, failed: number) => UiText;
+    queue: (
+      queued: number,
+      running: number,
+      done: number,
+      failed: number,
+      paused: boolean,
+    ) => UiText;
   };
   enabled: boolean;
   counts: RunCounts;
@@ -49,6 +56,7 @@ export function RunProgressSection({
   locked?: boolean;
   onStart: (scope: RunScope) => void;
 }) {
+  const paused = useBackgroundPaused();
   if (!enabled)
     return (
       <PageSection title={text.progressHeading} description={text.off}>
@@ -61,7 +69,7 @@ export function RunProgressSection({
       title={text.progressHeading}
       description={
         <span role="status">
-          {text.queue(counts.queued, counts.running, counts.done, counts.failed)}
+          {text.queue(counts.queued, counts.running, counts.done, counts.failed, paused)}
         </span>
       }
     >

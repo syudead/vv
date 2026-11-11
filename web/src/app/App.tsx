@@ -12,6 +12,8 @@ import PeerNotice, { usePeerNoticeShown } from "../shell/PeerNotice";
 import { PeerProvider } from "../shell/PeerProvider";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
+import BackgroundPausedIndicator from "../shell/BackgroundPausedIndicator";
+import { BackgroundProvider } from "../shell/BackgroundProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -136,6 +138,7 @@ function AppRoutes() {
   return (
     <ToastProvider placement={scanPlacement}>
       {owner && <ScanProgressIndicator />}
+      {owner && <BackgroundPausedIndicator />}
       {/* 所有者の段階が done でない間は、どの経路も /welcome へ置き換える
           （docs/design-docs/home.md）。 */}
       <OnboardingGate>
@@ -315,13 +318,15 @@ function LibraryApp() {
   return (
     <TooltipProvider>
       <ScanProvider>
-        <ScanNoticeProvider>
-          <PeerProvider>
-            <AssistantProvider>
-              <AppRoutes />
-            </AssistantProvider>
-          </PeerProvider>
-        </ScanNoticeProvider>
+        <BackgroundProvider>
+          <ScanNoticeProvider>
+            <PeerProvider>
+              <AssistantProvider>
+                <AppRoutes />
+              </AssistantProvider>
+            </PeerProvider>
+          </ScanNoticeProvider>
+        </BackgroundProvider>
       </ScanProvider>
     </TooltipProvider>
   );

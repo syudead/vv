@@ -48,6 +48,8 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "POST", Path: "/api/auth/setup", Response: "AuthRedirect", Request: "SetupRequest"},
 	{Method: "POST", Path: "/api/auto-tagging/check", Response: "CheckResult"},
 	{Method: "POST", Path: "/api/auto-tagging/runs", Response: "AutoTaggingQueued", Request: "StartAutoTaggingRequest"},
+	{Method: "GET", Path: "/api/background", Response: "BackgroundWork"},
+	{Method: "PUT", Path: "/api/background/pause", Response: "BackgroundWork", Request: "SetBackgroundPauseRequest"},
 	{Method: "POST", Path: "/api/collections/delete", Response: "CollectionsDeleteResponse", Request: "CollectionsDeleteRequest", BodyIDs: []string{"groupIds", "smartFolderIds"}},
 	{Method: "GET", Path: "/api/directories", Response: "DirectoryListing"},
 	{Method: "GET", Path: "/api/events", Streams: true},

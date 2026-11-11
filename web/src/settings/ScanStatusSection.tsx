@@ -40,13 +40,14 @@ function ScanStartActions({ blockedBy }: { blockedBy: string | undefined }) {
   const scan = useScan();
   const text = t.settings.scanStatus;
   const [confirming, setConfirming] = useState(false);
+  const blocked = scan.running || scan.waiting || !scan.canStart;
   return (
     <>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setConfirming(true)}
-        disabled={scan.running || !scan.canStart}
+        disabled={blocked}
         aria-describedby={blockedBy}
       >
         <RotateCcw aria-hidden="true" />
@@ -56,7 +57,7 @@ function ScanStartActions({ blockedBy }: { blockedBy: string | undefined }) {
         variant="outline"
         size="sm"
         onClick={scan.start}
-        disabled={scan.running || !scan.canStart}
+        disabled={blocked}
         aria-busy={scan.running || undefined}
         aria-describedby={blockedBy}
       >
@@ -88,6 +89,8 @@ export default function ScanStatusSection() {
   const issueCount = presentation.issues.failed + presentation.issues.substituted;
   const startBlockedReason = scan.running ? (
     text.runningReason
+  ) : scan.waiting ? (
+    text.waitingReason
   ) : scan.noMediaFolders ? (
     <PageLinkText sentence={text.needsMediaFolder} page="library" />
   ) : null;

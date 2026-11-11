@@ -13,17 +13,18 @@ import (
 // forceKinds are the stages a force rescan queues; preview and fingerprint follow from their forced results.
 var forceKinds = []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail}
 
-// forcePass carries force mode through one pass: done holds the videos the scan has already forced, including
-// those an interrupted run forced before a resume.
+// forcePass carries force mode through one pass: done holds the videos the scan has already forced and read the
+// files it has already read, including those of a run stopped before a resume.
 type forcePass struct {
 	scanID int64
 	done   map[int64]struct{}
+	read   map[string]struct{}
 }
 
 // Rescan is the manual scan in force mode over scope, recorded in scan scanID. It reads the content key of an
-// unchanged file again, and every video it reaches that the scan has not forced yet gets forced probe,
-// thumbnail and seek_thumbnail jobs and is marked forced. A folder scope removes missing locations only under
-// that folder; a video scope removes nothing.
+// unchanged file again unless the scan already read that file, and every video it reaches that the scan has not
+// forced yet gets forced probe, thumbnail and seek_thumbnail jobs and is marked forced. A folder scope removes
+// missing locations only under that folder; a video scope removes nothing.
 func (s *Scanner) Rescan(
 	ctx context.Context, scanID int64, scope domain.RescanScope, decider domain.ActivityDecider,
 ) (domain.ScanResult, error) {
@@ -42,9 +43,18 @@ func (s *Scanner) rescanOnce(
 	if err != nil {
 		return domain.ScanResult{}, err
 	}
-	pass.force = &forcePass{scanID: scanID, done: make(map[int64]struct{}, len(forced))}
+	read, err := s.index.ReadLocations(ctx, scanID)
+	if err != nil {
+		return domain.ScanResult{}, err
+	}
+	pass.force = &forcePass{
+		scanID: scanID, done: make(map[int64]struct{}, len(forced)), read: make(map[string]struct{}, len(read)),
+	}
 	for _, id := range forced {
 		pass.force.done[id] = struct{}{}
+	}
+	for _, path := range read {
+		pass.force.read[path] = struct{}{}
 	}
 
 	switch scope.Kind {
@@ -92,9 +102,31 @@ func (s *Scanner) rescanVideo(ctx context.Context, pass *scanPass, videoID int64
 			}
 			continue
 		}
-		pass.targets = append(pass.targets, scanTarget{path: path, unchanged: sameFile(pass.indexed[path], info)})
+		existing := pass.indexed[path]
+		if !sameFile(existing, info) {
+			pass.targets = append(pass.targets, scanTarget{path: path})
+			continue
+		}
+		if pass.rereadsUnchanged(path) {
+			pass.targets = append(pass.targets, scanTarget{path: path, unchanged: true})
+			continue
+		}
+		if err := s.keepUnchanged(ctx, pass, path, info, existing); err != nil {
+			return pass.result, err
+		}
 	}
 	return s.ingestPass(ctx, pass)
+}
+
+// rereadsUnchanged reports whether the pass reads the content key of the unchanged file at path again: force mode
+// does, except for a file the scan already read, such as one read before a pause of background work. The video's
+// forced mark does not decide it, because the video's other locations may not have been read yet.
+func (p *scanPass) rereadsUnchanged(path string) bool {
+	if p.force == nil {
+		return false
+	}
+	_, read := p.force.read[path]
+	return !read
 }
 
 // forceUnchanged handles a force-mode file whose size, mtime and content key all match the index: it takes the
@@ -105,7 +137,25 @@ func (s *Scanner) forceUnchanged(
 	if err := s.repairUnchanged(ctx, path, info, existing, pass.decider); err != nil {
 		return failFile(domain.IssueRegisterFailed, existing.ID, err)
 	}
-	return s.force(ctx, pass, existing.ID)
+	return s.forceRead(ctx, pass, path, existing.ID)
+}
+
+// forceRead forces the video of the file read at path and then marks the file read in the scan. A mark that cannot be
+// saved only makes a resumed pass read the file again, so it is logged instead of failing the file.
+func (s *Scanner) forceRead(ctx context.Context, pass *scanPass, path string, videoID int64) error {
+	if err := s.force(ctx, pass, videoID); err != nil {
+		return err
+	}
+	if pass.force == nil {
+		return nil
+	}
+	if err := s.index.MarkLocationRead(ctx, pass.force.scanID, path); err != nil {
+		s.logger.Warn("could not mark a file read by the force rescan; a resumed pass reads it again",
+			slog.String("path", path), slog.Any("error", err))
+		return nil
+	}
+	pass.force.read[path] = struct{}{}
+	return nil
 }
 
 // force queues the forced jobs of a video once per scan; it does nothing outside force mode or without a queue.

@@ -280,6 +280,38 @@ func (s *ScanIndexStore) ForcedVideos(ctx context.Context, scanID int64) ([]int6
 	return forcedVideos(ctx, s.db.sql, scanID)
 }
 
+// MarkLocationRead records that the force rescan scanID read the file at path, so a resumed pass skips it while it is
+// unchanged.
+func (s *ScanIndexStore) MarkLocationRead(ctx context.Context, scanID int64, path string) error {
+	if _, err := s.db.sql.ExecContext(ctx, `insert or ignore into scan_read_locations (scan_id, path)
+		select id, ? from scans where id = ?`, path, scanID); err != nil {
+		return fmt.Errorf("cannot mark the location as read (scan=%d, path=%s): %w", scanID, path, err)
+	}
+	return nil
+}
+
+// ReadLocations lists, in path order, the files the force rescan scanID has already read.
+func (s *ScanIndexStore) ReadLocations(ctx context.Context, scanID int64) ([]string, error) {
+	rows, err := s.db.sql.QueryContext(ctx,
+		`select path from scan_read_locations where scan_id = ? order by path`, scanID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the scan's read locations (scan=%d): %w", scanID, err)
+	}
+	defer func() { _ = rows.Close() }()
+	paths := []string{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, fmt.Errorf("cannot read the scan's read locations (scan=%d): %w", scanID, err)
+		}
+		paths = append(paths, path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the scan's read locations (scan=%d): %w", scanID, err)
+	}
+	return paths, nil
+}
+
 // UpdateLocationCreatedAt fixes location facts without edit timestamps, versions or events; zero restores the modification-time fallback.
 func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)

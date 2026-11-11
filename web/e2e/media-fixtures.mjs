@@ -402,6 +402,14 @@ export function generateAssistantFixtures(root) {
   generateHueClips(root, ASSISTANT_VIDEOS, 9);
 }
 
+/** Two clips for background-pause.e2e.ts, which scans them while background work is paused. */
+export const BACKGROUND_PAUSE_VIDEOS = ["一時停止確認A", "一時停止確認B"];
+
+export function generateBackgroundPauseFixtures(root) {
+  // No other fixture uses this frame rate, so no content key matches another suite's video.
+  generateHueClips(root, BACKGROUND_PAUSE_VIDEOS, 11);
+}
+
 /** Two-second silent clips, one per title, each in its own hue from firstHue on. */
 function generateHueClips(root, titles, rate, firstHue = 40) {
   mkdirSync(root, { recursive: true });

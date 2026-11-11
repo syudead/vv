@@ -276,3 +276,18 @@ func TestSnoozedJobRequeuesAtOnceWithoutAnAttempt(t *testing.T) {
 		t.Fatalf("attempts after a snooze = %d, want 1", job.Attempts)
 	}
 }
+
+// A job stopped by a pause of background work is a snooze, so three pauses in a row leave its attempts as if it
+// never ran.
+func TestPausedJobKeepsItsAttempts(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	fixJobClock(t)
+	enqueueProbe(t, db, videoID)
+	for range 3 {
+		failJob(t, db, claimProbe(t, db), domain.ErrJobPaused)
+	}
+
+	if job := claimProbe(t, db); job.Attempts != 1 {
+		t.Fatalf("attempts after three pauses = %d, want 1", job.Attempts)
+	}
+}

@@ -847,7 +847,7 @@ export interface paths {
         put?: never;
         /**
          * Start import
-         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background.
+         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background. While background work is paused, the new scan is answered in the state paused and runs after the resume.
          */
         post: operations["startScan"];
         delete?: never;
@@ -867,7 +867,7 @@ export interface paths {
         put?: never;
         /**
          * Start a force rescan
-         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
+         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan, or a paused scan, returns 409 scan_in_progress, and while background work is paused the new rescan is answered in the state paused. No media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
          */
         post: operations["startRescan"];
         delete?: never;
@@ -4221,6 +4221,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/background": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the background work pause switch, the running work and the work left
+         * @description Answers whether background work (scans and scheduled jobs) is paused, the work running now and the work left per group. Counts leave out jobs of videos only under switched-off folders. Cache-Control is no-store; the background event of /api/events tells the screens to read it again.
+         */
+        get: operations["getBackgroundWork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/background/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pause or resume background work
+         * @description Saves the switch and applies it: true cancels the running jobs and holds new ones, false grants them again. The answer comes once the switch is saved and the running jobs are cancelled, without waiting for them to return. A request for the current state changes nothing and answers the same body. Concurrent requests are applied one at a time, and the last one decides the state. Requests that queue a job are still accepted while paused; their jobs wait for the resume.
+         */
+        put: operations["setBackgroundPause"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -4230,7 +4270,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4419,6 +4459,49 @@ export interface components {
         };
         UpdateAutoImportSettingsRequest: {
             enabled: boolean;
+        };
+        /** @description State of background work: scans and scheduled jobs */
+        BackgroundWork: {
+            /** @description The saved pause switch; false when it was never saved */
+            paused: boolean;
+            /** @description Work running now, oldest first. An entry remains after a pause until its job returns. */
+            running: components["schemas"]["BackgroundActivity"][];
+            /** @description One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill */
+            groups: components["schemas"]["BackgroundGroup"][];
+        };
+        /**
+         * @description What background work is shown as: a scan, or the jobs of one feature
+         * @enum {string}
+         */
+        BackgroundGroupName: "scan" | "import" | "auto_tag" | "face" | "version_judge" | "backfill";
+        /** @description One piece of background work running now */
+        BackgroundActivity: {
+            group: components["schemas"]["BackgroundGroupName"];
+            /** @description registering for a scan, otherwise the job kind */
+            kind: string;
+            video?: components["schemas"]["BackgroundVideo"];
+            /** @description The file being registered or read, when the work has a location */
+            fileName?: string;
+        };
+        /** @description The video running work is for; absent when the work names none or the owner's audience leaves it out */
+        BackgroundVideo: {
+            /** Format: int64 */
+            id: number;
+            title: string;
+        };
+        /** @description Background work left in one group */
+        BackgroundGroup: {
+            group: components["schemas"]["BackgroundGroupName"];
+            /** @description Files for scan, videos for import, jobs otherwise; 0 when nothing is left */
+            remaining: number;
+            /** @description scan only: a paused scan or held watch directories wait for the resume */
+            waiting?: boolean;
+            /** @description The group's feature is off and holds its jobs back, whether or not background work is paused */
+            featureOff?: boolean;
+        };
+        SetBackgroundPauseRequest: {
+            /** @description The state to reach */
+            paused: boolean;
         };
         /** @description Automatic duplicate-judging enablement */
         VersionJudgingSettings: {
@@ -7985,10 +8068,10 @@ export interface components {
             settledAt?: string;
             activity?: components["schemas"]["ScanActivity"];
             /**
-             * @description Traversal state, used to refresh listings and determine whether another import can start.
+             * @description Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
              * @enum {string}
              */
-            state: "running" | "done" | "failed";
+            state: "running" | "paused" | "done" | "failed";
             /** @description Free-text scan failure reason; the UI builds its explanation from errorCode and errorPath instead of displaying this text. */
             error?: string;
             errorCode?: components["schemas"]["ScanErrorCode"];
@@ -10537,7 +10620,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description A manual scan or force rescan is running (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
+            /** @description A manual scan or force rescan is running or paused (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -16188,6 +16271,52 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getBackgroundWork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Background work status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundWork"];
+                };
+            };
+        };
+    };
+    setBackgroundPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBackgroundPauseRequest"];
+            };
+        };
+        responses: {
+            /** @description Background work status after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundWork"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     streamEvents: {

@@ -25,14 +25,14 @@ type ImportTally struct {
 	FailedIssues       int
 }
 
-// Enumerated remains false while a running scan has zero targets because totals are recorded only after enumerating all roots.
+// Enumerated remains false while an open scan has zero targets because totals are recorded only after enumerating all roots.
 func (t ImportTally) Enumerated() bool {
-	return t.State != ScanRunning || t.ScanTotal > 0
+	return !t.State.Open() || t.ScanTotal > 0
 }
 
-// pendingFiles excludes unattempted files once the scan closes.
-func (t ImportTally) pendingFiles() int {
-	if t.State != ScanRunning {
+// PendingFiles excludes unattempted files once the scan closes; a paused scan still has them to read.
+func (t ImportTally) PendingFiles() int {
+	if !t.State.Open() {
 		return 0
 	}
 	return max(0, t.ScanTotal-t.ScanCompleted-t.ScanFailed)
@@ -40,7 +40,7 @@ func (t ImportTally) pendingFiles() int {
 
 // VideosTotal includes videos, unregistered-file issues, and files awaiting registration.
 func (t ImportTally) VideosTotal() int {
-	return max(0, t.Videos) + max(0, t.UnregisteredIssues) + t.pendingFiles()
+	return max(0, t.Videos) + max(0, t.UnregisteredIssues) + t.PendingFiles()
 }
 
 // VideosSettled includes settled videos and unregistered-file issues, capped at the total.
@@ -56,7 +56,7 @@ func (t ImportTally) Status() ImportStatus {
 		return ImportFailed
 	case !t.Enumerated():
 		return ImportFinding
-	case t.State == ScanRunning || t.VideosSettled() < t.VideosTotal():
+	case t.State.Open() || t.VideosSettled() < t.VideosTotal():
 		return ImportRunning
 	case t.FailedIssues > 0:
 		return ImportPartial
