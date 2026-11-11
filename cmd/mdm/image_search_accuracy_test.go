@@ -7,11 +7,16 @@ package main
 //
 //	ACCURACY_DIR=/tmp/accuracy go test -tags accuracy -run TestImageSearchAccuracy -v -timeout 2h ./cmd/mdm/
 //
-// ACCURACY_DIR keeps the generated library between runs; the report is written to ACCURACY_DIR/report.md.
+// ACCURACY_DIR, created when missing, keeps the generated library between runs and is registered as a media folder,
+// so it may sit on any file system. Each generated file's name carries a hash of the ffmpeg commands that make it, so
+// a changed scene, encode setting or source video is generated afresh. The report is written to
+// ACCURACY_DIR/report.md.
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -156,14 +161,42 @@ func accuracyFFmpegOutput(t *testing.T, args ...string) []byte {
 	return out
 }
 
+// accuracyKey names the output of commands: it changes whenever any of their arguments does.
+func accuracyKey(commands ...[]string) string {
+	h := sha256.New()
+	for _, command := range commands {
+		for _, arg := range command {
+			h.Write([]byte(strconv.Itoa(len(arg)) + ":" + arg + ";"))
+		}
+		h.Write([]byte{'\n'})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}
+
+// accuracyEncode writes out through a temporary file, so an interrupted run leaves no file a later run would reuse.
+func accuracyEncode(t *testing.T, out string, args []string) {
+	t.Helper()
+	ffmpegFixture(t, append(slices.Clone(args), out+".tmp.mp4")...)
+	if err := os.Rename(out+".tmp.mp4", out); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// accuracyCached returns stem-<key>.mp4, running ffmpeg with args and that output only when the file is missing.
+func accuracyCached(t *testing.T, stem string, args ...string) string {
+	t.Helper()
+	out := fmt.Sprintf("%s-%s.mp4", stem, accuracyKey(args))
+	if _, err := os.Stat(out); err != nil {
+		accuracyEncode(t, out, args)
+	}
+	return out
+}
+
 // buildAccuracyVideo renders each scene losslessly enough, concatenates them with hard cuts and encodes the result
 // with libx264 at the video's keyframe interval and the default scenecut.
 func buildAccuracyVideo(t *testing.T, dir string, video accuracyVideo) string {
 	t.Helper()
-	out := filepath.Join(dir, video.name+".mp4")
-	if _, err := os.Stat(out); err == nil {
-		return out
-	}
+	var steps [][]string
 	var list strings.Builder
 	for i, scene := range video.scenes {
 		part := filepath.Join(dir, fmt.Sprintf("%s-%02d.mkv", video.name, i))
@@ -172,26 +205,30 @@ func buildAccuracyVideo(t *testing.T, dir string, video accuracyVideo) string {
 			still = filepath.Join(dir, fmt.Sprintf("still-%d.png", scene.seed))
 			scale := 0.02 * float64(1+scene.seed%4)
 			x, y := accuracyMandelView(scene.seed + 500)
-			ffmpegFixture(t, "-f", "lavfi", "-i", fmt.Sprintf(
+			steps = append(steps, []string{"-f", "lavfi", "-i", fmt.Sprintf(
 				"mandelbrot=s=1920x1080:maxiter=600:start_x=%s:start_y=%s:start_scale=%g,hue=h=%d:s=1.4", x, y, scale,
-				scene.seed*29%360), "-frames:v", "1", still)
+				scene.seed*29%360), "-frames:v", "1", still})
 		}
-		args := append(accuracySource(scene, still), "-t", strconv.Itoa(scene.seconds), "-r", "25",
-			"-c:v", "libx264", "-preset", "ultrafast", "-crf", "12", "-pix_fmt", "yuv420p", part)
-		ffmpegFixture(t, args...)
+		steps = append(steps, append(accuracySource(scene, still), "-t", strconv.Itoa(scene.seconds), "-r", "25",
+			"-c:v", "libx264", "-preset", "ultrafast", "-crf", "12", "-pix_fmt", "yuv420p", part))
 		fmt.Fprintf(&list, "file '%s'\n", part)
 	}
 	listPath := filepath.Join(dir, video.name+".txt")
+	encode := []string{"-f", "concat", "-safe", "0", "-i", listPath, "-c:v", "libx264", "-preset", "medium",
+		"-crf", "23", "-pix_fmt", "yuv420p"}
+	encode = append(append(encode, video.gop...), "-movflags", "+faststart")
+	// The key covers the scene renders, which the encode reads through the list without naming them.
+	out := filepath.Join(dir, fmt.Sprintf("%s-%s.mp4", video.name, accuracyKey(append(steps, encode)...)))
+	if _, err := os.Stat(out); err == nil {
+		return out
+	}
+	for _, step := range steps {
+		ffmpegFixture(t, step...)
+	}
 	if err := os.WriteFile(listPath, []byte(list.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-f", "concat", "-safe", "0", "-i", listPath, "-c:v", "libx264", "-preset", "medium",
-		"-crf", "23", "-pix_fmt", "yuv420p"}
-	args = append(append(args, video.gop...), "-movflags", "+faststart", out+".tmp.mp4")
-	ffmpegFixture(t, args...)
-	if err := os.Rename(out+".tmp.mp4", out); err != nil {
-		t.Fatal(err)
-	}
+	accuracyEncode(t, out, encode)
 	return out
 }
 
@@ -230,8 +267,18 @@ func TestImageSearchAccuracy(t *testing.T) {
 	if dir == "" {
 		dir = t.TempDir()
 	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	fixture := newImageSearchFixture(t)
+	if _, err := fixture.db.Settings().AddMediaFolder(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
 	var library []accuracyLibraryVideo
 	for _, video := range accuracyLibrary() {
 		built := buildAccuracyVideo(t, dir, video)
@@ -241,11 +288,7 @@ func TestImageSearchAccuracy(t *testing.T) {
 		}
 		entry := accuracyLibraryVideo{accuracyVideo: video, path: built, durationMs: durationMs}
 		if !video.distractor {
-			linked := filepath.Join(fixture.mediaDir, filepath.Base(built))
-			if err := os.Link(built, linked); err != nil {
-				t.Fatal(err)
-			}
-			entry.id = fixture.indexVideo(t, linked, durationMs)
+			entry.id = fixture.indexVideo(t, built, durationMs)
 			collector := domain.NewSearchIndexCollector(durationMs)
 			if err := media.KeyframeHashes(ctx, built, collector.Add); err != nil {
 				t.Fatal(err)
@@ -259,7 +302,7 @@ func TestImageSearchAccuracy(t *testing.T) {
 		t.Logf("%s: %d ms, %d index entries", video.name, durationMs, len(entry.entries))
 	}
 
-	m := accuracyRun{t: t, dir: dir, fixture: fixture, library: library}
+	m := accuracyRun{t: t, fixture: fixture, library: library}
 	for i := range library {
 		m.imageVariants(&library[i], uint64(i))
 	}
@@ -273,7 +316,6 @@ func TestImageSearchAccuracy(t *testing.T) {
 
 type accuracyRun struct {
 	t       *testing.T
-	dir     string
 	fixture imageSearchFixture
 	library []accuracyLibraryVideo
 	rows    []accuracyRow
@@ -426,11 +468,8 @@ func (m *accuracyRun) score(
 func (m *accuracyRun) videoVariants() {
 	for i := range m.library {
 		video := &m.library[i]
-		query := filepath.Join(m.dir, video.name+"-reencoded.mp4")
-		if _, err := os.Stat(query); err != nil {
-			ffmpegFixture(m.t, "-i", video.path, "-vf", "scale=320:-2", "-c:v", "libx264", "-preset", "fast",
-				"-crf", "32", "-g", "75", "-b:v", "0", query)
-		}
+		query := accuracyCached(m.t, strings.TrimSuffix(video.path, ".mp4")+"-reencoded", "-i", video.path,
+			"-vf", "scale=320:-2", "-c:v", "libx264", "-preset", "fast", "-crf", "32", "-g", "75", "-b:v", "0")
 		variant := "e whole re-encode 320p CRF 32"
 		if video.distractor {
 			variant = "e distractor whole video"
@@ -447,11 +486,9 @@ func (m *accuracyRun) videoVariants() {
 	} {
 		video := m.find(excerpt.video)
 		startMs := (video.durationMs/2 - excerpt.seconds*500) / 1000 * 1000
-		query := filepath.Join(m.dir, fmt.Sprintf("%s-excerpt-%ds.mp4", video.name, excerpt.seconds))
-		if _, err := os.Stat(query); err != nil {
-			ffmpegFixture(m.t, "-ss", strconv.FormatInt(startMs/1000, 10), "-t", strconv.FormatInt(excerpt.seconds, 10),
-				"-i", video.path, "-vf", "scale=480:-2", "-c:v", "libx264", "-preset", "fast", "-crf", "28", query)
-		}
+		query := accuracyCached(m.t, fmt.Sprintf("%s-excerpt-%ds", strings.TrimSuffix(video.path, ".mp4"),
+			excerpt.seconds), "-ss", strconv.FormatInt(startMs/1000, 10), "-t", strconv.FormatInt(excerpt.seconds, 10),
+			"-i", video.path, "-vf", "scale=480:-2", "-c:v", "libx264", "-preset", "fast", "-crf", "28")
 		m.videoQuery(video, fmt.Sprintf("f excerpt %d s, 270p CRF 28", excerpt.seconds), query, startMs)
 	}
 }
