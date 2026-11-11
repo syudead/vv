@@ -130,6 +130,7 @@ func TestMatchRefinedFramesListsTheNearestFrame(t *testing.T) {
 
 func TestMatchVideoQuerySections(t *testing.T) {
 	scenes := randomHashes(3, 90)
+	longScenes := randomHashes(6, 900)
 	for _, tc := range []struct {
 		name    string
 		query   ImageSearchVideoQuery
@@ -192,6 +193,51 @@ func TestMatchVideoQuerySections(t *testing.T) {
 			}},
 			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchPartial, Rate: 2.0 / 3, PositionMs: 0,
 				StartMs: 0, EndMs: 2_000, QueryStartMs: 0, QueryEndMs: 2_000},
+		},
+		{
+			name:  "一致数の多いオフセットが一致率に届かない",
+			query: secondQuery(scenes[:30]),
+			// Offset 0 matches 4 of 10 entries; offset 40 s matches all 3 it compares and is the one listed.
+			content: func() ImageSearchContent {
+				c := contentAt(1, 50_000, scenes, every(3, 30), 0)
+				for i := 4; i < len(c.Frames); i++ {
+					c.Frames[i].Hash = scenes[60+i]
+				}
+				for _, s := range []int{0, 3, 6} {
+					c.Frames = append(c.Frames, ImageSearchFrame{TimeMs: 40_000 + int64(s)*1000, Hash: scenes[s]})
+				}
+				return c
+			}(),
+			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchPartial, Rate: 1, PositionMs: 40_000,
+				StartMs: 40_000, EndMs: 50_000, QueryStartMs: 0, QueryEndMs: 10_000},
+		},
+		{
+			name:  "キーフレームが 10 秒ごとの種の間に落ちる長い問い合わせ",
+			query: secondQuery(longScenes),
+			// Keyframes every 2 s at 0.7 s past the second show odd seconds' scenes, which seeds 10 s apart never are.
+			content: func() ImageSearchContent {
+				c := ImageSearchContent{VideoID: 1, DurationMs: 900_000}
+				for at := int64(700); at < 900_000; at += 2000 {
+					c.Frames = append(c.Frames, ImageSearchFrame{TimeMs: at, Hash: longScenes[(at+500)/1000]})
+				}
+				return c
+			}(),
+			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchWhole, Rate: 1, PositionMs: 700,
+				StartMs: 0, EndMs: 900_000, QueryStartMs: 300, QueryEndMs: 900_000},
+		},
+		{
+			name:  "3 分の動画が 4 秒ごとのキーフレームで長い問い合わせの途中にある",
+			query: secondQuery(longScenes[:640]),
+			// The 18 seeds inside it must still put two on its keyframes, whatever the stretch it starts at.
+			content: func() ImageSearchContent {
+				c := ImageSearchContent{VideoID: 1, DurationMs: 180_000}
+				for at := int64(0); at < 180_000; at += 4000 {
+					c.Frames = append(c.Frames, ImageSearchFrame{TimeMs: at, Hash: longScenes[238+at/1000]})
+				}
+				return c
+			}(),
+			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchPartial, Rate: 1, PositionMs: 0,
+				StartMs: 0, EndMs: 180_000, QueryStartMs: 238_000, QueryEndMs: 418_000},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

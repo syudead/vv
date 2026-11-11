@@ -169,6 +169,8 @@ type VideoQueryMatcher struct {
 }
 
 // NewVideoQueryMatcher picks one non-flat seed frame per 10 s of the query, between 64 (or all, when fewer) and 512.
+// Each seed sits at a different place in its stretch of frames: evenly spaced seeds would all fall the same way between
+// the keyframes of a video encoded at a fixed keyframe interval, and none might vote.
 func NewVideoQueryMatcher(query ImageSearchVideoQuery) VideoQueryMatcher {
 	var informative []int
 	for i, frame := range query.Frames {
@@ -180,7 +182,8 @@ func NewVideoQueryMatcher(query ImageSearchVideoQuery) VideoQueryMatcher {
 	count := int(min(want, int64(len(informative))))
 	seeds := make([]ImageSearchFrame, count)
 	for k := range count {
-		i := informative[k*len(informative)/count]
+		low, high := k*len(informative)/count, (k+1)*len(informative)/count
+		i := informative[low+seedShift(k, high-low)]
 		seeds[k] = ImageSearchFrame{TimeMs: int64(i) * query.IntervalMs, Hash: query.Frames[i].Hash}
 	}
 	votes := 2
@@ -188,6 +191,13 @@ func NewVideoQueryMatcher(query ImageSearchVideoQuery) VideoQueryMatcher {
 		votes = 1
 	}
 	return VideoQueryMatcher{query: query, seeds: seeds, votes: votes}
+}
+
+// seedShift places seed k at 7k mod 10 tenths of its stretch of length frames. Any ten seeds in a row take every
+// tenth once, so even a short run of seeds covers every phase of a fixed keyframe interval; a hash of k could leave
+// the 18 seeds inside a 3-minute video with one hit.
+func seedShift(k, length int) int {
+	return 7 * k % 10 * length / 10
 }
 
 // MatchVideoQuery runs one matcher over every content.
@@ -270,16 +280,17 @@ type offsetVerification struct {
 	first, last       int
 }
 
-// better prefers more matching entries, then a listable verification, then fewer compared ones; offsets arrive in increasing order, so ties keep the earlier one.
+// better prefers a listable verification, since an offset under the threshold is no match, then more matching
+// entries, then fewer compared ones; offsets arrive in increasing order, so ties keep the earlier one.
 func (v offsetVerification) better(than offsetVerification) bool {
-	if v.matched != than.matched {
-		return v.matched > than.matched
-	}
 	if v.matched == 0 {
 		return false
 	}
 	if v.listable() != than.listable() {
 		return v.listable()
+	}
+	if v.matched != than.matched {
+		return v.matched > than.matched
 	}
 	return v.compared < than.compared
 }
