@@ -154,7 +154,15 @@ const (
 	// ScanDone may still contain individual file failures.
 	ScanDone   ScanState = "done"
 	ScanFailed ScanState = "failed"
+	// ScanPaused is a scan a pause of background work stopped, or one requested during the pause; no scanner runs
+	// for it until the resume reopens it. At most one exists, and it is the latest scan.
+	ScanPaused ScanState = "paused"
 )
+
+// Open reports whether work of the scan remains: it runs, or waits for the resume of background work.
+func (s ScanState) Open() bool {
+	return s == ScanRunning || s == ScanPaused
+}
 
 type Scan struct {
 	ID    int64

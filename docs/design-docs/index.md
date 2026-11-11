@@ -27,6 +27,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Process lifecycle: startup and shutdown order](process-lifecycle.md)
 - [Job scheduling: one scheduler for every ingest stage](job-scheduling.md)
 - [Folder watching: importing changed media folders](folder-watching.md)
+- [Background pause: one owner switch over scans and jobs](background-pause.md)
 - [Playback quality](playback-quality.md)
 - [Seek sprite generation](seek-sprite-generation.md)
 - [Sidecar subtitle files](sidecar-subtitles.md)

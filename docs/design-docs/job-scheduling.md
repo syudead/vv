@@ -13,6 +13,7 @@ flowchart LR
   ev[Enqueue, stage done, release, run-after time, root check] -->|wake| sch[Scheduler]
   jobs[(jobs)] -->|claim by class, disk, kind, run-after| sch
   paused[Features that are off] -->|paused kinds| sch
+  hold[Owner's pause] -->|hold, release| sch
   scan[Scan content-key read] -->|wait for a read slot, ahead of jobs| sch
   sch -->|grant demand| run[Handler of the kind]
   run -->|lend and return slots per extraction| sch
@@ -388,6 +389,18 @@ settings callback, so its queued jobs are claimed at once; the face runtime's
 | Rejected | Why |
 | --- | --- |
 | Claim the job and fail it while the feature is off | Each claim would spend an attempt, and the jobs would fail before the owner turns the feature on |
+
+## A pause holds every kind
+
+The owner's pause of background work holds the scheduler: `Hold` stops
+granting every kind and cancels each running job's own context with the cause
+`domain.ErrJobPaused`, and `Release` grants again
+([background-pause.md](background-pause.md#jobs)). A job the hold stopped is
+recorded as a snooze, so it is queued, due at once and keeps its attempts. The
+hold is checked before each claim and again under the lock that registers a
+granted job, so a job claimed as the hold comes is snoozed without running. A
+scheduler created while the pause is saved starts held. A kind paused by its
+feature stays paused after a release.
 
 ## The scheduler sleeps until woken or until a retry is due
 

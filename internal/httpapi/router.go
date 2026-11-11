@@ -162,6 +162,13 @@ type AutoImportSettings interface {
 	SetEnabled(ctx context.Context, enabled bool) (domain.AutoImportStatus, error)
 }
 
+// BackgroundWork is app.BackgroundPause.
+type BackgroundWork interface {
+	Status(ctx context.Context, audience domain.Audience) (domain.BackgroundWork, error)
+	// SetPaused applies one request at a time; a request for the current state changes nothing.
+	SetPaused(ctx context.Context, audience domain.Audience, paused bool) (domain.BackgroundWork, error)
+}
+
 type VersionJudging interface {
 	Enabled(ctx context.Context) (bool, error)
 
@@ -323,6 +330,8 @@ type Options struct {
 	PluginProxy PluginProxySettings
 
 	AutoImport AutoImportSettings
+	// Nil Background makes the background work routes fail with 500.
+	Background BackgroundWork
 
 	AutoTagging AutoTagging
 	Onboarding  Onboarding
@@ -427,6 +436,7 @@ type server struct {
 	networkSettings   NetworkSettings
 	pluginProxy       PluginProxySettings
 	autoImport        AutoImportSettings
+	background        BackgroundWork
 	autoTagging       AutoTagging
 	faceRecognition   FaceRecognition
 	faceAnalysis      FaceAnalysis
@@ -524,6 +534,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		networkSettings:        opts.NetworkSettings,
 		pluginProxy:            opts.PluginProxy,
 		autoImport:             opts.AutoImport,
+		background:             opts.Background,
 		autoTagging:            opts.AutoTagging,
 		faceRecognition:        opts.FaceRecognition,
 		faceAnalysis:           opts.FaceAnalysis,
@@ -753,6 +764,7 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/comfyui":          true,
 	"/api/settings/version-judging":  true,
 	"/api/onboarding":                true,
+	"/api/background/pause":          true,
 }
 
 func requiresPutJSONBody(path string) bool {

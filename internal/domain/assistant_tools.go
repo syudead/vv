@@ -133,6 +133,9 @@ var assistantExclusions = slices.Concat(
 		"setPeerLinkMediaFolderEnabled"),
 	excluded("Watch history deletion", outOfScope, pageHistory, true, "clearWatchHistory", "deleteWatchHistoryEntry"),
 	excluded("Face runtime download", outOfScope, pageSettingsFaces, true, "downloadFaceRuntime"),
+	excluded("Background work pause",
+		"A pause stops every scan and job until the owner resumes it, so the owner sets it with the switch", "/settings/scan",
+		false, "setBackgroundPause"),
 	excluded("Onboarding", outOfScope, pageOnboarding, true, "updateOnboarding", "pickOnboardingInterests"),
 	// Pairing is a trust decision made with the other node's code and certificate fingerprint on its own page,
 	// and the fetch, match and vocabulary calls are the paired node's, with its credential, never the screens'.

@@ -155,6 +155,12 @@ func run(opts runOptions) error {
 	scanIndexStore := db.ScanIndex()
 	settingsStore := db.Settings()
 	playbackStore := db.Playback()
+	// A pause saved before the restart holds the scans and the scheduler from the start, so startup recovery's
+	// requeued jobs wait for the owner's resume; see docs/design-docs/background-pause.md.
+	backgroundPaused, err := settingsStore.BackgroundPaused(backgroundCtx)
+	if err != nil {
+		return &startupError{stage: stageDatabase, err: err}
+	}
 
 	// Scan content-key reads take read slots from the scheduler; see docs/design-docs/job-scheduling.md.
 	var scheduler *jobs.Scheduler
@@ -169,10 +175,11 @@ func run(opts runOptions) error {
 				ReadSlots: scanReadSlots{scheduler: &scheduler}, Logger: logger,
 			})
 		},
-		Folders:   scanIndexStore,
-		Context:   backgroundCtx,
-		Publisher: bus,
-		Logger:    logger,
+		Folders:          scanIndexStore,
+		Context:          backgroundCtx,
+		Publisher:        bus,
+		Logger:           logger,
+		BackgroundPaused: backgroundPaused,
 	})
 
 	artifactStore := artifacts.New(cfg.ThumbnailsDir())
@@ -202,7 +209,7 @@ func run(opts runOptions) error {
 	})
 	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
 	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
-	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, bus, logger)
 	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
 	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
@@ -225,6 +232,7 @@ func run(opts runOptions) error {
 		handlers[kind] = faces.analysis.HandleJob
 	}
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
+	featureOff := app.PausedJobKinds(autoTagger, faces.analysis, versionJudge)
 	addBackfillHandlers(handlers, ingestStore, sources, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
@@ -232,7 +240,8 @@ func run(opts runOptions) error {
 		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
 		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
-		Paused:   app.PausedJobKinds(autoTagger, faces.analysis, versionJudge),
+		Paused:   featureOff,
+		Held:     backgroundPaused,
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -241,7 +250,16 @@ func run(opts runOptions) error {
 		Logger: logger,
 	})
 	// Start filesystem watching only after interrupted scans have been recovered and restarted.
-	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+	// Directories held through a pause are kept in the scans role; see docs/design-docs/background-pause.md.
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger,
+		func(o *app.AutoImportOptions) { o.Held, o.Paused = scanStore, backgroundPaused })
+	backgroundPause := app.NewBackgroundPause(app.BackgroundPauseOptions{
+		Settings: settingsStore, Scheduler: scheduler, AutoImport: autoImport, Scans: scans, Publisher: bus,
+		Paused: backgroundPaused, Logger: logger,
+		Report: app.NewBackgroundStatus(app.BackgroundStatusOptions{
+			Counts: ingestStore, Scans: scanStore, Videos: libraryStore, Running: scans, FeatureOff: featureOff,
+		}),
+	})
 
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
@@ -296,8 +314,12 @@ func run(opts runOptions) error {
 			domain.ActivityFaceMerge:        app.NewFaceMergeActivity(db.Activity()),
 		},
 	})
+	// The background event reaches the screens at most once a second.
+	backgroundEvents := app.NewBackgroundEvents(events.BackgroundChanged, nil)
+	defer backgroundEvents.Stop()
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
+		Background:       backgroundEvents.Changed,
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 		ImagesFinished: func(videoID int64) {
@@ -433,6 +455,7 @@ func run(opts runOptions) error {
 		NetworkSettings:   networkSettings,
 		PluginProxy:       pluginProxy,
 		AutoImport:        autoImport,
+		Background:        backgroundPause,
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,

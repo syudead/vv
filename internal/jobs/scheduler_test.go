@@ -318,20 +318,29 @@ func twoDisks() *fakeDisks {
 // Call only inside a synctest bubble. A scheduler that cannot stop makes the bubble fail instead of consuming a
 // wall-clock timeout. Without folders, the test folders sit on one rotational disk.
 func startScheduler(opts Options) (*Scheduler, func()) {
+	scheduler := newTestScheduler(opts)
+	return scheduler, runScheduler(scheduler)
+}
+
+func newTestScheduler(opts Options) *Scheduler {
 	if opts.Folders == nil {
 		opts.Folders = twoFolders
 	}
 	if opts.Disks == nil {
 		opts.Disks = oneDisk(domain.DiskRotational).resolve
 	}
+	return NewScheduler(opts)
+}
+
+// runScheduler runs the scheduler until the returned stop is called; call it only inside a synctest bubble.
+func runScheduler(scheduler *Scheduler) (stop func()) {
 	ctx, cancel := context.WithCancel(context.Background())
-	scheduler := NewScheduler(opts)
 	finished := make(chan struct{})
 	go func() {
 		scheduler.Run(ctx)
 		close(finished)
 	}()
-	return scheduler, func() { cancel(); <-finished }
+	return func() { cancel(); <-finished }
 }
 
 func TestSchedulerGrantsCPUOnlyJobWhileReadSlotsAreFull(t *testing.T) {
@@ -789,7 +798,7 @@ func TestSchedulerProcessResult(t *testing.T) {
 					return tc.handlerErr
 				}}
 			}
-			NewScheduler(opts).process(ctx, job)
+			NewScheduler(opts).process(ctx, ctx, job)
 			if !slices.Equal(calls, tc.calls) {
 				t.Fatalf("calls = %v, want %v", calls, tc.calls)
 			}

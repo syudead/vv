@@ -62,18 +62,22 @@ video, tags and playback position.
 flowchart LR
   batch[Watch scan runs] --> m{What arrives?}
   m -->|manual scan| stop[Batch stops, closes done]
-  m -->|folder change| stop2[Batch stops, dirty set kept]
+  m -->|folder change, pause| stop2[Batch stops, dirty set kept]
   stop --> full[Full scan covers it]
-  stop2 --> rearm[Watches re-armed, batch queued]
+  stop2 --> rearm[Change done or resume, batch queued]
   m -->|change on disk| later[Dirty, read after the batch]
 ```
 
-Starting a manual scan or a [force rescan](force-rescan.md), or adding,
-replacing or deleting a media folder, stops a running batch at the next file;
+Starting a manual scan or a [force rescan](force-rescan.md), adding,
+replacing or deleting a media folder, or a
+[background pause](background-pause.md#automatic-import), stops a running
+batch at the next file;
 it removes nothing and closes `done`. A `folder` or `video` force rescan does
 not read the batch's directories, so they return to the dirty set and a later
 batch reads them. Changes that arrive while any scan runs are read after it
-finishes. A running batch does not make the app busy for the
+finishes. A folder change or a pause also holds new batches until it ends; a
+pause keeps the dirty set across a restart. The rearm after a folder change
+drops the dirty directories outside every registered folder. A running batch does not make the app busy for the
 desktop close prompt.
 
 ## Setting and watch state

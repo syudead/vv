@@ -3,8 +3,10 @@ import { render } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
 
+import type { BackgroundWork } from "../api/background";
 import type { MediaFolder, TranscodingSettings } from "../api/client";
 import AppShell from "../shell/AppShell";
+import { BackgroundProvider } from "../shell/BackgroundProvider";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import SettingsPage from "../settings/SettingsPage";
@@ -41,6 +43,14 @@ const transcodingSettings: TranscodingSettings = {
     { encoder: "vaapi", state: "unavailable", reason: "encoder_missing" },
     { encoder: "videotoolbox", state: "unavailable", reason: "unsupported_os" },
   ],
+};
+
+export const idleBackgroundWork: BackgroundWork = {
+  paused: false,
+  running: [],
+  groups: (
+    ["scan", "import", "auto_tag", "face", "version_judge", "backfill"] as const
+  ).map((group) => ({ group, remaining: 0 })),
 };
 
 /**
@@ -101,6 +111,9 @@ export function installSettingsServer() {
     server.requested = [];
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      // The shell reads the background status on every page, so it is not a section read.
+      if (url === "/api/background" && server.routes[url] === undefined)
+        return Promise.resolve(json(idleBackgroundWork));
       const respond = server.routes[url] ?? sectionResponses()[url];
       if (respond !== undefined && (init?.method ?? "GET") === "GET") {
         server.requested.push(url);
@@ -159,21 +172,23 @@ export function renderSettings(path = "/settings") {
         <ToastProvider>
           <OwnerAudience>
             <ScanProvider>
-              <ScanNoticeProvider>
-                {/* Match App's nested settings route beneath the outer splat. */}
-                <Routes>
-                  <Route
-                    path="*"
-                    element={
-                      <Routes>
-                        <Route path="/settings" element={page} />
-                        <Route path="/settings/*" element={page} />
-                      </Routes>
-                    }
-                  />
-                </Routes>
-                <LocationProbe />
-              </ScanNoticeProvider>
+              <BackgroundProvider>
+                <ScanNoticeProvider>
+                  {/* Match App's nested settings route beneath the outer splat. */}
+                  <Routes>
+                    <Route
+                      path="*"
+                      element={
+                        <Routes>
+                          <Route path="/settings" element={page} />
+                          <Route path="/settings/*" element={page} />
+                        </Routes>
+                      }
+                    />
+                  </Routes>
+                  <LocationProbe />
+                </ScanNoticeProvider>
+              </BackgroundProvider>
             </ScanProvider>
           </OwnerAudience>
         </ToastProvider>

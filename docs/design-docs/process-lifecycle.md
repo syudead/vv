@@ -109,6 +109,12 @@ become `attention`/`interrupted` while `waiting` ones stay, and once the
 workers run one new manual scan starts. An interrupted watch scan is
 closed and not resumed, so startup reads no directory for it.
 
+While background work is paused, startup resumes no scan: a `paused` scan
+stays as it is, and the owner's resume reopens it, or resumes the interrupted
+scan when there is none ([background pause](background-pause.md#scans)).
+Unpaused, startup also reopens a `paused` scan left by a resume that did not
+finish.
+
 ## Shutdown order
 
 Shutdown stops each part before the parts it feeds, so nothing writes to a part

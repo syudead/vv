@@ -81,7 +81,7 @@ video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value. A value no step can name becomes a named utility in
 `tokens.css` (`grid-cols-term`, `grid-cols-list-aside`, `grid-cols-form-page`, `grid-cols-settings-page`,
-`grid-cols-profile-page`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`).
+`grid-cols-profile-page`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`, `bottom-indicator`).
 Ratios are `aspect-video`, `aspect-square` and `aspect-portrait` (2:3, the
 person page's face).
 `style` carries only values known at run time (a position, a ratio, a measured
