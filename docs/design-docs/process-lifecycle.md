@@ -130,7 +130,8 @@ flowchart LR
 
 The `/api/events` streams never end on their own, so they close before the
 10-second request grace starts, and the stream this node holds open to its paired
-VVMDM closes with them. A cancelled job stays `running` and the next
+VVMDM closes with them. Live transcodes and image searches stop at the same
+point, because draining does not cancel a request's context. A cancelled job stays `running` and the next
 startup requeues it; a job is never lost between the queue and a worker.
 
 Auto-import stops before the scan is cancelled, so it removes its watches and

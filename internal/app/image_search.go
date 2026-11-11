@@ -40,6 +40,8 @@ type ImageSearchOptions struct {
 	Index   ImageSearchIndex
 	Uploads SearchUploadArea
 	Media   ImageSearchMedia
+	// ServerDone ends every running search when the server stops, since shutdown does not cancel requests.
+	ServerDone <-chan struct{}
 	// Nil Logger uses slog's default.
 	Logger *slog.Logger
 }
@@ -47,10 +49,11 @@ type ImageSearchOptions struct {
 // ImageSearch finds the listed videos that contain the footage of one uploaded image or video and keeps nothing it
 // was given. See docs/design-docs/image-search.md.
 type ImageSearch struct {
-	index   ImageSearchIndex
-	uploads SearchUploadArea
-	media   ImageSearchMedia
-	logger  *slog.Logger
+	index      ImageSearchIndex
+	uploads    SearchUploadArea
+	media      ImageSearchMedia
+	serverDone <-chan struct{}
+	logger     *slog.Logger
 	// gate runs one search at a time: each reads the whole index and may decode a long video.
 	gate uploadGate
 }
@@ -60,18 +63,31 @@ func NewImageSearch(opts ImageSearchOptions) *ImageSearch {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	serverDone := opts.ServerDone
+	if serverDone == nil {
+		serverDone = make(chan struct{})
+	}
 	return &ImageSearch{
-		index: opts.Index, uploads: opts.Uploads, media: opts.Media, logger: logger, gate: newUploadGate(),
+		index: opts.Index, uploads: opts.Uploads, media: opts.Media, serverDone: serverDone, logger: logger,
+		gate: newUploadGate(),
 	}
 }
 
-// Search reads file to its end, then calls onlyFile, whose error it returns as is so the caller can refuse a request
-// holding more than the file. A PNG, JPEG or still WebP is searched in memory; anything else is a video, kept in the
-// upload area until Search returns, whatever the outcome. A second search waits for the first until ctx ends.
+// Search reads file to its end, then returns onlyFile's error as is so the caller can refuse a request holding more
+// than the file; a video stays in the upload area until Search returns, and each search waits for the one before it.
 func (s *ImageSearch) Search(
 	ctx context.Context, audience domain.Audience, file io.Reader, onlyFile func() error,
 ) (domain.ImageSearchResult, error) {
-	head := bufio.NewReader(file)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-s.serverDone:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	head := bufio.NewReader(contextReader{ctx: ctx, r: file})
 	// A short file returns fewer bytes with io.EOF, which the readers below see again.
 	sniff, err := head.Peek(16)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -106,10 +122,24 @@ func stillImage(head []byte) bool {
 		(len(head) >= 12 && bytes.Equal(head[:4], []byte("RIFF")) && bytes.Equal(head[8:12], []byte("WEBP")))
 }
 
+// contextReader stops receiving the file once the search ends, so a cancelled upload is removed while the sender
+// still sends.
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c contextReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 // preparedQuery is a hashed query: the result's query fields and how it matches the snapshot's contents.
 type preparedQuery struct {
 	result domain.ImageSearchResult
-	match  func([]domain.ImageSearchContent) []domain.ImageSearchMatch
+	match  func(context.Context, []domain.ImageSearchContent) ([]domain.ImageSearchMatch, error)
 }
 
 // run refuses a request holding more than the file, then prepares and matches the query under the one-search gate.
@@ -133,7 +163,11 @@ func (s *ImageSearch) run(
 	if err != nil {
 		return domain.ImageSearchResult{}, err
 	}
-	return s.result(ctx, audience, query.result, snapshot, query.match(contentsOf(snapshot)))
+	matches, err := query.match(ctx, contentsOf(snapshot))
+	if err != nil {
+		return domain.ImageSearchResult{}, err
+	}
+	return s.result(ctx, audience, query.result, snapshot, matches)
 }
 
 func receiveImage(file io.Reader) ([]byte, error) {
@@ -163,10 +197,10 @@ func (s *ImageSearch) imageQuery(data []byte) (preparedQuery, error) {
 	}
 	return preparedQuery{
 		result: domain.ImageSearchResult{Kind: domain.ImageSearchQueryImage},
-		match: func(contents []domain.ImageSearchContent) []domain.ImageSearchMatch {
+		match: func(_ context.Context, contents []domain.ImageSearchContent) ([]domain.ImageSearchMatch, error) {
 			// Near misses are not refined from the source file yet; only keyframe matches are listed.
 			matches, _ := domain.MatchImageQuery(hash.Hash, contents)
-			return matches
+			return matches, nil
 		},
 	}, nil
 }
@@ -221,8 +255,8 @@ func (s *ImageSearch) videoQuery(ctx context.Context, path string) (preparedQuer
 	}
 	return preparedQuery{
 		result: domain.ImageSearchResult{Kind: domain.ImageSearchQueryVideo, DurationMs: durationMs},
-		match: func(contents []domain.ImageSearchContent) []domain.ImageSearchMatch {
-			return matchVideoQuery(query, contents)
+		match: func(ctx context.Context, contents []domain.ImageSearchContent) ([]domain.ImageSearchMatch, error) {
+			return matchVideoQuery(ctx, query, contents)
 		},
 	}, nil
 }
@@ -235,15 +269,18 @@ func contentsOf(snapshot domain.ImageSearchSnapshot) []domain.ImageSearchContent
 	return contents
 }
 
-// matchVideoQuery spreads the contents over the CPUs; each content's match is independent of the others.
-func matchVideoQuery(query domain.ImageSearchVideoQuery, contents []domain.ImageSearchContent) []domain.ImageSearchMatch {
+// matchVideoQuery spreads the contents over the CPUs, each content's match being independent of the others, and
+// stops between contents once ctx ends so a cancelled search releases the gate.
+func matchVideoQuery(
+	ctx context.Context, query domain.ImageSearchVideoQuery, contents []domain.ImageSearchContent,
+) ([]domain.ImageSearchMatch, error) {
 	matcher := domain.NewVideoQueryMatcher(query)
 	found := make([]*domain.ImageSearchMatch, len(contents))
 	workers := min(runtime.GOMAXPROCS(0), max(len(contents), 1))
 	var wg sync.WaitGroup
 	for w := range workers {
 		wg.Go(func() {
-			for i := w; i < len(contents); i += workers {
+			for i := w; i < len(contents) && ctx.Err() == nil; i += workers {
 				if match, ok := matcher.Match(contents[i]); ok {
 					found[i] = &match
 				}
@@ -251,13 +288,16 @@ func matchVideoQuery(query domain.ImageSearchVideoQuery, contents []domain.Image
 		})
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var matches []domain.ImageSearchMatch
 	for _, match := range found {
 		if match != nil {
 			matches = append(matches, *match)
 		}
 	}
-	return matches
+	return matches, nil
 }
 
 // result keeps each listed video's best match, so a bundle's members collapse to its representative while the

@@ -142,6 +142,68 @@ func TestImageSearchRemovesTheUploadWhenCancelled(t *testing.T) {
 	}
 }
 
+// A search cancelled once its video is hashed stops matching and returns the cancellation instead of a result.
+func TestImageSearchStopsMatchingWhenCancelled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	index := &fakeImageSearchIndex{snapshot: domain.ImageSearchSnapshot{Candidates: []domain.ImageSearchCandidate{
+		candidate(1, 1, searchFrame(0, 0), searchFrame(1000, 0), searchFrame(2000, 0)),
+	}}}
+	search := NewImageSearch(ImageSearchOptions{
+		Index: index, Uploads: dirUploads{dir: t.TempDir()},
+		Media: ImageSearchMedia{
+			Duration: func(context.Context, string) (int64, error) { return 3000, nil },
+			Frames: func(context.Context, string, int) ([]domain.FrameHash, error) {
+				cancel()
+				return []domain.FrameHash{{Hash: queryHash}, {Hash: queryHash}, {Hash: queryHash}}, nil
+			},
+		},
+	})
+	if _, err := search.Search(ctx, domain.AudienceOwner, bytes.NewReader([]byte("video")), noOnlyFileCheck); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if index.loaded != nil {
+		t.Fatalf("loaded %v after cancellation", index.loaded)
+	}
+}
+
+// Stopping the server ends a running search, whose request context shutdown leaves alone, and removes its upload.
+func TestImageSearchEndsWhenTheServerStops(t *testing.T) {
+	t.Parallel()
+	uploads := dirUploads{dir: t.TempDir()}
+	serverDone := make(chan struct{})
+	decoding := make(chan struct{})
+	search := NewImageSearch(ImageSearchOptions{
+		Index: &fakeImageSearchIndex{}, Uploads: uploads, ServerDone: serverDone,
+		Media: ImageSearchMedia{
+			Duration: func(context.Context, string) (int64, error) { return 60_000, nil },
+			Frames: func(ctx context.Context, _ string, _ int) ([]domain.FrameHash, error) {
+				close(decoding)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+		},
+	})
+	ended := make(chan error, 1)
+	go func() {
+		_, err := search.Search(context.Background(), domain.AudienceOwner, bytes.NewReader([]byte("video")), noOnlyFileCheck)
+		ended <- err
+	}()
+	<-decoding
+	close(serverDone)
+	select {
+	case err := <-ended:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the search did not end when the server stopped")
+	}
+	if n := uploads.left(t); n != 0 {
+		t.Fatalf("%d uploads left", n)
+	}
+}
+
 // A file that holds more than the request allows, or too little to search by, is refused before matching.
 func TestImageSearchRefusesQueriesItCannotMatch(t *testing.T) {
 	t.Parallel()

@@ -364,7 +364,7 @@ func run(opts runOptions) error {
 	}
 
 	// Shutdown does not cancel active HTTP contexts, so cancel a separate server context first to stop
-	// request-owned transcoders.
+	// request-owned transcoders and image searches.
 	requestMediaCtx, stopRequestMedia := context.WithCancel(context.Background())
 	defer stopRequestMedia()
 
@@ -451,7 +451,7 @@ func run(opts runOptions) error {
 		ThumbnailUploads:  ingest,
 		PersonImages:      personImages,
 		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
-			Index: libraryStore, Uploads: searchUploads, Logger: logger,
+			Index: libraryStore, Uploads: searchUploads, ServerDone: requestMediaCtx.Done(), Logger: logger,
 			Media: app.ImageSearchMedia{
 				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
 			},

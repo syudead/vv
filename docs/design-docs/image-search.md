@@ -103,8 +103,10 @@ and removed when the request ends, whether it succeeded, failed or was
 cancelled, and startup empties the directory before the listener opens.
 
 An MP4 with its index at the end cannot be read from a pipe, and in a container
-the OS temporary directory is often a small tmpfs. A cancelled request ends
-ffmpeg and writes no response. One search runs at a time and a second request
+the OS temporary directory is often a small tmpfs. A cancelled request, a
+revoked session or a server shutdown stops receiving the file, ends ffmpeg and
+the matching, and frees the search for the next request; a cancelled request
+writes no response. One search runs at a time and a second request
 waits until the first ends or the second is cancelled, because each reads the
 whole index and may decode a three-hour video.
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -140,5 +141,69 @@ func TestSearchByImageCancelledWritesNoResponse(t *testing.T) {
 	newTestServer(t, Options{ImageSearch: search}).ServeHTTP(rec, req)
 	if rec.Body.Len() != 0 || rec.Header().Get("Content-Type") != "" {
 		t.Fatalf("a cancelled search wrote %d %q", rec.Code, rec.Body)
+	}
+}
+
+// stalledSearch reads the start of the file, then the rest until the read fails, as receiving a video does.
+type stalledSearch struct {
+	reading chan struct{}
+	ended   chan error
+}
+
+func (s stalledSearch) Search(
+	_ context.Context, _ domain.Audience, file io.Reader, _ func() error,
+) (domain.ImageSearchResult, error) {
+	if _, err := io.ReadFull(file, make([]byte, 1)); err != nil {
+		s.ended <- err
+		return domain.ImageSearchResult{}, err
+	}
+	close(s.reading)
+	_, err := io.Copy(io.Discard, file)
+	s.ended <- err
+	return domain.ImageSearchResult{}, err
+}
+
+// Logging out while the sender has stopped sending ends the blocked body read, so the use case can remove the upload.
+func TestSearchByImageEndsAStalledUploadWhenTheSessionIsRevoked(t *testing.T) {
+	search := stalledSearch{reading: make(chan struct{}), ended: make(chan error, 1)}
+	env := newAuthEnv(t, t.TempDir(), Options{ImageSearch: search})
+	cookie := env.setup()
+	server := httptest.NewServer(env.handler)
+	t.Cleanup(server.Close)
+
+	body, sender := io.Pipe()
+	t.Cleanup(func() { _ = sender.Close() })
+	writer := multipart.NewWriter(sender)
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/image-search", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	go func() {
+		if resp, err := server.Client().Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	part, err := writer.CreateFormFile("file", "query.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("the start of a video")); err != nil {
+		t.Fatal(err)
+	}
+	<-search.reading
+
+	logout, _ := http.NewRequest(http.MethodPost, server.URL+"/api/auth/logout", nil)
+	logout.AddCookie(cookie)
+	resp, err := server.Client().Do(logout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	select {
+	case err := <-search.ended:
+		if err == nil {
+			t.Fatal("the body read ended without an error")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the body read did not end after logout")
 	}
 }
