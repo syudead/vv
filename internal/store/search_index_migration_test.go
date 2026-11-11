@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-const searchIndexVersion = 100
+const searchIndexVersion = 101
 
 // The jobs rebuild keeps every row, admits the frame_index kind only with a video, and keeps the candidate trigger.
 func TestSearchIndexMigrationRebuildsJobs(t *testing.T) {

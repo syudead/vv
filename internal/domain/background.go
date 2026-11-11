@@ -47,7 +47,8 @@ func JobGroup(kind JobKind) (BackgroundGroup, bool) {
 		return BackgroundFace, true
 	case JobVersionJudge:
 		return BackgroundVersionJudge, true
-	case JobKeyframes, JobMediaInfo, JobQueueKeyframes, JobQueueMediaInfo, JobVirtualThumbnails:
+	case JobKeyframes, JobMediaInfo, JobFrameIndex, JobQueueKeyframes, JobQueueMediaInfo, JobQueueFrameIndex,
+		JobVirtualThumbnails:
 		return BackgroundBackfill, true
 	}
 	return "", false
