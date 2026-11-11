@@ -193,14 +193,11 @@ func NewVideoQueryMatcher(query ImageSearchVideoQuery) VideoQueryMatcher {
 	return VideoQueryMatcher{query: query, seeds: seeds, votes: votes}
 }
 
-// seedShift places seed k within its stretch of length frames by a fixed hash of k, so the seeds' times fall evenly
-// between the keyframes of any keyframe interval.
+// seedShift places seed k at 7k mod 10 tenths of its stretch of length frames. Any ten seeds in a row take every
+// tenth once, so even a short run of seeds covers every phase of a fixed keyframe interval; a hash of k could leave
+// the 18 seeds inside a 3-minute video with one hit.
 func seedShift(k, length int) int {
-	x := uint64(k+1) * 0x9e3779b97f4a7c15
-	x = (x ^ x>>30) * 0xbf58476d1ce4e5b9
-	x = (x ^ x>>27) * 0x94d049bb133111eb
-	x ^= x >> 31
-	return int(x % uint64(length))
+	return 7 * k % 10 * length / 10
 }
 
 // MatchVideoQuery runs one matcher over every content.

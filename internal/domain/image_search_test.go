@@ -225,6 +225,20 @@ func TestMatchVideoQuerySections(t *testing.T) {
 			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchWhole, Rate: 1, PositionMs: 700,
 				StartMs: 0, EndMs: 900_000, QueryStartMs: 300, QueryEndMs: 900_000},
 		},
+		{
+			name:  "3 分の動画が 4 秒ごとのキーフレームで長い問い合わせの途中にある",
+			query: secondQuery(longScenes[:640]),
+			// The 18 seeds inside it must still put two on its keyframes, whatever the stretch it starts at.
+			content: func() ImageSearchContent {
+				c := ImageSearchContent{VideoID: 1, DurationMs: 180_000}
+				for at := int64(0); at < 180_000; at += 4000 {
+					c.Frames = append(c.Frames, ImageSearchFrame{TimeMs: at, Hash: longScenes[238+at/1000]})
+				}
+				return c
+			}(),
+			want: ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchPartial, Rate: 1, PositionMs: 0,
+				StartMs: 0, EndMs: 180_000, QueryStartMs: 238_000, QueryEndMs: 418_000},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := MatchVideoQuery(tc.query, []ImageSearchContent{tc.content})
