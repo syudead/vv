@@ -41,6 +41,22 @@ rereads every file for the other ([job-scheduling.md](job-scheduling.md#each-kin
 | Decode every frame and keep one per second | Minutes of CPU per hour of 1080p H.264, days over a library |
 | Seek to each keyframe from the packet index | One random read per keyframe; a sequential pass reads less on spinning disks |
 
+The row holds 12 bytes per kept keyframe in time order (a 4-byte time in
+milliseconds, then the 8-byte hash), and entries are at least
+`max(1 s, duration / 20,000)` apart. A row of another `SearchIndexVersion`
+counts as missing for the search, the unindexed count and `queue_frame_index`.
+A current-version blob that does not decode counts as missing for the search
+and the unindexed count only: `queue_frame_index` checks the version, not the
+blob, so it does not rebuild that row.
+
+| Decision | Rejected | Why |
+| --- | --- | --- |
+| At most 20,000 entries, at least 1 s apart | Every keyframe | A file with a keyframe every few frames would grow the index without adding scenes; 20,000 covers 5.5 hours at 1 s |
+| Leave flat frames out when building | Store them with a flag, as the fingerprint does | Nothing searches for a flat frame, and a flat query is refused before matching |
+| `frame_index` is a backfill job outside import tracking, queued by the probe result and by `queue_frame_index` at startup | An import stage, or a setting that turns it on | An import would wait for a whole-file read, and a switch would leave the search empty until the owner finds it |
+| A content change queues it again; a forced rescan of the same content does not | Rebuild on every forced rescan | The index is a function of the content |
+| `releaseContentIndex` deletes the row with the content's fingerprint | A sweep of orphan rows | The release already runs in the transaction that removes the last reference |
+
 ## Image queries
 
 An image matches a content at its nearest indexed keyframe when the hashes
