@@ -154,9 +154,12 @@ so the run revises the Plan and continues:
    closes children to match the revised Plan and marks the revision PR
    reconciled. A blocked child with no PR is then selected again like any
    other.
-5. A PR left open in step 1 gets one more review fixer after the reconcile,
-   with the feature-PR brief: it merges the base, which now carries the
-   revised Plan, and fixes what was blocked. Then merge it as
+5. A PR left open in step 1 is handled after the reconcile, by the state of
+   the child its fixer returned in `REFS`. When the reconcile closed that
+   child as not planned, the revised Plan dropped the unit: close the PR
+   without merging it and name it in the final report. Otherwise it gets one
+   more review fixer with the feature-PR brief: it merges the base, which now
+   carries the revised Plan, and fixes what was blocked. Then merge it as
    [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) step 4 says.
 
 Stop and report instead of revising when:

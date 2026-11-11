@@ -24,7 +24,9 @@ PR merge), close any other Issue, edit the parent Issue body, start another stag
 widen the scope. If the work needs a requester decision (Q-6, Q-7 in
 docs/product-specs/spec-quality.md) or a change to an approved artifact, stop
 and return BLOCKED with the exact question instead of guessing, with the
-BLOCKED_ON value the return block defines.
+BLOCKED_ON value the return block defines. A Plan-revision brief is the
+exception to the second case: revising plan.md and the artifacts the change
+reaches is that assignment.
 
 End with the return block from
 `.agents/skills/sdd-autopilot/references/briefs.md` and nothing after it. Keep
