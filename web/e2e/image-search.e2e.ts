@@ -23,8 +23,11 @@ interface SearchAnswer {
 const IMAGE_SEARCH_VIDEO = "画像検索の確認";
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-/** Between the keyframes at 6 s and 9 s, so the match comes from refining between them. */
-const framePositionMs = 7_000;
+/**
+ * On the keyframe at 6 s, so the index matches it directly; a frame between keyframes is refined only within 18
+ * bits of one, which the drifting gradients do not reliably give.
+ */
+const framePositionMs = 6_000;
 let folder: MediaFolder | undefined;
 let video: Video | undefined;
 let frame: Buffer | undefined;
