@@ -120,8 +120,10 @@ func TestImageSearchFindsTheVideoAFrameOrCopyCameFrom(t *testing.T) {
 		Videos: db.Library(), Assets: fstest.MapFS{}, Logger: slog.New(slog.DiscardHandler), Auth: ownerAuth{},
 		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
 			Index: db.Library(), Uploads: artifacts.NewSearchUploads(uploadsDir),
+			Files: app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()},
 			Media: app.ImageSearchMedia{
 				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
+				Refine: media.RefineFrameHashes,
 			},
 		}),
 	})

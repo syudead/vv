@@ -16,10 +16,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ImageSearchIndex reads the search index under an audience and loads the listed videos it names.
+// ImageSearchIndex reads the search index under an audience, loads the listed videos it names and finds the files
+// of a content to refine.
 type ImageSearchIndex interface {
 	ImageSearchSnapshot(ctx context.Context, audience domain.Audience) (domain.ImageSearchSnapshot, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
+	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 }
 
 // SearchUploadArea keeps a video query on disk for ffprobe and ffmpeg only while its request lasts.
@@ -29,17 +31,21 @@ type SearchUploadArea interface {
 }
 
 // ImageSearchMedia hashes queries by the search index's rule. Duration and Frames wrap
-// domain.ErrImageSearchUnreadable for a file they cannot read, and end their run when ctx is cancelled.
+// domain.ErrImageSearchUnreadable for a file they cannot read, and end their run when ctx is cancelled. Refine hashes
+// a library video's frames from startMs to endMs at domain.ImageSearchRefineIntervalMs.
 type ImageSearchMedia struct {
 	HashImage func(image.Image) domain.FrameHash
 	Duration  func(ctx context.Context, path string) (int64, error)
 	Frames    func(ctx context.Context, path string, maxFrames int) ([]domain.FrameHash, error)
+	Refine    func(ctx context.Context, path string, startMs, endMs int64) ([]domain.KeyframeHash, error)
 }
 
 type ImageSearchOptions struct {
 	Index   ImageSearchIndex
 	Uploads SearchUploadArea
 	Media   ImageSearchMedia
+	// Files resolves the library file an image match is refined from.
+	Files MediaFiles
 	// ServerDone ends every running search when the server stops, since shutdown does not cancel requests.
 	ServerDone <-chan struct{}
 	// Nil Logger uses slog's default.
@@ -52,6 +58,7 @@ type ImageSearch struct {
 	index      ImageSearchIndex
 	uploads    SearchUploadArea
 	media      ImageSearchMedia
+	files      MediaFiles
 	serverDone <-chan struct{}
 	logger     *slog.Logger
 	// gate runs one search at a time: each reads the whole index and may decode a long video.
@@ -68,8 +75,9 @@ func NewImageSearch(opts ImageSearchOptions) *ImageSearch {
 		serverDone = make(chan struct{})
 	}
 	return &ImageSearch{
-		index: opts.Index, uploads: opts.Uploads, media: opts.Media, serverDone: serverDone, logger: logger,
-		gate: newUploadGate(),
+		index: opts.Index, uploads: opts.Uploads, media: opts.Media, files: opts.Files, serverDone: serverDone,
+		logger: logger,
+		gate:   newUploadGate(),
 	}
 }
 
@@ -197,12 +205,64 @@ func (s *ImageSearch) imageQuery(data []byte) (preparedQuery, error) {
 	}
 	return preparedQuery{
 		result: domain.ImageSearchResult{Kind: domain.ImageSearchQueryImage},
-		match: func(_ context.Context, contents []domain.ImageSearchContent) ([]domain.ImageSearchMatch, error) {
-			// Near misses are not refined from the source file yet; only keyframe matches are listed.
-			matches, _ := domain.MatchImageQuery(hash.Hash, contents)
-			return matches, nil
+		match: func(ctx context.Context, contents []domain.ImageSearchContent) ([]domain.ImageSearchMatch, error) {
+			matches, refinements := domain.MatchImageQuery(hash.Hash, contents)
+			refined, err := s.refine(ctx, hash.Hash, refinements)
+			return append(matches, refined...), err
 		},
 	}, nil
+}
+
+// refine decodes each near miss's gap after its keyframe from the file, one at a time, and lists the contents with a
+// frame within domain.FingerprintMatchMaxDistance. A content whose file cannot be opened or decoded is left out, so a
+// missing file never fails the search.
+func (s *ImageSearch) refine(
+	ctx context.Context, query uint64, refinements []domain.ImageSearchRefinement,
+) ([]domain.ImageSearchMatch, error) {
+	var matches []domain.ImageSearchMatch
+	for _, refinement := range refinements {
+		frames, err := s.refinedFrames(ctx, refinement)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if errors.Is(err, errRefineSkipped) {
+			s.logger.Warn("could not refine an image search match", slog.Int64("video", refinement.VideoID),
+				slog.Any("error", err))
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if match, ok := domain.MatchRefinedFrames(query, refinement, frames); ok {
+			matches = append(matches, match)
+		}
+	}
+	return matches, nil
+}
+
+// errRefineSkipped marks a content whose file could not be opened or decoded.
+var errRefineSkipped = errors.New("the file cannot be refined")
+
+// refinedFrames decodes the refinement's gap from the first of the content's locations that the media folders allow.
+func (s *ImageSearch) refinedFrames(
+	ctx context.Context, refinement domain.ImageSearchRefinement,
+) ([]domain.KeyframeHash, error) {
+	locations, err := s.index.VideoLocations(ctx, refinement.VideoID)
+	if err != nil {
+		return nil, err
+	}
+	for _, location := range locations {
+		path, err := s.files.Resolve(ctx, location.Path)
+		if err != nil {
+			continue
+		}
+		frames, err := s.media.Refine(ctx, path, refinement.StartMs, refinement.EndMs)
+		if err != nil {
+			return nil, errors.Join(errRefineSkipped, err)
+		}
+		return frames, nil
+	}
+	return nil, errors.Join(errRefineSkipped, domain.ErrMediaFileUnavailable)
 }
 
 // receiveVideo writes the file to the upload area and returns its path, set whenever a file was created, even with

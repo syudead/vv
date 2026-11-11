@@ -1,9 +1,12 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image/png"
 	"math/bits"
+	"os/exec"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -53,5 +56,45 @@ func TestQueryVideoFramesSamplesOnceASecondAsTheIndexHashes(t *testing.T) {
 	}
 	if _, err := QueryVideoDuration(context.Background(), "testdata/SHA256SUMS"); !errors.Is(err, domain.ErrImageSearchUnreadable) {
 		t.Fatalf("duration of a text file: %v, want ErrImageSearchUnreadable", err)
+	}
+}
+
+// The fixture scrolls 60 pixels a second with keyframes at 0 and 8 s: a PNG cut 6 s after the first keyframe is too
+// far from it to match, and refining the gap to the next keyframe finds it at 6 s.
+func TestRefineFrameHashesFindsAFrameBetweenKeyframes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	video := mediaFixture(t, "moving-8s.mp4")
+	cut, err := exec.CommandContext(ctx, thumbnailCommand, "-v", "error", "-ss", "6", "-i", video, "-frames:v", "1",
+		"-f", "image2pipe", "-c:v", "png", "pipe:1").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(cut))
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := ImageFrameHash(img).Hash
+	var keyframes []domain.KeyframeHash
+	if err := KeyframeHashes(ctx, video, func(k domain.KeyframeHash) { keyframes = append(keyframes, k) }); err != nil {
+		t.Fatal(err)
+	}
+	if len(keyframes) != 2 || keyframes[0].TimeMs != 0 || keyframes[1].TimeMs != 8000 {
+		t.Fatalf("keyframes = %+v, want 0 and 8000 ms", keyframes)
+	}
+	if d := bits.OnesCount64(query ^ keyframes[0].Frame.Hash); d <= domain.FingerprintMatchMaxDistance {
+		t.Fatalf("the cut frame is %d bits from the keyframe at 0 ms, want over %d", d, domain.FingerprintMatchMaxDistance)
+	}
+
+	frames, err := RefineFrameHashes(ctx, video, 0, 8000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(frames) != 32 {
+		t.Fatalf("refined %d frames, want 4 a second over 8 s", len(frames))
+	}
+	match, ok := domain.MatchRefinedFrames(query, domain.ImageSearchRefinement{VideoID: 1, StartMs: 0, EndMs: 8000}, frames)
+	if !ok || match.PositionMs < 5750 || match.PositionMs > 6250 {
+		t.Fatalf("refined match = %+v, %v, want one within 250 ms of 6000 ms", match, ok)
 	}
 }

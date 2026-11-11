@@ -107,6 +107,27 @@ func TestMatchImageQueryRefinesTheTenClosest(t *testing.T) {
 	}
 }
 
+// A refined content is listed at its nearest non-flat frame within 12 bits, the earliest of equals; a gap whose frames
+// are all flat or over 12 bits away is not listed.
+func TestMatchRefinedFramesListsTheNearestFrame(t *testing.T) {
+	query := randomHashes(3, 1)[0]
+	refinement := ImageSearchRefinement{VideoID: 7, AddedAt: time.Unix(7, 0), Distance: 15, StartMs: 8_000, EndMs: 16_000}
+	frame := func(timeMs int64, distance int, flat bool) KeyframeHash {
+		return KeyframeHash{TimeMs: timeMs, Frame: FrameHash{Hash: flipBits(query, distance), Flat: flat}}
+	}
+	match, ok := MatchRefinedFrames(query, refinement, []KeyframeHash{
+		frame(8_000, 0, true), frame(8_250, 13, false), frame(8_500, 5, false), frame(8_750, 5, false),
+	})
+	want := ImageSearchMatch{VideoID: 7, AddedAt: time.Unix(7, 0), Kind: ImageSearchMatchFrame, Rate: 58.0 / 63,
+		PositionMs: 8_500}
+	if !ok || match != want {
+		t.Errorf("match = %+v, %v, want %+v", match, ok, want)
+	}
+	if match, ok := MatchRefinedFrames(query, refinement, []KeyframeHash{frame(8_000, 0, true), frame(8_250, 13, false)}); ok {
+		t.Errorf("matched %+v with only a flat frame and one 13 bits away", match)
+	}
+}
+
 func TestMatchVideoQuerySections(t *testing.T) {
 	scenes := randomHashes(3, 90)
 	for _, tc := range []struct {

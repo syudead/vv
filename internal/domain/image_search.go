@@ -12,7 +12,9 @@ const (
 	ImageSearchRefineMaxDistance = 18
 	ImageSearchRefineLimit       = 10
 	ImageSearchRefineMaxMs       = 10_000
-	ImageSearchMaxResults        = 50
+	// ImageSearchRefineIntervalMs decodes a refined gap at 4 frames a second.
+	ImageSearchRefineIntervalMs = 250
+	ImageSearchMaxResults       = 50
 
 	imageSearchSeedIntervalMs = 10_000
 	imageSearchMinSeeds       = 64
@@ -78,11 +80,10 @@ func ImageMatchRate(distance int) float64 {
 	return float64(imageSearchHashBits-distance) / imageSearchHashBits
 }
 
-// NewImageFrameMatch builds the match of an image query at one frame of a content.
-func NewImageFrameMatch(content ImageSearchContent, distance int, positionMs int64) ImageSearchMatch {
+func imageFrameMatch(videoID int64, addedAt time.Time, distance int, positionMs int64) ImageSearchMatch {
 	return ImageSearchMatch{
-		VideoID:    content.VideoID,
-		AddedAt:    content.AddedAt,
+		VideoID:    videoID,
+		AddedAt:    addedAt,
 		Kind:       ImageSearchMatchFrame,
 		Rate:       ImageMatchRate(distance),
 		PositionMs: positionMs,
@@ -98,7 +99,7 @@ func MatchImageQuery(query uint64, contents []ImageSearchContent) ([]ImageSearch
 		switch {
 		case !ok || distance > ImageSearchRefineMaxDistance:
 		case distance <= FingerprintMatchMaxDistance:
-			matches = append(matches, NewImageFrameMatch(content, distance, content.Frames[index].TimeMs))
+			matches = append(matches, imageFrameMatch(content.VideoID, content.AddedAt, distance, content.Frames[index].TimeMs))
 		default:
 			start := content.Frames[index].TimeMs
 			refinements = append(refinements, ImageSearchRefinement{
@@ -117,6 +118,21 @@ func MatchImageQuery(query uint64, contents []ImageSearchContent) ([]ImageSearch
 		refinements = refinements[:ImageSearchRefineLimit]
 	}
 	return matches, refinements
+}
+
+// MatchRefinedFrames lists a refined content at its nearest non-flat decoded frame within
+// FingerprintMatchMaxDistance, the earliest on a tie, so playback starts at the scene the query shows.
+func MatchRefinedFrames(query uint64, refinement ImageSearchRefinement, frames []KeyframeHash) (ImageSearchMatch, bool) {
+	best, distance := -1, FingerprintMatchMaxDistance+1
+	for i, frame := range frames {
+		if d := bits.OnesCount64(query ^ frame.Frame.Hash); !frame.Frame.Flat && d < distance {
+			best, distance = i, d
+		}
+	}
+	if best < 0 {
+		return ImageSearchMatch{}, false
+	}
+	return imageFrameMatch(refinement.VideoID, refinement.AddedAt, distance, frames[best].TimeMs), true
 }
 
 // nearestImageSearchFrame returns the earliest frame at the smallest distance.
