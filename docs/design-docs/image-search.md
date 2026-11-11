@@ -43,9 +43,11 @@ rereads every file for the other ([job-scheduling.md](job-scheduling.md#each-kin
 
 The row holds 12 bytes per kept keyframe in time order (a 4-byte time in
 milliseconds, then the 8-byte hash), and entries are at least
-`max(1 s, duration / 20,000)` apart. A row of another `SearchIndexVersion`, or
-a blob that does not decode, counts as missing for the search, the unindexed
-count and `queue_frame_index`.
+`max(1 s, duration / 20,000)` apart. A row of another `SearchIndexVersion`
+counts as missing for the search, the unindexed count and `queue_frame_index`.
+A current-version blob that does not decode counts as missing for the search
+and the unindexed count only: `queue_frame_index` checks the version, not the
+blob, so it does not rebuild that row.
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
