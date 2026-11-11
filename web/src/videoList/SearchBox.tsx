@@ -1,5 +1,12 @@
-import { Search, X } from "lucide-react";
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { ScanSearch, Search, X } from "lucide-react";
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { t, type UiText } from "../i18n";
@@ -9,6 +16,7 @@ import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
 import { Kbd } from "../ui/shadcn/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import {
   type SearchSuggestions,
@@ -19,6 +27,16 @@ import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
 /** Debounce so each keystroke does not replace the list. */
 export const searchDebounceMs = 250;
+
+/** The owner's library field also searches by a file; see library-ui.md, Image search. */
+export interface FileSearchField {
+  /** Opens the search-by-file dialog. */
+  onPick: () => void;
+  /** The query chip while an image search shows; it replaces the search icon. */
+  chip?: ReactNode;
+  /** Ends the image search: `Enter` with text and `Escape` on an empty field call it while the chip shows. */
+  onClear: () => void;
+}
 
 export interface SearchBoxProps {
   query: string;
@@ -42,6 +60,14 @@ export interface SearchBoxProps {
    * IME text and half-typed words do not replace the list.
    */
   commitOn?: "typing" | "enter";
+  fileSearch?: FileSearchField;
+}
+
+/** Room for the controls at the field's end: clear or the `/` hint, syntax help and the file button. */
+function endPadding(syntaxHelp: boolean, empty: boolean, pick: boolean): string {
+  if (!syntaxHelp) return pick ? "pr-16" : "pr-8";
+  if (pick) return empty ? "pr-16 sm:pr-24" : "pr-24";
+  return empty ? "pr-8 sm:pr-16" : "pr-16";
 }
 
 /**
@@ -70,6 +96,7 @@ export default function SearchBox({
   className,
   suggestions,
   commitOn = "typing",
+  fileSearch,
 }: SearchBoxProps) {
   const onEnter = commitOn === "enter";
   const [input, setInputState] = useState(query);
@@ -148,12 +175,25 @@ export default function SearchBox({
     field.current?.focus();
   };
 
+  const chip = fileSearch?.chip;
   return (
-    <div className={cn("relative flex w-full items-center", className)}>
-      <Search
-        aria-hidden="true"
-        className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
-      />
+    <div
+      className={cn(
+        "relative flex w-full items-center",
+        // With a chip the frame holds the chip and the borderless input, so both read as one field.
+        chip !== undefined &&
+          "h-8 gap-1 rounded-md border border-input bg-muted pl-0.5 hover:border-muted-foreground",
+        className,
+      )}
+    >
+      {chip === undefined ? (
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
+        />
+      ) : (
+        <div className="flex max-w-1/2 min-w-0 shrink-0">{chip}</div>
+      )}
       <Input
         ref={field}
         type="search"
@@ -195,7 +235,14 @@ export default function SearchBox({
           if (box.onKeyDown(event)) return;
           if (event.key === "Enter" && onEnter) {
             event.preventDefault();
-            commit(normalizeQuery(latest.current, maxLength));
+            const text = normalizeQuery(latest.current, maxLength);
+            if (chip !== undefined && text !== "") fileSearch?.onClear();
+            commit(text);
+            return;
+          }
+          if (event.key === "Escape" && chip !== undefined && latest.current === "") {
+            event.preventDefault();
+            fileSearch?.onClear();
             return;
           }
           if (event.key === "Escape") {
@@ -205,14 +252,17 @@ export default function SearchBox({
             field.current?.blur();
           }
         }}
-        placeholder={placeholder}
+        placeholder={chip === undefined ? placeholder : t.library.imageSearch.placeholder}
         aria-label={label}
         disabled={disabled}
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "h-8 pl-8 [&::-webkit-search-cancel-button]:hidden",
-          !syntaxHelp ? "pr-8" : input === "" ? "pr-8 sm:pr-16" : "pr-16",
+          "[&::-webkit-search-cancel-button]:hidden",
+          chip === undefined
+            ? "h-8 pl-8"
+            : "h-full border-0 bg-transparent pl-1 hover:border-0",
+          endPadding(syntaxHelp, input === "", fileSearch !== undefined),
         )}
       />
       <div className="absolute right-1 flex items-center gap-0.5">
@@ -230,9 +280,30 @@ export default function SearchBox({
           </Button>
         )}
         {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
+        {fileSearch !== undefined && <PickFileButton onPick={fileSearch.onPick} />}
         {syntaxHelp && <SearchSyntaxHelp />}
       </div>
       {box.list}
     </div>
+  );
+}
+
+function PickFileButton({ onPick }: { onPick: () => void }) {
+  const label = t.library.imageSearch.pick;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          onClick={onPick}
+          className="size-6 text-muted-foreground"
+        >
+          <ScanSearch aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

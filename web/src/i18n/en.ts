@@ -1057,6 +1057,59 @@ export const en = {
     resultsLabel: "Search results",
     // Library total counts cards, including one per group, not videos.
     resultCount: items,
+    imageSearch: {
+      pick: "Search by image or video",
+      placeholder: "Or search by text",
+      clear: "Clear image search",
+      dialog: {
+        title: "Search by image or video",
+        description:
+          "PNG, JPEG or WebP images up to 64 MB, or a video up to 4 GB and 3 hours. The file is used for this search only and is not kept.",
+        zone: "Drop an image or a video here, or click to choose a file",
+        zoneHint: "You can also paste an image while this is open.",
+      },
+      title: "Image search",
+      searching: "Searching…",
+      readingVideo: (file: string) => `Reading ${file}. A long video takes a while.`,
+      cancel: "Cancel",
+      matches: (count: number) => counted(count, "match", "matches"),
+      unindexed: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} video isn't indexed yet and wasn't searched.`,
+          other: `${formatNumber(count)} videos aren't indexed yet and weren't searched.`,
+        }),
+      rate: (percent: number) => `${formatNumber(percent)}% match`,
+      at: (time: string) => `at ${time}`,
+      range: (start: string, end: string) => `${start}–${end}`,
+      whole: "Whole video",
+      part: "Part of video",
+      spanLane: "Matched section",
+      playFrom: (start: string) => `Play from ${start}`,
+      noMatch: "No video has this footage",
+      allSearched: "Every video in your library was searched.",
+      chooseAnother: "Choose another file…",
+      retry: "Retry",
+      notUsed: "Not used by image search",
+      refused: {
+        several: {
+          title: "Search with one file at a time",
+          description: (count: number) => `${formatNumber(count)} files were given.`,
+        },
+        unreadable: {
+          title: "This file can't be searched",
+          description: "Use a PNG, JPEG or WebP image, or a video.",
+        },
+        tooLarge: "This file is too large",
+        tooLong: "This video is too long",
+        limit: (limit: string) => `The limit is ${limit}.`,
+        megapixels: (count: number) => `${formatNumber(count)} megapixels`,
+        uninformative: {
+          title: "There's nothing to compare in this file",
+          description: "A blank or single-colour picture matches no footage.",
+        },
+        failed: "The search failed",
+      },
+    },
     empty: {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",

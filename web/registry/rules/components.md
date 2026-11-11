@@ -507,6 +507,8 @@ Item `image-upload-dialog`. Every control that takes an image file opens
 holds one dashed drop zone, which also opens the file picker when clicked,
 takes an image pasted anywhere in it, and has only `Cancel` in its footer. Its
 `description` names the accepted types and size and what happens next.
+`zone` and `zoneHint` replace the zone's image wording when the control takes
+other files too, as the library's search by image or video does.
 
 `onFile` takes the file and returns `null` to go on, closing the dialog and
 opening the next step (a preview or a framing dialog), or a reason that the
