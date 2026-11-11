@@ -348,6 +348,51 @@ assistant` as chips that can only be removed. The smart folder page shows
 them on its condition lines, and the owner's smart folder card shows the
 folder's own ones as chips after its tags.
 
+### Image search
+
+The owner's library search field (on `/` only) also searches by a file: its
+`Search by image or video` button, before the syntax help, opens
+`ImageUploadDialog` with image-and-video wording, and the chosen file starts a
+search ([image-search.md](image-search.md) has the matching rules). Folder,
+group and smart-folder pages, and guests, keep the plain field. While the
+search runs or shows its answer, a query chip (the file's preview, its name
+from `sm` up, and `Clear image search`) sits at the field's start and holds at
+most half its width; the placeholder reads `Or search by text`.
+
+The results replace the library's body inside the same `ListPage`, as text
+search results do, so the header and the toolbar stay where they are and
+clearing the chip brings the library back as it was. The favorite smart
+folder band, the filter chips and the selection bar are not drawn. Filter,
+sort and view are disabled with the tooltip `Not used by image search`; zoom
+stays active, and stays shown in list view, because results are always cards.
+
+| State | Body under the level-2 `Image search` header |
+| --- | --- |
+| Searching | `Searching…` with a spinner, the file named for a video, `Cancel`; grid skeletons |
+| Results | `{n} matches` and the unindexed count; one card per item in the server's order |
+| No match | `Empty` with the unindexed count, or `Every video in your library was searched.`, and `Clear image search` |
+| Refused | A destructive `Alert` with the reason, `Choose another file…`, and `Retry` for a network or server failure |
+
+A result card is one link to `/videos/{match.videoId}?t=` at the match
+position, so a version bundle plays the member that matched. It shows the
+matched frame, the title, the rate as a whole percent and the frame time or
+the matched section, and for a video query `Whole video` or `Part of video`
+and a `SpanBar` of the section on the listed video's length. It has no
+selection, favorite, tags, preview or drag, because the video's own actions are
+on its page.
+
+The search lives in memory under the history entry, never in the URL: the
+file cannot be put in a URL and must not be kept on the server. Returning from
+the player shows the same chip, cards and scroll position without a request,
+whether the viewer goes back or closes the player: a result passes the entry's
+key to the player, and closing carries it to the new library entry. A new
+file, `Cancel`, the chip's `×`, a text search (`Enter` with text while the
+chip shows, even the text already searched) and leaving the page or the entry
+abort the running request. Two or more files dropped or pasted on the field,
+or a file whose type is neither an image nor a video, are refused before any
+upload; the dialog takes one file, as it does for every upload. A file without
+a type goes to the server, which reads its content.
+
 ### Scan entry and progress
 
 A scan starts from `Scan library` in the `Scan status` section of the

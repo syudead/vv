@@ -4,7 +4,11 @@ import type { Video } from "../api/client";
 import {
   autoplayRequested,
   backTarget,
+  closePlayer,
+  linkStateFrom,
   resumePosition,
+  returnEntry,
+  returnState,
   startFromSearch,
 } from "./pageDecisions";
 
@@ -27,6 +31,31 @@ describe("backTarget", () => {
   it("外部 URL は受け付けない", () => {
     expect(backTarget({ from: "https://example.com/" })).toBe("/");
     expect(backTarget({ from: "//example.com/" })).toBe("/");
+  });
+});
+
+describe("returnEntry", () => {
+  it("一覧の履歴エントリを次の動画へ渡し、閉じるときに一覧へ返す", () => {
+    const back = returnState(
+      "/?query=a",
+      returnEntry({ from: "/?query=a", returnEntry: "k1" }),
+    );
+
+    expect(linkStateFrom(back, [3], 4)).toEqual({
+      from: "/?query=a",
+      returnEntry: "k1",
+      trail: [3, 4],
+    });
+    expect(closePlayer(back)).toEqual({ to: "/?query=a", state: { returnEntry: "k1" } });
+  });
+
+  it("エントリが無い・文字列でないときは閉じても状態を渡さない", () => {
+    expect(returnEntry({ returnEntry: 1 })).toBeUndefined();
+    expect(returnEntry({ returnEntry: "" })).toBeUndefined();
+    expect(closePlayer(returnState("/", returnEntry(null)))).toEqual({
+      to: "/",
+      state: undefined,
+    });
   });
 });
 

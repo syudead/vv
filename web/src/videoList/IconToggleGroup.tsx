@@ -15,15 +15,18 @@ export default function IconToggleGroup<T extends string>({
   onValueChange,
   options,
   label,
+  disabled,
 }: {
   value: T;
   onValueChange: (value: T) => void;
   options: readonly IconToggleOption<T>[];
   label: UiText;
+  disabled?: boolean;
 }) {
   return (
     <ToggleGroup
       type="single"
+      disabled={disabled}
       variant="outline"
       size="sm"
       value={value}

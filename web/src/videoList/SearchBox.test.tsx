@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { t } from "../i18n";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SearchBox, { limitQueryInput, searchDebounceMs } from "./SearchBox";
 import type { SuggestionGroup, SuggestionOption } from "./SearchSuggestions";
 
@@ -386,5 +387,54 @@ describe("SearchBox suggestions", () => {
         .getAllByRole("option")
         .map((option) => option.textContent),
     ).toEqual(["Search for “京”"]);
+  });
+});
+
+describe("SearchBox with a file search", () => {
+  afterEach(cleanup);
+
+  it("Escape on an empty field ends the image search; with text it clears the text only", () => {
+    const onClear = vi.fn();
+    render(
+      <TooltipProvider>
+        <SearchBox
+          query=""
+          onCommit={vi.fn()}
+          commitOn="enter"
+          fileSearch={{ onPick: vi.fn(), onClear, chip: <span>shot.png</span> }}
+        />
+      </TooltipProvider>,
+    );
+    const box = screen.getByRole<HTMLInputElement>("searchbox", {
+      name: "Search videos",
+    });
+    fireEvent.change(box, { target: { value: "京都" } });
+
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(box.value).toBe("");
+    expect(onClear).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it("Enter on the text already searched ends the image search, with suggestions shown", () => {
+    const onClear = vi.fn();
+    render(
+      <TooltipProvider>
+        <SearchBox
+          query="京都"
+          onCommit={vi.fn()}
+          commitOn="enter"
+          suggestions={{ term: "", groups: [], onTermChange: vi.fn(), onPick: vi.fn() }}
+          fileSearch={{ onPick: vi.fn(), onClear, chip: <span>shot.png</span> }}
+        />
+      </TooltipProvider>,
+    );
+    const box = screen.getByRole("combobox", { name: "Search videos" });
+
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(onClear).toHaveBeenCalledOnce();
   });
 });
