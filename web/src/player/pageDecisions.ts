@@ -11,6 +11,35 @@ export function backTarget(state: unknown): string {
   return from;
 }
 
+/**
+ * The history entry key of the list that opened the player. The player carries it and passes it
+ * back on close, so a list that keeps state in memory per entry, such as the library's image
+ * search, restores it on the new entry that closing pushes.
+ */
+export function returnEntry(state: unknown): string | undefined {
+  const entry: unknown = (state as { returnEntry?: unknown } | null)?.returnEntry;
+  return typeof entry === "string" && entry !== "" ? entry : undefined;
+}
+
+/** The state that keeps the way back: the list URL and, when the list sent one, its entry key. */
+export interface ReturnState {
+  from: string;
+  returnEntry?: string;
+}
+
+export function returnState(backTo: string, entry: string | undefined): ReturnState {
+  return entry === undefined ? { from: backTo } : { from: backTo, returnEntry: entry };
+}
+
+/** Closing goes to the list URL as a new entry, carrying the list's entry key back to it. */
+export function closePlayer(back: ReturnState): {
+  to: string;
+  state: { returnEntry: string } | undefined;
+} {
+  const { from, returnEntry: entry } = back;
+  return { to: from, state: entry === undefined ? undefined : { returnEntry: entry } };
+}
+
 export function autoplayRequested(state: unknown): boolean {
   return (state as { autoplay?: unknown } | null)?.autoplay === true;
 }
@@ -45,17 +74,16 @@ export function videoTrail(state: unknown): number[] {
   );
 }
 
-export interface VideoLinkState {
-  /** Preserve the original return destination. */
-  from: string;
+/** Preserve the original return destination. */
+export interface VideoLinkState extends ReturnState {
   trail: number[];
   autoplay?: boolean;
 }
 
 export function linkStateFrom(
-  backTo: string,
+  back: ReturnState,
   trail: readonly number[],
   currentId: number,
 ): VideoLinkState {
-  return { from: backTo, trail: [...trail, currentId].slice(-maxTrail) };
+  return { ...back, trail: [...trail, currentId].slice(-maxTrail) };
 }

@@ -383,12 +383,15 @@ on its page.
 
 The search lives in memory under the history entry, never in the URL: the
 file cannot be put in a URL and must not be kept on the server. Returning from
-the player shows the same chip, cards and scroll position without a request.
-A new file, `Cancel`, the chip's `×`, a text search (`Enter` with text while
-the chip shows) and leaving the page or the entry abort the running request.
-Two or more files, or a file whose type is neither an image nor a video, are
-refused before any upload; a file without a type goes to the server, which
-reads its content.
+the player shows the same chip, cards and scroll position without a request,
+whether the viewer goes back or closes the player: a result passes the entry's
+key to the player, and closing carries it to the new library entry. A new
+file, `Cancel`, the chip's `×`, a text search (`Enter` with text while the
+chip shows, even the text already searched) and leaving the page or the entry
+abort the running request. Two or more files dropped or pasted on the field,
+or a file whose type is neither an image nor a video, are refused before any
+upload; the dialog takes one file, as it does for every upload. A file without
+a type goes to the server, which reads its content.
 
 ### Scan entry and progress
 

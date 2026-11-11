@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { type ImageSearchItem, matchFramePath } from "../../api/imageSearch";
 import { t } from "../../i18n";
 import { formatDuration } from "../../lib/format";
+import { returnState } from "../../player/pageDecisions";
 import { Badge } from "../../ui/shadcn/badge";
 import { SpanBar } from "../../ui/SpanBar";
 import {
@@ -10,13 +11,14 @@ import {
   VideoThumbnailDuration,
   VideoThumbnailImage,
 } from "../../ui/VideoThumbnail";
-import { cardLinkState } from "../../videoList/cardLink";
 import { matchPath, playPath, ratePercent } from "./imageSearchState";
 
 export interface ResultCardProps {
   item: ImageSearchItem;
   /** The library URL the player goes back to. */
   backTo: string;
+  /** The history entry the search is kept under, so closing the player restores it. */
+  entry: string;
   /** Called before a result opens the player, to keep the scroll position. */
   onOpen: () => void;
 }
@@ -37,8 +39,9 @@ function whereText(item: ImageSearchItem): string {
  * One result: a link to the player at the match, and for a video query the matched section on the
  * video's length. It has none of a library card's selection, favorite, tags or preview.
  */
-export function ResultCard({ item, backTo, onOpen }: ResultCardProps) {
+export function ResultCard({ item, backTo, entry, onOpen }: ResultCardProps) {
   const navigate = useNavigate();
+  const back = returnState(backTo, entry);
   const { video, match } = item;
   const text = t.library.imageSearch;
   const duration = formatDuration(video.durationMs);
@@ -50,7 +53,7 @@ export function ResultCard({ item, backTo, onOpen }: ResultCardProps) {
     <article data-video-id={video.id} className="flex min-w-0 flex-col gap-2">
       <Link
         to={matchPath(match)}
-        state={cardLinkState(backTo, undefined)}
+        state={back}
         onClick={onOpen}
         className="flex min-w-0 flex-col gap-2 rounded-md"
       >
@@ -90,7 +93,7 @@ export function ResultCard({ item, backTo, onOpen }: ResultCardProps) {
           onPress={(span) => {
             onOpen();
             void navigate(playPath(match.videoId, span.start * 1000), {
-              state: cardLinkState(backTo, undefined),
+              state: back,
             });
           }}
         />

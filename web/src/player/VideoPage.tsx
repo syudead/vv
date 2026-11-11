@@ -33,8 +33,11 @@ import { playerAspectRatio, playerNativeWidth } from "./aspect";
 import {
   autoplayRequested,
   backTarget,
+  closePlayer,
   linkStateFrom,
   resumePosition,
+  returnEntry,
+  returnState,
   startFromSearch,
   videoTrail,
 } from "./pageDecisions";
@@ -76,8 +79,10 @@ export default function VideoPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const backTo = backTarget(location.state);
+  const entry = returnEntry(location.state);
+  const back = useMemo(() => returnState(backTo, entry), [backTo, entry]);
   const trail = useMemo(() => videoTrail(location.state), [location.state]);
-  const linkState = useMemo(() => linkStateFrom(backTo, trail, id), [backTo, trail, id]);
+  const linkState = useMemo(() => linkStateFrom(back, trail, id), [back, trail, id]);
   // Hide owner data and actions from guests.
   //
   const audience = useAudience();
@@ -195,11 +200,14 @@ export default function VideoPage() {
     if (!autoplayRequested(location.state)) return;
     void navigate(
       { pathname: location.pathname, search: location.search },
-      { replace: true, state: { from: backTo, trail } },
+      { replace: true, state: { ...back, trail } },
     );
-  }, [backTo, location.pathname, location.search, location.state, navigate, trail]);
+  }, [back, location.pathname, location.search, location.state, navigate, trail]);
 
-  const close = useCallback(() => void navigate(backTo), [backTo, navigate]);
+  const close = useCallback(() => {
+    const { to, state } = closePlayer(back);
+    void navigate(to, { state });
+  }, [back, navigate]);
 
   const title = video?.title;
   useAssistantScreen({ name: title });
@@ -317,7 +325,6 @@ export default function VideoPage() {
     related,
     trail,
     linkState,
-    backTo,
     videoTo,
     keepPlaying,
   });
@@ -512,7 +519,7 @@ export default function VideoPage() {
           onMerged={(merged) =>
             void navigate(`/videos/${String(merged.id)}`, {
               replace: true,
-              state: { from: backTo, trail },
+              state: { ...back, trail },
             })
           }
           // Drop group context after membership changes before reloading related results.

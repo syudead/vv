@@ -129,6 +129,7 @@ function PhaseBody({
           result={phase.result}
           zoom={zoom}
           backTo={backTo}
+          entry={search.entry}
           scrollY={search.restoredScrollY}
           onOpen={search.keepScroll}
         />
@@ -140,12 +141,14 @@ function Results({
   result,
   zoom,
   backTo,
+  entry,
   scrollY,
   onOpen,
 }: {
   result: ImageSearchResult;
   zoom: Zoom;
   backTo: string;
+  entry: string;
   scrollY: number | undefined;
   onOpen: () => void;
 }) {
@@ -160,6 +163,7 @@ function Results({
           key={`${String(item.video.id)}-${String(item.match.videoId)}`}
           item={item}
           backTo={backTo}
+          entry={entry}
           onOpen={onOpen}
         />
       ))}

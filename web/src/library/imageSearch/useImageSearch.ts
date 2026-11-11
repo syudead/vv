@@ -4,6 +4,7 @@ import { useLocation } from "react-router";
 import { isAborted } from "../../api/client";
 import { searchByImage } from "../../api/imageSearch";
 import type { UiText } from "../../i18n";
+import { returnEntry } from "../../player/pageDecisions";
 import {
   forget,
   type ImageSearchPhase,
@@ -15,6 +16,8 @@ import {
 } from "./imageSearchState";
 
 export interface ImageSearch {
+  /** The history entry the search is kept under; a result passes it to the player to come back to. */
+  entry: string;
   /** The search the page shows instead of the library, or null for the library. */
   phase: ImageSearchPhase | null;
   /** The scroll position to restore when the search came back from history. */
@@ -35,10 +38,11 @@ export interface ImageSearch {
 /**
  * The owner's image search on the library page. It lives in memory under the history entry, so
  * returning from the player restores it without a request, and leaving the page or the entry aborts
- * a running request.
+ * a running request. Closing the player pushes a new entry that names the one it came from.
  */
 export function useImageSearch(enabled: boolean): ImageSearch {
-  const { key } = useLocation();
+  const location = useLocation();
+  const key = returnEntry(location.state) ?? location.key;
   const [shown, setShown] = useState(() => ({
     key,
     phase: enabled ? (recall(key)?.phase ?? null) : null,
@@ -126,6 +130,7 @@ export function useImageSearch(enabled: boolean): ImageSearch {
   const keepScroll = useCallback(() => rememberScroll(key, window.scrollY), [key]);
 
   return {
+    entry: key,
     phase,
     restoredScrollY: shown.scrollY,
     search,

@@ -160,12 +160,19 @@ export default function SearchBox({
     session.current.end();
     suggestions?.onPick(option);
   };
+  const chip = fileSearch?.chip;
+  // Text ends a shown image search even when it equals the committed query, which commits nothing.
+  const searchText = () => {
+    const text = normalizeQuery(latest.current, maxLength);
+    if (chip !== undefined && text !== "") fileSearch?.onClear();
+    commit(text);
+  };
   const box = useSuggestionBox({
     suggestions,
     text: normalizeQuery(input, maxLength),
     composing,
     debounceMs,
-    onSearch: () => commit(normalizeQuery(latest.current, maxLength)),
+    onSearch: searchText,
     onPick: pick,
   });
 
@@ -175,7 +182,6 @@ export default function SearchBox({
     field.current?.focus();
   };
 
-  const chip = fileSearch?.chip;
   return (
     <div
       className={cn(
@@ -235,9 +241,7 @@ export default function SearchBox({
           if (box.onKeyDown(event)) return;
           if (event.key === "Enter" && onEnter) {
             event.preventDefault();
-            const text = normalizeQuery(latest.current, maxLength);
-            if (chip !== undefined && text !== "") fileSearch?.onClear();
-            commit(text);
+            searchText();
             return;
           }
           if (event.key === "Escape" && chip !== undefined && latest.current === "") {

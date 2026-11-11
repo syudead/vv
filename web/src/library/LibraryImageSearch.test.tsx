@@ -7,13 +7,19 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageSearchItem, ImageSearchResult } from "../api/imageSearch";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
+import {
+  backTarget,
+  closePlayer,
+  returnEntry,
+  returnState,
+} from "../player/pageDecisions";
 import { ScanProvider } from "../shell/ScanProvider";
 import { json, video } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
@@ -66,12 +72,23 @@ function install() {
   });
 }
 
+/** The player's two ways back: history, and its close, which pushes the list URL as a new entry. */
 function Back() {
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const close = closePlayer(returnState(backTarget(state), returnEntry(state)));
   return (
-    <button type="button" onClick={() => void navigate(-1)}>
-      テストで戻る
-    </button>
+    <>
+      <button type="button" onClick={() => void navigate(-1)}>
+        テストで戻る
+      </button>
+      <button
+        type="button"
+        onClick={() => void navigate(close.to, { state: close.state })}
+      >
+        テストで閉じる
+      </button>
+    </>
   );
 }
 
@@ -205,28 +222,31 @@ describe("ライブラリの画像検索", () => {
     expect(sent[1]?.file.name).toBe("second.png");
   });
 
-  it("再生画面へ行って戻ると、要求せずに同じ結果を出す", async () => {
-    const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
-    await pick(user, png());
-    await waitFor(() => expect(sent).toHaveLength(1));
-    sent[0]?.answer(result([item(5, 7, 12_500), item(6, 6, 3_000)]));
+  it.each(["テストで戻る", "テストで閉じる"])(
+    "再生画面から %s と、要求せずに同じ結果を出す",
+    async (way) => {
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: /ライブラリの動画/ });
+      await pick(user, png());
+      await waitFor(() => expect(sent).toHaveLength(1));
+      sent[0]?.answer(result([item(5, 7, 12_500), item(6, 6, 3_000)]));
 
-    // jsdom does not scroll, so the position the page records is set here.
-    vi.stubGlobal("scrollY", 640);
-    await user.click(await screen.findByRole("link", { name: /動画 6/ }));
-    expect(await screen.findByText("再生画面")).toBeDefined();
-    const scrollTo = vi.mocked(window.scrollTo);
-    scrollTo.mockClear();
-    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+      // jsdom does not scroll, so the position the page records is set here.
+      vi.stubGlobal("scrollY", 640);
+      await user.click(await screen.findByRole("link", { name: /動画 6/ }));
+      expect(await screen.findByText("再生画面")).toBeDefined();
+      const scrollTo = vi.mocked(window.scrollTo);
+      scrollTo.mockClear();
+      await user.click(screen.getByRole("button", { name: way }));
 
-    expect(await screen.findByRole("link", { name: /動画 5/ })).toBeDefined();
-    expect(screen.getByRole("link", { name: /動画 6/ })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Clear image search" })).toBeDefined();
-    expect(scrollTo).toHaveBeenCalledWith({ top: 640, behavior: "auto" });
-    expect(imageSearchCount()).toBe(1);
-  });
+      expect(await screen.findByRole("link", { name: /動画 5/ })).toBeDefined();
+      expect(screen.getByRole("link", { name: /動画 6/ })).toBeDefined();
+      expect(screen.getByRole("button", { name: "Clear image search" })).toBeDefined();
+      expect(scrollTo).toHaveBeenCalledWith({ top: 640, behavior: "auto" });
+      expect(imageSearchCount()).toBe(1);
+    },
+  );
 
   it("一致なしは調べていない動画の数を出し、消すとライブラリに戻る", async () => {
     const user = userEvent.setup();

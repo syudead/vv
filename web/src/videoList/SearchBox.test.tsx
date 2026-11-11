@@ -417,4 +417,24 @@ describe("SearchBox with a file search", () => {
     fireEvent.keyDown(box, { key: "Escape" });
     expect(onClear).toHaveBeenCalledOnce();
   });
+
+  it("Enter on the text already searched ends the image search, with suggestions shown", () => {
+    const onClear = vi.fn();
+    render(
+      <TooltipProvider>
+        <SearchBox
+          query="京都"
+          onCommit={vi.fn()}
+          commitOn="enter"
+          suggestions={{ term: "", groups: [], onTermChange: vi.fn(), onPick: vi.fn() }}
+          fileSearch={{ onPick: vi.fn(), onClear, chip: <span>shot.png</span> }}
+        />
+      </TooltipProvider>,
+    );
+    const box = screen.getByRole("combobox", { name: "Search videos" });
+
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(onClear).toHaveBeenCalledOnce();
+  });
 });
