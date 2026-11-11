@@ -109,7 +109,8 @@ comment and acceptance evidence to determine what remains.
 
 A child is **done** when it is closed as completed or a merged PR into the
 feature branch `Refs` it. Closing children stays a maintainer action (under
-`sdd-autopilot`, its orchestrator's); selection does not wait for it.
+`sdd-autopilot`, its orchestrator's); selection does not wait for it. A child
+closed as not planned is no longer part of the feature: selection ignores it.
 
 Report the selected stage and the facts behind it at the start of the run and
 in the PR body, so a wrong selection is visible at review. Two runs started at
@@ -117,7 +118,9 @@ the same time on the same parent can pick the same child; the second PR is
 closed at review.
 
 A revision is the exception: re-running a stage whose artifact already exists
-is never selected automatically. The maintainer names that stage.
+is never selected automatically. The maintainer names that stage; the one
+automatic case is `sdd-autopilot` revising a Plan it merged
+([Revising a merged Plan](plan.md#revising-a-merged-plan)).
 
 ## GitHub preflight
 
@@ -155,7 +158,8 @@ checkout or worktree for each concurrent run.
 The skill deliberately does not infer whether an existing downstream
 artifact incorporates a later upstream revision. When an approved artifact is
 revised, the maintainer names the affected stages and reruns them through
-reviewed PRs.
+reviewed PRs. A revision carries its own downstream changes for that reason
+([Revising a merged Plan](plan.md#revising-a-merged-plan)).
 
 ## Branch and PR contract
 

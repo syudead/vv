@@ -94,7 +94,8 @@ file into a handbook.
   long-lived feature branch, and only its integration PR targets `main`.
 - To run a feature unattended up to (not including) the integration merge,
   the maintainer explicitly starts `.agents/skills/sdd-autopilot` with the
-  parent Issue. It merges feature-branch PRs itself; never the integration PR.
+  parent Issue. It merges feature-branch PRs itself, and revises a Plan it
+  merged when a later stage contradicts it; never the integration PR.
 - The long-lived feature branch is the one exception to giving every pushed
   branch its own pull request: until `integrate`, its review targets are the
   stage and implementation PRs into it. `integrate` opens its integration PR
