@@ -37,7 +37,7 @@ stage that creates the feature branch.
 A revision is run when the maintainer names it, or by
 [`sdd-autopilot`](../../sdd-autopilot/references/loop.md#revise-the-plan) when
 a later stage finds that the Plan contradicts the code, another artifact or
-itself. Steps 3 to 6 apply, with these rules:
+itself, or leaves undecided something that stage needs. Steps 3 to 6 apply, with these rules:
 
 - Change what the reason for the revision requires, and look for the same
   wrong assumption elsewhere in the Plan and its artifacts, so the next stage
@@ -54,8 +54,9 @@ itself. Steps 3 to 6 apply, with these rules:
 - The parent Issue is the specification and does not change here. A
   contradiction that only a different requirement or acceptance criterion
   resolves goes to the requester.
-- In the PR body, list the units added, changed and dropped, so the children
-  can be reconciled
+- In the PR body, list the units added, changed and dropped, counting as
+  changed a unit whose text stays but whose artifact detail moved, so the
+  children can be reconciled
   ([plan-to-issues](plan-to-issues.md#after-a-plan-revision)).
 
 If execution stops after the empty feature branch is pushed but before the Plan

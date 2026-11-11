@@ -14,7 +14,7 @@ Every worker ends its reply with this block and nothing after it. Keep each
 line to one line.
 
 ```text
-STATUS: DONE | CLEAN | FIXED | FOREIGN | BLOCKED
+STATUS: DONE | CLEAN | FIXED | FOREIGN | DROPPED | BLOCKED
 BRANCH: <branch or ->
 BASE: <base branch or ->
 HEAD: <commit SHA or ->
@@ -33,8 +33,8 @@ the `BLOCKER` text:
 
 - `artifact`: the Plan, `ui-design.md`, another artifact in the feature
   directory, or a child Issue written from them contradicts the code, another
-  artifact or itself, and the parent Issue as written still decides the
-  answer. The orchestrator can have the Plan revised
+  artifact or itself, or leaves undecided something this stage needs, and the
+  parent Issue as written still decides the answer. The orchestrator can have the Plan revised
   ([loop.md, Revise the Plan](loop.md#revise-the-plan)). Name the artifact,
   the section and the fact it contradicts in `BLOCKER`.
 - `requester`: the answer changes what the user gets (Q-6, Q-7 in
@@ -108,8 +108,8 @@ to <feature> with Refs #<parent>, with `<!-- sdd-plan-revision -->` as the
 last line of its body. Do not create, edit or close child Issues; a later
 plan-to-issues run reconciles them. Do not edit the parent Issue.
 Return STATUS: DONE with the revision PR and KIND: plan. Return BLOCKED,
-changing nothing, when a blocker is not a contradiction (BLOCKED_ON: other,
-saying why) or when resolving it needs the requirement or an acceptance
+changing nothing, when a blocker is neither a contradiction nor a decision
+the Plan left open (BLOCKED_ON: other, saying why) or when resolving it needs the requirement or an acceptance
 criterion changed (BLOCKED_ON: requester).
 ```
 
@@ -160,7 +160,11 @@ decision or an approved artifact changed.
 Autopilot review fixer. Repository: <owner/repo>. PR: #<pr> into <base>.
 Head: <sha>. Parent Issue: #<parent>.
 First: if the PR's Refs names neither #<parent> nor one of #<parent>'s native
-sub-issues, change nothing and return FOREIGN.
+sub-issues, change nothing and return FOREIGN. If the child it Refs is closed
+as not planned, change nothing and return DROPPED with the child in REFS.
+<only after a Plan revision: "After a Plan revision: first merge origin/<base>
+into the head branch even without a conflict, then handle the round against
+the revised artifacts.">
 Handle this one round:
 - every check on the head that did not pass (failure, cancelled, timed_out,
   action_required, stale): read its log, find the root cause, fix it
@@ -179,8 +183,8 @@ to fix (a cancelled run, for example), return BLOCKED. Return BLOCKED when a fix
 needs an approved artifact changed (BLOCKED_ON: artifact) or a requester
 decision changed (BLOCKED_ON: requester), or when an
 unresolved finding repeats one this PR already fixed and resolved.
-On a PR that itself adds or revises plan.md or ui-design.md, that artifact is
-not approved yet: fix it there.
+An artifact in <feature-dir> that this PR itself adds or changes is not
+approved yet: fix it there.
 Put the Issue the PR references in REFS, and in KIND what the PR is: `plan`
 (it adds or revises <feature-dir>/plan.md), `design` (ui-design.md),
 `implement` (it Refs a child), or `integration-fix` (it Refs the parent and

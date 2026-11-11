@@ -20,9 +20,12 @@ the orchestrator's reads small:
   parent's `closed_by_pull_requests`) once `integrate` has opened it, and
   whether it has a comment containing `<!-- sdd-sweep:` (keep the yes or
   no, not the comment); the PRs merged into the feature branch whose body
-  contains `sdd-plan-revision` (a PR search with `in:body`, numbers only),
-  and for each whether it has a comment containing
-  `<!-- sdd-children-reconciled` (yes or no);
+  contains `sdd-plan-revision` (the PR search
+  `"sdd-plan-revision" in:body is:pr is:merged base:<feature>`, numbers
+  only), and for each whether it has a comment containing
+  `<!-- sdd-children-reconciled` (yes or no). The search index can lag a
+  merge: in the iteration after you merge a revision PR, count it as merged
+  and unreconciled whether or not the search returns it;
   `specs/*/plan.md` and `ui-design.md` on `origin/<feature>` (`git fetch`, then `git diff --name-only` and
   `git cat-file -e`); the parent's labels; its native sub-issues (number,
   state, `state_reason`, and the `Depends on:` first line of each open
@@ -114,7 +117,8 @@ Handle each PR with one review-fix pass:
    final report; go to [Derive the state](#derive-the-state).
 
 After a restart, if GitHub state does not establish whether the one fixer pass
-already happened, stop and report that ambiguity instead of repeating it.
+already happened, stop and report that ambiguity instead of repeating it. A
+PR left open for a Plan revision is such a case.
 
 **Limits.** The sweep PR ([Integration refresh and the finish line](#integration-refresh-and-the-finish-line) step 4) counts as an integration-fix PR. Stop
 when three integration-fix PRs have merged since the
@@ -133,7 +137,7 @@ as it stands and stop; the maintainer decides what is left.
 ## Revise the Plan
 
 Autopilot merged the Plan itself, so no person approved the text that a later
-stage finds wrong. Stopping there hands the maintainer a contradiction the
+stage finds wrong or incomplete. Stopping there hands the maintainer a contradiction the
 run introduced. A blocker with `BLOCKED_ON: artifact`
 ([briefs.md](briefs.md#return-block)) is one the parent Issue still decides,
 so the run revises the Plan and continues:
@@ -150,17 +154,21 @@ so the run revises the Plan and continues:
    and returns `DONE` with the revision PR. `BLOCKED`: stop.
 3. Drive the revision PR to merge like any feature PR.
 4. Go to [Derive the state](#derive-the-state). The unreconciled revision
-   makes the selection run `plan-to-issues` first, which rewrites, adds and
-   closes children to match the revised Plan and marks the revision PR
-   reconciled. A blocked child with no PR is then selected again like any
+   makes the selection run `plan-to-issues` before any child is implemented;
+   it rewrites, adds and closes children to match the revised Plan and marks
+   the revision PR reconciled. A blocked child with no PR is then selected again like any
    other.
-5. A PR left open in step 1 is handled after the reconcile, by the state of
-   the child its fixer returned in `REFS`. When the reconcile closed that
-   child as not planned, the revised Plan dropped the unit: close the PR
-   without merging it and name it in the final report. Otherwise it gets one
-   more review fixer with the feature-PR brief: it merges the base, which now
-   carries the revised Plan, and fixes what was blocked. Then merge it as
+5. A PR left open in step 1 gets one more review fixer after the reconcile,
+   with the feature-PR brief and its "After a Plan revision" line: it merges
+   the base, which now carries the revised Plan, and fixes what was blocked.
+   Then merge it as
    [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) step 4 says.
+   When the revised Plan dropped the PR's unit, the reconcile closed its
+   child as not planned and the fixer returns `DROPPED`.
+
+A fixer returns `DROPPED` for any PR whose child is closed as not planned,
+in this step or after a restart. Close that PR without merging it, name it in
+the final report, and go to [Derive the state](#derive-the-state).
 
 Stop and report instead of revising when:
 
@@ -170,7 +178,12 @@ Stop and report instead of revising when:
 - two revision PRs have already merged into the feature branch (the count
   from [Derive the state](#derive-the-state)): a third contradiction means
   the Plan is not converging
-- the work a revision was run for returns `BLOCKED_ON: artifact` again
+- the work a revision was run for returns `BLOCKED_ON: artifact` again. This
+  is remembered only within the session; after a restart the two-revision
+  count bounds it
+- the blocker comes from the fixer of a PR whose `KIND` is `plan` or
+  `design`: that PR is where the artifact is fixed, so a blocker there is not
+  one a second revision resolves
 
 ## Bookkeeping after a merge
 

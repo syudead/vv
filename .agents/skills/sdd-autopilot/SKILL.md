@@ -32,6 +32,8 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
   decides the answer
   ([references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)).
   The parent Issue is never changed here
+- closing, without merging it, an implementation PR whose unit that revision
+  dropped
 
 The integration PR is never merged here. Before handing it over, the run makes
 it as ready as it can: after the initial review pass, a pre-merge sweep runs

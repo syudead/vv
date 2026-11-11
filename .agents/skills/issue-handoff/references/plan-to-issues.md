@@ -73,15 +73,18 @@ in the parent Issue or the approved artifacts the statement comes from.
 
 ## After a Plan revision
 
-When a merged revision changed `## Implementation Work`, the children created
-from the earlier Plan no longer match it. Run this when the user asks for the
+After a merged revision of the Plan or of an artifact the child Issues were
+written from, the children created earlier no longer match it. Run this when the user asks for the
 children to be reconciled, or when the `sdd-autopilot` brief names the
 revision PR. Compare each unit with its child by heading and title:
 
-- A unit with no child: create it as in steps 3 to 6.
+- A unit with no child: create it as in steps 3 to 6. A child closed as not
+  planned does not represent a unit, here or in step 5; a unit an earlier
+  revision dropped and this one restores gets a new child.
 - A child that is not done
-  ([README](README.md#selecting-the-stage)) and whose unit changed: rewrite
-  its body from the revised Plan, including the `Depends on:` line.
+  ([README](README.md#selecting-the-stage)) and whose unit, or an artifact
+  its body draws from, changed: rewrite its body from the revised Plan and
+  artifacts, including the `Depends on:` line.
 - A child that is not done and whose unit the Plan dropped: close it as not
   planned.
 - A done child is never edited or reopened. The revised Plan corrects merged
