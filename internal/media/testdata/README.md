@@ -44,11 +44,12 @@ The source scene changes every 20 seconds and varies by the source identifier.
 | `with-cover.mp4`, `timeline-with-cover.mp4` | Attached pictures that extraction must ignore |
 | `sparse-keyframes.ts` | MPEG-TS without a seekable keyframe after the beginning |
 | `keyframes-2s.mp4` | A keyframe every 2 seconds, one still letterboxed scene per 2 seconds, black from 12 to 16 seconds |
+| `moving-8s.mp4` | 16 seconds with keyframes at 0 and 8 seconds, letterboxed random blocks scrolling 60 pixels a second |
 
 ## Regeneration
 
 Run these commands from the repository root with Go and FFmpeg on `PATH`.
-The committed files were generated with FFmpeg 7.1.5 (libx264 enabled), except `keyframes-2s.mp4`, added with FFmpeg 6.1.1.
+The committed files were generated with FFmpeg 7.1.5 (libx264 enabled), except `keyframes-2s.mp4` and `moving-8s.mp4`, added with FFmpeg 6.1.1.
 
 1. Run `go run ./internal/media/testdata/generate.go` to replace the fixtures and `SHA256SUMS`.
 2. Run `git diff -- internal/media/testdata` to review changes; FFmpeg versions can change the bytes.

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
+	"log/slog"
 	"os"
 	"slices"
 	"testing"
@@ -17,6 +19,15 @@ type fakeImageSearchIndex struct {
 	snapshot  domain.ImageSearchSnapshot
 	audiences []domain.Audience
 	loaded    []int64
+	locations map[int64][]string
+}
+
+func (f *fakeImageSearchIndex) VideoLocations(_ context.Context, videoID int64) ([]domain.VideoLocation, error) {
+	var locations []domain.VideoLocation
+	for _, path := range f.locations[videoID] {
+		locations = append(locations, domain.VideoLocation{VideoID: videoID, Path: path})
+	}
+	return locations, nil
 }
 
 func (f *fakeImageSearchIndex) ImageSearchSnapshot(_ context.Context, audience domain.Audience) (domain.ImageSearchSnapshot, error) {
@@ -246,5 +257,97 @@ func TestImageSearchRefusesQueriesItCannotMatch(t *testing.T) {
 		if n := uploads.left(t); n != 0 {
 			t.Errorf("%s: %d uploads left", tc.name, n)
 		}
+	}
+}
+
+// Of twelve near misses the ten closest are refined; one of them has no file the media folders allow, so it is left
+// out without failing the search, one is refined from its second location after the first fails to decode, and the
+// others are listed at their refined frame.
+func TestImageSearchRefinesTheTenClosestNearMisses(t *testing.T) {
+	t.Parallel()
+	index := &fakeImageSearchIndex{locations: map[int64][]string{
+		1: {"/elsewhere/1.mp4"}, 2: {"/media/broken/2.mp4", "/media/2.mp4"},
+	}}
+	for i, distance := range []int{13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18} {
+		id := int64(i + 1)
+		index.snapshot.Candidates = append(index.snapshot.Candidates,
+			candidate(id, id, searchFrame(0, distance), searchFrame(8000, 40)))
+		if id > 2 {
+			index.locations[id] = []string{fmt.Sprintf("/media/%d.mp4", id)}
+		}
+	}
+	type decode struct {
+		path       string
+		start, end int64
+	}
+	var decoded []decode
+	search := NewImageSearch(ImageSearchOptions{
+		Index: index, Files: MediaFiles{Folders: &fakeMediaFolders{}, Resolver: fakeMediaFiles{}},
+		Logger: slog.New(slog.DiscardHandler),
+		Media: ImageSearchMedia{
+			HashImage: func(image.Image) domain.FrameHash { return domain.FrameHash{Hash: queryHash} },
+			Refine: func(_ context.Context, path string, startMs, endMs int64) ([]domain.KeyframeHash, error) {
+				decoded = append(decoded, decode{path, startMs, endMs})
+				if path == "resolved:/media/broken/2.mp4" {
+					return nil, errors.New("invalid data found when processing input")
+				}
+				return []domain.KeyframeHash{
+					{TimeMs: 0, Frame: domain.FrameHash{Hash: searchFrame(0, 20).Hash}},
+					{TimeMs: 2750, Frame: domain.FrameHash{Hash: searchFrame(0, 3).Hash}},
+				}, nil
+			},
+		},
+	})
+
+	result, err := search.Search(context.Background(), domain.AudienceOwner, bytes.NewReader(testPNG(t, 8, 6)), noOnlyFileCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []decode{{"resolved:/media/broken/2.mp4", 0, 8000}}
+	for id := 2; id <= 10; id++ {
+		want = append(want, decode{fmt.Sprintf("resolved:/media/%d.mp4", id), 0, 8000})
+	}
+	if !slices.Equal(decoded, want) {
+		t.Fatalf("decoded %+v, want %+v", decoded, want)
+	}
+	var listed []int64
+	for _, item := range result.Items {
+		listed = append(listed, item.Match.VideoID)
+		if item.Match.PositionMs != 2750 || item.Match.Rate != domain.ImageMatchRate(3) {
+			t.Errorf("video %d matched at %d ms, rate %v, want 2750 ms at the refined frame's rate",
+				item.Match.VideoID, item.Match.PositionMs, item.Match.Rate)
+		}
+	}
+	slices.Sort(listed)
+	if wantListed := []int64{2, 3, 4, 5, 6, 7, 8, 9, 10}; !slices.Equal(listed, wantListed) {
+		t.Fatalf("listed %v, want %v", listed, wantListed)
+	}
+}
+
+// A media folder list that cannot be read fails the search instead of leaving the near miss out as a missing file.
+func TestImageSearchFailsWhenTheMediaFoldersCannotBeRead(t *testing.T) {
+	t.Parallel()
+	index := &fakeImageSearchIndex{locations: map[int64][]string{1: {"/media/1.mp4"}}}
+	index.snapshot.Candidates = []domain.ImageSearchCandidate{candidate(1, 1, searchFrame(0, 13))}
+	storeErr := errors.New("database is locked")
+	refined := false
+	search := NewImageSearch(ImageSearchOptions{
+		Index: index, Files: MediaFiles{Folders: &fakeMediaFolders{err: storeErr}, Resolver: fakeMediaFiles{}},
+		Logger: slog.New(slog.DiscardHandler),
+		Media: ImageSearchMedia{
+			HashImage: func(image.Image) domain.FrameHash { return domain.FrameHash{Hash: queryHash} },
+			Refine: func(context.Context, string, int64, int64) ([]domain.KeyframeHash, error) {
+				refined = true
+				return nil, nil
+			},
+		},
+	})
+
+	_, err := search.Search(context.Background(), domain.AudienceOwner, bytes.NewReader(testPNG(t, 8, 6)), noOnlyFileCheck)
+	if !errors.Is(err, storeErr) {
+		t.Fatalf("Search error = %v, want %v", err, storeErr)
+	}
+	if refined {
+		t.Fatal("refined a file the media folders were not read for")
 	}
 }

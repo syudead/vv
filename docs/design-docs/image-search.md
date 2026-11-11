@@ -16,6 +16,8 @@ flowchart LR
   search -->|hash the query| media[ffmpeg and hashing]
   search -->|index snapshot| store[Store]
   search -->|match| domain[Domain rules]
+  search -->|refine an image match| mediafs[mediafs]
+  mediafs --> media
   job[frame_index job] -->|keyframe hashes| store
 ```
 
@@ -51,6 +53,33 @@ unrelated videos. A single image has one frame, so a share of matching frames
 would make every match 100%. PNG, JPEG and still WebP are decoded in memory
 with the thumbnail upload's decoder and limits; any other file is read as a
 video.
+
+A screenshot taken several seconds after a keyframe in a moving shot misses
+that keyframe by more than 12 bits. A content whose nearest keyframe is 13 to
+18 bits away is refined: for the ten closest such contents, the search opens
+the file through `internal/mediafs` and decodes from that keyframe to the next
+index entry, at most 10 s, at 4 frames a second, hashed as the index is. The
+nearest frame within 12 bits is the match, at that frame's time, so playback
+starts at the scene the query shows; with none, the content is not listed. The
+search tries the content's locations in turn until one opens and decodes; when
+none does, the content is left out without failing the search. A failure to
+read the media folders or the index fails the search.
+
+```mermaid
+flowchart LR
+  img[Query image] --> scan[Nearest keyframe per content]
+  scan -->|12 or less| hit[Match at the keyframe]
+  scan -->|13 to 18, ten closest| refine[Decode the gap at 4 fps, up to 10 s]
+  scan -->|over 18| drop[Not listed]
+  refine -->|a frame within 12| hitr[Match at that frame]
+  refine -->|none, or no file| drop
+```
+
+| Rejected | Why |
+| --- | --- |
+| List only keyframe matches | A screenshot between keyframes of a moving shot would not find its video |
+| Refine every near miss | Each refinement opens a file; ten bound a search to ten short decodes |
+| The keyframe's time for a refined match | Playback would start up to 10 s before the scene asked for |
 
 ## Video queries
 
