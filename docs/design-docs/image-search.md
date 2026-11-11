@@ -101,6 +101,13 @@ flowchart LR
 With the query sampled once a second, every indexed keyframe has a query frame
 within 0.5 s whatever the two files' keyframe positions. Seeds keep a search
 to seconds where comparing every query frame with every entry takes minutes.
+Each seed is taken at a different place within its 10 s, chosen by a fixed
+hash of its number: seeds exactly 10 s apart all fall the same way between
+the keyframes of a file encoded at a fixed keyframe interval, and in a moving
+shot none of them would vote. Of the verified offsets, one that reaches the
+rate wins over one with more matching entries that does not. The query's
+duration is its video stream's, so a longer audio track counts toward neither
+the 3-hour limit nor the whole-or-part rule.
 Each entry stands for the span up to the next one, so a whole re-encode whose
 keyframes are 8 s apart still covers the whole video; playback starts at the
 first matching entry.

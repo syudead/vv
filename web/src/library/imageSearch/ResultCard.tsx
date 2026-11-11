@@ -11,7 +11,7 @@ import {
   VideoThumbnailDuration,
   VideoThumbnailImage,
 } from "../../ui/VideoThumbnail";
-import { matchPath, playPath, ratePercent } from "./imageSearchState";
+import { matchedSection, matchPath, playPath, ratePercent } from "./imageSearchState";
 
 export interface ResultCardProps {
   item: ImageSearchItem;
@@ -45,10 +45,7 @@ export function ResultCard({ item, backTo, entry, onOpen }: ResultCardProps) {
   const { video, match } = item;
   const text = t.library.imageSearch;
   const duration = formatDuration(video.durationMs);
-  const section =
-    match.startMs !== undefined && match.endMs !== undefined
-      ? { start: match.startMs / 1000, end: match.endMs / 1000 }
-      : null;
+  const section = matchedSection(match, video.durationMs);
   return (
     <article data-video-id={video.id} className="flex min-w-0 flex-col gap-2">
       <Link
@@ -84,10 +81,10 @@ export function ResultCard({ item, backTo, entry, onOpen }: ResultCardProps) {
           </p>
         </div>
       </Link>
-      {section !== null && video.durationMs !== undefined && (
+      {section !== null && (
         <SpanBar
-          lengthSeconds={video.durationMs / 1000}
-          spans={[section]}
+          lengthSeconds={section.lengthSeconds}
+          spans={[section.span]}
           label={text.spanLane}
           spanLabel={(span) => text.playFrom(formatDuration(span.start * 1000))}
           onPress={(span) => {

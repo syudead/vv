@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"math/bits"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -56,6 +57,19 @@ func TestQueryVideoFramesSamplesOnceASecondAsTheIndexHashes(t *testing.T) {
 	}
 	if _, err := QueryVideoDuration(context.Background(), "testdata/SHA256SUMS"); !errors.Is(err, domain.ErrImageSearchUnreadable) {
 		t.Fatalf("duration of a text file: %v, want ErrImageSearchUnreadable", err)
+	}
+}
+
+// The limit and the whole-or-part rule apply to the footage, so audio running past the video does not count.
+func TestQueryVideoDurationIsTheVideoStreams(t *testing.T) {
+	t.Parallel()
+	requireFFmpeg(t)
+	video := filepath.Join(t.TempDir(), "long-audio.mp4")
+	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=white:s=64x64:r=10:d=3", "-f", "lavfi", "-t", "8",
+		"-i", "anullsrc=r=8000:cl=mono", "-c:v", "mpeg4", "-c:a", "aac", "-y", video)
+	durationMs, err := QueryVideoDuration(context.Background(), video)
+	if err != nil || durationMs != 3_000 {
+		t.Fatalf("QueryVideoDuration = %d, %v, want the video stream's 3000", durationMs, err)
 	}
 }
 

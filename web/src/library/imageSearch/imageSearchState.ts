@@ -97,6 +97,33 @@ export function matchPath(match: ImageSearchMatch): string {
   return playPath(match.videoId, match.positionMs);
 }
 
+/** A video match's section on a lane, in seconds. */
+export interface MatchedSection {
+  lengthSeconds: number;
+  span: { start: number; end: number };
+}
+
+/**
+ * The matched section on the listed video's length. The match may be in a longer version than the
+ * listed one, whose length the result does not carry, so the lane reaches at least to the section's end.
+ */
+export function matchedSection(
+  match: ImageSearchMatch,
+  durationMs: number | undefined,
+): MatchedSection | null {
+  if (
+    match.startMs === undefined ||
+    match.endMs === undefined ||
+    durationMs === undefined
+  ) {
+    return null;
+  }
+  return {
+    lengthSeconds: Math.max(durationMs, match.endMs) / 1000,
+    span: { start: match.startMs / 1000, end: match.endMs / 1000 },
+  };
+}
+
 interface Entry {
   phase: ImageSearchPhase;
   scrollY?: number;

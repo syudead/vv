@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { NetworkFailed, RequestFailed } from "../../api/client";
-import { matchPath, ratePercent, refuseError, refuseFiles } from "./imageSearchState";
+import {
+  matchedSection,
+  matchPath,
+  ratePercent,
+  refuseError,
+  refuseFiles,
+} from "./imageSearchState";
 
 function file(name: string, type: string) {
   return new File(["x"], name, { type });
@@ -66,5 +72,34 @@ describe("画像検索の結果の表示", () => {
     expect(matchPath({ videoId: 7, rate: 1, kind: "frame", positionMs: 12_500 })).toBe(
       "/videos/7?t=12.5",
     );
+  });
+});
+
+describe("画像検索の一致区間のレーン", () => {
+  const match = {
+    videoId: 8,
+    rate: 1,
+    kind: "partial",
+    positionMs: 100_000,
+    startMs: 100_000,
+    endMs: 130_000,
+  } as const;
+
+  it("区間を一覧の動画の長さのレーンに置き、それより長い版で一致した区間の終わりまでレーンを伸ばす", () => {
+    expect(matchedSection(match, 200_000)).toEqual({
+      lengthSeconds: 200,
+      span: { start: 100, end: 130 },
+    });
+    expect(matchedSection(match, 120_000)).toEqual({
+      lengthSeconds: 130,
+      span: { start: 100, end: 130 },
+    });
+  });
+
+  it("画像の一致と長さの分からない動画にはレーンを出さない", () => {
+    expect(
+      matchedSection({ videoId: 8, rate: 1, kind: "frame", positionMs: 0 }, 200_000),
+    ).toBeNull();
+    expect(matchedSection(match, undefined)).toBeNull();
   });
 });

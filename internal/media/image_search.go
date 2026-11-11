@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"math"
 	"strconv"
 	"time"
 
@@ -29,13 +28,14 @@ func ImageFrameHash(img image.Image) domain.FrameHash {
 	return plane.frameHash(plane.rect)
 }
 
-// QueryVideoDuration returns the duration of a query file that has a video stream other than a cover picture; a file
-// without one wraps domain.ErrImageSearchUnreadable.
+// QueryVideoDuration returns the duration of a query file's first video stream other than a cover picture, or the
+// file's when the stream has none, so a longer audio track does not count; a file without one wraps
+// domain.ErrImageSearchUnreadable.
 func QueryVideoDuration(ctx context.Context, path string) (int64, error) {
 	run, cancel := context.WithTimeout(ctx, queryProbeTimeout)
 	defer cancel()
 	output, err := command(run, PriorityNormal, probeCommand,
-		"-v", "error", "-select_streams", "V:0", "-show_entries", "stream=index:format=duration", "-of", "json",
+		"-v", "error", "-select_streams", "V:0", "-show_entries", "stream=index,duration:format=duration", "-of", "json",
 		path).Output()
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -44,19 +44,32 @@ func QueryVideoDuration(ctx context.Context, path string) (int64, error) {
 		return 0, errors.Join(domain.ErrImageSearchUnreadable, fmt.Errorf("%s failed: %w", probeCommand, err))
 	}
 	var probed struct {
-		Streams []struct{} `json:"streams"`
-		Format  struct {
+		Streams []struct {
+			Duration string `json:"duration"`
+		} `json:"streams"`
+		Format struct {
 			Duration string `json:"duration"`
 		} `json:"format"`
 	}
 	if err := json.Unmarshal(output, &probed); err != nil {
 		return 0, errors.Join(domain.ErrImageSearchUnreadable, err)
 	}
-	seconds, err := strconv.ParseFloat(probed.Format.Duration, 64)
-	if len(probed.Streams) == 0 || err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
-		return 0, fmt.Errorf("%w: no video stream with a duration", domain.ErrImageSearchUnreadable)
+	if len(probed.Streams) == 0 {
+		return 0, fmt.Errorf("%w: no video stream", domain.ErrImageSearchUnreadable)
 	}
-	return int64(math.Round(seconds * 1000)), nil
+	if ms, ok := probedMilliseconds(probed.Streams[0].Duration); ok {
+		return ms, nil
+	}
+	if ms, ok := probedMilliseconds(probed.Format.Duration); ok {
+		return ms, nil
+	}
+	return 0, fmt.Errorf("%w: no video stream with a duration", domain.ErrImageSearchUnreadable)
+}
+
+// probedMilliseconds reads an ffprobe duration in seconds; "N/A", an absent value and a negative one are not durations.
+func probedMilliseconds(value string) (int64, bool) {
+	ms, ok := secondsToMs(value)
+	return ms, ok && ms >= 0
 }
 
 // QueryVideoFrames decodes the query's first video stream that is not a cover picture once a
