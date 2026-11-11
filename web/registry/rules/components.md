@@ -516,7 +516,10 @@ dialog shows in an `Alert` while it stays open. Check types and sizes there,
 so a dropped or pasted file is refused as a chosen one is.
 
 Do not take files dropped or pasted on the page itself, or add a hidden file
-input of your own beside a menu item.
+input of your own beside a menu item. The one exception is the owner's library
+search field, which takes a file dropped on it or pasted into it while focused
+(`SearchBox` with `fileSearch`); while a file is dragged over that page, a drop
+anywhere else is refused, so the browser does not open the file in its place.
 
 ### TentativeMark
 

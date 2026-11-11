@@ -15,6 +15,7 @@ export function imageSearchToolbar(
   return {
     fileSearch: {
       onPick: () => search.setDialogOpen(true),
+      onFiles: search.search,
       onClear: clear,
       chip: phase === null ? undefined : <QueryChip file={phase.file} onClear={clear} />,
     },

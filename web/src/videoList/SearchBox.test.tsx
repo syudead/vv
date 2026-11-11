@@ -401,7 +401,12 @@ describe("SearchBox with a file search", () => {
           query=""
           onCommit={vi.fn()}
           commitOn="enter"
-          fileSearch={{ onPick: vi.fn(), onClear, chip: <span>shot.png</span> }}
+          fileSearch={{
+            onPick: vi.fn(),
+            onFiles: vi.fn(),
+            onClear,
+            chip: <span>shot.png</span>,
+          }}
         />
       </TooltipProvider>,
     );
@@ -427,7 +432,12 @@ describe("SearchBox with a file search", () => {
           onCommit={vi.fn()}
           commitOn="enter"
           suggestions={{ term: "", groups: [], onTermChange: vi.fn(), onPick: vi.fn() }}
-          fileSearch={{ onPick: vi.fn(), onClear, chip: <span>shot.png</span> }}
+          fileSearch={{
+            onPick: vi.fn(),
+            onFiles: vi.fn(),
+            onClear,
+            chip: <span>shot.png</span>,
+          }}
         />
       </TooltipProvider>,
     );
@@ -436,5 +446,84 @@ describe("SearchBox with a file search", () => {
     fireEvent.keyDown(box, { key: "Enter" });
 
     expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it("marks the field while a file is dragged over the page, and over the field", () => {
+    render(
+      <TooltipProvider>
+        <SearchBox
+          query=""
+          onCommit={vi.fn()}
+          fileSearch={{ onPick: vi.fn(), onFiles: vi.fn(), onClear: vi.fn() }}
+        />
+      </TooltipProvider>,
+    );
+    const box = screen.getByRole<HTMLInputElement>("searchbox", {
+      name: "Search videos",
+    });
+    const frame = box.parentElement as HTMLElement;
+    const drag = { dataTransfer: { types: ["Files"], files: [] } };
+
+    fireEvent.dragEnter(document.body, drag);
+    expect(frame.dataset.fileDrag).toBe("page");
+    expect(box.placeholder).toBe("Drop here to search by this file");
+    expect(box.className).toContain("border-dashed");
+
+    fireEvent.dragEnter(frame, drag);
+    expect(frame.dataset.fileDrag).toBe("field");
+    expect(box.className).toContain("bg-primary-soft");
+
+    fireEvent.dragLeave(frame, { ...drag, relatedTarget: document.body });
+    expect(frame.dataset.fileDrag).toBe("page");
+
+    // The drag leaves the window once each element it entered has been left.
+    fireEvent.dragLeave(document.body, drag);
+    expect(frame.dataset.fileDrag).toBeUndefined();
+    expect(box.placeholder).toBe(t.list.search.placeholder);
+  });
+
+  function renderSuggestingFileSearch() {
+    const onFiles = vi.fn<(files: File[]) => void>();
+    render(
+      <TooltipProvider>
+        <SearchBox
+          query=""
+          onCommit={vi.fn()}
+          suggestions={{
+            term: "kyo",
+            groups: [],
+            onTermChange: vi.fn(),
+            onPick: vi.fn(),
+          }}
+          fileSearch={{ onPick: vi.fn(), onFiles, onClear: vi.fn() }}
+        />
+      </TooltipProvider>,
+    );
+    const box = screen.getByRole<HTMLInputElement>("combobox", { name: "Search videos" });
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "kyo" } });
+    return { onFiles, box, list: screen.getByRole("listbox") };
+  }
+
+  it("refuses a file dropped on the suggestion list, as anywhere else off the field", () => {
+    const { onFiles, list } = renderSuggestingFileSearch();
+    const drop = {
+      dataTransfer: { types: ["Files"], files: [new File(["x"], "a.png")] },
+    };
+
+    expect(
+      fireEvent.drop(within(list).getAllByRole("option")[0] as HTMLElement, drop),
+    ).toBe(false);
+    expect(onFiles).not.toHaveBeenCalled();
+  });
+
+  it("closes the suggestions when a pasted file starts a search", () => {
+    const { onFiles, box } = renderSuggestingFileSearch();
+    const file = new File(["x"], "a.png", { type: "image/png" });
+
+    fireEvent.paste(box, { clipboardData: { files: [file] } });
+
+    expect(onFiles).toHaveBeenCalledExactlyOnceWith([file]);
+    expect(screen.queryByRole("listbox")).toBeNull();
   });
 });
