@@ -1,14 +1,9 @@
-import { ChevronRight } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/cn";
-import { Button } from "@/ui/shadcn/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/ui/shadcn/collapsible";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
+import { Collapsible, CollapsibleContent } from "@/ui/shadcn/collapsible";
+
+import { ExpandToggle, type ExpandToggleLabel } from "./expand-toggle";
 
 // This section owns card spacing, surfaces and aligned time/action columns; callers supply content and tone. See web/registry/rules/patterns.md, Sections.
 //
@@ -40,10 +35,7 @@ function CardListRoot({ label, children }: CardListProps) {
 }
 
 /** The expand button's text for its current state: a tooltip and the name read aloud. */
-export interface CardListToggleLabel {
-  tooltip: string;
-  name: string;
-}
+export type CardListToggleLabel = ExpandToggleLabel;
 
 export interface CardListItemProps {
   tone?: CardListTone;
@@ -64,35 +56,6 @@ export interface CardListItemProps {
   /** Required with `members`. */
   toggleLabel?: CardListToggleLabel;
   ref?: Ref<HTMLLIElement>;
-}
-
-function Toggle({
-  expanded,
-  label,
-}: {
-  expanded: boolean;
-  label: CardListToggleLabel | undefined;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <CollapsibleTrigger asChild>
-          <Button
-            data-slot="card-list-toggle"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={label?.name}
-          >
-            <ChevronRight
-              aria-hidden="true"
-              className={cn("transition-transform", expanded && "rotate-90")}
-            />
-          </Button>
-        </CollapsibleTrigger>
-      </TooltipTrigger>
-      <TooltipContent>{label?.tooltip}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 /** Keeps a card without members aligned with the expandable cards of the same list. */
@@ -203,7 +166,13 @@ function CardListItem({
         className={cn(itemClass, toneClass[tone])}
       >
         <FirstLine
-          toggle={<Toggle expanded={expanded} label={toggleLabel} />}
+          toggle={
+            <ExpandToggle
+              expanded={expanded}
+              label={toggleLabel}
+              slot="card-list-toggle"
+            />
+          }
           {...line}
         />
         <CollapsibleContent className="mt-2 border-t border-inherit pt-1">
