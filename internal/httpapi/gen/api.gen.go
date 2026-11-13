@@ -10134,6 +10134,9 @@ type GetVideoParams struct {
 // GetVideoFrameParams defines parameters for GetVideoFrame.
 type GetVideoFrameParams struct {
 	PositionMs int64 `form:"positionMs" json:"positionMs"`
+
+	// MaxEdge The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request.
+	MaxEdge *int `form:"maxEdge,omitempty" json:"maxEdge,omitempty"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -17506,6 +17509,19 @@ func (siw *ServerInterfaceWrapper) GetVideoFrame(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "positionMs"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "positionMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxEdge" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxEdge", r.URL.Query(), &params.MaxEdge, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxEdge"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxEdge", Err: err})
 		}
 		return
 	}

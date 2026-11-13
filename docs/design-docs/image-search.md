@@ -148,7 +148,10 @@ members included, that have no current index.
 Versions can be shifted by seconds, so the position belongs to the member that
 matched. The search reads the index under the owner's audience, so videos in
 switched-off media folders are neither searched nor counted. The matched frame
-is shown with the existing `GET /api/videos/{id}/frame`.
+is shown with the existing `GET /api/videos/{id}/frame`. Its `maxEdge` caps the
+long side (64 to 2048 px, never enlarged), so a small picture does not load a
+full-size PNG; a separate thumbnail endpoint would repeat the position check,
+the audience lookup and the file read.
 
 ## Uploads leave nothing behind
 
