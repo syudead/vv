@@ -705,7 +705,7 @@ export interface paths {
         };
         /**
          * Return a frame of the video
-         * @description Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.
+         * @description Owner-only. Extracts positionMs as PNG with the long edge capped at maxEdge px (2048 when left out), never enlarged, for framing a person's face from a video, which the page crops and sends as the person's face, and for an image search's matched frames. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.
          */
         get: operations["getVideoFrame"];
         put?: never;
@@ -10402,6 +10402,8 @@ export interface operations {
         parameters: {
             query: {
                 positionMs: number;
+                /** @description The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request. */
+                maxEdge?: number;
             };
             header?: never;
             path: {
