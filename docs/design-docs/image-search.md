@@ -151,7 +151,12 @@ switched-off media folders are neither searched nor counted. The matched frame
 is shown with the existing `GET /api/videos/{id}/frame`. Its `maxEdge` caps the
 long side (64 to 2048 px, never enlarged), so a small picture does not load a
 full-size PNG; a separate thumbnail endpoint would repeat the position check,
-the audience lookup and the file read.
+the audience lookup and the file read. The picture stays PNG, since a second
+encoder for a strip that loads only the frames near the viewport is not worth
+its path in `internal/media`, and a frame from the seek sprite would sit at
+the sprite's interval rather than the matched time. The screen builds the
+picture's URL from `videoId` and `positionMs`, so the answer carries no
+routes.
 
 Each image match also carries the matched frames of the video it was found in,
 and each match a match-rate band; the rules are in
@@ -210,3 +215,16 @@ whole index and may decode a three-hour video.
 | ------------------------- | ------------------------------------------------------------------------------- |
 | A search job with polling | Nothing may outlive the request, and the screen shows only that the search runs |
 | Searches in parallel      | The client cancels its previous request before sending the next                 |
+
+## Evidence from real footage
+
+Matching is shown on footage that moves, never only on hand-built hashes or
+answers: those let the first version pass while a screenshot one second after
+a keyframe of real footage found nothing. The `cmd/mdm` tests run the real
+index job, hashing and ffmpeg on generated video, and the browser spec
+[`image-search.e2e.ts`](../../web/e2e/image-search.e2e.ts) searches generated
+footage on the real stack with queries cut between keyframes. A query the
+current matching cannot find is reported as a finding; it is never moved, and
+no threshold is changed, to make a test pass. Component tests on hand-built
+answers cover only the states a real search cannot be made to produce on
+demand.
