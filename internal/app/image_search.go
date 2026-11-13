@@ -144,10 +144,12 @@ func (c contextReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// preparedQuery is a hashed query: the result's query fields and how it matches the snapshot's contents.
+// preparedQuery is a hashed query: the result's query fields, how it matches the snapshot's contents and, for an
+// image, how a match's frames are found in its content.
 type preparedQuery struct {
 	result domain.ImageSearchResult
 	match  func(context.Context, []domain.ImageSearchContent) ([]domain.ImageSearchMatch, error)
+	frames func(domain.ImageSearchContent, domain.ImageSearchMatch) ([]domain.ImageSearchMatchedFrame, int)
 }
 
 // run refuses a request holding more than the file, then prepares and matches the query under the one-search gate.
@@ -175,7 +177,7 @@ func (s *ImageSearch) run(
 	if err != nil {
 		return domain.ImageSearchResult{}, err
 	}
-	return s.result(ctx, audience, query.result, snapshot, matches)
+	return s.result(ctx, audience, query, snapshot, matches)
 }
 
 func receiveImage(file io.Reader) ([]byte, error) {
@@ -209,6 +211,9 @@ func (s *ImageSearch) imageQuery(data []byte) (preparedQuery, error) {
 			matches, refinements := domain.MatchImageQuery(hash.Hash, contents)
 			refined, err := s.refine(ctx, hash.Hash, refinements)
 			return append(matches, refined...), err
+		},
+		frames: func(content domain.ImageSearchContent, match domain.ImageSearchMatch) ([]domain.ImageSearchMatchedFrame, int) {
+			return domain.ImageMatchFrames(hash.Hash, content, match)
 		},
 	}, nil
 }
@@ -372,14 +377,17 @@ func matchVideoQuery(
 }
 
 // result keeps each listed video's best match, so a bundle's members collapse to its representative while the
-// match keeps the member it was found in, then ranks them and loads the listed videos.
+// match keeps the member it was found in, then ranks them, loads the listed videos and adds each match's band and the
+// frames of the member it was found in.
 func (s *ImageSearch) result(
-	ctx context.Context, audience domain.Audience, result domain.ImageSearchResult, snapshot domain.ImageSearchSnapshot,
+	ctx context.Context, audience domain.Audience, query preparedQuery, snapshot domain.ImageSearchSnapshot,
 	matches []domain.ImageSearchMatch,
 ) (domain.ImageSearchResult, error) {
 	listedOf := make(map[int64]int64, len(snapshot.Candidates))
+	contentOf := make(map[int64]domain.ImageSearchContent, len(snapshot.Candidates))
 	for _, candidate := range snapshot.Candidates {
 		listedOf[candidate.Content.VideoID] = candidate.ListedID
+		contentOf[candidate.Content.VideoID] = candidate.Content
 	}
 	best := map[int64]domain.ImageSearchMatch{}
 	for _, match := range matches {
@@ -407,12 +415,23 @@ func (s *ImageSearch) result(
 	for _, video := range videos {
 		byID[video.ID] = video
 	}
+	result := query.result
+	result.Bands = domain.ImageSearchBands(result.Kind)
 	result.Items = []domain.ImageSearchItem{}
 	for i, match := range ranked {
 		// A video removed or hidden since the snapshot is left out.
-		if video, ok := byID[ids[i]]; ok {
-			result.Items = append(result.Items, domain.ImageSearchItem{Video: video, Match: match})
+		video, ok := byID[ids[i]]
+		if !ok {
+			continue
 		}
+		item := domain.ImageSearchItem{
+			Video: video, Match: match, Band: domain.ImageSearchBandOf(match.Rate),
+			Frames: []domain.ImageSearchMatchedFrame{},
+		}
+		if query.frames != nil {
+			item.Frames, item.FrameCount = query.frames(contentOf[match.VideoID], match)
+		}
+		result.Items = append(result.Items, item)
 	}
 	result.UnindexedCount = snapshot.UnindexedCount
 	return result, nil

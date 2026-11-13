@@ -150,6 +150,44 @@ matched. The search reads the index under the owner's audience, so videos in
 switched-off media folders are neither searched nor counted. The matched frame
 is shown with the existing `GET /api/videos/{id}/frame`.
 
+Each image match also carries the matched frames of the video it was found in,
+and each match a match-rate band; the rules are in
+[`internal/domain/image_search_results.go`](../../internal/domain/image_search_results.go).
+Neither changes which videos are listed, their rate, position or order.
+
+- **Frames.** Inside a listed content, every run of consecutive index entries
+  within 12 bits of the query gives one frame: its closest entry, the earliest
+  on a tie. Frames are ordered by rate, then the earlier time, so the first is
+  the match itself; a match carries at most 12 and counts all it found. A
+  refined match has only its refined frame, and a video query's match has none.
+- **Bands.** `strong` holds 90 to 100% and `similar` the rates under it down to
+  the listing floor of the query's kind: 81% for an image, from
+  `FingerprintMatchMaxDistance`, and 50% for a video. A match is in the band of
+  its rate rounded to a whole percent, halves up, as the screen shows it. The
+  answer lists every band of the query's kind, with rows or without.
+
+```mermaid
+flowchart LR
+  listed[A listed content] --> runs[Runs of consecutive entries within 12 bits]
+  runs --> one[One frame per run: its closest entry, the earliest on a tie]
+  one --> order[Order by rate, then time; keep 12; count all]
+  refined[A refined match] --> single[Its one decoded frame]
+```
+
+| Decision | Rejected | Why |
+| --- | --- | --- |
+| Frames only in a content the search already lists | Listing a content because several weaker frames add up | That would change which videos a search lists |
+| One frame per run of entries | Every matching entry | A held shot with a keyframe every second would fill the row with one picture and push the shot's other appearances past the limit |
+| Same | Frames a fixed number of seconds apart | The spacing would be a number with no measurement behind it; a run needs none |
+| At most 12 frames, with the count found | No limit | 50 rows of a looping video would carry thousands of frames |
+| A bundle's row has the frames of the member that matched best | Frames of every member | A frame's time is on one member's timeline, and playback opens that member |
+| No frames for a video query | The section's matching entries as frames | A video match's rate is a share of entries and a frame's rate a hash distance: two measures under one percent |
+| The band on the rounded rate | The unrounded rate | A row shown as 90% could sit under `81–89%` |
+| Floors derived from the listing rules, and 90 one constant (`ImageSearchStrongMinPercent`) | Floors written again as numbers | A changed listing rule would leave a band no row reaches, or rows under no band |
+
+The split at 90% presents rates the search already produces; it is not a claim
+about accuracy, and a later accuracy decision may move the constant.
+
 ## Uploads leave nothing behind
 
 An image query stays in memory; a video query is written to

@@ -1794,6 +1794,24 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for ImageSearchBandId.
+const (
+	Similar ImageSearchBandId = "similar"
+	Strong  ImageSearchBandId = "strong"
+)
+
+// Valid indicates whether the value is a known member of the ImageSearchBandId enum.
+func (e ImageSearchBandId) Valid() bool {
+	switch e {
+	case Similar:
+		return true
+	case Strong:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ImageSearchMatchKind.
 const (
 	ImageSearchMatchKindFrame   ImageSearchMatchKind = "frame"
@@ -5521,6 +5539,21 @@ type Health struct {
 // HealthStatus ok: storage reachable; degraded: process alive without storage connectivity
 type HealthStatus string
 
+// ImageSearchBand defines model for ImageSearchBand.
+type ImageSearchBand struct {
+	// Id A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+	Id ImageSearchBandId `json:"id"`
+
+	// MaxPercent The highest whole-percent rate the band holds.
+	MaxPercent int `json:"maxPercent"`
+
+	// MinPercent The lowest whole-percent rate the band holds.
+	MinPercent int `json:"minPercent"`
+}
+
+// ImageSearchBandId A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+type ImageSearchBandId string
+
 // ImageSearchItem defines model for ImageSearchItem.
 type ImageSearchItem struct {
 	Match ImageSearchMatch `json:"match"`
@@ -5531,8 +5564,17 @@ type ImageSearchItem struct {
 
 // ImageSearchMatch defines model for ImageSearchMatch.
 type ImageSearchMatch struct {
+	// Band A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+	Band ImageSearchBandId `json:"band"`
+
 	// EndMs End of the matched section on videoId's timeline; video queries only.
 	EndMs *int64 `json:"endMs,omitempty"`
+
+	// FrameCount The matched frames found before the limit of 12.
+	FrameCount int `json:"frameCount"`
+
+	// Frames Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query (a refined match has its one refined frame), ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty.
+	Frames []ImageSearchMatchFrame `json:"frames"`
 
 	// Kind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
 	Kind ImageSearchMatchKind `json:"kind"`
@@ -5559,6 +5601,15 @@ type ImageSearchMatch struct {
 // ImageSearchMatchKind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
 type ImageSearchMatchKind string
 
+// ImageSearchMatchFrame defines model for ImageSearchMatchFrame.
+type ImageSearchMatchFrame struct {
+	// PositionMs The frame's time on videoId's timeline.
+	PositionMs int64 `json:"positionMs"`
+
+	// Rate (63 - hash distance) / 63 of this frame.
+	Rate float64 `json:"rate"`
+}
+
 // ImageSearchQuery defines model for ImageSearchQuery.
 type ImageSearchQuery struct {
 	// DurationMs The query video's duration; video queries only.
@@ -5573,7 +5624,10 @@ type ImageSearchQueryKind string
 
 // ImageSearchResult defines model for ImageSearchResult.
 type ImageSearchResult struct {
-	// Items Matching listed videos, best first; empty when nothing matches.
+	// Bands Every match-rate band of the query's kind, strongest first, whether or not a match is in it: strong 90 to 100 for both kinds, similar 81 to 89 for an image and 50 to 89 for a video.
+	Bands []ImageSearchBand `json:"bands"`
+
+	// Items Matching listed videos, best first; empty when nothing matches. The matches of one band are next to each other, and the bands appear in the order of bands.
 	Items []ImageSearchItem `json:"items"`
 	Query ImageSearchQuery  `json:"query"`
 

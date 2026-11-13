@@ -86,21 +86,33 @@ func (s *server) imageSearchBody(ctx context.Context, audience domain.Audience, 
 	presented := s.presenter(ctx, audience, videos)(ctx, videos)
 	body := gen.ImageSearchResult{
 		Query:          gen.ImageSearchQuery{Kind: gen.ImageSearchQueryKind(result.Kind)},
+		Bands:          make([]gen.ImageSearchBand, len(result.Bands)),
 		Items:          make([]gen.ImageSearchItem, len(result.Items)),
 		UnindexedCount: result.UnindexedCount,
+	}
+	for i, band := range result.Bands {
+		body.Bands[i] = gen.ImageSearchBand{
+			Id: gen.ImageSearchBandId(band.ID), MinPercent: band.MinPercent, MaxPercent: band.MaxPercent,
+		}
 	}
 	if result.Kind == domain.ImageSearchQueryVideo {
 		body.Query.DurationMs = &result.DurationMs
 	}
 	for i, item := range result.Items {
-		body.Items[i] = gen.ImageSearchItem{Video: presented[i], Match: imageSearchMatchBody(item.Match)}
+		body.Items[i] = gen.ImageSearchItem{Video: presented[i], Match: imageSearchMatchBody(item)}
 	}
 	return body
 }
 
-func imageSearchMatchBody(match domain.ImageSearchMatch) gen.ImageSearchMatch {
+func imageSearchMatchBody(item domain.ImageSearchItem) gen.ImageSearchMatch {
+	match := item.Match
 	body := gen.ImageSearchMatch{
 		VideoId: match.VideoID, Rate: match.Rate, Kind: gen.ImageSearchMatchKind(match.Kind), PositionMs: match.PositionMs,
+		Band: gen.ImageSearchBandId(item.Band), Frames: make([]gen.ImageSearchMatchFrame, len(item.Frames)),
+		FrameCount: item.FrameCount,
+	}
+	for i, frame := range item.Frames {
+		body.Frames[i] = gen.ImageSearchMatchFrame{PositionMs: frame.PositionMs, Rate: frame.Rate}
 	}
 	if match.Kind != domain.ImageSearchMatchFrame {
 		body.StartMs, body.EndMs = &match.StartMs, &match.EndMs

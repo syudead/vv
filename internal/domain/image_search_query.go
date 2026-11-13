@@ -77,16 +77,22 @@ type ImageSearchSnapshot struct {
 	UnindexedCount int
 }
 
-// ImageSearchItem is a listed video and its best match, whose VideoID may be one of the video's versions.
+// ImageSearchItem is a listed video and its best match, whose VideoID may be one of the video's versions; Frames and
+// FrameCount are the match's, from ImageMatchFrames.
 type ImageSearchItem struct {
-	Video Video
-	Match ImageSearchMatch
+	Video      Video
+	Match      ImageSearchMatch
+	Band       ImageSearchBandID
+	Frames     []ImageSearchMatchedFrame
+	FrameCount int
 }
 
 type ImageSearchResult struct {
 	Kind ImageSearchQueryKind
 	// DurationMs is set for a video query.
-	DurationMs     int64
+	DurationMs int64
+	// Bands is every band of Kind, from ImageSearchBands.
+	Bands          []ImageSearchBand
 	Items          []ImageSearchItem
 	UnindexedCount int
 }

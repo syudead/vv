@@ -8300,14 +8300,19 @@ components:
     ImageSearchResult:
       type: object
       additionalProperties: false
-      required: [query, items, unindexedCount]
+      required: [query, bands, items, unindexedCount]
       properties:
         query:
           $ref: "#/components/schemas/ImageSearchQuery"
+        bands:
+          type: array
+          description: "Every match-rate band of the query's kind, strongest first, whether or not a match is in it: strong 90 to 100 for both kinds, similar 81 to 89 for an image and 50 to 89 for a video."
+          items:
+            $ref: "#/components/schemas/ImageSearchBand"
         items:
           type: array
           maxItems: 50
-          description: "Matching listed videos, best first; empty when nothing matches."
+          description: "Matching listed videos, best first; empty when nothing matches. The matches of one band are next to each other, and the bands appear in the order of bands."
           items:
             $ref: "#/components/schemas/ImageSearchItem"
         unindexedCount:
@@ -8340,10 +8345,50 @@ components:
         match:
           $ref: "#/components/schemas/ImageSearchMatch"
 
+    ImageSearchBandId:
+      type: string
+      enum: [strong, similar]
+      description: "A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up."
+
+    ImageSearchBand:
+      type: object
+      additionalProperties: false
+      required: [id, minPercent, maxPercent]
+      properties:
+        id:
+          $ref: "#/components/schemas/ImageSearchBandId"
+        minPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "The lowest whole-percent rate the band holds."
+        maxPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "The highest whole-percent rate the band holds."
+
+    ImageSearchMatchFrame:
+      type: object
+      additionalProperties: false
+      required: [positionMs, rate]
+      properties:
+        positionMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "The frame's time on videoId's timeline."
+        rate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: "(63 - hash distance) / 63 of this frame."
+
     ImageSearchMatch:
       type: object
       additionalProperties: false
-      required: [videoId, rate, kind, positionMs]
+      required: [videoId, rate, kind, positionMs, band, frames, frameCount]
       properties:
         videoId:
           type: integer
@@ -8384,6 +8429,18 @@ components:
           format: int64
           minimum: 0
           description: "End of the matched section on the query's timeline; video queries only."
+        band:
+          $ref: "#/components/schemas/ImageSearchBandId"
+        frames:
+          type: array
+          maxItems: 12
+          description: "Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query (a refined match has its one refined frame), ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty."
+          items:
+            $ref: "#/components/schemas/ImageSearchMatchFrame"
+        frameCount:
+          type: integer
+          minimum: 0
+          description: "The matched frames found before the limit of 12."
 
     UploadPersonImageRequest:
       type: object
