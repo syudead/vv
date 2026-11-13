@@ -33,13 +33,22 @@ type ThumbnailEdits interface {
 	Cancel(ctx context.Context, id string) (domain.ThumbnailEdit, error)
 	Apply(ctx context.Context, id string) (domain.Video, error)
 	Discard(ctx context.Context, id string)
-	VideoFrame(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
+	VideoFrame(ctx context.Context, path string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error)
 }
 
-// GetVideoFrame answers a bounded PNG of the video at positionMs, for framing a person's face.
+// GetVideoFrame answers a PNG of the video at positionMs whose long side is at most maxEdge, for framing a person's
+// face and for image search's matched frames.
 func (s *server) GetVideoFrame(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoFrameParams) {
 	if s.thumbnailEdits == nil || s.files == nil {
 		s.internalError(w, "Frame extraction is not configured.", nil)
+		return
+	}
+	maxSide := domain.ThumbnailFrameMaxSide
+	if params.MaxEdge != nil {
+		maxSide = *params.MaxEdge
+	}
+	if maxSide < domain.VideoFrameMinSide || maxSide > domain.ThumbnailFrameMaxSide {
+		s.invalidRequest(w, "maxEdge must be between 64 and 2048.")
 		return
 	}
 	video, ok := s.lookupVideo(w, r, id)
@@ -55,7 +64,7 @@ func (s *server) GetVideoFrame(w http.ResponseWriter, r *http.Request, id gen.Vi
 		s.mediaFileError(w, err)
 		return
 	}
-	frame, err := s.thumbnailEdits.VideoFrame(r.Context(), path, params.PositionMs)
+	frame, err := s.thumbnailEdits.VideoFrame(r.Context(), path, params.PositionMs, maxSide)
 	if errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
 		s.conflictReason(w, reasonThumbnailFrameUnavailable, "No frame could be read at this position.")
 		return
