@@ -622,6 +622,42 @@ test.describe("画像検索", () => {
     expect(searches()).toBe(sentBefore);
   });
 
+  test("ストリップの右端のフレームを開いて戻ると、ページの縦位置はそのままで、フォーカスしたフレームがストリップ内に見える", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    // At 1280 px nine frames never fit, and the low viewport lets the page scroll.
+    await page.setViewportSize({ width: 1280, height: 400 });
+    await dropOnSearchField(page, query("shotA"), filteredLibrary);
+    const rows = resultsColumn(page).locator("[data-slot=result-row]");
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    await framesLoaded(page);
+    const links = frameLinks(rows.first());
+    await expect(links).toHaveCount(HOLDS);
+    const strip = rows.first().getByRole("list", { name: "Matching frames" });
+    // The page scrolls down until the strip sits near the top of the viewport.
+    const top = await strip.evaluate((element) => {
+      window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 80);
+      return window.scrollY;
+    });
+    expect(top).toBeGreaterThan(0);
+
+    await links.first().focus();
+    await page.keyboard.press("End");
+    await expect(links.nth(HOLDS - 1)).toBeFocused();
+    const before = await page.evaluate(() => window.scrollY);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/videos\//);
+    await page.goBack();
+
+    await expect(page).toHaveURL(/\/image-search$/);
+    await expect(links.nth(HOLDS - 1)).toBeFocused();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(before);
+    // The whole frame shows inside its strip, which the remount had scrolled back to its start.
+    await expect(links.nth(HOLDS - 1)).toBeInViewport({ ratio: 1 });
+    expect(await strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  });
+
   test("375 px で、畳んだパネルのバーは行がスクロールする間も上のバーの下に留まる", async ({
     page,
   }) => {

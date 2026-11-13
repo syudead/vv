@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useRef, useState } from "react";
+import { type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { type ImageSearchMatch, matchFramePath } from "../../api/imageSearch";
@@ -38,6 +38,24 @@ export function stripTarget(key: string, index: number, count: number): number |
 }
 
 /**
+ * Scrolls the strip sideways, and only the strip, so the link and its focus ring lie inside its padding box.
+ * `scrollIntoView` would also move the page, whose position the way back from the player restores.
+ */
+function revealInStrip(strip: HTMLElement, link: HTMLElement) {
+  const style = getComputedStyle(strip);
+  const view = strip.getBoundingClientRect();
+  const box = link.getBoundingClientRect();
+  const left = view.left + strip.clientLeft + Number.parseFloat(style.paddingLeft);
+  const right =
+    view.left +
+    strip.clientLeft +
+    strip.clientWidth -
+    Number.parseFloat(style.paddingRight);
+  if (box.left < left) strip.scrollLeft -= left - box.left;
+  else if (box.right > right) strip.scrollLeft += box.right - right;
+}
+
+/**
  * A row's matched frames in one sideways-scrolling line, each a link that plays from its time. The strip
  * is one tab stop, on the frame last focused there; the arrow keys, Home and End move along it.
  */
@@ -50,10 +68,18 @@ export function FrameStrip({
   opener,
 }: FrameStripProps) {
   const [active, setActive] = useState(initialActive);
+  const list = useRef<HTMLUListElement>(null);
   const links = useRef<(HTMLAnchorElement | null)[]>([]);
   const text = t.library.imageSearch;
   const { frames } = match;
   const current = Math.min(active, frames.length - 1);
+
+  // A strip back from history starts scrolled to its start; bring its restored frame into view.
+  const restoredFrame = useRef(current);
+  useLayoutEffect(() => {
+    const link = links.current[restoredFrame.current] ?? null;
+    if (list.current !== null && link !== null) revealInStrip(list.current, link);
+  }, []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     const next = stripTarget(event.key, current, frames.length);
@@ -66,6 +92,7 @@ export function FrameStrip({
 
   return (
     <ul
+      ref={list}
       data-slot="frame-strip"
       aria-label={text.framesLabel}
       onKeyDown={onKeyDown}
