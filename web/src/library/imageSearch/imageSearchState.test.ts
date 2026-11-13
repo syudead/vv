@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NetworkFailed, RequestFailed } from "../../api/client";
+import type { ImageSearchMatch } from "../../api/imageSearch";
 import {
   matchedSection,
   matchPath,
@@ -65,13 +66,24 @@ describe("画像検索の失敗の表示", () => {
   });
 });
 
+/** An image match found at one frame, whose frames hold only that frame. */
+function frameMatch(videoId: number, positionMs: number): ImageSearchMatch {
+  return {
+    videoId,
+    rate: 1,
+    kind: "frame",
+    positionMs,
+    band: "strong",
+    frames: [{ positionMs, rate: 1 }],
+    frameCount: 1,
+  };
+}
+
 describe("画像検索の結果の表示", () => {
   it("一致率は四捨五入した整数の百分率で、再生は一致した版をその位置の秒で開く", () => {
     expect(ratePercent(51 / 63)).toBe(81);
     expect(ratePercent(0.5)).toBe(50);
-    expect(matchPath({ videoId: 7, rate: 1, kind: "frame", positionMs: 12_500 })).toBe(
-      "/videos/7?t=12.5",
-    );
+    expect(matchPath(frameMatch(7, 12_500))).toBe("/videos/7?t=12.5");
   });
 });
 
@@ -83,7 +95,10 @@ describe("画像検索の一致区間のレーン", () => {
     positionMs: 100_000,
     startMs: 100_000,
     endMs: 130_000,
-  } as const;
+    band: "strong",
+    frames: [],
+    frameCount: 0,
+  } satisfies ImageSearchMatch;
 
   it("区間を一覧の動画の長さのレーンに置き、それより長い版で一致した区間の終わりまでレーンを伸ばす", () => {
     expect(matchedSection(match, 200_000)).toEqual({
@@ -97,9 +112,7 @@ describe("画像検索の一致区間のレーン", () => {
   });
 
   it("画像の一致と長さの分からない動画にはレーンを出さない", () => {
-    expect(
-      matchedSection({ videoId: 8, rate: 1, kind: "frame", positionMs: 0 }, 200_000),
-    ).toBeNull();
+    expect(matchedSection(frameMatch(8, 0), 200_000)).toBeNull();
     expect(matchedSection(match, undefined)).toBeNull();
   });
 });

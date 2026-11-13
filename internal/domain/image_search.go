@@ -295,9 +295,9 @@ func (v offsetVerification) better(than offsetVerification) bool {
 	return v.compared < than.compared
 }
 
-// listable reports a rate of at least 50% over at least FingerprintMinComparableFrames entries.
+// listable reports a rate of at least imageSearchVideoMinPercent over at least FingerprintMinComparableFrames entries.
 func (v offsetVerification) listable() bool {
-	return v.compared >= FingerprintMinComparableFrames && 2*v.matched >= v.compared
+	return v.compared >= FingerprintMinComparableFrames && 100*v.matched >= imageSearchVideoMinPercent*v.compared
 }
 
 // verify compares each entry inside the overlap with the non-flat query frame within 0.5 s of it under offset.

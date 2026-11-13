@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -117,6 +118,48 @@ func TestSearchByImageMapsTheResult(t *testing.T) {
 		*match.EndMs != 24_000 || match.QueryStartMs == nil || *match.QueryStartMs != 0 || match.QueryEndMs == nil ||
 		*match.QueryEndMs != 16_000 {
 		t.Fatalf("item = %+v, match = %+v", item, match)
+	}
+}
+
+// The bands, each item's band and its frames reach the body as the use case returned them; a match without frames
+// still sends an empty list.
+func TestSearchByImageMapsBandsAndFrames(t *testing.T) {
+	t.Parallel()
+	search := imageSearchFunc(func([]byte) (domain.ImageSearchResult, error) {
+		return domain.ImageSearchResult{
+			Kind:  domain.ImageSearchQueryImage,
+			Bands: domain.ImageSearchBands(domain.ImageSearchQueryImage),
+			Items: []domain.ImageSearchItem{
+				{
+					Video: sampleVideo(12, "一致"),
+					Match: domain.ImageSearchMatch{VideoID: 12, Kind: domain.ImageSearchMatchFrame, Rate: 1, PositionMs: 3000},
+					Band:  domain.ImageSearchBandStrong, FrameCount: 14,
+					Frames: []domain.ImageSearchMatchedFrame{{PositionMs: 3000, Rate: 1}, {PositionMs: 9000, Rate: 0.9}},
+				},
+				{
+					Video: sampleVideo(20, "近い"),
+					Match: domain.ImageSearchMatch{VideoID: 20, Kind: domain.ImageSearchMatchFrame, Rate: 0.85, PositionMs: 0},
+					Band:  domain.ImageSearchBandSimilar,
+				},
+			},
+		}, nil
+	})
+	rec := postImageSearch(t, search, "file")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[gen.ImageSearchResult](t, rec)
+	wantBands := []gen.ImageSearchBand{{Id: gen.Strong, MinPercent: 90, MaxPercent: 100}, {Id: gen.Similar, MinPercent: 81, MaxPercent: 89}}
+	if !slices.Equal(got.Bands, wantBands) || len(got.Items) != 2 {
+		t.Fatalf("result = %+v, want bands %+v and two items", got, wantBands)
+	}
+	first, second := got.Items[0].Match, got.Items[1].Match
+	wantFrames := []gen.ImageSearchMatchFrame{{PositionMs: 3000, Rate: 1}, {PositionMs: 9000, Rate: 0.9}}
+	if first.Band != gen.Strong || first.FrameCount != 14 || !slices.Equal(first.Frames, wantFrames) {
+		t.Fatalf("first match = %+v", first)
+	}
+	if second.Band != gen.Similar || second.FrameCount != 0 || second.Frames == nil || len(second.Frames) != 0 {
+		t.Fatalf("second match = %+v, want an empty frame list", second)
 	}
 }
 

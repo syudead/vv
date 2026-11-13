@@ -111,6 +111,43 @@ func TestImageSearchCollapsesBundleMembersToTheListedVideo(t *testing.T) {
 	}
 }
 
+// A bundle's row carries the frames of the member that matched best, since a frame's time is on that member's
+// timeline, and each row its band; the answer lists every band of an image query.
+func TestImageSearchCarriesTheBestMembersFramesAndBands(t *testing.T) {
+	t.Parallel()
+	index := &fakeImageSearchIndex{snapshot: domain.ImageSearchSnapshot{Candidates: []domain.ImageSearchCandidate{
+		candidate(12, 12, searchFrame(1000, 3), searchFrame(2000, 30), searchFrame(3000, 3)),
+		candidate(13, 12, searchFrame(500, 2), searchFrame(1500, 30), searchFrame(7000, 8)),
+		candidate(20, 20, searchFrame(2000, 10)),
+	}}}
+	search := NewImageSearch(ImageSearchOptions{Index: index, Media: ImageSearchMedia{
+		HashImage: func(image.Image) domain.FrameHash { return domain.FrameHash{Hash: queryHash} },
+	}})
+
+	result, err := search.Search(context.Background(), domain.AudienceOwner, bytes.NewReader(testPNG(t, 8, 6)),
+		noOnlyFileCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := domain.ImageSearchBands(domain.ImageSearchQueryImage); !slices.Equal(result.Bands, want) {
+		t.Fatalf("bands = %+v, want %+v", result.Bands, want)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("items = %+v, want the bundle and video 20", result.Items)
+	}
+	bundle, other := result.Items[0], result.Items[1]
+	wantFrames := []domain.ImageSearchMatchedFrame{
+		{PositionMs: 500, Rate: domain.ImageMatchRate(2)}, {PositionMs: 7000, Rate: domain.ImageMatchRate(8)},
+	}
+	if bundle.Video.ID != 12 || bundle.Match.VideoID != 13 || bundle.FrameCount != 2 ||
+		!slices.Equal(bundle.Frames, wantFrames) || bundle.Band != domain.ImageSearchBandStrong {
+		t.Fatalf("bundle = %+v, want member 13's frames %+v in the strong band", bundle, wantFrames)
+	}
+	if other.Video.ID != 20 || other.FrameCount != 1 || other.Band != domain.ImageSearchBandSimilar {
+		t.Fatalf("video 20 = %+v, want one frame in the similar band", other)
+	}
+}
+
 // A second search waits while one runs, and stops waiting when cancelled; each removes its upload whether it ends by
 // cancellation or by result.
 func TestImageSearchRemovesTheUploadWhenCancelled(t *testing.T) {
