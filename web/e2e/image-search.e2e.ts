@@ -11,7 +11,7 @@ import {
 } from "@playwright/test";
 
 // The image search on the real stack: generated footage, the real index job, hashing, ffmpeg and a browser drop
-// on the library search field. Every query is a moment between keyframes that the current matching finds; a
+// on the library search field, which opens the search's own screen at /image-search. Every query is a moment between keyframes that the current matching finds; a
 // failure to find one is a finding to report, never a reason to move the query. Component tests cover the
 // states a real search cannot be made to produce; see docs/design-docs/web-testing.md.
 
@@ -27,6 +27,7 @@ interface Video {
 }
 
 interface SearchAnswer {
+  unindexedCount: number;
   items: {
     video: Video;
     match: { videoId: number; kind: string; band: string; rate: number };
@@ -43,6 +44,9 @@ interface Query {
 const PAN = "画像検索のパン";
 const RECURRING = "画像検索の繰り返すショット";
 const SHOT_B = "画像検索のショットB";
+/** The text filter every title of generateImageSearchFixtures holds, its 24 fillers included. */
+const LIBRARY_FILTER = "画像検索";
+const FILLERS = 24;
 const HOLDS = 9;
 const HOLD_SECONDS = 3;
 /** 1 s after the pan's keyframe at 5 s: the matching finds it by refinement, not on a keyframe. */
@@ -98,7 +102,7 @@ async function searchApi(request: APIRequestContext, file: Query): Promise<Searc
     headers: { Origin: origin },
     multipart: { file: { name: file.name, mimeType: file.type, buffer: file.data } },
   });
-  if (!response.ok()) return { items: [] };
+  if (!response.ok()) return { unindexedCount: 0, items: [] };
   return (await response.json()) as SearchAnswer;
 }
 
@@ -106,10 +110,12 @@ async function titlesFound(request: APIRequestContext, file: Query): Promise<str
   return (await searchApi(request, file)).items.map((item) => item.video.title);
 }
 
-/** Drops the file on the library search field, as the browser does with a file from outside the page. */
-async function dropOnSearchField(page: Page, file: Query) {
-  await page.goto("/");
-  const box = page.getByRole("combobox", { name: "Search videos" });
+/** The library listing the image search media, its URL as the search field writes it. */
+const filteredLibrary = `/?q=${encodeURIComponent(LIBRARY_FILTER)}`;
+
+/** Drops the file on the search field of the page already open, as the browser does with a file from outside. */
+async function dropOnField(page: Page, file: Query) {
+  const box = page.getByLabel("Search videos", { exact: true });
   await expect(box).toBeVisible();
   const field = box.locator("..");
   const dataTransfer = await page.evaluateHandle(
@@ -125,6 +131,59 @@ async function dropOnSearchField(page: Page, file: Query) {
   await field.dispatchEvent("dragover", { dataTransfer });
   await expect(field).toHaveAttribute("data-file-drag", "field");
   await field.dispatchEvent("drop", { dataTransfer });
+}
+
+/** Drops the file on the library's search field, which opens the image search screen. */
+async function dropOnSearchField(page: Page, file: Query, from = "/") {
+  await page.goto(from);
+  await dropOnField(page, file);
+  await expect(page).toHaveURL(/\/image-search$/);
+}
+
+/** The results column of the image search screen. */
+function resultsColumn(page: Page): Locator {
+  return page.locator("[data-slot=query-results-page-body]");
+}
+
+/** Counts the searches the page sends from now on. */
+function countSearches(page: Page): () => number {
+  let count = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/api/image-search")) {
+      count += 1;
+    }
+  });
+  return () => count;
+}
+
+/** The library at the filter, scrolled to `top`, waiting for the restored position to hold. */
+async function scrolledLibrary(page: Page, top: number) {
+  await page.goto(filteredLibrary);
+  await expect(page.getByRole("link", { name: new RegExp(PAN) }).first()).toBeVisible();
+  await page.evaluate((y) => window.scrollTo(0, y), top);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(top);
+}
+
+/** The library is back with its filter and the scroll position it had. */
+async function expectLibraryAt(page: Page, top: number) {
+  await expect(page).toHaveURL(new RegExp(`\\?q=${encodeURIComponent(LIBRARY_FILTER)}`));
+  await expect(page.getByLabel("Search videos", { exact: true })).toHaveValue(
+    LIBRARY_FILTER,
+  );
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(top);
+}
+
+/** Whether the element's box lies inside the viewport, as the owner sees it without scrolling. */
+async function inViewport(page: Page, locator: Locator): Promise<boolean> {
+  const box = await locator.boundingBox();
+  const viewport = page.viewportSize();
+  if (box === null || viewport === null) return false;
+  return (
+    box.y >= 0 &&
+    box.x >= 0 &&
+    box.y + box.height <= viewport.height &&
+    box.x + box.width <= viewport.width
+  );
 }
 
 /** Waits until every frame picture on screen, and every one the strips have asked for, is drawn. */
@@ -158,8 +217,7 @@ async function framesLoaded(page: Page) {
 async function searchAt(page: Page, width: number, file: Query): Promise<Locator> {
   await page.setViewportSize({ width, height: 900 });
   await dropOnSearchField(page, file);
-  const results = page.getByRole("region", { name: "Image search" });
-  const rows = results.locator("[data-slot=result-row]");
+  const rows = resultsColumn(page).locator("[data-slot=result-row]");
   await expect(rows.first()).toBeVisible({ timeout: 60_000 });
   await framesLoaded(page);
   return rows;
@@ -247,6 +305,23 @@ test.describe("画像検索", () => {
         timeout: 180_000,
       })
       .toEqual([RECURRING, SHOT_B].sort());
+    // The fillers are listed and indexed too, so no screen names videos that were not searched.
+    await expect
+      .poll(
+        async () => {
+          const response = await request.get(
+            `/api/videos?limit=50&query=${encodeURIComponent(LIBRARY_FILTER)}`,
+          );
+          return ((await response.json()) as { items: Video[] }).items.length;
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(FILLERS + 3);
+    await expect
+      .poll(async () => (await searchApi(request, pan)).unindexedCount, {
+        timeout: 180_000,
+      })
+      .toBe(0);
   });
 
   test.afterAll(async ({ request }) => {
@@ -316,12 +391,22 @@ test.describe("画像検索", () => {
       }
       expect(holds.size).toBe(HOLDS);
 
-      // Up to 1280 px the strip cuts the frames that do not fit; at 1920 px all nine fit.
+      // The strip cuts the frames that do not fit beside the query panel; up to 1280 px nine never fit.
       const strip = first.getByRole("list", { name: "Matching frames" });
-      const overflows = await strip.evaluate(
-        (element) => element.scrollWidth > element.clientWidth,
-      );
-      expect(overflows).toBe(width <= 1280);
+      const { overflows, fits } = await strip.evaluate((element) => {
+        const frames = [...element.children] as HTMLElement[];
+        const gap = Number.parseFloat(getComputedStyle(element).columnGap);
+        const needed = frames.reduce(
+          (sum, frame) => sum + frame.getBoundingClientRect().width + gap,
+          -gap,
+        );
+        return {
+          overflows: element.scrollWidth > element.clientWidth,
+          fits: needed <= element.clientWidth,
+        };
+      });
+      expect(overflows).toBe(!fits);
+      if (width <= 1280) expect(overflows).toBe(true);
       await shoot(page, testInfo, `shot-a-${String(width)}`);
 
       // One tab stop for the strip; End reaches the ninth frame by scrolling the strip, not the page.
@@ -351,7 +436,7 @@ test.describe("画像検索", () => {
       expect(titles.sort()).toEqual([RECURRING, SHOT_B].sort());
       const rings = rows.locator("[data-slot=rate-ring]");
       await expect(rings.nth(1)).toHaveText((await rings.nth(0).innerText()).trim());
-      const results = page.getByRole("region", { name: "Image search" });
+      const results = resultsColumn(page);
       await expect(results.getByText("Best candidate")).toHaveCount(0);
       for (const play of await results
         .getByRole("link", { name: "Play", exact: true })
@@ -452,6 +537,231 @@ test.describe("画像検索", () => {
         }
         await shoot(page, testInfo, `${name}-${String(width)}`);
       }
+    }
+  });
+
+  test("絞り込んでスクロールしたライブラリからパンのフレームを落とすと /image-search を開き、ファイルと最初の行のフレームが画面に入る", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await scrolledLibrary(page, 400);
+    await dropOnField(page, query("pan"));
+    await expect(page).toHaveURL(/\/image-search$/);
+
+    const rows = resultsColumn(page).locator("[data-slot=result-row]");
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    await framesLoaded(page);
+    const preview = page.locator("[data-slot=query-preview]");
+    expect(await inViewport(page, preview)).toBe(true);
+    expect(await inViewport(page, frameLinks(rows.first()).first())).toBe(true);
+    // The file's preview is the largest picture on the screen.
+    const previewBox = await preview.boundingBox();
+    const frameBox = await frameLinks(rows.first()).first().locator("img").boundingBox();
+    if (previewBox === null || frameBox === null)
+      throw new Error("pictures are not drawn");
+    expect(previewBox.width * previewBox.height).toBeGreaterThan(
+      frameBox.width * frameBox.height,
+    );
+  });
+
+  for (const way of ["browser Back", "Library", "chip ×"] as const) {
+    test(`${way} で、絞り込みとスクロール位置を保ったライブラリに戻る`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await scrolledLibrary(page, 400);
+      await dropOnField(page, query("pan"));
+      await expect(
+        resultsColumn(page).locator("[data-slot=result-row]").first(),
+      ).toBeVisible({ timeout: 60_000 });
+
+      if (way === "browser Back") await page.goBack();
+      else if (way === "Library")
+        await page.getByRole("button", { name: "Library" }).click();
+      else await page.getByRole("button", { name: "Clear image search" }).click();
+
+      await expectLibraryAt(page, 400);
+    });
+  }
+
+  test("フレームを開いて戻ると、同じ行、畳んだ行、スクロール位置を 2 回目の検索なしで出す", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const searches = countSearches(page);
+    // A low viewport, so the two rows of shot B scroll the page.
+    await page.setViewportSize({ width: 1280, height: 520 });
+    await dropOnSearchField(page, query("shotB"), filteredLibrary);
+    const rows = resultsColumn(page).locator("[data-slot=result-row]");
+    await expect(rows).toHaveCount(2, { timeout: 60_000 });
+    await framesLoaded(page);
+    const collapsedTitle = await title(rows.nth(1)).innerText();
+    await rows.nth(1).locator("[data-slot=result-row-toggle]").click();
+    await expect(frameLinks(rows.nth(1))).toHaveCount(0);
+    const top = await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      return window.scrollY;
+    });
+    expect(top).toBeGreaterThan(0);
+
+    // The dev server's Strict Mode may send the first search twice; only a search after this is counted.
+    const sentBefore = searches();
+    await frameLinks(rows.nth(0)).first().click();
+    await expect(page).toHaveURL(/\/videos\//);
+    await page.goBack();
+
+    await expect(page).toHaveURL(/\/image-search$/);
+    await expect(rows).toHaveCount(2);
+    await expect(title(rows.nth(1))).toHaveText(collapsedTitle);
+    await expect(frameLinks(rows.nth(1))).toHaveCount(0);
+    await expect(frameLinks(rows.nth(0))).not.toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(top);
+    await expect(frameLinks(rows.nth(0)).first()).toBeFocused();
+    expect(searches()).toBe(sentBefore);
+  });
+
+  test("375 px で、畳んだパネルのバーは行がスクロールする間も上のバーの下に留まる", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 375, height: 500 });
+    await dropOnSearchField(page, query("shotB"));
+    const rows = resultsColumn(page).locator("[data-slot=result-row]");
+    await expect(rows).toHaveCount(2, { timeout: 60_000 });
+    const bar = page.locator("[data-slot=query-panel-bar]");
+    await expect(bar).toBeVisible();
+    // The bar and the first row's header and frames are on screen after the answer.
+    expect(await inViewport(page, bar)).toBe(true);
+    expect(await inViewport(page, title(rows.first()))).toBe(true);
+    expect(await inViewport(page, frameLinks(rows.first()).first())).toBe(true);
+    const navbar = await page.locator("header").first().boundingBox();
+    if (navbar === null) throw new Error("top bar is not drawn");
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    const stuck = await bar.boundingBox();
+    if (stuck === null) throw new Error("panel bar is not drawn");
+    expect(Math.abs(stuck.y - (navbar.y + navbar.height))).toBeLessThanOrEqual(16);
+    expect(await pageScrollsSideways(page)).toBe(false);
+  });
+
+  test("直接開いた /image-search は Idle を出し、外に落としたファイルでは何も始まらず、Library はアプリ内で / を開く", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    const searches = countSearches(page);
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/image-search");
+      await expect(
+        page.getByRole("heading", { name: "Search by an image or a video" }),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "Choose a file…" })).toHaveCount(1);
+      await expect(page.locator("[data-slot=query-panel]")).toHaveCount(0);
+      expect(await pageScrollsSideways(page)).toBe(false);
+      await shoot(page, testInfo, `idle-${String(width)}`);
+    }
+
+    const body = page.locator("[data-slot=query-results-page-body]");
+    const dataTransfer = await page.evaluateHandle((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], "pan.png", { type: "image/png" }));
+      return transfer;
+    }, query("pan").data.toString("base64"));
+    await body.dispatchEvent("dragover", { dataTransfer });
+    await body.dispatchEvent("drop", { dataTransfer });
+    await expect(
+      page.getByRole("heading", { name: "Search by an image or a video" }),
+    ).toBeVisible();
+    expect(searches()).toBe(0);
+
+    await page.getByRole("button", { name: "Library" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByLabel("Search videos", { exact: true })).toBeVisible();
+  });
+
+  test("縦長の画像は一致なしをプレビューごと出し、無地の画像は理由を結果の列に出す", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await page.goto("/");
+    const drawn = await page.evaluate(() => {
+      // A portrait picture of shapes no fixture holds, and a single-colour picture the server refuses.
+      const portrait = document.createElement("canvas");
+      portrait.width = 360;
+      portrait.height = 640;
+      const context = portrait.getContext("2d");
+      if (context === null) throw new Error("no canvas");
+      let seed = 7;
+      const next = () => {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        return seed / 2147483648;
+      };
+      for (let index = 0; index < 60; index += 1) {
+        context.fillStyle = `hsl(${String(Math.round(next() * 360))} 70% ${String(Math.round(20 + next() * 60))}%)`;
+        context.fillRect(
+          next() * 360,
+          next() * 640,
+          20 + next() * 140,
+          20 + next() * 140,
+        );
+      }
+      const blank = document.createElement("canvas");
+      blank.width = 320;
+      blank.height = 180;
+      const fill = blank.getContext("2d");
+      if (fill === null) throw new Error("no canvas");
+      fill.fillStyle = "#3a6ea5";
+      fill.fillRect(0, 0, 320, 180);
+      const data = (canvas: HTMLCanvasElement) =>
+        canvas.toDataURL("image/png").split(",")[1] ?? "";
+      return { portrait: data(portrait), blank: data(blank) };
+    });
+    const png = (name: string, base64: string): Query => ({
+      name,
+      type: "image/png",
+      data: Buffer.from(base64, "base64"),
+    });
+    const portrait = png("portrait.png", drawn.portrait);
+    const blank = png("blank.png", drawn.blank);
+
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 900 });
+      await dropOnSearchField(page, portrait);
+      await expect(
+        page.getByRole("heading", { name: "No video has this footage" }),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(
+        page.getByText("Every video in your library was searched."),
+      ).toBeVisible();
+      await expect(page.locator("[data-slot=query-panel]")).toContainText("No match");
+      if (width >= 1024) {
+        // The portrait preview is whole: its box keeps the file's ratio inside the panel.
+        const preview = page.locator("[data-slot=query-preview]");
+        await expect(preview).toBeVisible();
+        const shape = await preview.evaluate((element) => {
+          const image = element as HTMLImageElement;
+          return image.naturalHeight > image.naturalWidth;
+        });
+        expect(shape).toBe(true);
+      }
+      expect(await pageScrollsSideways(page)).toBe(false);
+      await shoot(page, testInfo, `no-match-${String(width)}`);
+
+      await dropOnSearchField(page, blank);
+      const alert = resultsColumn(page).getByRole("alert");
+      await expect(alert).toContainText("There's nothing to compare in this file", {
+        timeout: 60_000,
+      });
+      await expect(
+        alert.getByRole("button", { name: "Choose another file…" }),
+      ).toBeVisible();
+      await expect(page.locator("[data-slot=query-panel]")).toContainText("blank.png");
+      expect(await pageScrollsSideways(page)).toBe(false);
+      await shoot(page, testInfo, `refused-${String(width)}`);
     }
   });
 });

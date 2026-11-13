@@ -11,30 +11,38 @@ import { RateRing, type RateRingTone } from "../../ui/RateRing";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
 import { SpanBar } from "../../ui/SpanBar";
-import { FrameStrip } from "./FrameStrip";
+import { FrameStrip, type FrameStripProps } from "./FrameStrip";
 import { matchedSection, matchPath, playPath, ratePercent } from "./imageSearchState";
 
 export interface MatchRowProps {
   item: ImageSearchItem;
+  /** The row's key in the results, which names its controls for focus on the way back from the player. */
+  rowKey: string;
   tone: RateRingTone;
   /** The first row of the results, shown above every other: the badge and the `default` Play. */
   best: boolean;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   back: ReturnState;
-  /** Called before the row opens the player, to keep the scroll position. */
-  onOpen: () => void;
+  /** Called with the control's name before the row opens the player, to keep the view. */
+  onOpen: (opener: string) => void;
+  /** The strip's frame last focused when the row came back from history. */
+  stripFrame?: number;
+  onStripFrameChange?: (index: number) => void;
 }
 
 /** One video of an image search's answer: its rate, title, evidence and the way to play it. */
 export function MatchRow({
   item,
+  rowKey,
   tone,
   best,
   expanded,
   onExpandedChange,
   back,
   onOpen,
+  stripFrame,
+  onStripFrameChange,
 }: MatchRowProps) {
   const text = t.library.imageSearch;
   const { video, match } = item;
@@ -47,7 +55,8 @@ export function MatchRow({
         <Link
           to={to}
           state={back}
-          onClick={onOpen}
+          onClick={() => onOpen(`${rowKey}:title`)}
+          data-opener={`${rowKey}:title`}
           title={video.title}
           className="block truncate rounded-sm hover:underline"
         >
@@ -65,7 +74,12 @@ export function MatchRow({
       meta={section ? <SectionMeta item={item} /> : <FrameMeta item={item} />}
       actions={
         <Button asChild variant={best ? "default" : "secondary"} size="sm">
-          <Link to={to} state={back} onClick={onOpen}>
+          <Link
+            to={to}
+            state={back}
+            onClick={() => onOpen(`${rowKey}:play`)}
+            data-opener={`${rowKey}:play`}
+          >
             <Play aria-hidden="true" />
             {text.play}
           </Link>
@@ -79,7 +93,17 @@ export function MatchRow({
           : { tooltip: text.showFrames, name: text.showFramesFor(video.title) }
       }
     >
-      <RowBody item={item} back={back} onOpen={onOpen} />
+      <RowBody
+        item={item}
+        back={back}
+        onOpen={onOpen}
+        strip={{
+          initialActive: stripFrame,
+          onActiveChange: onStripFrameChange,
+          opener: (index) => `${rowKey}:frame:${String(index)}`,
+        }}
+        sectionOpener={`${rowKey}:section`}
+      />
     </ResultRow>
   );
 }
@@ -120,21 +144,35 @@ function RowBody({
   item,
   back,
   onOpen,
+  strip,
+  sectionOpener,
 }: {
   item: ImageSearchItem;
   back: ReturnState;
-  onOpen: () => void;
+  onOpen: (opener: string) => void;
+  strip: Pick<FrameStripProps, "initialActive" | "onActiveChange" | "opener">;
+  sectionOpener: string;
 }): ReactNode {
   const { match } = item;
-  const strip =
+  const frames =
     match.frames.length > 0 ? (
-      <FrameStrip match={match} back={back} onOpen={onOpen} />
+      <FrameStrip
+        match={match}
+        back={back}
+        onOpen={(index) => onOpen(strip.opener(index))}
+        {...strip}
+      />
     ) : null;
-  if (match.kind === "frame") return strip;
+  if (match.kind === "frame") return frames;
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <SectionLane item={item} back={back} onOpen={onOpen} />
-      {strip}
+      <SectionLane
+        item={item}
+        back={back}
+        onOpen={() => onOpen(sectionOpener)}
+        opener={sectionOpener}
+      />
+      {frames}
     </div>
   );
 }
@@ -143,10 +181,12 @@ function SectionLane({
   item,
   back,
   onOpen,
+  opener,
 }: {
   item: ImageSearchItem;
   back: ReturnState;
   onOpen: () => void;
+  opener: string;
 }) {
   const navigate = useNavigate();
   const text = t.library.imageSearch;
@@ -154,7 +194,7 @@ function SectionLane({
   const section = matchedSection(match, item.video.durationMs);
   if (section === null) return null;
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div data-opener={opener} className="flex min-w-0 flex-col gap-1">
       <SpanBar
         lengthSeconds={section.lengthSeconds}
         spans={[section.span]}

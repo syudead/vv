@@ -350,7 +350,7 @@ folder's own ones as chips after its tags.
 
 ### Image search
 
-The owner's library search field (on `/` only) also searches by a file: its
+The owner's library search field (on `/` and `/image-search`) also searches by a file: its
 `Search by image or video` button, before the syntax help, opens
 `ImageUploadDialog` with image-and-video wording, and the chosen file starts a
 search ([image-search.md](image-search.md) has the matching rules). A file
@@ -360,24 +360,52 @@ field's frame turns dashed `primary` with the placeholder `Drop here to search
 by this file`, and over the field it is solid with a `primary-soft` fill and
 the `ScanSearch` icon. A file dropped anywhere else on the page is refused
 without opening it and starts nothing. Folder, group and smart-folder pages,
-and guests, keep the plain field. While the
-search runs or shows its answer, a query chip (the file's preview, its name
-from `sm` up, and `Clear image search`) sits at the field's start and holds at
-most half its width; the placeholder reads `Or search by text`.
+and guests, keep the plain field.
 
-The results replace the library's body inside the same `ListPage`, as text
-search results do, so the header and the toolbar stay where they are and
-clearing the chip brings the library back as it was. The favorite smart
-folder band, the filter chips and the selection bar are not drawn. Filter,
-sort and view are disabled with the tooltip `Not used by image search`; zoom
-stays active but does not change the rows.
+An accepted file opens the image search screen at `/image-search`
+([`ImageSearchPage.tsx`](../../web/src/library/imageSearch/ImageSearchPage.tsx)),
+pushed over the library entry, which keeps its filters, scroll and selection
+untouched. The file is handed over in memory under a token that the pushed
+entry's state names, with a mark that the library entry is under it; the
+request starts on the screen. A file given on the screen (the field or
+`Choose another file…`) replaces the entry and keeps that mark, so Back never
+walks through old searches. A guest who opens `/image-search` is sent to `/`.
 
-| State | Body under the level-2 `Image search` header |
-| --- | --- |
-| Searching | `Searching…` with a spinner, the file named for a video, `Cancel`; grid skeletons |
-| Results | The unindexed count under the header; a `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands |
-| No match | `Empty` with the unindexed count, or `Every video in your library was searched.`, and `Clear image search` |
-| Refused | A destructive `Alert` with the reason, `Choose another file…`, and `Retry` for a network or server failure |
+The screen is a `QueryResultsPage`. Its top bar holds only the search field,
+with the query chip (the file's preview, its name from `sm` up, and `Clear
+image search`) at the field's start, holding at most half its width, and the
+placeholder `Or search by text`; filter, sort, view and zoom are not drawn.
+`Enter` with text opens `/` with that text search. The header is `Image
+search` with a `ghost` `Library` button. The `Library` button, the chip's `×`,
+`Escape` in the empty field and `Back to library` go one entry back when the
+library entry is under the screen, as browser Back does, and replace the
+screen with `/` otherwise (opened directly, in a new tab or from another
+site), so they never leave the app.
+
+The query panel is a `card` at the start from `lg`, stuck under the top bar,
+and full width above the results below `lg`. It shows the file whole, never
+cropped: an image, or a muted video with the browser's controls (an icon for
+a file the browser cannot show); the file name and `Image · 1.2 MB` or
+`Video · 2:31 · 48 MB`, the length read from the video until the answer
+gives it; a status line; the unindexed count after an answer; and `Cancel`
+while searching, else `Choose another file…`. Below `lg` it starts with a bar
+(a small preview, the name, the status and `Show your file` or `Hide your
+file`) that is its collapsed form: open while searching or refused, collapsed
+when an answer arrives so the first rows are on screen, and the owner's
+toggle holds for that answer. Collapsed, the bar sticks under the top bar
+while the rows scroll.
+
+| State                                              | Panel status                                                                      | Results column                                                                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Idle (`/image-search` opened or reloaded, no file) | No panel                                                                          | `Empty` `Search by an image or a video` with `Choose a file…`                                                                  |
+| Searching                                          | `Spinner`, `Searching…`; `Cancel` returns to the library                          | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading                                                        |
+| Results                                            | `CircleCheck`, `Found {n} videos`                                                 | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands               |
+| No match                                           | `SearchX`, `No match`                                                             | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
+| Refused                                            | `CircleAlert`, `Not searched`, or `Search failed` for a network or server failure | A destructive `Alert` with the reason, `Retry` for a failure, and `Choose another file…`                                       |
+
+A file given by the field keeps focus in the field on the screen; one given
+by the dialog moves focus to the title. An answer does not move focus; the
+panel's status and the summary line are statuses.
 
 The rows sit in `ResultBand`s, one per band of the answer in the server's
 order (`Strong match`, `Similar`), each headed by its name, its range as
@@ -407,17 +435,19 @@ the section's start, followed by a frame strip only when the server sends
 frames. The rows have no selection, favorite, tags, preview or drag, because
 the video's own actions are on its page.
 
-The search lives in memory under the history entry, never in the URL: the
-file cannot be put in a URL and must not be kept on the server. Returning from
-the player shows the same chip, rows and scroll position without a request,
-whether the viewer goes back or closes the player: a result passes the entry's
-key to the player, and closing carries it to the new library entry. A new
-file, `Cancel`, the chip's `×`, a text search (`Enter` with text while the
-chip shows, even the text already searched) and leaving the page or the entry
+The search lives in memory under the entry's token, never in the URL or in
+history state: the file cannot be put in a URL and must not be kept on the
+server. Returning from the player shows the same panel, rows, collapsed rows,
+the frame last focused in each strip and the scroll position without a
+request, and focus returns to the control that opened the player, whether the
+viewer goes back or closes the player: a result passes the token to the
+player, and closing carries it to the new entry. A reload or a direct visit
+has no file and shows Idle. Another file and leaving the screen or the entry
 abort the running request. Two or more files dropped or pasted on the field,
-or a file whose type is neither an image nor a video, are refused before any
-upload; the dialog takes one file, as it does for every upload. A file without
-a type goes to the server, which reads its content.
+or a file whose type is neither an image nor a video, open the screen with
+the first file in the panel and the refusal in the results column, without a
+request; the dialog takes one file, as it does for every upload. A file
+without a type goes to the server, which reads its content.
 
 ### Scan entry and progress
 
@@ -449,11 +479,11 @@ the owner decides between stopping and running while reading what is left
 `Paused` in `warning` with a still `Pause` icon, `Running` in `secondary` with
 a spinner, or `Idle`. Under it come, in order:
 
-| Row | Content |
-| --- | --- |
-| Switch | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import` |
-| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one |
-| `Left to do` | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
+| Row           | Content                                                                                                                                                                                                                                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Switch        | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import`                                                                  |
+| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one                                                                                                                                                |
+| `Left to do`  | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
 
 The counts are one component
 ([`BackgroundCounts.tsx`](../../web/src/shell/BackgroundCounts.tsx)), so every

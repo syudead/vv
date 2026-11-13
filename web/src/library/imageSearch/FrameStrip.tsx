@@ -12,8 +12,13 @@ export interface FrameStripProps {
   match: ImageSearchMatch;
   /** The state the player goes back with. */
   back: ReturnState;
-  /** Called before a frame opens the player, to keep the scroll position. */
-  onOpen: () => void;
+  /** Called with the frame's index before it opens the player, to keep the view. */
+  onOpen: (index: number) => void;
+  /** The frame last focused here when the strip came back from history. */
+  initialActive?: number;
+  onActiveChange?: (index: number) => void;
+  /** Names each frame link for focus on the way back from the player. */
+  opener: (index: number) => string;
 }
 
 /** The frame a strip key moves to from `index` of `count`, or null for a key the strip does not take. */
@@ -36,8 +41,15 @@ export function stripTarget(key: string, index: number, count: number): number |
  * A row's matched frames in one sideways-scrolling line, each a link that plays from its time. The strip
  * is one tab stop, on the frame last focused there; the arrow keys, Home and End move along it.
  */
-export function FrameStrip({ match, back, onOpen }: FrameStripProps) {
-  const [active, setActive] = useState(0);
+export function FrameStrip({
+  match,
+  back,
+  onOpen,
+  initialActive = 0,
+  onActiveChange,
+  opener,
+}: FrameStripProps) {
+  const [active, setActive] = useState(initialActive);
   const links = useRef<(HTMLAnchorElement | null)[]>([]);
   const text = t.library.imageSearch;
   const { frames } = match;
@@ -70,8 +82,13 @@ export function FrameStrip({ match, back, onOpen }: FrameStripProps) {
               }}
               to={playPath(match.videoId, frame.positionMs)}
               state={back}
-              onClick={onOpen}
-              onFocus={() => setActive(index)}
+              onClick={() => onOpen(index)}
+              onFocus={() => {
+                if (index === active) return;
+                setActive(index);
+                onActiveChange?.(index);
+              }}
+              data-opener={opener(index)}
               tabIndex={index === current ? 0 : -1}
               aria-label={text.playFrom(time)}
               className="flex w-full min-w-0 flex-col gap-1 rounded-md"

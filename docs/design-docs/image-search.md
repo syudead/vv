@@ -10,7 +10,7 @@ The diagram shows the parts a search touches and what each one reads.
 
 ```mermaid
 flowchart LR
-  page[Library page] -->|POST /api/image-search| http[HTTP layer]
+  page[Image search screen] -->|POST /api/image-search| http[HTTP layer]
   http --> search[ImageSearch]
   search -->|video query| uploads[Search uploads]
   search -->|hash the query| media[ffmpeg and hashing]
@@ -35,10 +35,10 @@ its scene there. Keyframes are read in one sequential pass with
 The index is versioned apart from the fingerprint, so changing one never
 rereads every file for the other ([job-scheduling.md](job-scheduling.md#each-kind-declares-a-demand)).
 
-| Rejected | Why |
-| --- | --- |
-| Reuse the fingerprint | Its frames are too far apart for an arbitrary screenshot |
-| Decode every frame and keep one per second | Minutes of CPU per hour of 1080p H.264, days over a library |
+| Rejected                                    | Why                                                                          |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| Reuse the fingerprint                       | Its frames are too far apart for an arbitrary screenshot                     |
+| Decode every frame and keep one per second  | Minutes of CPU per hour of 1080p H.264, days over a library                  |
 | Seek to each keyframe from the packet index | One random read per keyframe; a sequential pass reads less on spinning disks |
 
 The row holds 12 bytes per kept keyframe in time order (a 4-byte time in
@@ -49,13 +49,13 @@ A current-version blob that does not decode counts as missing for the search
 and the unindexed count only: `queue_frame_index` checks the version, not the
 blob, so it does not rebuild that row.
 
-| Decision | Rejected | Why |
-| --- | --- | --- |
-| At most 20,000 entries, at least 1 s apart | Every keyframe | A file with a keyframe every few frames would grow the index without adding scenes; 20,000 covers 5.5 hours at 1 s |
-| Leave flat frames out when building | Store them with a flag, as the fingerprint does | Nothing searches for a flat frame, and a flat query is refused before matching |
-| `frame_index` is a backfill job outside import tracking, queued by the probe result and by `queue_frame_index` at startup | An import stage, or a setting that turns it on | An import would wait for a whole-file read, and a switch would leave the search empty until the owner finds it |
-| A content change queues it again; a forced rescan of the same content does not | Rebuild on every forced rescan | The index is a function of the content |
-| `releaseContentIndex` deletes the row with the content's fingerprint | A sweep of orphan rows | The release already runs in the transaction that removes the last reference |
+| Decision                                                                                                                  | Rejected                                        | Why                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| At most 20,000 entries, at least 1 s apart                                                                                | Every keyframe                                  | A file with a keyframe every few frames would grow the index without adding scenes; 20,000 covers 5.5 hours at 1 s |
+| Leave flat frames out when building                                                                                       | Store them with a flag, as the fingerprint does | Nothing searches for a flat frame, and a flat query is refused before matching                                     |
+| `frame_index` is a backfill job outside import tracking, queued by the probe result and by `queue_frame_index` at startup | An import stage, or a setting that turns it on  | An import would wait for a whole-file read, and a switch would leave the search empty until the owner finds it     |
+| A content change queues it again; a forced rescan of the same content does not                                            | Rebuild on every forced rescan                  | The index is a function of the content                                                                             |
+| `releaseContentIndex` deletes the row with the content's fingerprint                                                      | A sweep of orphan rows                          | The release already runs in the transaction that removes the last reference                                        |
 
 ## Image queries
 
@@ -91,11 +91,11 @@ flowchart LR
   refine -->|none, or no file| drop
 ```
 
-| Rejected | Why |
-| --- | --- |
-| List only keyframe matches | A screenshot between keyframes of a moving shot would not find its video |
-| Refine every near miss | Each refinement opens a file; ten bound a search to ten short decodes |
-| The keyframe's time for a refined match | Playback would start up to 10 s before the scene asked for |
+| Rejected                                | Why                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| List only keyframe matches              | A screenshot between keyframes of a moving shot would not find its video |
+| Refine every near miss                  | Each refinement opens a file; ten bound a search to ten short decodes    |
+| The keyframe's time for a refined match | Playback would start up to 10 s before the scene asked for               |
 
 ## Video queries
 
@@ -131,10 +131,10 @@ Each entry stands for the span up to the next one, so a whole re-encode whose
 keyframes are 8 s apart still covers the whole video; playback starts at the
 first matching entry.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                                        | Why                                                                                          |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | The versions rule (at most 5% of frames differ) | A partial copy with a logo or subtitles differs in more frames and is still the same footage |
-| Equal durations for a whole match | A re-encode trims or pads a few seconds at the ends |
+| Equal durations for a whole match               | A re-encode trims or pads a few seconds at the ends                                          |
 
 ## Results
 
@@ -177,16 +177,16 @@ flowchart LR
   refined[A refined match] --> single[Its one decoded frame]
 ```
 
-| Decision | Rejected | Why |
-| --- | --- | --- |
-| Frames only in a content the search already lists | Listing a content because several weaker frames add up | That would change which videos a search lists |
-| One frame per run of entries | Every matching entry | A held shot with a keyframe every second would fill the row with one picture and push the shot's other appearances past the limit |
-| Same | Frames a fixed number of seconds apart | The spacing would be a number with no measurement behind it; a run needs none |
-| At most 12 frames, with the count found | No limit | 50 rows of a looping video would carry thousands of frames |
-| A bundle's row has the frames of the member that matched best | Frames of every member | A frame's time is on one member's timeline, and playback opens that member |
-| No frames for a video query | The section's matching entries as frames | A video match's rate is a share of entries and a frame's rate a hash distance: two measures under one percent |
-| The band on the rounded rate | The unrounded rate | A row shown as 90% could sit under `81–89%` |
-| Floors derived from the listing rules, and 90 one constant (`ImageSearchStrongMinPercent`) | Floors written again as numbers | A changed listing rule would leave a band no row reaches, or rows under no band |
+| Decision                                                                                   | Rejected                                               | Why                                                                                                                               |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Frames only in a content the search already lists                                          | Listing a content because several weaker frames add up | That would change which videos a search lists                                                                                     |
+| One frame per run of entries                                                               | Every matching entry                                   | A held shot with a keyframe every second would fill the row with one picture and push the shot's other appearances past the limit |
+| Same                                                                                       | Frames a fixed number of seconds apart                 | The spacing would be a number with no measurement behind it; a run needs none                                                     |
+| At most 12 frames, with the count found                                                    | No limit                                               | 50 rows of a looping video would carry thousands of frames                                                                        |
+| A bundle's row has the frames of the member that matched best                              | Frames of every member                                 | A frame's time is on one member's timeline, and playback opens that member                                                        |
+| No frames for a video query                                                                | The section's matching entries as frames               | A video match's rate is a share of entries and a frame's rate a hash distance: two measures under one percent                     |
+| The band on the rounded rate                                                               | The unrounded rate                                     | A row shown as 90% could sit under `81–89%`                                                                                       |
+| Floors derived from the listing rules, and 90 one constant (`ImageSearchStrongMinPercent`) | Floors written again as numbers                        | A changed listing rule would leave a band no row reaches, or rows under no band                                                   |
 
 The split at 90% presents rates the search already produces; it is not a claim
 about accuracy, and a later accuracy decision may move the constant.
@@ -206,7 +206,7 @@ writes no response. One search runs at a time and a second request
 waits until the first ends or the second is cancelled, because each reads the
 whole index and may decode a three-hour video.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                  | Why                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------- |
 | A search job with polling | Nothing may outlive the request, and the screen shows only that the search runs |
-| Searches in parallel | The client cancels its previous request before sending the next |
+| Searches in parallel      | The client cancels its previous request before sending the next                 |

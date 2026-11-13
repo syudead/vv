@@ -70,10 +70,8 @@ import CardTagRow from "./CardTagRow";
 import EmptyLibrary, { AllFoldersOff } from "./EmptyLibrary";
 import { FavoriteFolderBand, useFavoriteFolders } from "./FavoriteFolderBand";
 import { GroupCard, GroupRow } from "./GroupCard";
-import { ImageSearchBody } from "./imageSearch/ImageSearchBody";
 import { ImageSearchDialog } from "./imageSearch/ImageSearchDialog";
-import { imageSearchToolbar, withoutImageSearch } from "./imageSearch/imageSearchField";
-import { useImageSearch } from "./imageSearch/useImageSearch";
+import { useGiveFiles } from "./imageSearch/imageSearchEntry";
 import {
   DraggableGroupRow,
   DraggableVideoRow,
@@ -157,7 +155,6 @@ export default function LibraryPage() {
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
-  const imageSearch = useImageSearch(owner);
 
   const savePreferences = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);
@@ -422,6 +419,10 @@ export default function LibraryPage() {
     total,
   ]);
 
+  // A file given to the owner's search field opens the image search over this entry, which Back
+  // restores from the snapshot as it does after a card.
+  const imageSearch = useGiveFiles("push", saveSnapshot);
+
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const target = sentinel.current;
@@ -642,12 +643,18 @@ export default function LibraryPage() {
               extraFilterCount={filters.toolbar.extraFilterCount}
               onFilterOpen={filters.toolbar.onFilterOpen}
               suggestions={filters.toolbar.suggestions}
-              {...imageSearchToolbar(imageSearch, owner)}
+              fileSearch={
+                owner
+                  ? {
+                      onPick: () => imageSearch.setDialogOpen(true),
+                      onFiles: imageSearch.onFiles,
+                    }
+                  : undefined
+              }
             />
           </TopBarPortal>
         }
-        selectionBar={withoutImageSearch(
-          imageSearch,
+        selectionBar={
           owner && (
             <SelectionBar
               count={selectedIds.size}
@@ -662,64 +669,62 @@ export default function LibraryPage() {
               onCollectionsDeleted={onCollectionsDeleted}
               onRetain={retainSelection}
             />
-          ),
-        )}
+          )
+        }
       >
-        <ImageSearchDialog search={imageSearch} />
-        <ImageSearchBody search={imageSearch} zoom={zoom} backTo={listUrl}>
-          <section
-            ref={results}
-            aria-label={conditioned ? t.library.resultsLabel : undefined}
-            className="flex min-w-0 flex-col gap-3"
-          >
-            {marqueeBox}
-            {/* One drag layer spans the band and the list, so a drag over a band card is refused. */}
-            {withDrag(
-              <>
-                <FavoriteFolderBand
-                  state={band.state}
-                  onRetry={band.retry}
-                  cardProps={(folder) => ({
-                    ...smartFolderProps(folder),
-                    tagsRow: undefined,
-                    refusesDrop: true,
-                  })}
+        {owner && <ImageSearchDialog giving={imageSearch} />}
+        <section
+          ref={results}
+          aria-label={conditioned ? t.library.resultsLabel : undefined}
+          className="flex min-w-0 flex-col gap-3"
+        >
+          {marqueeBox}
+          {/* One drag layer spans the band and the list, so a drag over a band card is refused. */}
+          {withDrag(
+            <>
+              <FavoriteFolderBand
+                state={band.state}
+                onRetry={band.retry}
+                cardProps={(folder) => ({
+                  ...smartFolderProps(folder),
+                  tagsRow: undefined,
+                  refusesDrop: true,
+                })}
+              />
+              {/* Home itself needs no heading or count; only filtered results get them. */}
+              {conditioned && (
+                <PageHeader
+                  title={t.library.resultsLabel}
+                  headingLevel={2}
+                  actions={saveSmartFolderAction(
+                    owner,
+                    conditioned,
+                    smartFolderFilter,
+                    sort,
+                  )}
+                  count={
+                    initialLoadFailed ? undefined : (
+                      <span
+                        role="status"
+                        aria-label={t.library.resultsLabel}
+                        aria-live="polite"
+                      >
+                        {resultStatus}
+                      </span>
+                    )
+                  }
                 />
-                {/* Home itself needs no heading or count; only filtered results get them. */}
-                {conditioned && (
-                  <PageHeader
-                    title={t.library.resultsLabel}
-                    headingLevel={2}
-                    actions={saveSmartFolderAction(
-                      owner,
-                      conditioned,
-                      smartFolderFilter,
-                      sort,
-                    )}
-                    count={
-                      initialLoadFailed ? undefined : (
-                        <span
-                          role="status"
-                          aria-label={t.library.resultsLabel}
-                          aria-live="polite"
-                        >
-                          {resultStatus}
-                        </span>
-                      )
-                    }
-                  />
-                )}
-                {filters.activeFilters}
-                {body}
-              </>,
-            )}
-            {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
-            {error !== null && items.length > 0 && (
-              <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
-            )}
-            <div ref={sentinel} aria-hidden="true" className="h-px" />
-          </section>
-        </ImageSearchBody>
+              )}
+              {filters.activeFilters}
+              {body}
+            </>,
+          )}
+          {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
+          {error !== null && items.length > 0 && (
+            <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
+          )}
+          <div ref={sentinel} aria-hidden="true" className="h-px" />
+        </section>
       </ListPage>
     </GroupChangedContext>
   );
