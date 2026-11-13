@@ -3,15 +3,20 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/ui/shadcn/tooltip";
 
-import { ResultRow } from "./result-row";
+import { ResultRow, type ResultRowProps } from "./result-row";
 
-function row(expanded: boolean, onExpandedChange: (expanded: boolean) => void) {
+function row(
+  expanded: boolean,
+  onExpandedChange: (expanded: boolean) => void,
+  slots: Pick<ResultRowProps, "badge" | "meta" | "actions"> = {},
+) {
   return (
     <TooltipProvider>
       <ul>
         <ResultRow
           mark={<span>96%</span>}
           title="Harbour"
+          {...slots}
           expanded={expanded}
           onExpandedChange={onExpandedChange}
           toggleLabel={
@@ -42,5 +47,26 @@ describe("ResultRow", () => {
 
     expect(screen.getByText("frames")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide frames of Harbour" })).toBeTruthy();
+  });
+
+  it("puts the badge and meta with the title and the actions before the expand button", () => {
+    render(
+      row(false, vi.fn(), {
+        badge: <span>Best candidate</span>,
+        meta: <span>3 matching frames</span>,
+        actions: <button type="button">Play</button>,
+      }),
+    );
+
+    const title = screen.getByText("Harbour");
+    expect(title.parentElement?.textContent).toBe("HarbourBest candidate");
+    expect(screen.getByText("3 matching frames").parentElement?.dataset.slot).toBe(
+      "result-row-meta",
+    );
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
+      "Play",
+      "Show frames of Harbour",
+    ]);
   });
 });
