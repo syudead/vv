@@ -1125,12 +1125,20 @@ export const en = {
       kinds: { image: "Image", video: "Video", file: "File" },
       showFile: "Show your file",
       hideFile: "Hide your file",
+      uploading: (percent: number) => `Uploading… ${formatNumber(percent)}%`,
       searching: "Searching…",
       found: (count: number) => `Found ${counted(count, "video", "videos")}`,
       noMatchStatus: "No match",
       notSearched: "Not searched",
       searchFailed: "Search failed",
+      stopped: "Stopped",
+      took: (time: string) => `Took ${time}`,
+      /** Elapsed time under a minute; a tenth is shown under 10 s. */
+      seconds: (seconds: number, digits: number) =>
+        `${formatDecimal(seconds, digits, digits)} s`,
       cancel: "Cancel",
+      searchAgain: "Search again",
+      searchStopped: "Search stopped",
       idle: {
         title: "Search by an image or a video",
         description: "Find the videos that contain the same footage, and where.",

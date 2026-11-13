@@ -247,17 +247,24 @@ function viewerChanged(response: Response): boolean {
 
 /** On owner-to-guest responses, reload once and never resolve, preventing guest data from reaching an owner view. Auth routes bypass this wrapper. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const response = await sendRequest(path, init);
+  return guardAudience(await sendRequest(path, init));
+}
+
+/** The response, unless it shows the owner became a guest: then reload once and never settle. */
+export function guardAudience(response: Response): Promise<Response> {
   if (viewerChanged(response)) {
     reloadForViewerChange();
     return new Promise<Response>(() => undefined);
   }
-  return response;
+  return Promise.resolve(response);
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await apiFetch(path, init);
+  return readJson<T>(await apiFetch(path, init));
+}
 
+/** The JSON body of a successful response; any other status throws its RequestFailed. */
+export async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw await toRequestFailed(response);
   }

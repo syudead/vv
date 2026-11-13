@@ -555,7 +555,7 @@ const heldStill = (still, seconds) => [
  * The image search media: the pan of cmd/mdm/image_search_test.go (a keyframe every 5 s), a video where a held
  * shot A returns nine times between moving gradients and a held shot B appears once (a keyframe every second),
  * and a second video that holds shot B. queryDir, outside the scanned folder, gets the video queries: the pan
- * re-encoded 160 px wide, and the pan from 5 s to 25 s.
+ * re-encoded 160 px wide, the pan from 5 s to 25 s, and the pan re-encoded at a high bitrate for a slow upload.
  */
 export function generateImageSearchFixtures(root, queryDir) {
   mkdirSync(root, { recursive: true });
@@ -670,6 +670,27 @@ export function generateImageSearchFixtures(root, queryDir) {
     pan,
     ...imageSearchEncode(125),
     path.join(queryDir, "pan-5-25.mp4"),
+  ]);
+  // About 3.7 MB at a constant 1 Mbit/s, so a throttled upload reports its progress for seconds.
+  ffmpeg([
+    "-i",
+    pan,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-b:v",
+    "1M",
+    "-minrate",
+    "1M",
+    "-maxrate",
+    "1M",
+    "-bufsize",
+    "1M",
+    "-x264-params",
+    "nal-hrd=cbr",
+    "-an",
+    path.join(queryDir, "pan-upload.mp4"),
   ]);
   rmSync(work, { recursive: true, force: true });
 

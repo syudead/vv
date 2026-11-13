@@ -63,7 +63,7 @@ const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 let folder: MediaFolder | undefined;
 const videos = new Map<string, Video>();
 const queries: Record<
-  "pan" | "shotA" | "shotB" | "pan160" | "panPart",
+  "pan" | "shotA" | "shotB" | "pan160" | "panPart" | "panUpload",
   Query | undefined
 > = {
   pan: undefined,
@@ -71,6 +71,7 @@ const queries: Record<
   shotB: undefined,
   pan160: undefined,
   panPart: undefined,
+  panUpload: undefined,
 };
 
 function query(key: keyof typeof queries): Query {
@@ -230,6 +231,57 @@ async function shoot(page: Page, testInfo: TestInfo, name: string) {
   await testInfo.attach(name, { path: file, contentType: "image/png" });
 }
 
+/** Bytes per second the throttled connection uploads: the 3.7 MB pan takes about ten seconds. */
+const SLOW_UPLOAD = 384 * 1024;
+
+/** Throttles the page's uploads through the browser's network emulation, or lifts it with -1. */
+async function throttleUpload(page: Page, bytesPerSecond: number) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: bytesPerSecond,
+  });
+}
+
+function queryPanel(page: Page): Locator {
+  return page.locator("[data-slot=query-panel]");
+}
+
+function panelStatus(page: Page): Locator {
+  return page.locator("[data-slot=query-status]");
+}
+
+/** Records every text the panel's status shows from now on, so a short step between two is not missed. */
+async function recordStatuses(page: Page) {
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { statuses: string[] }).statuses = seen;
+    new MutationObserver(() => {
+      const shown = document.querySelector("[data-slot=query-status]")?.textContent;
+      if (shown !== undefined && shown !== null && seen.at(-1) !== shown)
+        seen.push(shown);
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+}
+
+async function recordedStatuses(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { statuses: string[] }).statuses);
+}
+
+/** Shoots the state at every width while `still` holds, which the caller keeps true while it shoots. */
+async function shootWidths(page: Page, testInfo: TestInfo, name: string, still: Locator) {
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(still).toBeVisible();
+    expect(await pageScrollsSideways(page)).toBe(false);
+    await shoot(page, testInfo, `${name}-${String(width)}`);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
 function title(row: Locator): Locator {
   return row.locator("[data-slot=result-row-title]");
 }
@@ -289,6 +341,7 @@ test.describe("画像検索", () => {
     });
     queries.pan160 = mp4("pan-160.mp4");
     queries.panPart = mp4("pan-5-25.mp4");
+    queries.panUpload = mp4("pan-upload.mp4");
 
     // The index is built by a job after probing; each video's entries must be in place before the drops.
     const pan = query("pan");
@@ -717,6 +770,123 @@ test.describe("画像検索", () => {
     await page.getByRole("button", { name: "Library" }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByLabel("Search videos", { exact: true })).toBeVisible();
+  });
+
+  test("帯域を絞った接続の動画は Uploading… とパーセント、Searching…、Found 1 video と Took を順に出し、バーを残さない", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await recordStatuses(page);
+    await throttleUpload(page, SLOW_UPLOAD);
+    await dropOnField(page, query("panUpload"));
+    await expect(page).toHaveURL(/\/image-search$/);
+
+    const uploading = panelStatus(page).filter({ hasText: /^Uploading… \d+%$/ });
+    await expect(uploading).toBeVisible();
+    const elapsed = queryPanel(page).locator("[data-slot=query-elapsed]");
+    const first = await elapsed.innerText();
+    // The time counts up while the upload runs.
+    await expect.poll(() => elapsed.innerText()).not.toBe(first);
+    await expect(queryPanel(page).getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      /^\d+$/,
+    );
+    await expect(page.locator("[data-slot=loading-state]")).toBeVisible();
+    await shootWidths(page, testInfo, "uploading", uploading);
+
+    await expect(panelStatus(page)).toHaveText("Found 1 video", { timeout: 120_000 });
+    await expect(
+      title(resultsColumn(page).locator("[data-slot=result-row]").first()),
+    ).toHaveText(PAN);
+    await expect(elapsed).toHaveText(/^Took (\d\.\d s|\d+ s|\d+:\d\d)$/);
+    await expect(queryPanel(page).getByRole("progressbar")).toHaveCount(0);
+    const statuses = await recordedStatuses(page);
+    testInfo.annotations.push({ type: "statuses", description: statuses.join(" → ") });
+    const uploadAt = statuses.findIndex((status) =>
+      /^Uploading… ([1-9]\d?)%$/.test(status),
+    );
+    const searchingAt = statuses.indexOf("Searching…");
+    const foundAt = statuses.indexOf("Found 1 video");
+    expect(uploadAt).toBeGreaterThanOrEqual(0);
+    expect(searchingAt).toBeGreaterThan(uploadAt);
+    expect(foundAt).toBeGreaterThan(searchingAt);
+  });
+
+  test("アップロード中の Cancel は Search stopped を出し、Search again で同じ動画を見つける", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await throttleUpload(page, SLOW_UPLOAD);
+    await dropOnField(page, query("panUpload"));
+    await expect(panelStatus(page)).toHaveText(/^Uploading… \d+%$/);
+
+    await queryPanel(page).getByRole("button", { name: "Cancel" }).click();
+    const stopped = resultsColumn(page).getByRole("heading", { name: "Search stopped" });
+    await expect(stopped).toBeVisible();
+    await expect(panelStatus(page)).toHaveText("Stopped");
+    await expect(page).toHaveURL(/\/image-search$/);
+    await shootWidths(page, testInfo, "stopped", stopped);
+
+    await throttleUpload(page, -1);
+    await queryPanel(page).getByRole("button", { name: "Search again" }).click();
+    await expect(panelStatus(page)).toHaveText("Found 1 video", { timeout: 120_000 });
+    await expect(
+      title(resultsColumn(page).locator("[data-slot=result-row]").first()),
+    ).toHaveText(PAN);
+  });
+
+  test("Searching… の間はパネルにファイル、動くバー、数える時間を、結果の列に行の骨組みを出す", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The answer of an image comes in a blink, so the request is held while the state is shot.
+    await page.route("**/api/image-search", async (route) => {
+      await held;
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await dropOnSearchField(page, query("pan"));
+    const searching = panelStatus(page).filter({ hasText: "Searching…" });
+    await expect(searching).toBeVisible();
+    await expect(queryPanel(page).getByRole("progressbar")).toHaveAttribute(
+      "data-state",
+      "indeterminate",
+    );
+    await expect(queryPanel(page).getByText(/^Uploading/)).toHaveCount(0);
+    await expect(page.locator("[data-slot=loading-state]")).toBeVisible();
+    await shootWidths(page, testInfo, "searching", searching);
+
+    release();
+    await expect(panelStatus(page)).toHaveText("Found 1 video", { timeout: 60_000 });
+  });
+
+  test("ブラウザで切ったリクエストは Search failed と Retry を出し、Retry で同じファイルを見つける", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    await page.route("**/api/image-search", (route) => route.abort("failed"));
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await dropOnSearchField(page, query("pan"));
+    const alert = resultsColumn(page).getByRole("alert");
+    await expect(alert).toContainText("The search failed");
+    await expect(panelStatus(page)).toHaveText("Search failed");
+    await expect(alert.getByRole("button", { name: "Retry" })).toBeVisible();
+    await shootWidths(page, testInfo, "failed", alert);
+
+    await page.unroute("**/api/image-search");
+    await queryPanel(page).getByRole("button", { name: "Retry" }).click();
+    await expect(panelStatus(page)).toHaveText("Found 1 video", { timeout: 60_000 });
+    await expect(
+      title(resultsColumn(page).locator("[data-slot=result-row]").first()),
+    ).toHaveText(PAN);
   });
 
   test("縦長の画像は一致なしをプレビューごと出し、無地の画像は理由を結果の列に出す", async ({

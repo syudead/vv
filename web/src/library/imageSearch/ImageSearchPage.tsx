@@ -1,4 +1,11 @@
-import { ArrowLeft, CircleAlert, RotateCw, ScanSearch, SearchX } from "lucide-react";
+import {
+  ArrowLeft,
+  CircleAlert,
+  CircleSlash,
+  RotateCw,
+  ScanSearch,
+  SearchX,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 
@@ -24,6 +31,7 @@ import { ImageSearchDialog } from "./ImageSearchDialog";
 import { ImageSearchResults } from "./ImageSearchResults";
 import {
   type ImageSearchPhase,
+  isRunning,
   recall,
   type Refusal,
   rememberStrip,
@@ -42,18 +50,20 @@ export default function ImageSearchPage() {
 
 /**
  * Below lg the panel is open until an answer arrives, then collapses so the first rows are on screen;
- * the owner's own toggle holds for that answer.
+ * the owner's own toggle holds for that answer, or for the whole run of a search.
  */
 function usePanelOpen(search: ImageSearch): [boolean, (open: boolean) => void] {
   const { phase, restored, token } = search;
-  const [toggle, setToggle] = useState(() => ({ phase, open: restored?.panelOpen }));
+  // The upload's progress and the step to searching are one run, so they keep the owner's toggle.
+  const shown = phase !== null && isRunning(phase) ? "running" : phase;
+  const [toggle, setToggle] = useState(() => ({ shown, open: restored?.panelOpen }));
   let current = toggle;
-  if (toggle.phase !== phase) {
-    current = { phase, open: restored?.panelOpen };
+  if (toggle.shown !== shown) {
+    current = { shown, open: restored?.panelOpen };
     setToggle(current);
   }
   const change = (open: boolean) => {
-    setToggle({ phase, open });
+    setToggle({ shown, open });
     if (token !== undefined) rememberView(token, { panelOpen: open });
   };
   return [current.open ?? phase?.kind !== "results", change];
@@ -130,7 +140,8 @@ function ImageSearchScreen() {
               open={panelOpen}
               onOpenChange={setPanelOpen}
               onChoose={choose}
-              onCancel={backToLibrary}
+              onCancel={search.cancel}
+              onRetry={search.retry}
             />
           )
         }
@@ -156,9 +167,12 @@ function ResultsColumn({
   const { phase, token, restored } = search;
   if (phase === null || token === undefined) return <Idle onChoose={onChoose} />;
   switch (phase.kind) {
+    case "uploading":
     case "searching":
       return <LoadingState label={text.searching} layout="rows" />;
     case "refused":
+      return <RefusedAlert refusal={phase.refusal} onChoose={onChoose} />;
+    case "failed":
       return (
         <RefusedAlert
           refusal={phase.refusal}
@@ -166,6 +180,8 @@ function ResultsColumn({
           onRetry={search.retry}
         />
       );
+    case "stopped":
+      return <Stopped onSearchAgain={search.retry} />;
     case "results":
       if (phase.result.items.length === 0) {
         return <NoMatch phase={phase} onChoose={onChoose} onBack={onBack} />;
@@ -196,6 +212,21 @@ function Idle({ onChoose }: { onChoose: () => void }) {
       action={
         <Button size="sm" onClick={onChoose}>
           {text.choose}
+        </Button>
+      }
+    />
+  );
+}
+
+function Stopped({ onSearchAgain }: { onSearchAgain: () => void }) {
+  const text = t.library.imageSearch;
+  return (
+    <EmptyState
+      icon={CircleSlash}
+      title={text.searchStopped}
+      action={
+        <Button variant="outline" size="sm" onClick={onSearchAgain}>
+          {text.searchAgain}
         </Button>
       }
     />
@@ -239,7 +270,8 @@ function RefusedAlert({
 }: {
   refusal: Refusal;
   onChoose: () => void;
-  onRetry: () => void;
+  /** Shown as Retry for a failure that sending again can mend. */
+  onRetry?: () => void;
 }) {
   const text = t.library.imageSearch;
   return (
@@ -251,7 +283,7 @@ function RefusedAlert({
       )}
       {/* Two actions do not fit the corner, so they follow the text. */}
       <AlertAction className="static col-start-2 mt-1.5 flex flex-wrap gap-2">
-        {refusal.retry && (
+        {onRetry !== undefined && (
           <Button variant="outline" size="sm" onClick={onRetry}>
             <RotateCw aria-hidden="true" />
             {text.retry}
