@@ -90,6 +90,7 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { Toaster } from "../ui/shadcn/sonner";
 import { Spinner } from "../ui/shadcn/spinner";
 import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
+import { RateRing } from "../ui/RateRing";
 import RemoteMark from "../ui/RemoteMark";
 import TentativeMark from "../ui/TentativeMark";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
@@ -618,6 +619,20 @@ function VvComponents() {
               onToggle={noop}
               variant="page"
             />
+          </State>
+        </div>
+      </Item>
+
+      <Item name="RateRing">
+        <div className="flex flex-wrap items-end gap-4">
+          <State label={o.rateRing.primary}>
+            <RateRing value={96} tone="primary" />
+          </State>
+          <State label={o.rateRing.muted}>
+            <RateRing value={74} tone="muted" />
+          </State>
+          <State label={o.rateRing.full}>
+            <RateRing value={100} />
           </State>
         </div>
       </Item>

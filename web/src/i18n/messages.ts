@@ -19,7 +19,8 @@ function isNode(value: unknown): value is Node {
 }
 
 function cloneTree(source: Node): Node {
-  const copy: Node = {};
+  // Arrays stay arrays, so catalog lists such as the showcase's sample rows keep map().
+  const copy: Node = Array.isArray(source) ? ([] as unknown as Node) : {};
   for (const [key, value] of Object.entries(source)) {
     copy[key] = isNode(value) ? cloneTree(value) : value;
   }
