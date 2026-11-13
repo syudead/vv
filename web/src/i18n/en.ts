@@ -1123,15 +1123,30 @@ export const en = {
       searching: "Searching…",
       readingVideo: (file: string) => `Reading ${file}. A long video takes a while.`,
       cancel: "Cancel",
-      matches: (count: number) => counted(count, "match", "matches"),
       unindexed: (count: number) =>
         selectPlural(count, {
           one: `${formatNumber(count)} video isn't indexed yet and wasn't searched.`,
           other: `${formatNumber(count)} videos aren't indexed yet and weren't searched.`,
         }),
-      rate: (percent: number) => `${formatNumber(percent)}% match`,
-      at: (time: string) => `at ${time}`,
       range: (start: string, end: string) => `${start}–${end}`,
+      videos: (count: number) => counted(count, "video", "videos"),
+      collapseAll: "Collapse all",
+      expandAll: "Expand all",
+      bands: { strong: "Strong match", similar: "Similar" },
+      bandRange: (min: number, max: number) =>
+        `${formatNumber(min)}–${formatNumber(max)}%`,
+      best: "Best candidate",
+      frameMeta: (count: number, time: string) =>
+        `${counted(count, "matching frame", "matching frames")} · best at ${time}`,
+      sectionFrames: (count: number) =>
+        counted(count, "matching frame", "matching frames"),
+      play: "Play",
+      showFrames: "Show frames",
+      hideFrames: "Hide frames",
+      showFramesFor: (title: string) => `Show frames of ${title}`,
+      hideFramesFor: (title: string) => `Hide frames of ${title}`,
+      percent: (percent: number) => `${formatNumber(percent)}%`,
+      framesLabel: "Matching frames",
       whole: "Whole video",
       part: "Part of video",
       spanLane: "Matched section",

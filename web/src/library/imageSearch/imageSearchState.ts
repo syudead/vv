@@ -1,5 +1,10 @@
 import { RequestFailed } from "../../api/client";
-import type { ImageSearchMatch, ImageSearchResult } from "../../api/imageSearch";
+import type {
+  ImageSearchBand,
+  ImageSearchItem,
+  ImageSearchMatch,
+  ImageSearchResult,
+} from "../../api/imageSearch";
 import { t, type UiText } from "../../i18n";
 import { errorText } from "../../i18n/errors";
 import { formatBytes, formatDuration } from "../../lib/format";
@@ -92,9 +97,32 @@ export function playPath(videoId: number, positionMs: number): string {
   return `/videos/${String(videoId)}?t=${String(positionMs / 1000)}`;
 }
 
-/** Where a match plays from when its card is opened. */
+/** Where a match plays from when its row is opened: a video query's section start, else the best frame. */
 export function matchPath(match: ImageSearchMatch): string {
-  return playPath(match.videoId, match.positionMs);
+  return playPath(match.videoId, match.startMs ?? match.positionMs);
+}
+
+/** The bands that have rows, in the server's order, each with its items in the server's order. */
+export function bandsWithItems(
+  result: ImageSearchResult,
+): { band: ImageSearchBand; items: ImageSearchItem[] }[] {
+  return result.bands
+    .map((band) => ({
+      band,
+      items: result.items.filter((item) => item.match.band === band.id),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+/**
+ * Whether the first row is named the best candidate: its shown rate is above the second row's, or it is
+ * the only row, so the screen never names one of two equal rows the answer.
+ */
+export function hasBestCandidate(items: readonly ImageSearchItem[]): boolean {
+  const [first, second] = items;
+  if (first === undefined) return false;
+  if (second === undefined) return true;
+  return ratePercent(first.match.rate) > ratePercent(second.match.rate);
 }
 
 /** A video match's section on a lane, in seconds. */
@@ -127,6 +155,8 @@ export function matchedSection(
 interface Entry {
   phase: ImageSearchPhase;
   scrollY?: number;
+  /** The keys of the result rows the owner collapsed. */
+  collapsed?: ReadonlySet<string>;
 }
 
 // Searches by history entry, so going back from the player shows the same results; the file never
@@ -147,6 +177,11 @@ export function rememberPhase(key: string, phase: ImageSearchPhase): void {
 export function rememberScroll(key: string, scrollY: number): void {
   const entry = entries.get(key);
   if (entry !== undefined) entry.scrollY = scrollY;
+}
+
+export function rememberCollapsed(key: string, collapsed: ReadonlySet<string>): void {
+  const entry = entries.get(key);
+  if (entry !== undefined) entry.collapsed = collapsed;
 }
 
 export function recall(key: string): Entry | undefined {

@@ -6,14 +6,14 @@ import { RateRing } from "./RateRing";
 
 describe("RateRing", () => {
   it("shows the rate as the nearest whole percent and takes no focus", async () => {
-    render(
+    const { container } = render(
       <>
         <RateRing value={92.6} tone="muted" />
         <a href="#next">next</a>
       </>,
     );
 
-    expect(screen.getByText("93%")).toBeTruthy();
+    expect(container.querySelector("[data-slot=rate-ring]")?.textContent).toBe("93%");
     await userEvent.tab();
     expect(document.activeElement).toBe(screen.getByRole("link", { name: "next" }));
   });

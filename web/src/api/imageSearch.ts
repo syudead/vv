@@ -26,7 +26,13 @@ export function searchByImage(
   });
 }
 
-/** The matched frame, cut from the video the match was found in. */
-export function matchFramePath(match: ImageSearchMatch): string {
-  return videoFramePath(match.videoId, match.positionMs);
+// A strip slot is related-thumb (160 px) wide; twice that keeps the frame sharp on a 2x screen.
+const stripFrameEdge = 320;
+
+/** The picture of one matched frame, cut from the video the match was found in at the strip's size. */
+export function matchFramePath(
+  match: ImageSearchMatch,
+  frame: ImageSearchMatchFrame,
+): string {
+  return videoFramePath(match.videoId, frame.positionMs, stripFrameEdge);
 }

@@ -53,7 +53,9 @@ export function RateRing({ value, tone = "primary" }: RateRingProps) {
         )}
       </svg>
       <span className="relative text-sm font-semibold text-foreground tabular-nums">
-        {percent}%
+        {percent}
+        {/* A smaller sign keeps "100%" inside the ring's 40 px opening. */}
+        <span className="text-2xs">%</span>
       </span>
     </span>
   );

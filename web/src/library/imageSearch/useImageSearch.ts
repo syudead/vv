@@ -11,6 +11,7 @@ import {
   recall,
   refuseError,
   refuseFiles,
+  rememberCollapsed,
   rememberPhase,
   rememberScroll,
 } from "./imageSearchState";
@@ -22,6 +23,8 @@ export interface ImageSearch {
   phase: ImageSearchPhase | null;
   /** The scroll position to restore when the search came back from history. */
   restoredScrollY: number | undefined;
+  /** The result rows collapsed when the search came back from history, by row key. */
+  restoredCollapsed: ReadonlySet<string> | undefined;
   /** Searches with the first file, or refuses the files without a request. */
   search: (files: readonly File[]) => void;
   /** The dialog's `onFile`: a file refused in the browser keeps the dialog open with the reason. */
@@ -31,8 +34,27 @@ export interface ImageSearch {
   retry: () => void;
   /** Records the scroll position before a result opens the player. */
   keepScroll: () => void;
+  /** Records which result rows are collapsed, so coming back from the player shows them the same. */
+  keepCollapsed: (collapsed: ReadonlySet<string>) => void;
   dialogOpen: boolean;
   setDialogOpen: (open: boolean) => void;
+}
+
+interface Shown {
+  key: string;
+  phase: ImageSearchPhase | null;
+  scrollY: number | undefined;
+  collapsed: ReadonlySet<string> | undefined;
+}
+
+function recalled(key: string, enabled: boolean): Shown {
+  const entry = enabled ? recall(key) : undefined;
+  return {
+    key,
+    phase: entry?.phase ?? null,
+    scrollY: entry?.scrollY,
+    collapsed: entry?.collapsed,
+  };
 }
 
 /**
@@ -43,15 +65,8 @@ export interface ImageSearch {
 export function useImageSearch(enabled: boolean): ImageSearch {
   const location = useLocation();
   const key = returnEntry(location.state) ?? location.key;
-  const [shown, setShown] = useState(() => ({
-    key,
-    phase: enabled ? (recall(key)?.phase ?? null) : null,
-    scrollY: enabled ? recall(key)?.scrollY : undefined,
-  }));
-  if (shown.key !== key) {
-    const entry = enabled ? recall(key) : undefined;
-    setShown({ key, phase: entry?.phase ?? null, scrollY: entry?.scrollY });
-  }
+  const [shown, setShown] = useState(() => recalled(key, enabled));
+  if (shown.key !== key) setShown(recalled(key, enabled));
   const [dialogOpen, setDialogOpen] = useState(false);
   const running = useRef<AbortController | null>(null);
 
@@ -65,7 +80,7 @@ export function useImageSearch(enabled: boolean): ImageSearch {
     (phase: ImageSearchPhase | null) => {
       if (phase === null || phase.kind === "searching") forget(key);
       else rememberPhase(key, phase);
-      setShown({ key, phase, scrollY: undefined });
+      setShown({ key, phase, scrollY: undefined, collapsed: undefined });
     },
     [key],
   );
@@ -128,16 +143,22 @@ export function useImageSearch(enabled: boolean): ImageSearch {
     if (phase !== null) send(phase.file);
   }, [phase, send]);
   const keepScroll = useCallback(() => rememberScroll(key, window.scrollY), [key]);
+  const keepCollapsed = useCallback(
+    (collapsed: ReadonlySet<string>) => rememberCollapsed(key, collapsed),
+    [key],
+  );
 
   return {
     entry: key,
     phase,
     restoredScrollY: shown.scrollY,
+    restoredCollapsed: shown.collapsed,
     search,
     takeDialogFile,
     clear,
     retry,
     keepScroll,
+    keepCollapsed,
     dialogOpen,
     setDialogOpen,
   };

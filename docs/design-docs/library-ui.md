@@ -370,26 +370,46 @@ search results do, so the header and the toolbar stay where they are and
 clearing the chip brings the library back as it was. The favorite smart
 folder band, the filter chips and the selection bar are not drawn. Filter,
 sort and view are disabled with the tooltip `Not used by image search`; zoom
-stays active, and stays shown in list view, because results are always cards.
+stays active but does not change the rows.
 
 | State | Body under the level-2 `Image search` header |
 | --- | --- |
 | Searching | `Searching…` with a spinner, the file named for a video, `Cancel`; grid skeletons |
-| Results | `{n} matches` and the unindexed count; one card per item in the server's order |
+| Results | The unindexed count under the header; a `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands |
 | No match | `Empty` with the unindexed count, or `Every video in your library was searched.`, and `Clear image search` |
 | Refused | A destructive `Alert` with the reason, `Choose another file…`, and `Retry` for a network or server failure |
 
-A result card is one link to `/videos/{match.videoId}?t=` at the match
-position, so a version bundle plays the member that matched. It shows the
-matched frame, the title, the rate as a whole percent and the frame time or
-the matched section, and for a video query `Whole video` or `Part of video`
-and a `SpanBar` of the section on the listed video's length. It has no
-selection, favorite, tags, preview or drag, because the video's own actions are
-on its page.
+The rows sit in `ResultBand`s, one per band of the answer in the server's
+order (`Strong match`, `Similar`), each headed by its name, its range as
+`{min}–{max}%` and its count; a band without rows is not drawn, and rows keep
+the server's order. Each video is one `ResultRow`: a `RateRing` with the
+row's rate as a whole percent (`primary` in the answer's first band, `muted`
+below), the title as a link, the meta line and `Play`, and the matched frames
+as its body, expanded when the answer arrives. The first row carries a `soft`
+`Best candidate` badge and a `default` `Play` only when its shown rate is
+above the second row's, so a tie names no row the answer; every other `Play`
+is `secondary`. Title and `Play` open `/videos/{match.videoId}?t=` at the best
+frame, or at a video query's section start, so a version bundle plays the
+member that matched.
+
+An image query's meta reads `{k} matching frames · best at {time}`, where `k`
+is the server's `frameCount`, so a row cut at the limit of 12 frames still
+counts every frame found. Its body is a frame strip: the frames in the
+server's order, each `related-thumb` wide, as one link (`Play from {time}`)
+holding the frame at `maxEdge=320` in `VideoThumbnail` and a caption with the
+frame's rate and time. The strip scrolls sideways inside the row, which cuts
+the frame that does not fit, and is one tab stop on the frame last focused
+there; `ArrowLeft`, `ArrowRight`, `Home` and `End` move along it and scroll
+the frame into view. A video query's meta is `Whole video` or `Part of
+video` with the section's times; its body is a `SpanBar` of the section on
+the listed video's length, from `0:00` to that length, whose block plays from
+the section's start, followed by a frame strip only when the server sends
+frames. The rows have no selection, favorite, tags, preview or drag, because
+the video's own actions are on its page.
 
 The search lives in memory under the history entry, never in the URL: the
 file cannot be put in a URL and must not be kept on the server. Returning from
-the player shows the same chip, cards and scroll position without a request,
+the player shows the same chip, rows and scroll position without a request,
 whether the viewer goes back or closes the player: a result passes the entry's
 key to the player, and closing carries it to the new library entry. A new
 file, `Cancel`, the chip's `×`, a text search (`Enter` with text while the

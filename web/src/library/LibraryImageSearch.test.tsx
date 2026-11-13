@@ -225,10 +225,12 @@ describe("ライブラリの画像検索", () => {
 
     sent[0]?.answer(result([item(5, 7, 12_500)]));
 
-    const card = await screen.findByRole("link", { name: /動画 5/ });
-    expect(card.getAttribute("href")).toBe("/videos/7?t=12.5");
-    expect(card.textContent).toContain("91% match");
-    expect(screen.getByRole("status").textContent).toBe("1 match");
+    const title = await screen.findByRole("link", { name: /動画 5/ });
+    expect(title.getAttribute("href")).toBe("/videos/7?t=12.5");
+    expect(
+      screen.getByRole("link", { name: "Play from 0:12" }).getAttribute("href"),
+    ).toBe("/videos/7?t=12.5");
+    expect(screen.getByRole("status").textContent).toBe("1 video");
     expect(imageSearchCount()).toBe(1);
   });
 
@@ -272,6 +274,37 @@ describe("ライブラリの画像検索", () => {
       expect(imageSearchCount()).toBe(1);
     },
   );
+
+  it("再生画面から戻ると、畳んだ行を畳んだままにしてからスクロール位置を戻す", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: /ライブラリの動画/ });
+    await pick(user, png());
+    await waitFor(() => expect(sent).toHaveLength(1));
+    sent[0]?.answer(result([item(5, 7, 12_500), item(6, 6, 3_000)]));
+    const collapsed = (title: string) =>
+      screen.queryByRole("button", { name: `Show frames of ${title}` }) !== null;
+    await user.click(
+      await screen.findByRole("button", { name: "Hide frames of 動画 5" }),
+    );
+
+    vi.stubGlobal("scrollY", 640);
+    await user.click(screen.getByRole("link", { name: /動画 6/ }));
+    expect(await screen.findByText("再生画面")).toBeDefined();
+    // The rows' heights decide where the position lands, so the collapse is drawn when it applies.
+    const collapsedAtScroll: boolean[] = [];
+    vi.mocked(window.scrollTo).mockImplementation(() => {
+      collapsedAtScroll.push(collapsed("動画 5"));
+    });
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+
+    await screen.findByRole("link", { name: /動画 5/ });
+    expect(collapsed("動画 5")).toBe(true);
+    expect(collapsed("動画 6")).toBe(false);
+    expect(collapsedAtScroll).toEqual([true]);
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 640, behavior: "auto" });
+    expect(imageSearchCount()).toBe(1);
+  });
 
   it("一致なしは調べていない動画の数を出し、消すとライブラリに戻る", async () => {
     const user = userEvent.setup();
