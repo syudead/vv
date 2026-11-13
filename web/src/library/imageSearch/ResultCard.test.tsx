@@ -35,6 +35,9 @@ describe("ResultCard", () => {
                       positionMs: 70_000,
                       startMs: 70_000,
                       endMs: 80_000,
+                      band: "strong",
+                      frames: [],
+                      frameCount: 0,
                     },
                   }}
                   backTo="/"

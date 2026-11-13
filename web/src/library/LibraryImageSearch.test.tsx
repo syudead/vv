@@ -147,13 +147,25 @@ function searchField(): HTMLElement {
 function item(id: number, memberId: number, positionMs: number): ImageSearchItem {
   return {
     video: video(id, { title: `動画 ${String(id)}` }),
-    match: { videoId: memberId, rate: 0.905, kind: "frame", positionMs },
+    match: {
+      videoId: memberId,
+      rate: 0.905,
+      kind: "frame",
+      positionMs,
+      band: "strong",
+      frames: [{ positionMs, rate: 0.905 }],
+      frameCount: 1,
+    },
   };
 }
 
 function result(items: ImageSearchItem[], unindexedCount = 0): Response {
   return json({
     query: { kind: "image" },
+    bands: [
+      { id: "strong", minPercent: 90, maxPercent: 100 },
+      { id: "similar", minPercent: 81, maxPercent: 89 },
+    ],
     items,
     unindexedCount,
   } satisfies ImageSearchResult);

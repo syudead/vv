@@ -5,6 +5,9 @@ import { videoFramePath } from "./personFaces";
 export type ImageSearchResult = components["schemas"]["ImageSearchResult"];
 export type ImageSearchItem = components["schemas"]["ImageSearchItem"];
 export type ImageSearchMatch = components["schemas"]["ImageSearchMatch"];
+export type ImageSearchBand = components["schemas"]["ImageSearchBand"];
+export type ImageSearchBandId = components["schemas"]["ImageSearchBandId"];
+export type ImageSearchMatchFrame = components["schemas"]["ImageSearchMatchFrame"];
 
 /**
  * Searches the library by one image or video. The server keeps nothing it was given; aborting the signal ends the

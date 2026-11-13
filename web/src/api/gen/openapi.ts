@@ -5038,7 +5038,9 @@ export interface components {
         };
         ImageSearchResult: {
             query: components["schemas"]["ImageSearchQuery"];
-            /** @description Matching listed videos, best first; empty when nothing matches. */
+            /** @description Every match-rate band of the query's kind, strongest first, whether or not a match is in it: strong 90 to 100 for both kinds, similar 81 to 89 for an image and 50 to 89 for a video. */
+            bands: components["schemas"]["ImageSearchBand"][];
+            /** @description Matching listed videos, best first; empty when nothing matches. The matches of one band are next to each other, and the bands appear in the order of bands. */
             items: components["schemas"]["ImageSearchItem"][];
             /** @description File videos visible to the owner, version bundle members included, that have no current search index and so were not searched. */
             unindexedCount: number;
@@ -5058,6 +5060,30 @@ export interface components {
         ImageSearchItem: {
             video: components["schemas"]["Video"];
             match: components["schemas"]["ImageSearchMatch"];
+        };
+        /**
+         * @description A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+         * @enum {string}
+         */
+        ImageSearchBandId: "strong" | "similar";
+        ImageSearchBand: {
+            id: components["schemas"]["ImageSearchBandId"];
+            /** @description The lowest whole-percent rate the band holds. */
+            minPercent: number;
+            /** @description The highest whole-percent rate the band holds. */
+            maxPercent: number;
+        };
+        ImageSearchMatchFrame: {
+            /**
+             * Format: int64
+             * @description The frame's time on videoId's timeline.
+             */
+            positionMs: number;
+            /**
+             * Format: double
+             * @description (63 - hash distance) / 63 of this frame.
+             */
+            rate: number;
         };
         ImageSearchMatch: {
             /**
@@ -5100,6 +5126,11 @@ export interface components {
              * @description End of the matched section on the query's timeline; video queries only.
              */
             queryEndMs?: number;
+            band: components["schemas"]["ImageSearchBandId"];
+            /** @description Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query (a refined match has its one refined frame), ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty. */
+            frames: components["schemas"]["ImageSearchMatchFrame"][];
+            /** @description The matched frames found before the limit of 12. */
+            frameCount: number;
         };
         UploadPersonImageRequest: {
             /**
