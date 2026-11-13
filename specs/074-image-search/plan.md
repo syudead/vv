@@ -20,7 +20,7 @@ frames of each video and the bands; the matching itself does not change.
 
 ```mermaid
 flowchart LR
-  field[Library search field or dialog] -->|file kept in memory, push| page[/image-search/]
+  field[Library search field or dialog] -->|file kept in memory, push| page["/image-search"]
   page -->|POST /api/image-search| api[ImageSearch]
   api -->|items with frames and band, bands| page
   page --> panel[Query panel: file, status, actions]
