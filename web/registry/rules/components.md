@@ -504,7 +504,8 @@ player's bar and `VideoThumbnailProgress`.
 
 Item `rate-ring`. A `size-12` ring whose arc is `value` of 100, from the top
 and clockwise, with the whole percent inside in `text-sm font-semibold
-tabular-nums`; the value is clamped to 0–100 and rounded to the nearest whole
+tabular-nums` and its `%` sign in `text-2xs`, so `100%` stays inside the
+ring's opening; the value is clamped to 0–100 and rounded to the nearest whole
 percent, so the arc and the number always agree. `tone="primary"` draws the
 arc in `primary`, `tone="muted"` in `muted-foreground`, both on a `muted`
 track and at the same size, so rings line up down a column of rows.

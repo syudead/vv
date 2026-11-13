@@ -225,10 +225,12 @@ describe("ライブラリの画像検索", () => {
 
     sent[0]?.answer(result([item(5, 7, 12_500)]));
 
-    const card = await screen.findByRole("link", { name: /動画 5/ });
-    expect(card.getAttribute("href")).toBe("/videos/7?t=12.5");
-    expect(card.textContent).toContain("91% match");
-    expect(screen.getByRole("status").textContent).toBe("1 match");
+    const title = await screen.findByRole("link", { name: /動画 5/ });
+    expect(title.getAttribute("href")).toBe("/videos/7?t=12.5");
+    expect(
+      screen.getByRole("link", { name: "Play from 0:12" }).getAttribute("href"),
+    ).toBe("/videos/7?t=12.5");
+    expect(screen.getByRole("status").textContent).toBe("1 video");
     expect(imageSearchCount()).toBe(1);
   });
 

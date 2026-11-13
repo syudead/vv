@@ -1,5 +1,5 @@
 import { CircleAlert, RotateCw, SearchX } from "lucide-react";
-import { type ReactNode, useLayoutEffect } from "react";
+import type { ReactNode } from "react";
 
 import type { ImageSearchResult } from "../../api/imageSearch";
 import { t } from "../../i18n";
@@ -9,10 +9,9 @@ import { PageHeader } from "../../ui/patterns/page-header";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
 import { Spinner } from "../../ui/shadcn/spinner";
-import { Grid } from "../../videoList/Grid";
 import { EmptyState } from "../../videoList/states";
 import type { ImageSearchPhase, Refusal } from "./imageSearchState";
-import { ResultCard } from "./ResultCard";
+import { ImageSearchResults } from "./ImageSearchResults";
 import type { ImageSearch } from "./useImageSearch";
 
 const skeletonCount = 12;
@@ -69,16 +68,12 @@ function Header({ phase, onCancel }: { phase: ImageSearchPhase; onCancel: () => 
       />
     );
   }
+  // The results' summary line carries the count.
   const found = phase.kind === "results" && phase.result.items.length > 0;
   return (
     <PageHeader
       title={text.title}
       headingLevel={2}
-      count={
-        found ? (
-          <span role="status">{text.matches(phase.result.items.length)}</span>
-        ) : undefined
-      }
       description={found ? unindexedText(phase.result) : undefined}
     />
   );
@@ -125,9 +120,8 @@ function PhaseBody({
         return <NoMatch result={phase.result} onClear={search.clear} />;
       }
       return (
-        <Results
+        <ImageSearchResults
           result={phase.result}
-          zoom={zoom}
           backTo={backTo}
           entry={search.entry}
           scrollY={search.restoredScrollY}
@@ -135,40 +129,6 @@ function PhaseBody({
         />
       );
   }
-}
-
-function Results({
-  result,
-  zoom,
-  backTo,
-  entry,
-  scrollY,
-  onOpen,
-}: {
-  result: ImageSearchResult;
-  zoom: Zoom;
-  backTo: string;
-  entry: string;
-  scrollY: number | undefined;
-  onOpen: () => void;
-}) {
-  // Back from the player, the cards are drawn from memory in this commit, so the position applies at once.
-  useLayoutEffect(() => {
-    if (scrollY !== undefined) window.scrollTo({ top: scrollY, behavior: "auto" });
-  }, [scrollY]);
-  return (
-    <Grid zoom={zoom}>
-      {result.items.map((item) => (
-        <ResultCard
-          key={`${String(item.video.id)}-${String(item.match.videoId)}`}
-          item={item}
-          backTo={backTo}
-          entry={entry}
-          onOpen={onOpen}
-        />
-      ))}
-    </Grid>
-  );
 }
 
 function NoMatch({
