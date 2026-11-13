@@ -106,6 +106,13 @@ stateDiagram-v2
   today. The filter, sort, view and zoom controls are not drawn, because none
   applies. `Enter` with text opens `/` with that text search; the chip's `×`,
   and `Escape` in the empty field, go back to the library entry.
+- Every in-app way back to the library (the `Library` button, the chip's
+  `×`, `Escape` in the empty field and `Back to library`) returns to the
+  library entry the search was pushed from, as browser Back does, only when
+  that entry is the one under `/image-search`. When it is not (the address
+  opened directly, in a new tab or from another site), they replace
+  `/image-search` with `/` instead, so they never leave the app or do
+  nothing. Browser Back itself stays the browser's.
 - `Cancel`, another file, and leaving the screen abort the request.
 - A guest who opens `/image-search` is sent to `/`.
 
@@ -130,8 +137,8 @@ flowchart LR
 Without a `query` (Idle) the body takes the full width.
 
 The header is a `PageHeader` with the title `Image search`, and as `leading` a
-`ghost` `sm` `Library` button with `ArrowLeft`, which does what browser Back
-does. It has no count and no actions; it stays in every state.
+`ghost` `sm` `Library` button with `ArrowLeft`, which goes back to the
+library as [Entry and leaving](#entry-and-leaving) defines. It has no count and no actions; it stays in every state.
 
 ## Query panel
 
@@ -374,7 +381,9 @@ query and a video query, and with rows of one frame and of eight or more.
     appears.
 14. The top bar has the search field with the chip and nothing else; the
     `Library` button, the chip's `×` and browser Back each show the library
-    with the filters and scroll it had.
+    with the filters and scroll it had; with `/image-search` opened
+    directly in a new tab, the `Library` button and the chip's `×` open `/`
+    and stay in the app.
 15. After opening a frame and going back, the panel, the rows, which rows are
     collapsed and the scroll position are the same.
 16. Reloading `/image-search` shows Idle with one `Choose a file…`; dropping a
