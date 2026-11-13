@@ -17,6 +17,10 @@ export interface ImageSearchResultsProps {
   entry: string;
   /** The scroll position to restore when the search came back from history. */
   scrollY: number | undefined;
+  /** The keys of the rows collapsed when the search came back from history. */
+  initialCollapsed?: ReadonlySet<string>;
+  /** Called with the keys of the collapsed rows whenever the owner changes them. */
+  onCollapsedChange?: (collapsed: ReadonlySet<string>) => void;
   /** Called before a row opens the player, to keep the scroll position. */
   onOpen: () => void;
 }
@@ -31,11 +35,20 @@ export function ImageSearchResults({
   backTo,
   entry,
   scrollY,
+  initialCollapsed,
+  onCollapsedChange,
   onOpen,
 }: ImageSearchResultsProps) {
   const text = t.library.imageSearch;
-  // Rows are expanded when the answer arrives; the set holds the ones the owner collapsed.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  // Rows are expanded when the answer arrives; the set holds the ones the owner collapsed. Back from
+  // the player it starts from the kept set, so the rows have their heights before the scroll applies.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => initialCollapsed ?? new Set(),
+  );
+  const changeCollapsed = (next: ReadonlySet<string>) => {
+    setCollapsed(next);
+    onCollapsedChange?.(next);
+  };
   // Back from the player, the rows are drawn from memory in this commit, so the position applies at once.
   useLayoutEffect(() => {
     if (scrollY !== undefined) window.scrollTo({ top: scrollY, behavior: "auto" });
@@ -46,13 +59,12 @@ export function ImageSearchResults({
   const best = hasBestCandidate(items);
   const firstBand = result.bands[0]?.id;
   const allCollapsed = items.every((item) => collapsed.has(rowKey(item)));
-  const setExpanded = (key: string, expanded: boolean) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (expanded) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const setExpanded = (key: string, expanded: boolean) => {
+    const next = new Set(collapsed);
+    if (expanded) next.delete(key);
+    else next.add(key);
+    changeCollapsed(next);
+  };
 
   return (
     <>
@@ -65,7 +77,7 @@ export function ImageSearchResults({
             variant="ghost"
             size="sm"
             onClick={() =>
-              setCollapsed(allCollapsed ? new Set() : new Set(items.map(rowKey)))
+              changeCollapsed(allCollapsed ? new Set() : new Set(items.map(rowKey)))
             }
           >
             {allCollapsed ? text.expandAll : text.collapseAll}

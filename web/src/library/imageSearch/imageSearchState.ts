@@ -155,6 +155,8 @@ export function matchedSection(
 interface Entry {
   phase: ImageSearchPhase;
   scrollY?: number;
+  /** The keys of the result rows the owner collapsed. */
+  collapsed?: ReadonlySet<string>;
 }
 
 // Searches by history entry, so going back from the player shows the same results; the file never
@@ -175,6 +177,11 @@ export function rememberPhase(key: string, phase: ImageSearchPhase): void {
 export function rememberScroll(key: string, scrollY: number): void {
   const entry = entries.get(key);
   if (entry !== undefined) entry.scrollY = scrollY;
+}
+
+export function rememberCollapsed(key: string, collapsed: ReadonlySet<string>): void {
+  const entry = entries.get(key);
+  if (entry !== undefined) entry.collapsed = collapsed;
 }
 
 export function recall(key: string): Entry | undefined {

@@ -121,10 +121,14 @@ function PhaseBody({
       }
       return (
         <ImageSearchResults
+          // Another entry's results start from that entry's collapsed rows, not this one's.
+          key={search.entry}
           result={phase.result}
           backTo={backTo}
           entry={search.entry}
           scrollY={search.restoredScrollY}
+          initialCollapsed={search.restoredCollapsed}
+          onCollapsedChange={search.keepCollapsed}
           onOpen={search.keepScroll}
         />
       );
