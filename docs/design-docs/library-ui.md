@@ -387,21 +387,41 @@ and full width above the results below `lg`. It shows the file whole, never
 cropped: an image, or a muted video with the browser's controls (an icon for
 a file the browser cannot show); the file name and `Image · 1.2 MB` or
 `Video · 2:31 · 48 MB`, the length read from the video until the answer
-gives it; a status line; the unindexed count after an answer; and `Cancel`
-while searching, else `Choose another file…`. Below `lg` it starts with a bar
-(a small preview, the name, the status and `Show your file` or `Hide your
-file`) that is its collapsed form: open while searching or refused, collapsed
-when an answer arrives so the first rows are on screen, and the owner's
-toggle holds for that answer. Collapsed, the bar sticks under the top bar
-while the rows scroll.
+gives it; a status line with the elapsed time at its end and, while the
+search runs, a `Progress` under it; the unindexed count after an answer; and
+its actions by state. Below `lg` it starts with a bar (a small preview, the
+name, the status and `Show your file` or `Hide your file`) that is its
+collapsed form: open while the search runs and after a refusal, failure or
+stop, collapsed when an answer arrives so the first rows are on screen, and
+the owner's toggle holds for that answer, or for the whole run. Collapsed,
+the bar sticks under the top bar while the rows scroll.
 
-| State                                              | Panel status                                                                      | Results column                                                                                                                 |
-| -------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Idle (`/image-search` opened or reloaded, no file) | No panel                                                                          | `Empty` `Search by an image or a video` with `Choose a file…`                                                                  |
-| Searching                                          | `Spinner`, `Searching…`; `Cancel` returns to the library                          | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading                                                        |
-| Results                                            | `CircleCheck`, `Found {n} videos`                                                 | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands               |
-| No match                                           | `SearchX`, `No match`                                                             | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
-| Refused                                            | `CircleAlert`, `Not searched`, or `Search failed` for a network or server failure | A destructive `Alert` with the reason, `Retry` for a failure, and `Choose another file…`                                       |
+A video query is uploaded with its progress: `XMLHttpRequest.upload` reports
+the share of bytes sent, because `fetch` can only do that with a streamed
+body, which needs HTTP/2 and is missing in Firefox and Safari. The upload
+([`upload.ts`](../../web/src/api/upload.ts)) takes the same abort signal and
+maps the network failure, the owner check and the error body as every other
+request does. An image is small, so it is sent as one plain request and goes
+straight to Searching; the bar does not flash a measure for a blink. The
+screen measures the elapsed time from the request's start to its answer: it
+counts up each second while the search runs and reads `Took {time}` after an
+answer, to a tenth under 10 s (`0.8 s`), then in whole seconds (`12 s`), then
+as `m:ss` (`1:05`). Refusals, failures and stops show no time.
+
+| State | Panel status and actions | Results column |
+| --- | --- | --- |
+| Idle (`/image-search` opened or reloaded, no file) | No panel | `Empty` `Search by an image or a video` with `Choose a file…` |
+| Uploading (video queries) | `Spinner`, `Uploading… {p}%`, a `Progress` of the share sent, the time counting up; `Cancel` | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading |
+| Searching | `Spinner`, `Searching…`, an indeterminate `Progress`, the time counting up; `Cancel` | As Uploading |
+| Results | `CircleCheck`, `Found {n} videos`, `Took {time}`; `Choose another file…` | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands |
+| No match | `SearchX`, `No match`, `Took {time}`; `Choose another file…` | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
+| Refused | `CircleAlert`, `Not searched`; `Choose another file…` | A destructive `Alert` with the reason and `Choose another file…` |
+| Failed (network or server failure) | `CircleAlert`, `Search failed`; `Retry`, `Choose another file…` | A destructive `Alert` `The search failed` with the error, `Retry` and `Choose another file…` |
+| Stopped (after `Cancel`) | `CircleSlash`, `Stopped`; `Search again`, `Choose another file…` | `Empty` `Search stopped` with `Search again` |
+
+`Retry` and `Search again` send the same file, kept in memory until the
+entry is left. A stop, a failure and a refusal are kept with the entry like
+an answer, so coming back to the entry shows them without a request.
 
 A file given by the field keeps focus in the field on the screen; one given
 by the dialog moves focus to the title. An answer does not move focus; the
@@ -442,8 +462,8 @@ the frame last focused in each strip and the scroll position without a
 request, and focus returns to the control that opened the player, whether the
 viewer goes back or closes the player: a result passes the token to the
 player, and closing carries it to the new entry. A reload or a direct visit
-has no file and shows Idle. Another file and leaving the screen or the entry
-abort the running request. Two or more files dropped or pasted on the field,
+has no file and shows Idle. `Cancel`, another file and leaving the screen or
+the entry abort the running request. Two or more files dropped or pasted on the field,
 or a file whose type is neither an image nor a video, open the screen with
 the first file in the panel and the refusal in the results column, without a
 request; the dialog takes one file, as it does for every upload. A file

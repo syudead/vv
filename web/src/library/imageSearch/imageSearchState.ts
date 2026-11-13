@@ -9,19 +9,38 @@ import { t, type UiText } from "../../i18n";
 import { errorText } from "../../i18n/errors";
 import { formatBytes, formatDuration } from "../../lib/format";
 
-/** Why a file was not searched, as the results column's alert shows it. */
+/** Why a file was not searched, or why the search failed, as the results column's alert shows it. */
 export interface Refusal {
   title: UiText;
   description?: UiText;
-  /** Retrying the same file can help: a network or server failure. */
-  retry: boolean;
 }
 
-/** One image search as the screen shows it; the file stays for the panel, the chip and Retry. */
+/**
+ * One image search as the screen shows it; the file stays for the panel, the chip, Retry and Search again.
+ * `startedAt` is the `Date.now()` the request started at, `sent` the share of the upload sent.
+ */
 export type ImageSearchPhase =
-  | { kind: "searching"; file: File }
-  | { kind: "results"; file: File; result: ImageSearchResult }
-  | { kind: "refused"; file: File; refusal: Refusal };
+  | { kind: "uploading"; file: File; startedAt: number; sent: number }
+  | { kind: "searching"; file: File; startedAt: number }
+  | { kind: "results"; file: File; result: ImageSearchResult; tookMs: number }
+  | { kind: "refused"; file: File; refusal: Refusal }
+  | { kind: "failed"; file: File; refusal: Refusal }
+  | { kind: "stopped"; file: File };
+
+export type RunningPhase = Extract<ImageSearchPhase, { kind: "uploading" | "searching" }>;
+
+/** Whether the request runs: the phase ends with an answer, a failure or Cancel. */
+export function isRunning(phase: ImageSearchPhase): phase is RunningPhase {
+  return phase.kind === "uploading" || phase.kind === "searching";
+}
+
+/** An elapsed time as the panel reads it: `0.8 s` under 10 s, then `12 s`, then `1:05`. */
+export function formatElapsed(ms: number): string {
+  const text = t.library.imageSearch;
+  if (ms < 10_000) return text.seconds(Math.floor(ms / 100) / 10, 1);
+  if (ms < 60_000) return text.seconds(Math.floor(ms / 1000), 0);
+  return formatDuration(ms);
+}
 
 // The server's pixel limit; its byte limits are powers of two, so the value tells the two apart.
 const maxImagePixels = 120_000_000;
@@ -41,12 +60,11 @@ export function refuseFiles(files: readonly File[]): Refusal | null {
     return {
       title: text.several.title,
       description: text.several.description(files.length),
-      retry: false,
     };
   }
   const file = files[0];
   if (file !== undefined && !searchableType(file)) {
-    return { ...text.unreadable, retry: false };
+    return { ...text.unreadable };
   }
   return null;
 }
@@ -60,31 +78,40 @@ function limitText(reason: string, limit: number | undefined): UiText | undefine
   );
 }
 
-/** The refusal a failed request shows: the server's reason, else the failure with Retry. */
-export function refuseError(error: unknown): Refusal {
+/** The refusal of the server's reason, or null for a failure that sending again can mend. */
+function serverRefusal(error: unknown): Refusal | null {
   const text = t.library.imageSearch.refused;
-  const reason = error instanceof RequestFailed ? error.reason : undefined;
-  switch (reason) {
+  if (!(error instanceof RequestFailed)) return null;
+  switch (error.reason) {
     case "image_search_unreadable":
-      return { ...text.unreadable, retry: false };
+      return { ...text.unreadable };
     case "image_search_uninformative":
-      return { ...text.uninformative, retry: false };
+      return { ...text.uninformative };
     case "image_search_too_large":
-    case "image_search_too_long": {
-      const limit = (error as RequestFailed).limit;
+    case "image_search_too_long":
       return {
-        title: reason === "image_search_too_large" ? text.tooLarge : text.tooLong,
-        description: limitText(reason, limit),
-        retry: false,
+        title: error.reason === "image_search_too_large" ? text.tooLarge : text.tooLong,
+        description: limitText(error.reason, error.limit),
       };
-    }
     default:
-      return {
-        title: text.failed,
-        description: errorText(error),
-        retry: !(error instanceof RequestFailed) || error.status >= 500,
-      };
+      return error.status >= 500
+        ? null
+        : { title: text.failed, description: errorText(error) };
   }
+}
+
+/** The phase a failed request ends in: refused for the server's reason, failed with Retry otherwise. */
+export function errorPhase(file: File, error: unknown): ImageSearchPhase {
+  const refusal = serverRefusal(error);
+  if (refusal !== null) return { kind: "refused", file, refusal };
+  return {
+    kind: "failed",
+    file,
+    refusal: {
+      title: t.library.imageSearch.refused.failed,
+      description: errorText(error),
+    },
+  };
 }
 
 /** The match rate as a whole percent, rounded to the nearest. */
@@ -160,7 +187,7 @@ export interface SearchEntry {
   /** Every file given, so the first search or refusal is decided by the screen that shows it. */
   files: readonly File[];
   from: GivenFrom;
-  /** The last answer or refusal; absent while the search has not answered. */
+  /** The last answer, refusal, failure or stop; absent while the search runs. */
   phase?: ImageSearchPhase;
   scrollY?: number;
   /** The keys of the result rows the owner collapsed. */
@@ -199,7 +226,7 @@ export function rememberPhase(key: string, phase: ImageSearchPhase): void {
   entries.set(key, {
     files: entry.files,
     from: entry.from,
-    phase: phase.kind === "searching" ? undefined : phase,
+    phase: isRunning(phase) ? undefined : phase,
   });
 }
 

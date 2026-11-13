@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -33,6 +34,7 @@ interface Sent {
   file: File;
   signal: AbortSignal;
   answer: (response: Response) => void;
+  fail: (error: unknown) => void;
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -58,7 +60,12 @@ function install() {
         signal.addEventListener("abort", () =>
           reject(new DOMException("aborted", "AbortError")),
         );
-        sent.push({ file: body.get("file") as File, signal, answer: resolve });
+        sent.push({
+          file: body.get("file") as File,
+          signal,
+          answer: resolve,
+          fail: reject,
+        });
       });
     }
     if (url.pathname === "/api/library") {
@@ -71,6 +78,61 @@ function install() {
     }
     return Promise.resolve(json({ items: [], total: 0, totalAll: 0 }));
   });
+}
+
+/** A video upload the test drives: the bytes sent, then the answer. A video is sent with progress. */
+class FakeUpload {
+  static sent: FakeUpload[] = [];
+  readonly upload: {
+    onprogress: ((event: Partial<ProgressEvent>) => void) | null;
+    onload: (() => void) | null;
+  } = { onprogress: null, onload: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  responseType = "";
+  status = 0;
+  statusText = "";
+  response: Blob | null = null;
+  url = "";
+  body: FormData | undefined;
+  aborted = false;
+
+  open(_method: string, url: string) {
+    this.url = url;
+  }
+
+  send(body: FormData) {
+    this.body = body;
+    FakeUpload.sent.push(this);
+  }
+
+  abort() {
+    this.aborted = true;
+    this.onabort?.();
+  }
+
+  getAllResponseHeaders() {
+    return "content-type: application/json\r\n";
+  }
+
+  get file(): File {
+    return this.body?.get("file") as File;
+  }
+
+  progress(loaded: number, total: number) {
+    act(() => this.upload.onprogress?.({ lengthComputable: true, loaded, total }));
+  }
+
+  sentAll() {
+    act(() => this.upload.onload?.());
+  }
+
+  async answer(response: Response) {
+    this.status = response.status;
+    this.response = await response.blob();
+    act(() => this.onload?.());
+  }
 }
 
 /** The player's two ways back: history, and its close, which pushes the list URL as a new entry. */
@@ -211,6 +273,8 @@ describe("ライブラリの画像検索", () => {
     sent = [];
     install();
     vi.stubGlobal("fetch", fetchMock);
+    FakeUpload.sent = [];
+    vi.stubGlobal("XMLHttpRequest", FakeUpload);
     vi.stubGlobal("scrollTo", vi.fn());
     vi.stubGlobal(
       "IntersectionObserver",
@@ -445,6 +509,83 @@ describe("ライブラリの画像検索", () => {
       expect(imageSearchCount()).toBe(0);
     },
   );
+
+  it("画像はアップロードの段を飛ばして Searching になり、答えまでにかかった時間を Took で出す", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const user = userEvent.setup();
+    await openSearch(user);
+
+    const panel = screen.getByRole("complementary", { name: "Your file" });
+    expect(statuses()).toContain("Searching…");
+    expect(within(panel).queryByText(/Uploading/)).toBeNull();
+    expect(within(panel).getByRole("progressbar").getAttribute("data-state")).toBe(
+      "indeterminate",
+    );
+    expect(FakeUpload.sent).toHaveLength(0);
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.850Z"));
+    sent[0]?.answer(result([item(5, 7, 12_500)]));
+
+    expect(await within(panel).findByText("Took 0.8 s")).toBeDefined();
+    expect(within(panel).queryByRole("progressbar")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("ネットワークの失敗は Search failed と Retry を出し、Retry は同じファイルを送る", async () => {
+    const user = userEvent.setup();
+    await openSearch(user, png("lost.png"));
+
+    sent[0]?.fail(new TypeError("Failed to fetch"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("The search failed");
+    expect(statuses()).toContain("Search failed");
+    const panel = screen.getByRole("complementary", { name: "Your file" });
+    await user.click(within(panel).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1]?.file.name).toBe("lost.png");
+    expect(statuses()).toContain("Searching…");
+  });
+
+  it("動画は送った割合を出し、Cancel で止めて Search again で同じファイルを送り直す", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: /ライブラリの動画/ });
+    await pick(user, new File(["mp4"], "clip.mp4", { type: "video/mp4" }));
+    await waitFor(() => expect(FakeUpload.sent).toHaveLength(1));
+    const first = FakeUpload.sent[0];
+    if (first === undefined) throw new Error("no upload");
+    expect(first.url).toBe("/api/image-search");
+    const panel = screen.getByRole("complementary", { name: "Your file" });
+
+    first.progress(37, 100);
+    expect(statuses()).toContain("Uploading… 37%");
+    expect(within(panel).getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "37",
+    );
+
+    await user.click(within(panel).getByRole("button", { name: "Cancel" }));
+    expect(first.aborted).toBe(true);
+    expect(screen.getByRole("heading", { name: "Search stopped" })).toBeDefined();
+    expect(statuses()).toContain("Stopped");
+    expect(address()).toBe("/image-search");
+
+    await user.click(within(panel).getByRole("button", { name: "Search again" }));
+    await waitFor(() => expect(FakeUpload.sent).toHaveLength(2));
+    const again = FakeUpload.sent[1];
+    if (again === undefined) throw new Error("no second upload");
+    expect(again.file.name).toBe("clip.mp4");
+    again.progress(100, 100);
+    again.sentAll();
+    expect(statuses()).toContain("Searching…");
+    await again.answer(result([item(5, 7, 12_500)]));
+
+    expect(await screen.findByRole("link", { name: /動画 5/ })).toBeDefined();
+    expect(statuses()).toContain("Found 1 video");
+    expect(imageSearchCount()).toBe(0);
+  });
 
   it("ゲストの検索欄にはファイルで検索するボタンがなく、落としても何も始まらない", async () => {
     renderLibrary("guest");

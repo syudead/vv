@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { NetworkFailed, RequestFailed } from "../../api/client";
 import type { ImageSearchMatch } from "../../api/imageSearch";
 import {
+  errorPhase,
+  formatElapsed,
   matchedSection,
   matchPath,
   ratePercent,
-  refuseError,
   refuseFiles,
 } from "./imageSearchState";
 
@@ -24,7 +25,6 @@ describe("画像検索の送る前の拒否", () => {
       {
         title: "Search with one file at a time",
         description: "2 files were given.",
-        retry: false,
       },
     );
     expect(refuseFiles([file("a.txt", "text/plain")])?.title).toBe(
@@ -36,33 +36,48 @@ describe("画像検索の送る前の拒否", () => {
 });
 
 describe("画像検索の失敗の表示", () => {
+  const query = file("clip.mp4", "video/mp4");
+
   it("上限は画素数、バイト数、動画の長さをそれぞれの単位で出す", () => {
-    expect(refuseError(refused("image_search_too_large", 120_000_000, 413))).toEqual({
-      title: "This file is too large",
-      description: "The limit is 120 megapixels.",
-      retry: false,
+    expect(
+      errorPhase(query, refused("image_search_too_large", 120_000_000, 413)),
+    ).toEqual({
+      kind: "refused",
+      file: query,
+      refusal: {
+        title: "This file is too large",
+        description: "The limit is 120 megapixels.",
+      },
     });
     expect(
-      refuseError(refused("image_search_too_large", 4 * 1024 ** 3, 413)).description,
-    ).toBe("The limit is 4.0 GB.");
-    expect(refuseError(refused("image_search_too_long", 3 * 3_600_000))).toEqual({
-      title: "This video is too long",
-      description: "The limit is 3:00:00.",
-      retry: false,
+      errorPhase(query, refused("image_search_too_large", 4 * 1024 ** 3, 413)),
+    ).toMatchObject({ refusal: { description: "The limit is 4.0 GB." } });
+    expect(errorPhase(query, refused("image_search_too_long", 3 * 3_600_000))).toEqual({
+      kind: "refused",
+      file: query,
+      refusal: { title: "This video is too long", description: "The limit is 3:00:00." },
     });
   });
 
-  it("送り直して直る失敗にだけ Retry を付ける", () => {
-    expect(refuseError(new NetworkFailed(new Error("offline")))).toMatchObject({
-      title: "The search failed",
-      retry: true,
+  it("送り直して直る失敗だけを failed にする", () => {
+    expect(errorPhase(query, new NetworkFailed(new Error("offline")))).toMatchObject({
+      kind: "failed",
+      refusal: { title: "The search failed" },
     });
-    expect(refuseError(new RequestFailed(503, "service_unavailable", "")).retry).toBe(
-      true,
-    );
     expect(
-      refuseError(new RequestFailed(400, "invalid_request", "two parts")).retry,
-    ).toBe(false);
+      errorPhase(query, new RequestFailed(503, "service_unavailable", "")).kind,
+    ).toBe("failed");
+    expect(
+      errorPhase(query, new RequestFailed(400, "invalid_request", "two parts")).kind,
+    ).toBe("refused");
+  });
+});
+
+describe("画像検索の経過時間", () => {
+  it("10 秒未満は 10 分の 1 秒まで、1 分未満は秒、それより後は m:ss で読む", () => {
+    expect(formatElapsed(849)).toBe("0.8 s");
+    expect(formatElapsed(12_400)).toBe("12 s");
+    expect(formatElapsed(65_000)).toBe("1:05");
   });
 });
 

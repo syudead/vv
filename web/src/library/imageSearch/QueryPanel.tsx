@@ -2,6 +2,7 @@ import {
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  CircleSlash,
   File as FileIcon,
   Film,
   type LucideIcon,
@@ -12,10 +13,12 @@ import { type ReactNode, useState } from "react";
 import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatBytes, formatDuration } from "../../lib/format";
+import { useNow } from "../../lib/useNow";
 import { Button } from "../../ui/shadcn/button";
+import { Progress } from "../../ui/shadcn/progress";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
-import type { ImageSearchPhase } from "./imageSearchState";
+import { formatElapsed, type ImageSearchPhase, isRunning } from "./imageSearchState";
 import { type FileKind, fileKind, useFilePreview } from "./useFilePreview";
 
 export interface QueryPanelProps {
@@ -25,8 +28,10 @@ export interface QueryPanelProps {
   onOpenChange: (open: boolean) => void;
   /** Opens the search-by-file dialog. */
   onChoose: () => void;
-  /** Ends the running search. */
+  /** Stops the running search. */
   onCancel: () => void;
+  /** Sends the same file again after a failure or a stop. */
+  onRetry: () => void;
 }
 
 interface Status {
@@ -42,6 +47,11 @@ function statusIcon(Icon: LucideIcon, tone: string): ReactNode {
 export function panelStatus(phase: ImageSearchPhase): Status {
   const text = t.library.imageSearch;
   switch (phase.kind) {
+    case "uploading":
+      return {
+        icon: <Spinner aria-hidden="true" />,
+        label: text.uploading(Math.floor(phase.sent * 100)),
+      };
     case "searching":
       return { icon: <Spinner aria-hidden="true" />, label: text.searching };
     case "results": {
@@ -56,9 +66,100 @@ export function panelStatus(phase: ImageSearchPhase): Status {
     case "refused":
       return {
         icon: statusIcon(CircleAlert, "text-destructive"),
-        label: phase.refusal.retry ? text.searchFailed : text.notSearched,
+        label: text.notSearched,
+      };
+    case "failed":
+      return {
+        icon: statusIcon(CircleAlert, "text-destructive"),
+        label: text.searchFailed,
+      };
+    case "stopped":
+      return {
+        icon: statusIcon(CircleSlash, "text-muted-foreground"),
+        label: text.stopped,
       };
   }
+}
+
+/** The time a running search has taken so far, counting up, or how long an answer took. */
+function useElapsed(phase: ImageSearchPhase): string | undefined {
+  const running = isRunning(phase);
+  const now = useNow(running);
+  if (running) return formatElapsed(Math.max(0, now - phase.startedAt));
+  if (phase.kind === "results")
+    return t.library.imageSearch.took(formatElapsed(phase.tookMs));
+  return undefined;
+}
+
+/** The status line, and while the search runs a bar: the share uploaded, then indeterminate. */
+function StatusLine({ phase, status }: { phase: ImageSearchPhase; status: Status }) {
+  const elapsed = useElapsed(phase);
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        {/* The time stays out of the status, which would otherwise be announced every second. */}
+        <div
+          role="status"
+          data-slot="query-status"
+          className="flex min-w-0 flex-1 items-center gap-2"
+        >
+          {status.icon}
+          <span className="min-w-0 truncate text-sm font-medium">{status.label}</span>
+        </div>
+        {elapsed !== undefined && (
+          <span
+            data-slot="query-elapsed"
+            className="shrink-0 text-xs text-muted-foreground tabular-nums"
+          >
+            {elapsed}
+          </span>
+        )}
+      </div>
+      {isRunning(phase) && (
+        <Progress
+          aria-label={status.label}
+          value={phase.kind === "uploading" ? Math.floor(phase.sent * 100) : null}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The panel's buttons by phase: stop a running search, send the file again, or choose another. */
+function PanelActions({
+  phase,
+  onChoose,
+  onCancel,
+  onRetry,
+}: Pick<QueryPanelProps, "phase" | "onChoose" | "onCancel" | "onRetry">) {
+  const text = t.library.imageSearch;
+  if (isRunning(phase)) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          {text.cancel}
+        </Button>
+      </div>
+    );
+  }
+  const again =
+    phase.kind === "failed"
+      ? text.retry
+      : phase.kind === "stopped"
+        ? text.searchAgain
+        : null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {again !== null && (
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          {again}
+        </Button>
+      )}
+      <Button variant="outline" size="sm" onClick={onChoose}>
+        {text.chooseAnother}
+      </Button>
+    </div>
+  );
 }
 
 /** The file line's quieter half: its kind, a video's length when known, and its size. */
@@ -196,6 +297,7 @@ export function QueryPanel({
   onOpenChange,
   onChoose,
   onCancel,
+  onRetry,
 }: QueryPanelProps) {
   const text = t.library.imageSearch;
   const { file } = phase;
@@ -229,28 +331,18 @@ export function QueryPanel({
             {fileFacts(file, durationMs)}
           </span>
         </div>
-        <div role="status" className="flex min-w-0 items-center gap-2">
-          {status.icon}
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">
-            {status.label}
-          </span>
-        </div>
+        <StatusLine phase={phase} status={status} />
         {answered !== undefined && answered.unindexedCount > 0 && (
           <p className="text-xs text-muted-foreground">
             {text.unindexed(answered.unindexedCount)}
           </p>
         )}
-        <div className="flex flex-wrap gap-2">
-          {phase.kind === "searching" ? (
-            <Button variant="outline" size="sm" onClick={onCancel}>
-              {text.cancel}
-            </Button>
-          ) : (
-            <Button variant="outline" size="sm" onClick={onChoose}>
-              {text.chooseAnother}
-            </Button>
-          )}
-        </div>
+        <PanelActions
+          phase={phase}
+          onChoose={onChoose}
+          onCancel={onCancel}
+          onRetry={onRetry}
+        />
       </div>
     </div>
   );
