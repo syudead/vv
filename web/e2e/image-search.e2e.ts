@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -9,6 +9,8 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
+
+import { mainNode } from "./nodes";
 
 // The image search on the real stack: generated footage, the real index job, hashing, ffmpeg and a browser drop
 // on the library search field, which opens the search's own screen at /image-search. Every query is a moment between keyframes that the current matching finds; a
@@ -30,7 +32,14 @@ interface SearchAnswer {
   unindexedCount: number;
   items: {
     video: Video;
-    match: { videoId: number; kind: string; band: string; rate: number };
+    match: {
+      videoId: number;
+      kind: string;
+      band: string;
+      rate: number;
+      startMs?: number;
+      endMs?: number;
+    };
   }[];
 }
 
@@ -157,6 +166,39 @@ function countSearches(page: Page): () => number {
   return () => count;
 }
 
+/** A time as the screen writes a section's ends: `m:ss`. */
+function clock(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  return `${String(Math.floor(total / 60))}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Drops the file on the element as the browser does with a file from outside, and returns whether the page
+ * took the drop over; a drop it leaves alone is one the browser would open in place of the page.
+ */
+async function dropTaken(target: Locator, file: Query): Promise<boolean> {
+  return target.evaluate(
+    (element, { base64, name, type }) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], name, { type }));
+      const init = { dataTransfer: transfer, bubbles: true, cancelable: true };
+      element.dispatchEvent(new DragEvent("dragenter", init));
+      element.dispatchEvent(new DragEvent("dragover", init));
+      const drop = new DragEvent("drop", init);
+      element.dispatchEvent(drop);
+      return drop.defaultPrevented;
+    },
+    { base64: file.data.toString("base64"), name: file.name, type: file.type },
+  );
+}
+
+/** What the search uploads area in the main node's data directory holds; a search empties it when it ends. */
+function leftUploads(): string[] {
+  const uploads = path.join(mainNode.dataDir, "search-uploads");
+  return existsSync(uploads) ? readdirSync(uploads) : [];
+}
+
 /** The library at the filter, scrolled to `top`, waiting for the restored position to hold. */
 async function scrolledLibrary(page: Page, top: number) {
   await page.goto(filteredLibrary);
@@ -224,7 +266,7 @@ async function searchAt(page: Page, width: number, file: Query): Promise<Locator
   return rows;
 }
 
-/** One screenshot per width and state, attached for the review of ui-design.md's criteria. */
+/** One screenshot per width and state, attached for the visual review of the image search screen. */
 async function shoot(page: Page, testInfo: TestInfo, name: string) {
   const file = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path: file });
@@ -587,6 +629,10 @@ test.describe("画像検索", () => {
           await expect(
             row.getByText(item.match.kind === "whole" ? "Whole video" : "Part of video"),
           ).toBeVisible();
+          const { startMs, endMs } = item.match;
+          if (startMs === undefined || endMs === undefined)
+            throw new Error(`${name}: the API sends no section`);
+          await expect(row).toContainText(`${clock(startMs)}–${clock(endMs)}`);
         }
         await shoot(page, testInfo, `${name}-${String(width)}`);
       }
@@ -969,5 +1015,123 @@ test.describe("画像検索", () => {
       expect(await pageScrollsSideways(page)).toBe(false);
       await shoot(page, testInfo, `refused-${String(width)}`);
     }
+  });
+
+  test("検索欄に画像を貼り付けると落としたときと同じくパンの行を最初に出し、文字の貼り付けは文字を入れるだけで検索しない", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(120_000);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+    const searches = countSearches(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    const box = page.getByLabel("Search videos", { exact: true });
+
+    // A paste through the real clipboard, so the browser's own handling of text is what runs.
+    await page.evaluate((text) => navigator.clipboard.writeText(text), LIBRARY_FILTER);
+    await box.focus();
+    await page.keyboard.press("ControlOrMeta+V");
+    await expect(box).toHaveValue(LIBRARY_FILTER);
+    await expect(page).not.toHaveURL(/\/image-search/);
+    expect(searches()).toBe(0);
+
+    await box.fill("");
+    await page.evaluate(async (base64) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": new Blob([bytes], { type: "image/png" }) }),
+      ]);
+    }, query("pan").data.toString("base64"));
+    await box.focus();
+    await page.keyboard.press("ControlOrMeta+V");
+    await expect(page).toHaveURL(/\/image-search$/);
+    const rows = resultsColumn(page).locator("[data-slot=result-row]");
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    await expect(title(rows.first())).toHaveText(PAN);
+    await expect(rows.first().getByText("Best candidate")).toBeVisible();
+    expect(
+      Math.abs((await startOf(frameLinks(rows.first()).first())) - 6),
+    ).toBeLessThanOrEqual(0.25);
+    // The dev server's Strict Mode may send the search twice.
+    expect(searches()).toBeGreaterThan(0);
+  });
+
+  test("ライブラリで検索欄の外に落としたファイルは、ページを置き換えずに拒否し、画像検索を始めない", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const searches = countSearches(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(filteredLibrary);
+    const card = page.getByRole("link", { name: new RegExp(PAN) }).first();
+    await expect(card).toBeVisible();
+
+    expect(await dropTaken(card, query("pan"))).toBe(true);
+    await expect(page).toHaveURL(
+      new RegExp(`\\?q=${encodeURIComponent(LIBRARY_FILTER)}$`),
+    );
+    await expect(page.getByLabel("Search videos", { exact: true })).toHaveValue(
+      LIBRARY_FILTER,
+    );
+    expect(searches()).toBe(0);
+  });
+
+  test("ゲストには検索欄のファイルの入口がなく、/image-search は / に送り、検索の API は拒否する", async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    const guest = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const page = await guest.newPage();
+      const searches = countSearches(page);
+      await page.goto("/");
+      const box = page.getByLabel("Search videos", { exact: true });
+      await expect(box).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Search by image or video" }),
+      ).toHaveCount(0);
+      // The guest's field does not take the drop over, and nothing starts.
+      expect(await dropTaken(box.locator(".."), query("pan"))).toBe(false);
+      await expect(page).toHaveURL(`${origin}/`);
+
+      await page.goto("/image-search");
+      await expect(page).toHaveURL(`${origin}/`);
+      await expect(box).toBeVisible();
+      expect(searches()).toBe(0);
+
+      const file = query("pan");
+      const response = await guest.request.post("/api/image-search", {
+        headers: { Origin: origin },
+        multipart: {
+          file: { name: file.name, mimeType: file.type, buffer: file.data },
+        },
+      });
+      expect(response.status()).toBe(401);
+    } finally {
+      await guest.close();
+    }
+  });
+
+  test("検索のあと、渡した動画はサーバーのデータ領域にもライブラリにも残らない", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const total = async () => {
+      const response = await request.get("/api/videos?limit=1");
+      return ((await response.json()) as { total: number }).total;
+    };
+    const before = await total();
+
+    const rows = await searchAt(page, 1280, query("pan160"));
+    await expect(title(rows.first())).toHaveText(PAN);
+    await expect(rows.first().getByText("Whole video")).toBeVisible();
+
+    await expect.poll(leftUploads).toEqual([]);
+    expect(await total()).toBe(before);
+    expect(await listVideo(request, "pan-160")).toBeUndefined();
   });
 });

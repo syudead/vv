@@ -371,6 +371,22 @@ request starts on the screen. A file given on the screen (the field or
 `Choose another file…`) replaces the entry and keeps that mark, so Back never
 walks through old searches. A guest who opens `/image-search` is sent to `/`.
 
+The owner compares each candidate with the file, so the screen keeps the file
+in view and gives each video its evidence: how close, how many frames, at
+what times.
+
+| Decision                                                                               | Rejected                                                                                                 | Why                                                                                                                                          |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Results on a screen of their own at `/image-search`, pushed over the library entry     | Results in the library's `ListPage` body, the first design, which the maintainer rejected after using it | The library body is a card grid sized by zoom under a toolbar that does not apply; a route gives browser Back and an untouched library entry |
+| The file stays in a query panel beside the results                                     | The file only as the chip in the field                                                                   | A chip cannot be compared with anything                                                                                                      |
+| One row per video, holding every matched frame the server returns                      | One card per matched frame                                                                               | The answer is a video; several frames of one video are more evidence for one answer                                                          |
+| Rows in match-rate bands whose ranges, like the number of frames, come from the server | Thresholds or a frame count fixed in the screen                                                          | The accuracy decision can move them without a screen change                                                                                  |
+| The search field stays the only place that takes a dropped or pasted file              | A drop zone in the query panel                                                                           | The drop is limited to the search field; the panel offers `Choose another file…`                                                             |
+| A frame's rate and time are a caption under its image                                  | Text over the image                                                                                      | [VideoThumbnail](../../web/registry/rules/components.md#videothumbnail) allows only the duration, the notice and the credits on an image     |
+| The file is handed over in memory under a token the entry's state names                | The `File` in history state                                                                              | The browser copies state into session history, and a reload would find a file where Idle is wanted                                           |
+| Same                                                                                   | Starting the request on the library page and navigating with it                                          | The library unmounts on the push; the request, its abort and its progress belong to the screen that shows them                               |
+| The entry's state records whether the library entry is under it                        | `history.length` or the referrer                                                                         | Neither tells which entry is under this one                                                                                                  |
+
 The screen is a `QueryResultsPage`. Its top bar holds only the search field,
 with the query chip (the file's preview, its name from `sm` up, and `Clear
 image search`) at the field's start, holding at most half its width, and the
@@ -408,16 +424,16 @@ counts up each second while the search runs and reads `Took {time}` after an
 answer, to a tenth under 10 s (`0.8 s`), then in whole seconds (`12 s`), then
 as `m:ss` (`1:05`). Refusals, failures and stops show no time.
 
-| State | Panel status and actions | Results column |
-| --- | --- | --- |
-| Idle (`/image-search` opened or reloaded, no file) | No panel | `Empty` `Search by an image or a video` with `Choose a file…` |
-| Uploading (video queries) | `Spinner`, `Uploading… {p}%`, a `Progress` of the share sent, the time counting up; `Cancel` | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading |
-| Searching | `Spinner`, `Searching…`, an indeterminate `Progress`, the time counting up; `Cancel` | As Uploading |
-| Results | `CircleCheck`, `Found {n} videos`, `Took {time}`; `Choose another file…` | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands |
-| No match | `SearchX`, `No match`, `Took {time}`; `Choose another file…` | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
-| Refused | `CircleAlert`, `Not searched`; `Choose another file…` | A destructive `Alert` with the reason and `Choose another file…` |
-| Failed (network or server failure) | `CircleAlert`, `Search failed`; `Retry`, `Choose another file…` | A destructive `Alert` `The search failed` with the error, `Retry` and `Choose another file…` |
-| Stopped (after `Cancel`) | `CircleSlash`, `Stopped`; `Search again`, `Choose another file…` | `Empty` `Search stopped` with `Search again` |
+| State                                              | Panel status and actions                                                                     | Results column                                                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Idle (`/image-search` opened or reloaded, no file) | No panel                                                                                     | `Empty` `Search by an image or a video` with `Choose a file…`                                                                  |
+| Uploading (video queries)                          | `Spinner`, `Uploading… {p}%`, a `Progress` of the share sent, the time counting up; `Cancel` | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading                                                        |
+| Searching                                          | `Spinner`, `Searching…`, an indeterminate `Progress`, the time counting up; `Cancel`         | As Uploading                                                                                                                   |
+| Results                                            | `CircleCheck`, `Found {n} videos`, `Took {time}`; `Choose another file…`                     | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands               |
+| No match                                           | `SearchX`, `No match`, `Took {time}`; `Choose another file…`                                 | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
+| Refused                                            | `CircleAlert`, `Not searched`; `Choose another file…`                                        | A destructive `Alert` with the reason and `Choose another file…`                                                               |
+| Failed (network or server failure)                 | `CircleAlert`, `Search failed`; `Retry`, `Choose another file…`                              | A destructive `Alert` `The search failed` with the error, `Retry` and `Choose another file…`                                   |
+| Stopped (after `Cancel`)                           | `CircleSlash`, `Stopped`; `Search again`, `Choose another file…`                             | `Empty` `Search stopped` with `Search again`                                                                                   |
 
 `Retry` and `Search again` send the same file, kept in memory until the
 entry is left. A stop, a failure and a refusal are kept with the entry like
