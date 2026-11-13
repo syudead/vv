@@ -513,6 +513,9 @@ export const IMAGE_SEARCH_VIDEOS = {
 };
 /** Shot A holds 3 s at 6k s for k in 0..8 of the recurring video; shot B holds from 54 s to 57 s. */
 export const IMAGE_SEARCH_HOLDS = { a: 9, holdSeconds: 3, shotBStart: 54 };
+/** Short clips beside the image search media, titled with this prefix and a two-digit number. */
+export const IMAGE_SEARCH_FILLERS = 24;
+export const IMAGE_SEARCH_FILLER_PREFIX = "画像検索の並び ";
 
 const imageSearchEncode = (gop) => [
   "-r",
@@ -669,6 +672,25 @@ export function generateImageSearchFixtures(root, queryDir) {
     path.join(queryDir, "pan-5-25.mp4"),
   ]);
   rmSync(work, { recursive: true, force: true });
+
+  // Library rows a text filter on the shared title prefix lists, so the spec starts from a scrolled library.
+  const base = path.join(queryDir, "filler.mp4");
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=13:duration=2",
+    ...h264,
+    "-an",
+    base,
+  ]);
+  for (let index = 1; index <= IMAGE_SEARCH_FILLERS; index += 1) {
+    const name = `${IMAGE_SEARCH_FILLER_PREFIX}${String(index).padStart(2, "0")}`;
+    const file = path.join(root, `${name}.mp4`);
+    copyFileSync(base, file);
+    appendFreeBox(file, name);
+  }
+  rmSync(base);
 }
 
 /** Filter pad labels [p0][p1]… for a split into count outputs. */

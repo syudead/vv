@@ -1,30 +1,16 @@
 import { Film, X } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { t } from "../../i18n";
-import { encodeReferenceURL } from "../../player/thumbnailEdit/editRules";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
+import { useFilePreview } from "./useFilePreview";
 
-/** An object URL for an image file that lives as long as the chip shows it. */
-function useImagePreview(file: File): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!file.type.startsWith("image/")) return;
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(encodeReferenceURL(objectUrl));
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-      setUrl(null);
-    };
-  }, [file]);
-  return url;
-}
+const imageOnly = ["image"] as const;
 
-/** The file an image search runs on, at the search field's start, with the control back to text search. */
+/** The file an image search runs on, at the search field's start, with the control back to the library. */
 export function QueryChip({ file, onClear }: { file: File; onClear: () => void }) {
-  const preview = useImagePreview(file);
+  const preview = useFilePreview(file, imageOnly);
   const label = t.library.imageSearch.clear;
   return (
     <Badge

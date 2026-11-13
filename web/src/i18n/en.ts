@@ -1120,9 +1120,22 @@ export const en = {
         zoneHint: "You can also paste an image while this is open.",
       },
       title: "Image search",
+      library: "Library",
+      query: "Your file",
+      kinds: { image: "Image", video: "Video", file: "File" },
+      showFile: "Show your file",
+      hideFile: "Hide your file",
       searching: "Searching…",
-      readingVideo: (file: string) => `Reading ${file}. A long video takes a while.`,
+      found: (count: number) => `Found ${counted(count, "video", "videos")}`,
+      noMatchStatus: "No match",
+      notSearched: "Not searched",
+      searchFailed: "Search failed",
       cancel: "Cancel",
+      idle: {
+        title: "Search by an image or a video",
+        description: "Find the videos that contain the same footage, and where.",
+        choose: "Choose a file…",
+      },
       unindexed: (count: number) =>
         selectPlural(count, {
           one: `${formatNumber(count)} video isn't indexed yet and wasn't searched.`,
@@ -1154,8 +1167,8 @@ export const en = {
       noMatch: "No video has this footage",
       allSearched: "Every video in your library was searched.",
       chooseAnother: "Choose another file…",
+      backToLibrary: "Back to library",
       retry: "Retry",
-      notUsed: "Not used by image search",
       refused: {
         several: {
           title: "Search with one file at a time",

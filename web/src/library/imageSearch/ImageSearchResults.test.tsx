@@ -57,7 +57,6 @@ function renderResults(items: ImageSearchItem[], bands = imageBands) {
                 result={{ query: { kind: "image" }, bands, items, unindexedCount: 0 }}
                 backTo="/"
                 entry="entry"
-                scrollY={undefined}
                 onOpen={() => {}}
               />
             }

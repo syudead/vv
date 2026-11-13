@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
 import { useAudience } from "../auth/audience";
 import AuthGate from "../auth/AuthGate";
+import { IMAGE_SEARCH_PATH } from "../library/imageSearch/imageSearchEntry";
 import { LIBRARY_PATH } from "../library/libraryPath";
 import LibraryPage from "../library/LibraryPage";
 import AssistantPanel from "../assistant/AssistantPanel";
@@ -30,6 +31,10 @@ import {
 } from "./deferredRoute";
 import LibraryRedirect from "./LibraryRedirect";
 const FolderPage = await deferredRoute(() => import("../folders/FolderPage"), "/folders");
+const ImageSearchPage = await deferredRoute(
+  () => import("../library/imageSearch/ImageSearchPage"),
+  IMAGE_SEARCH_PATH,
+);
 const SettingsPage = await deferredRoute(
   () => import("../settings/SettingsPage"),
   "/settings",
@@ -149,6 +154,14 @@ function AppRoutes() {
             element={
               <ShellPage>
                 <LibraryPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path={IMAGE_SEARCH_PATH}
+            element={
+              <ShellPage>
+                <ImageSearchPage />
               </ShellPage>
             }
           />

@@ -5,7 +5,6 @@ import type { VideoSort } from "../api/client";
 import { t, type UiText } from "../i18n";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import FilterMenu from "../videoList/FilterMenu";
 import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
@@ -29,66 +28,36 @@ function viewOptions() {
   ] as const;
 }
 
-/** A disabled control with the reason on hover; the wrapper takes the pointer the disabled control ignores. */
-function Locked({
-  reason,
-  children,
-}: {
-  reason: UiText | undefined;
-  children: ReactNode;
-}) {
-  if (reason === undefined) return children;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span data-slot="locked-control" className="inline-flex">
-          {children}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{reason}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 export function viewControls(
   view: ViewMode,
   onViewChange: (value: ViewMode) => void,
   zoom: Zoom,
   onZoomChange: (value: Zoom) => void,
-  lockedReason?: UiText,
 ): ToolbarViewControl[] {
-  const locked = lockedReason !== undefined;
   const controls: ToolbarViewControl[] = [
     {
       id: "view",
       label: t.library.view.label,
       inlineFrom: "lg",
       control: (
-        <Locked reason={lockedReason}>
-          <IconToggleGroup
-            label={t.library.view.label}
-            value={view}
-            onValueChange={onViewChange}
-            options={viewOptions()}
-            disabled={locked}
-          />
-        </Locked>
+        <IconToggleGroup
+          label={t.library.view.label}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
       ),
       compact: (
-        <Locked reason={lockedReason}>
-          <IconToggleGroup
-            label={t.library.view.compact}
-            value={view}
-            onValueChange={onViewChange}
-            options={viewOptions()}
-            disabled={locked}
-          />
-        </Locked>
+        <IconToggleGroup
+          label={t.library.view.compact}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
       ),
     },
   ];
-  // An image search draws cards, so the size stays while the list view is chosen.
-  if (view === "grid" || locked) {
+  if (view === "grid") {
     controls.push({
       id: "size",
       label: t.list.cardSize,
@@ -130,8 +99,6 @@ export interface LibraryToolbarProps {
   suggestions?: SearchSuggestions;
   /** The owner's library field searches by a file too. */
   fileSearch?: FileSearchField;
-  /** Disables filter, sort and view with this reason, as an image search does; zoom stays. */
-  lockedReason?: UiText;
 }
 
 export default function LibraryToolbar({
@@ -157,40 +124,32 @@ export default function LibraryToolbar({
   searchLabel,
   searchPlaceholder,
   fileSearch,
-  lockedReason,
 }: LibraryToolbarProps) {
-  const locked = lockedReason !== undefined;
   const controls: ToolbarViewControl[] = [
     {
       id: "sort",
       label: t.list.sort.heading,
       inlineFrom: "md",
       control: (
-        <Locked reason={lockedReason}>
-          <SortMenu
-            sort={sort}
-            onSortChange={onSortChange}
-            onShuffle={onShuffle}
-            nativeOrder={nativeOrder}
-            disabled={locked}
-          />
-        </Locked>
+        <SortMenu
+          sort={sort}
+          onSortChange={onSortChange}
+          onShuffle={onShuffle}
+          nativeOrder={nativeOrder}
+        />
       ),
       compact: (
-        <Locked reason={lockedReason}>
-          <CompactSortControls
-            nativeOrder={nativeOrder}
-            name="compact-sort"
-            sort={sort}
-            onSortChange={onSortChange}
-            onShuffle={onShuffle}
-            disabled={locked}
-          />
-        </Locked>
+        <CompactSortControls
+          nativeOrder={nativeOrder}
+          name="compact-sort"
+          sort={sort}
+          onSortChange={onSortChange}
+          onShuffle={onShuffle}
+        />
       ),
       compactLabelled: true,
     },
-    ...viewControls(view, onViewChange, zoom, onZoomChange, lockedReason),
+    ...viewControls(view, onViewChange, zoom, onZoomChange),
   ];
 
   return (
@@ -211,19 +170,16 @@ export default function LibraryToolbar({
       view={controls}
       viewLabel={t.list.viewAndSort}
     >
-      <Locked reason={lockedReason}>
-        <FilterMenu
-          favorite={favorite}
-          onApply={onFilterApply}
-          canClear={canClear}
-          onClear={onClear}
-          extraCount={extraFilterCount}
-          onOpen={onFilterOpen}
-          disabled={locked}
-        >
-          {extraFilter}
-        </FilterMenu>
-      </Locked>
+      <FilterMenu
+        favorite={favorite}
+        onApply={onFilterApply}
+        canClear={canClear}
+        onClear={onClear}
+        extraCount={extraFilterCount}
+        onOpen={onFilterOpen}
+      >
+        {extraFilter}
+      </FilterMenu>
     </Toolbar>
   );
 }

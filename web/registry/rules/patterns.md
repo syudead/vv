@@ -595,13 +595,13 @@ control }`: inline, the controls stand without a visible name, so each needs
 Every list, table and section shows its data or exactly one of these blocks,
 in the body slot of its skeleton, so the header and the toolbar never move.
 
-| State            | Block                            | Shows                                                                                                                                                        |
-| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards (face circles with `size="face"`), `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
-| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                         |
-| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                     |
-| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                 |
-| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                       |
+| State            | Block                            | Shows                                                                                                                                                                                                     |
+| ---------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards (face circles with `size="face"`), `table` rows, `grouped` rows under a heading, `cards` of a `CardList`, `rows` of `ResultRow`s under a band heading |
+| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                                                                      |
+| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                                                                  |
+| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                                                              |
+| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                                                                    |
 
 ```mermaid
 stateDiagram-v2

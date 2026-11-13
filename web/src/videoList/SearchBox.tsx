@@ -29,7 +29,7 @@ import { type FileDrag, useFileIntake } from "./useFileIntake";
 /** Debounce so each keystroke does not replace the list. */
 export const searchDebounceMs = 250;
 
-/** The owner's library field also searches by a file; see library-ui.md, Image search. */
+/** The owner's library and image search fields also search by a file; see library-ui.md, Image search. */
 export interface FileSearchField {
   /** Opens the search-by-file dialog. */
   onPick: () => void;
@@ -37,8 +37,8 @@ export interface FileSearchField {
   onFiles: (files: File[]) => void;
   /** The query chip while an image search shows; it replaces the search icon. */
   chip?: ReactNode;
-  /** Ends the image search: `Enter` with text and `Escape` on an empty field call it while the chip shows. */
-  onClear: () => void;
+  /** Leaves the image search: `Escape` on an empty field calls it while the chip shows. */
+  onClear?: () => void;
 }
 
 export interface SearchBoxProps {
@@ -177,12 +177,7 @@ export default function SearchBox({
   };
   const chip = fileSearch?.chip;
   const intake = useFileIntake(fileSearch?.onFiles);
-  // Text ends a shown image search even when it equals the committed query, which commits nothing.
-  const searchText = () => {
-    const text = normalizeQuery(latest.current, maxLength);
-    if (chip !== undefined && text !== "") fileSearch?.onClear();
-    commit(text);
-  };
+  const searchText = () => commit(normalizeQuery(latest.current, maxLength));
   const box = useSuggestionBox({
     suggestions,
     text: normalizeQuery(input, maxLength),
@@ -268,7 +263,7 @@ export default function SearchBox({
             }
             if (event.key === "Escape" && chip !== undefined && latest.current === "") {
               event.preventDefault();
-              fileSearch?.onClear();
+              fileSearch?.onClear?.();
               return;
             }
             if (event.key === "Escape") {

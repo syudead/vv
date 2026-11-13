@@ -8,25 +8,45 @@ import { Button } from "../../ui/shadcn/button";
 import { bandsWithItems, hasBestCandidate } from "./imageSearchState";
 import { MatchRow } from "./MatchRow";
 
+/** What the owner left on the results before opening the player, restored on the way back. */
+export interface ResultsView {
+  scrollY?: number;
+  /** The keys of the collapsed rows. */
+  collapsed?: ReadonlySet<string>;
+  /** The frame last focused in each row's strip, by row key. */
+  strips?: ReadonlyMap<string, number>;
+  /** The control that opened the player. */
+  opener?: string;
+}
+
 export interface ImageSearchResultsProps {
   /** An answer with at least one item. */
   result: ImageSearchResult;
-  /** The library URL the player goes back to. */
+  /** The screen's URL the player goes back to. */
   backTo: string;
-  /** The history entry the search is kept under, so closing the player restores it. */
+  /** The token the search is kept under, so closing the player restores it. */
   entry: string;
-  /** The scroll position to restore when the search came back from history. */
-  scrollY: number | undefined;
-  /** The keys of the rows collapsed when the search came back from history. */
-  initialCollapsed?: ReadonlySet<string>;
+  /** The view when the search came back from history. */
+  restored?: ResultsView;
   /** Called with the keys of the collapsed rows whenever the owner changes them. */
   onCollapsedChange?: (collapsed: ReadonlySet<string>) => void;
-  /** Called before a row opens the player, to keep the scroll position. */
-  onOpen: () => void;
+  /** Called when the owner focuses another frame of a row's strip. */
+  onStripChange?: (row: string, frame: number) => void;
+  /** Called with the control's name before a row opens the player, to keep the view. */
+  onOpen: (opener: string) => void;
 }
 
 function rowKey(item: ImageSearchItem): string {
   return `${String(item.video.id)}-${String(item.match.videoId)}`;
+}
+
+/** Focuses the control that opened the player, or the first control inside the element so named. */
+function focusOpener(opener: string) {
+  const named = document.querySelector<HTMLElement>(`[data-opener="${opener}"]`);
+  const target = named?.matches("a, button")
+    ? named
+    : named?.querySelector<HTMLElement>("a, button");
+  target?.focus({ preventScroll: true });
 }
 
 /** The summary line and the answer's rows in their match-rate bands, strongest first. */
@@ -34,25 +54,28 @@ export function ImageSearchResults({
   result,
   backTo,
   entry,
-  scrollY,
-  initialCollapsed,
+  restored,
   onCollapsedChange,
+  onStripChange,
   onOpen,
 }: ImageSearchResultsProps) {
   const text = t.library.imageSearch;
   // Rows are expanded when the answer arrives; the set holds the ones the owner collapsed. Back from
   // the player it starts from the kept set, so the rows have their heights before the scroll applies.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
-    () => initialCollapsed ?? new Set(),
+    () => restored?.collapsed ?? new Set(),
   );
   const changeCollapsed = (next: ReadonlySet<string>) => {
     setCollapsed(next);
     onCollapsedChange?.(next);
   };
   // Back from the player, the rows are drawn from memory in this commit, so the position applies at once.
+  const scrollY = restored?.scrollY;
+  const opener = restored?.opener;
   useLayoutEffect(() => {
     if (scrollY !== undefined) window.scrollTo({ top: scrollY, behavior: "auto" });
-  }, [scrollY]);
+    if (opener !== undefined) focusOpener(opener);
+  }, [scrollY, opener]);
 
   const back = returnState(backTo, entry);
   const { items } = result;
@@ -97,12 +120,15 @@ export function ImageSearchResults({
               <MatchRow
                 key={key}
                 item={item}
+                rowKey={key}
                 tone={band.id === firstBand ? "primary" : "muted"}
                 best={best && item === items[0]}
                 expanded={!collapsed.has(key)}
                 onExpandedChange={(expanded) => setExpanded(key, expanded)}
                 back={back}
                 onOpen={onOpen}
+                stripFrame={restored?.strips?.get(key)}
+                onStripFrameChange={(frame) => onStripChange?.(key, frame)}
               />
             );
           })}

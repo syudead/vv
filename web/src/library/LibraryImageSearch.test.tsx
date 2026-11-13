@@ -24,6 +24,7 @@ import { ScanProvider } from "../shell/ScanProvider";
 import { json, video } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import ImageSearchPage from "./imageSearch/ImageSearchPage";
 import { __resetImageSearchesForTest } from "./imageSearch/imageSearchState";
 import LibraryPage from "./LibraryPage";
 
@@ -92,15 +93,23 @@ function Back() {
   );
 }
 
-function renderLibrary(audience: Audience = "owner") {
+/** The address the router shows, so a test can tell the library apart from the screen. */
+function Address() {
+  const { pathname, search } = useLocation();
+  return <output aria-label="アドレス">{`${pathname}${search}`}</output>;
+}
+
+function renderLibrary(audience: Audience = "owner", path = "/") {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[path]}>
       <TooltipProvider>
         <ToastProvider>
           <AudienceProvider audience={audience}>
             <ScanProvider>
+              <Address />
               <Routes>
                 <Route path="/" element={<LibraryPage />} />
+                <Route path="/image-search" element={<ImageSearchPage />} />
                 <Route
                   path="/videos/:id"
                   element={
@@ -178,6 +187,22 @@ function imageSearchCount() {
   ).length;
 }
 
+function address() {
+  return screen.getByRole("status", { name: "アドレス" }).textContent;
+}
+
+/** The results column's statuses: the panel's and the summary line's. */
+function statuses() {
+  return screen.getAllByRole("status").map((status) => status.textContent);
+}
+
+async function openSearch(user: ReturnType<typeof userEvent.setup>, file = png()) {
+  renderLibrary();
+  await screen.findByRole("link", { name: /ライブラリの動画/ });
+  await pick(user, file);
+  await waitFor(() => expect(sent).toHaveLength(1));
+}
+
 describe("ライブラリの画像検索", () => {
   beforeEach(() => {
     __resetTagsForTest();
@@ -202,24 +227,15 @@ describe("ライブラリの画像検索", () => {
     vi.unstubAllGlobals();
   });
 
-  it("選んだファイルで 1 回だけ要求して検索中を出し、結果は一致した版をその位置で開く", async () => {
+  it("選んだファイルで /image-search を開いて 1 回だけ要求し、結果は一致した版をその位置で開く", async () => {
     const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
-    const file = png();
+    await openSearch(user);
 
-    await pick(user, file);
-
-    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(address()).toBe("/image-search");
     expect(sent[0]?.file.name).toBe("shot.png");
     expect(screen.queryByRole("dialog")).toBeNull();
-    const body = screen.getByRole("region", { name: "Image search" });
-    expect(
-      within(body)
-        .getAllByRole("status")
-        .map((status) => status.textContent),
-    ).toContain("Searching…");
-    expect(within(body).getByRole("button", { name: "Cancel" })).toBeDefined();
+    expect(statuses()).toContain("Searching…");
+    expect(screen.getByRole("status", { name: "Searching…" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Clear image search" })).toBeDefined();
     expect(screen.queryByRole("link", { name: /ライブラリの動画/ })).toBeNull();
 
@@ -230,109 +246,84 @@ describe("ライブラリの画像検索", () => {
     expect(
       screen.getByRole("link", { name: "Play from 0:12" }).getAttribute("href"),
     ).toBe("/videos/7?t=12.5");
-    expect(screen.getByRole("status").textContent).toBe("1 video");
+    expect(statuses()).toEqual(expect.arrayContaining(["Found 1 video", "1 video"]));
     expect(imageSearchCount()).toBe(1);
   });
 
-  it("新しいファイルは前の要求を中断する", async () => {
+  it("画面で別のファイルを渡すとエントリを置き換えて前の要求を中断し、戻るはライブラリに着く", async () => {
     const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
+    await openSearch(user, png("first.png"));
 
-    await pick(user, png("first.png"));
-    await waitFor(() => expect(sent).toHaveLength(1));
     await pick(user, png("second.png"));
 
     await waitFor(() => expect(sent).toHaveLength(2));
     expect(sent[0]?.signal.aborted).toBe(true);
     expect(sent[1]?.signal.aborted).toBe(false);
     expect(sent[1]?.file.name).toBe("second.png");
+    sent[1]?.answer(result([item(5, 7, 12_500)]));
+    await screen.findByRole("link", { name: /動画 5/ });
+
+    await user.click(screen.getByRole("button", { name: "Library" }));
+    expect(await screen.findByRole("link", { name: /ライブラリの動画/ })).toBeDefined();
+    expect(address()).toBe("/");
+    expect(imageSearchCount()).toBe(2);
   });
 
   it.each(["テストで戻る", "テストで閉じる"])(
-    "再生画面から %s と、要求せずに同じ結果を出す",
+    "再生画面から %s と、要求せずに同じ結果、畳んだ行、スクロール位置を出す",
     async (way) => {
       const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: /ライブラリの動画/ });
-      await pick(user, png());
-      await waitFor(() => expect(sent).toHaveLength(1));
+      await openSearch(user);
       sent[0]?.answer(result([item(5, 7, 12_500), item(6, 6, 3_000)]));
+      const collapsed = (title: string) =>
+        screen.queryByRole("button", { name: `Show frames of ${title}` }) !== null;
+      await user.click(
+        await screen.findByRole("button", { name: "Hide frames of 動画 5" }),
+      );
 
-      // jsdom does not scroll, so the position the page records is set here.
+      // jsdom does not scroll, so the position the screen records is set here.
       vi.stubGlobal("scrollY", 640);
-      await user.click(await screen.findByRole("link", { name: /動画 6/ }));
+      await user.click(screen.getByRole("link", { name: /動画 6/ }));
       expect(await screen.findByText("再生画面")).toBeDefined();
-      const scrollTo = vi.mocked(window.scrollTo);
-      scrollTo.mockClear();
+      // The rows' heights decide where the position lands, so the collapse is drawn when it applies.
+      const collapsedAtScroll: boolean[] = [];
+      vi.mocked(window.scrollTo).mockImplementation(() => {
+        collapsedAtScroll.push(collapsed("動画 5"));
+      });
       await user.click(screen.getByRole("button", { name: way }));
 
-      expect(await screen.findByRole("link", { name: /動画 5/ })).toBeDefined();
-      expect(screen.getByRole("link", { name: /動画 6/ })).toBeDefined();
-      expect(screen.getByRole("button", { name: "Clear image search" })).toBeDefined();
-      expect(scrollTo).toHaveBeenCalledWith({ top: 640, behavior: "auto" });
+      const opener = await screen.findByRole("link", { name: /動画 6/ });
+      expect(address()).toBe("/image-search");
+      expect(collapsed("動画 5")).toBe(true);
+      expect(collapsed("動画 6")).toBe(false);
+      expect(collapsedAtScroll).toEqual([true]);
+      expect(window.scrollTo).toHaveBeenCalledWith({ top: 640, behavior: "auto" });
+      expect(document.activeElement).toBe(opener);
       expect(imageSearchCount()).toBe(1);
     },
   );
 
-  it("再生画面から戻ると、畳んだ行を畳んだままにしてからスクロール位置を戻す", async () => {
+  it("一致なしは調べていない動画の数を出し、Back to library でライブラリに戻る", async () => {
     const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
-    await pick(user, png());
-    await waitFor(() => expect(sent).toHaveLength(1));
-    sent[0]?.answer(result([item(5, 7, 12_500), item(6, 6, 3_000)]));
-    const collapsed = (title: string) =>
-      screen.queryByRole("button", { name: `Show frames of ${title}` }) !== null;
-    await user.click(
-      await screen.findByRole("button", { name: "Hide frames of 動画 5" }),
-    );
-
-    vi.stubGlobal("scrollY", 640);
-    await user.click(screen.getByRole("link", { name: /動画 6/ }));
-    expect(await screen.findByText("再生画面")).toBeDefined();
-    // The rows' heights decide where the position lands, so the collapse is drawn when it applies.
-    const collapsedAtScroll: boolean[] = [];
-    vi.mocked(window.scrollTo).mockImplementation(() => {
-      collapsedAtScroll.push(collapsed("動画 5"));
-    });
-    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
-
-    await screen.findByRole("link", { name: /動画 5/ });
-    expect(collapsed("動画 5")).toBe(true);
-    expect(collapsed("動画 6")).toBe(false);
-    expect(collapsedAtScroll).toEqual([true]);
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 640, behavior: "auto" });
-    expect(imageSearchCount()).toBe(1);
-  });
-
-  it("一致なしは調べていない動画の数を出し、消すとライブラリに戻る", async () => {
-    const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
-    await pick(user, png());
-    await waitFor(() => expect(sent).toHaveLength(1));
+    await openSearch(user);
 
     sent[0]?.answer(result([], 3));
 
     expect(
       await screen.findByRole("heading", { name: "No video has this footage" }),
     ).toBeDefined();
+    expect(statuses()).toContain("No match");
     expect(
-      screen.getByText("3 videos aren't indexed yet and weren't searched."),
-    ).toBeDefined();
+      screen.getAllByText("3 videos aren't indexed yet and weren't searched."),
+    ).not.toHaveLength(0);
 
-    const body = screen.getByRole("region", { name: "Image search" });
-    await user.click(within(body).getByRole("button", { name: "Clear image search" }));
+    await user.click(screen.getByRole("button", { name: "Back to library" }));
     expect(await screen.findByRole("link", { name: /ライブラリの動画/ })).toBeDefined();
   });
 
-  it("サーバーが断った理由と別のファイルを選ぶ操作を本体に出す", async () => {
+  it("サーバーが断った理由と別のファイルを選ぶ操作を結果の列に出す", async () => {
     const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
-    await pick(user, png());
-    await waitFor(() => expect(sent).toHaveLength(1));
+    await openSearch(user);
 
     sent[0]?.answer(
       json(
@@ -347,6 +338,7 @@ describe("ライブラリの画像検索", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("There's nothing to compare in this file");
+    expect(statuses()).toContain("Not searched");
     expect(within(alert).queryByRole("button", { name: "Retry" })).toBeNull();
     await user.click(within(alert).getByRole("button", { name: "Choose another file…" }));
     expect(
@@ -354,19 +346,16 @@ describe("ライブラリの画像検索", () => {
     ).toBeDefined();
   });
 
-  it("チップがある間の Enter は画像検索を終えて文字で検索する", async () => {
+  it("画面の検索欄の Enter はその文字で検索するライブラリを開き、実行中の要求を中断する", async () => {
     const user = userEvent.setup();
-    renderLibrary();
-    await screen.findByRole("link", { name: /ライブラリの動画/ });
-    await pick(user, png());
-    await waitFor(() => expect(sent).toHaveLength(1));
+    await openSearch(user);
 
-    const box = screen.getByRole("combobox", { name: "Search videos" });
+    const box = screen.getByRole("searchbox", { name: "Search videos" });
     expect(box.getAttribute("placeholder")).toBe("Or search by text");
     await user.type(box, "京都{Enter}");
 
     expect(sent[0]?.signal.aborted).toBe(true);
-    expect(screen.queryByRole("button", { name: "Clear image search" })).toBeNull();
+    await waitFor(() => expect(address()).toBe("/?q=%E4%BA%AC%E9%83%BD"));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([input]) =>
@@ -376,7 +365,7 @@ describe("ライブラリの画像検索", () => {
     );
   });
 
-  it("検索欄に落としたファイルで 1 回だけ要求する", async () => {
+  it("検索欄に落としたファイルで画面を開き、フォーカスを検索欄に置いたまま 1 回だけ要求する", async () => {
     renderLibrary();
     await screen.findByRole("link", { name: /ライブラリの動画/ });
     const file = png("dropped.png");
@@ -386,6 +375,10 @@ describe("ライブラリの画像検索", () => {
     expect(taken).toBe(false);
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]?.file.name).toBe(file.name);
+    expect(address()).toBe("/image-search");
+    expect(document.activeElement).toBe(
+      screen.getByRole("searchbox", { name: "Search videos" }),
+    );
     expect(imageSearchCount()).toBe(1);
   });
 
@@ -407,7 +400,9 @@ describe("ライブラリの画像検索", () => {
     expect(taken).toBe(false);
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]?.file.name).toBe(file.name);
-    expect(box.value).toBe("");
+    expect(
+      screen.getByRole<HTMLInputElement>("searchbox", { name: "Search videos" }).value,
+    ).toBe("");
   });
 
   it("検索欄の外に落としたファイルはブラウザに開かせず、何も要求しない", async () => {
@@ -418,7 +413,7 @@ describe("ライブラリの画像検索", () => {
     expect(fireEvent.drop(card, files([png()]))).toBe(false);
 
     expect(screen.getByRole("link", { name: /ライブラリの動画/ })).toBe(card);
-    expect(screen.queryByRole("region", { name: "Image search" })).toBeNull();
+    expect(address()).toBe("/");
     expect(imageSearchCount()).toBe(0);
   });
 
@@ -434,7 +429,7 @@ describe("ライブラリの画像検索", () => {
       description: "Use a PNG, JPEG or WebP image, or a video.",
     },
   ])(
-    "$title: 要求せずに最初のファイルと理由を出す",
+    "$title: 要求せずに最初のファイルを画面に出し、理由を結果の列に出す",
     async ({ given, title, description }) => {
       renderLibrary();
       await screen.findByRole("link", { name: /ライブラリの動画/ });
@@ -444,8 +439,9 @@ describe("ライブラリの画像検索", () => {
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toContain(title);
       expect(alert.textContent).toContain(description);
-      expect(screen.getByRole("button", { name: "Clear image search" })).toBeDefined();
-      expect(screen.getByText(given[0]?.name ?? "")).toBeDefined();
+      expect(address()).toBe("/image-search");
+      const panel = screen.getByRole("complementary", { name: "Your file" });
+      expect(within(panel).getAllByText(given[0]?.name ?? "")).not.toHaveLength(0);
       expect(imageSearchCount()).toBe(0);
     },
   );
@@ -457,7 +453,15 @@ describe("ライブラリの画像検索", () => {
 
     // The browser's default stays as before, so the drop is not taken.
     expect(fireEvent.drop(searchField(), files([png()]))).toBe(true);
-    expect(screen.queryByRole("region", { name: "Image search" })).toBeNull();
+    expect(address()).toBe("/");
+    expect(imageSearchCount()).toBe(0);
+  });
+
+  it("ゲストが /image-search を開くと / に送る", async () => {
+    renderLibrary("guest", "/image-search");
+
+    expect(await screen.findByRole("link", { name: /ライブラリの動画/ })).toBeDefined();
+    expect(address()).toBe("/");
     expect(imageSearchCount()).toBe(0);
   });
 });

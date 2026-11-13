@@ -9,7 +9,7 @@ import { t, type UiText } from "../../i18n";
 import { errorText } from "../../i18n/errors";
 import { formatBytes, formatDuration } from "../../lib/format";
 
-/** Why a file was not searched, as the body's alert shows it. */
+/** Why a file was not searched, as the results column's alert shows it. */
 export interface Refusal {
   title: UiText;
   description?: UiText;
@@ -17,7 +17,7 @@ export interface Refusal {
   retry: boolean;
 }
 
-/** One image search as the page shows it; the file stays until the chip is cleared, for the chip and Retry. */
+/** One image search as the screen shows it; the file stays for the panel, the chip and Retry. */
 export type ImageSearchPhase =
   | { kind: "searching"; file: File }
   | { kind: "results"; file: File; result: ImageSearchResult }
@@ -152,44 +152,76 @@ export function matchedSection(
   };
 }
 
-interface Entry {
-  phase: ImageSearchPhase;
+/** Where the owner gave the files; the screen they open puts focus back there. */
+export type GivenFrom = "field" | "dialog";
+
+/** What the screen keeps of one search, under the token its history entry names. */
+export interface SearchEntry {
+  /** Every file given, so the first search or refusal is decided by the screen that shows it. */
+  files: readonly File[];
+  from: GivenFrom;
+  /** The last answer or refusal; absent while the search has not answered. */
+  phase?: ImageSearchPhase;
   scrollY?: number;
   /** The keys of the result rows the owner collapsed. */
   collapsed?: ReadonlySet<string>;
+  /** The owner's own toggle of the panel below lg; absent follows the phase. */
+  panelOpen?: boolean;
+  /** The frame last focused in each row's strip, by row key. */
+  strips?: ReadonlyMap<string, number>;
+  /** The control that opened the player, focused again on the way back. */
+  opener?: string;
 }
 
-// Searches by history entry, so going back from the player shows the same results; the file never
-// goes in the URL. The oldest entries are dropped so files do not pile up in memory.
-const entries = new Map<string, Entry>();
+// Searches by the token their history entry names, so going back from the player shows the same results;
+// the files never go in the URL or in history state. The oldest are dropped so files do not pile up.
+const entries = new Map<string, SearchEntry>();
 const maxEntries = 10;
+let lastToken = 0;
 
-export function rememberPhase(key: string, phase: ImageSearchPhase): void {
-  entries.delete(key);
-  entries.set(key, { phase });
+/** Keeps the files for the screen the caller opens next, under a new token for that entry's state. */
+export function handOver(files: readonly File[], from: GivenFrom): string {
+  lastToken += 1;
+  const token = `${Date.now().toString(36)}-${String(lastToken)}`;
+  entries.set(token, { files, from });
   while (entries.size > maxEntries) {
     const oldest = entries.keys().next().value;
     if (oldest === undefined) break;
     entries.delete(oldest);
   }
+  return token;
 }
 
-export function rememberScroll(key: string, scrollY: number): void {
+/** Keeps an answer or a refusal; what the owner did with the previous one is dropped. */
+export function rememberPhase(key: string, phase: ImageSearchPhase): void {
   const entry = entries.get(key);
-  if (entry !== undefined) entry.scrollY = scrollY;
+  if (entry === undefined) return;
+  entries.set(key, {
+    files: entry.files,
+    from: entry.from,
+    phase: phase.kind === "searching" ? undefined : phase,
+  });
 }
 
-export function rememberCollapsed(key: string, collapsed: ReadonlySet<string>): void {
+/** Merges what the owner changed on the shown answer, such as the scroll position or a collapsed row. */
+export function rememberView(
+  key: string,
+  change: Pick<SearchEntry, "scrollY" | "collapsed" | "panelOpen" | "opener">,
+): void {
   const entry = entries.get(key);
-  if (entry !== undefined) entry.collapsed = collapsed;
+  if (entry !== undefined) entries.set(key, { ...entry, ...change });
 }
 
-export function recall(key: string): Entry | undefined {
+export function rememberStrip(key: string, row: string, frame: number): void {
+  const entry = entries.get(key);
+  if (entry === undefined) return;
+  const strips = new Map(entry.strips);
+  strips.set(row, frame);
+  entries.set(key, { ...entry, strips });
+}
+
+export function recall(key: string): SearchEntry | undefined {
   return entries.get(key);
-}
-
-export function forget(key: string): void {
-  entries.delete(key);
 }
 
 export function __resetImageSearchesForTest(): void {
