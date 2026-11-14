@@ -1,5 +1,12 @@
-import { Search, X } from "lucide-react";
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { ScanSearch, Search, X } from "lucide-react";
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { t, type UiText } from "../i18n";
@@ -9,6 +16,7 @@ import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
 import { Kbd } from "../ui/shadcn/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import {
   type SearchSuggestions,
@@ -16,9 +24,22 @@ import {
   useSuggestionBox,
 } from "./SearchSuggestions";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
+import { type FileDrag, useFileIntake } from "./useFileIntake";
 
 /** Debounce so each keystroke does not replace the list. */
 export const searchDebounceMs = 250;
+
+/** The owner's library and image search fields also search by a file; see library-ui.md, Image search. */
+export interface FileSearchField {
+  /** Opens the search-by-file dialog. */
+  onPick: () => void;
+  /** Takes the files dropped on the field or pasted into it. */
+  onFiles: (files: File[]) => void;
+  /** The query chip while an image search shows; it replaces the search icon. */
+  chip?: ReactNode;
+  /** Leaves the image search: `Escape` on an empty field calls it while the chip shows. */
+  onClear?: () => void;
+}
 
 export interface SearchBoxProps {
   query: string;
@@ -42,6 +63,26 @@ export interface SearchBoxProps {
    * IME text and half-typed words do not replace the list.
    */
   commitOn?: "typing" | "enter";
+  fileSearch?: FileSearchField;
+}
+
+/** Room for the controls at the field's end: clear or the `/` hint, syntax help and the file button. */
+function endPadding(syntaxHelp: boolean, empty: boolean, pick: boolean): string {
+  if (!syntaxHelp) return pick ? "pr-16" : "pr-8";
+  if (pick) return empty ? "pr-16 sm:pr-24" : "pr-24";
+  return empty ? "pr-8 sm:pr-16" : "pr-16";
+}
+
+/** The frame of a field a file is dragged toward: dashed while over the page, filled over the field. */
+function dragFrame(drag: FileDrag): string | false {
+  if (drag === "page") return "border-dashed border-primary hover:border-primary";
+  if (drag === "field") return "border-primary bg-primary-soft hover:border-primary";
+  return false;
+}
+
+function fieldPlaceholder(drag: FileDrag, chip: boolean, placeholder: UiText): UiText {
+  if (drag !== "none") return t.library.imageSearch.dropHere;
+  return chip ? t.library.imageSearch.placeholder : placeholder;
 }
 
 /**
@@ -70,6 +111,7 @@ export default function SearchBox({
   className,
   suggestions,
   commitOn = "typing",
+  fileSearch,
 }: SearchBoxProps) {
   const onEnter = commitOn === "enter";
   const [input, setInputState] = useState(query);
@@ -133,12 +175,15 @@ export default function SearchBox({
     session.current.end();
     suggestions?.onPick(option);
   };
+  const chip = fileSearch?.chip;
+  const intake = useFileIntake(fileSearch?.onFiles);
+  const searchText = () => commit(normalizeQuery(latest.current, maxLength));
   const box = useSuggestionBox({
     suggestions,
     text: normalizeQuery(input, maxLength),
     composing,
     debounceMs,
-    onSearch: () => commit(normalizeQuery(latest.current, maxLength)),
+    onSearch: searchText,
     onPick: pick,
   });
 
@@ -149,90 +194,151 @@ export default function SearchBox({
   };
 
   return (
-    <div className={cn("relative flex w-full items-center", className)}>
-      <Search
-        aria-hidden="true"
-        className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
-      />
-      <Input
-        ref={field}
-        type="search"
-        {...box.inputProps}
-        value={input}
-        onChange={(event) => {
-          box.open();
-          setInput(
-            limitQueryInput(
-              event.target.value,
-              latest.current,
-              event.target.selectionEnd ?? undefined,
-              maxLength,
-            ),
-          );
-        }}
-        onCompositionStart={() => setComposing(true)}
-        onCompositionEnd={(event) => {
-          setComposing(false);
-          setInput(
-            limitQueryInput(
-              event.currentTarget.value,
-              latest.current,
-              undefined,
-              maxLength,
-            ),
-          );
-        }}
-        onFocus={() => session.current.start()}
-        onBlur={() => {
-          box.close();
-          // Flush any pending commit before ending the typing session.
-          if (!composing && !onEnter) commit(normalizeQuery(latest.current, maxLength));
-          session.current.end();
-        }}
-        onKeyDown={(event) => {
-          // IME Escape cancels composition, not the query.
-          if (isComposingKeyEvent(event)) return;
-          if (box.onKeyDown(event)) return;
-          if (event.key === "Enter" && onEnter) {
-            event.preventDefault();
-            commit(normalizeQuery(latest.current, maxLength));
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            setInput("");
-            commit("");
-            field.current?.blur();
-          }
-        }}
-        placeholder={placeholder}
-        aria-label={label}
-        disabled={disabled}
-        autoComplete="off"
-        spellCheck={false}
+    // The suggestion list sits outside the drop target, so a file dropped on it is refused like any drop off the field.
+    <div className={cn("relative w-full", className)}>
+      <div
+        {...intake.dropProps}
+        data-file-drag={intake.drag === "none" ? undefined : intake.drag}
         className={cn(
-          "h-8 pl-8 [&::-webkit-search-cancel-button]:hidden",
-          !syntaxHelp ? "pr-8" : input === "" ? "pr-8 sm:pr-16" : "pr-16",
+          "relative flex w-full items-center",
+          // With a chip the frame holds the chip and the borderless input, so both read as one field.
+          chip !== undefined && [
+            "h-8 gap-1 rounded-md border border-input bg-muted pl-0.5 hover:border-muted-foreground",
+            dragFrame(intake.drag),
+          ],
         )}
-      />
-      <div className="absolute right-1 flex items-center gap-0.5">
-        {input !== "" && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            // Keep focus on mousedown so blur does not commit and add an extra history entry before Clear.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={clear}
-            aria-label={t.list.search.clear}
-            className="size-6"
-          >
-            <X aria-hidden="true" />
-          </Button>
+      >
+        {chip === undefined ? (
+          <FieldIcon drag={intake.drag} />
+        ) : (
+          <div className="flex max-w-1/2 min-w-0 shrink-0">{chip}</div>
         )}
-        {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
-        {syntaxHelp && <SearchSyntaxHelp />}
+        <Input
+          ref={field}
+          type="search"
+          {...box.inputProps}
+          value={input}
+          onChange={(event) => {
+            box.open();
+            setInput(
+              limitQueryInput(
+                event.target.value,
+                latest.current,
+                event.target.selectionEnd ?? undefined,
+                maxLength,
+              ),
+            );
+          }}
+          onPaste={(event) => {
+            // An image search replaces the text the suggestions were for.
+            if (intake.onPaste(event)) box.close();
+          }}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={(event) => {
+            setComposing(false);
+            setInput(
+              limitQueryInput(
+                event.currentTarget.value,
+                latest.current,
+                undefined,
+                maxLength,
+              ),
+            );
+          }}
+          onFocus={() => session.current.start()}
+          onBlur={() => {
+            box.close();
+            // Flush any pending commit before ending the typing session.
+            if (!composing && !onEnter) commit(normalizeQuery(latest.current, maxLength));
+            session.current.end();
+          }}
+          onKeyDown={(event) => {
+            // IME Escape cancels composition, not the query.
+            if (isComposingKeyEvent(event)) return;
+            if (box.onKeyDown(event)) return;
+            if (event.key === "Enter" && onEnter) {
+              event.preventDefault();
+              searchText();
+              return;
+            }
+            if (event.key === "Escape" && chip !== undefined && latest.current === "") {
+              event.preventDefault();
+              fileSearch?.onClear?.();
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setInput("");
+              commit("");
+              field.current?.blur();
+            }
+          }}
+          placeholder={fieldPlaceholder(intake.drag, chip !== undefined, placeholder)}
+          aria-label={label}
+          disabled={disabled}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn(
+            "[&::-webkit-search-cancel-button]:hidden",
+            chip === undefined
+              ? ["h-8 pl-8", dragFrame(intake.drag)]
+              : "h-full border-0 bg-transparent pl-1 hover:border-0",
+            endPadding(syntaxHelp, input === "", fileSearch !== undefined),
+          )}
+        />
+        <div className="absolute right-1 flex items-center gap-0.5">
+          {input !== "" && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              // Keep focus on mousedown so blur does not commit and add an extra history entry before Clear.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={clear}
+              aria-label={t.list.search.clear}
+              className="size-6"
+            >
+              <X aria-hidden="true" />
+            </Button>
+          )}
+          {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
+          {fileSearch !== undefined && <PickFileButton onPick={fileSearch.onPick} />}
+          {syntaxHelp && <SearchSyntaxHelp />}
+        </div>
       </div>
       {box.list}
     </div>
+  );
+}
+
+function FieldIcon({ drag }: { drag: FileDrag }) {
+  const Icon = drag === "field" ? ScanSearch : Search;
+  return (
+    <Icon
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute left-2 size-4 text-muted-foreground",
+        drag === "field" && "text-primary",
+      )}
+    />
+  );
+}
+
+function PickFileButton({ onPick }: { onPick: () => void }) {
+  const label = t.library.imageSearch.pick;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          onClick={onPick}
+          className="size-6 text-muted-foreground"
+        >
+          <ScanSearch aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

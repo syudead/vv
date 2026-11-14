@@ -8,7 +8,7 @@ import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
 import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
-import SearchBox from "../videoList/SearchBox";
+import SearchBox, { type FileSearchField } from "../videoList/SearchBox";
 import type { SearchSuggestions } from "../videoList/SearchSuggestions";
 import {
   CompactSortControls,
@@ -97,6 +97,8 @@ export interface LibraryToolbarProps {
   extraFilterCount?: number;
   onFilterOpen?: () => void;
   suggestions?: SearchSuggestions;
+  /** The owner's library field searches by a file too. */
+  fileSearch?: FileSearchField;
 }
 
 export default function LibraryToolbar({
@@ -121,6 +123,7 @@ export default function LibraryToolbar({
   suggestions,
   searchLabel,
   searchPlaceholder,
+  fileSearch,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
     {
@@ -161,6 +164,7 @@ export default function LibraryToolbar({
           placeholder={searchPlaceholder}
           suggestions={suggestions}
           commitOn="enter"
+          fileSearch={fileSearch}
         />
       }
       view={controls}

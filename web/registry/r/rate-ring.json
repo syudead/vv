@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "rate-ring",
+  "title": "RateRing",
+  "description": "vv component: a size-12 ring whose arc is a rate of 100 with the whole percent inside, in primary or muted-foreground on a muted track; not a control.",
+  "files": [
+    {
+      "path": "src/ui/RateRing.tsx",
+      "content": "import { cn } from \"@/lib/cn\";\n\n// See web/registry/rules/components.md, RateRing.\n\nexport type RateRingTone = \"primary\" | \"muted\";\n\nexport interface RateRingProps {\n  /** A rate from 0 to 100; drawn and shown as the nearest whole percent. */\n  value: number;\n  tone?: RateRingTone;\n}\n\nconst arcClass: Record<RateRingTone, string> = {\n  primary: \"stroke-primary\",\n  muted: \"stroke-muted-foreground\",\n};\n\n/** Clamps a rate to 0–100 and rounds it to the whole percent the ring shows. */\nexport function wholePercent(value: number): number {\n  return Math.round(Math.min(100, Math.max(0, value)));\n}\n\n/** A ring whose arc is a rate of 100 with the whole percent inside; not a control. */\nexport function RateRing({ value, tone = \"primary\" }: RateRingProps) {\n  const percent = wholePercent(value);\n  return (\n    <span\n      data-slot=\"rate-ring\"\n      data-tone={tone}\n      className=\"relative inline-flex size-12 shrink-0 items-center justify-center\"\n    >\n      <svg viewBox=\"0 0 48 48\" aria-hidden=\"true\" className=\"absolute inset-0 -rotate-90\">\n        <circle\n          cx=\"24\"\n          cy=\"24\"\n          r=\"21\"\n          fill=\"none\"\n          strokeWidth=\"4\"\n          className=\"stroke-muted\"\n        />\n        {percent > 0 && (\n          <circle\n            data-slot=\"rate-ring-arc\"\n            cx=\"24\"\n            cy=\"24\"\n            r=\"21\"\n            fill=\"none\"\n            strokeWidth=\"4\"\n            pathLength={100}\n            strokeDasharray={`${String(percent)} 100`}\n            className={cn(arcClass[tone])}\n          />\n        )}\n      </svg>\n      <span className=\"relative text-sm font-semibold text-foreground tabular-nums\">\n        {percent}\n        {/* A smaller sign keeps \"100%\" inside the ring's 40 px opening. */}\n        <span className=\"text-2xs\">%</span>\n      </span>\n    </span>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#ratering (item vv-rules).",
+  "type": "registry:ui"
+}

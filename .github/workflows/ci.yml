@@ -384,7 +384,7 @@ jobs:
           - group: assistant
             files: e2e/assistant.e2e.ts
           - group: library
-            files: e2e/folders.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
+            files: e2e/folders.e2e.ts e2e/image-search.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
           - group: peer
             files: e2e/peer-library.e2e.ts
           - group: peer-folders

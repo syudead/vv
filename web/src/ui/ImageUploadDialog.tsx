@@ -31,6 +31,9 @@ export interface ImageUploadDialogProps {
   description?: ReactNode;
   /** The picker's types, such as "image/png,image/jpeg,image/webp". */
   accept: string;
+  /** The drop zone's text and hint; the defaults speak of an image. */
+  zone?: ReactNode;
+  zoneHint?: ReactNode;
   /** Takes the chosen, dropped or pasted file; a returned reason is shown and the dialog stays open. */
   onFile: (file: File) => UiText | null;
 }
@@ -42,12 +45,13 @@ export function ImageUploadDialog({
   title,
   description,
   accept,
+  zone = t.common.imageUpload.zone,
+  zoneHint = t.common.imageUpload.zoneHint,
   onFile,
 }: ImageUploadDialogProps) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [refusal, setRefusal] = useState<UiText | null>(null);
-  const text = t.common.imageUpload;
 
   const take = (files: FileList | null) => {
     const file = files === null ? null : pickFile(files);
@@ -114,8 +118,8 @@ export function ImageUploadDialog({
           )}
         >
           <ImageUp aria-hidden="true" />
-          <span className="font-medium">{text.zone}</span>
-          <span className="text-sm text-muted-foreground">{text.zoneHint}</span>
+          <span className="font-medium">{zone}</span>
+          <span className="text-sm text-muted-foreground">{zoneHint}</span>
         </button>
         <input
           ref={input}

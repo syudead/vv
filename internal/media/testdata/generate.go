@@ -70,6 +70,20 @@ func fingerprints(tmp string) {
 	}
 }
 
+// segments holds one still scene of random blocks per two seconds between black bands, and black from 12 to 16 s, so
+// any frame of a segment hashes alike and the hash is not balanced on a coefficient at the median.
+func segments(seconds string) string {
+	scene := "40+170*mod(sin(floor(X/20)*12.9898+floor(Y/15)*78.233+floor(T/2)*37.719)*43758.5453\\,1)"
+	return "color=c=gray:s=320x180:r=10:d=" + seconds + ",format=yuv420p,geq=lum='if(between(T\\,12\\,15.95)\\,16\\," +
+		scene + ")':cb=128:cr=128,pad=320:240:0:30"
+}
+
+// moving scrolls random blocks 60 pixels a second, so a frame is far from one 6 s earlier and from one 250 ms away.
+func moving(seconds string) string {
+	scene := "40+170*mod(sin(floor((X+T*60)/20)*12.9898+floor(Y/15)*78.233)*43758.5453\\,1)"
+	return "color=c=gray:s=320x180:r=10:d=" + seconds + ",format=yuv420p,geq=lum='" + scene + "':cb=128:cr=128,pad=320:240:0:30"
+}
+
 func videos(tmp string) {
 	cases := []struct {
 		name string
@@ -87,6 +101,8 @@ func videos(tmp string) {
 		{"preview.mp4", []string{"-i", "testsrc2=size=642x362:rate=8:duration=10", "-c:v", "libx264", "-pix_fmt", "yuv420p"}},
 		{"preview-short.mp4", []string{"-i", "testsrc2=size=642x362:rate=8:duration=1", "-c:v", "libx264", "-pix_fmt", "yuv420p"}},
 		{"longer-container.mp4", []string{"-i", "nullsrc=size=64x64:rate=8:duration=10,geq=lum='16+floor(N/8)*20':cb=128:cr=128", "-f", "lavfi", "-i", "sine=frequency=440:duration=12", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"}},
+		{"keyframes-2s.mp4", []string{"-i", segments("20"), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "20", "-keyint_min", "20", "-sc_threshold", "0", "-pix_fmt", "yuv420p"}},
+		{"moving-8s.mp4", []string{"-i", moving("16"), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "80", "-keyint_min", "80", "-sc_threshold", "0", "-pix_fmt", "yuv420p"}},
 		{"sparse-keyframes.ts", []string{"-i", "testsrc2=size=320x240:rate=4:duration=15", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mpegts"}},
 	}
 	for _, c := range cases {

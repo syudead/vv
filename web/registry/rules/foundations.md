@@ -66,6 +66,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `c
 `combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `dialog-list` (a list in a dialog that scrolls past ten lines), `menu`,
 `detail-aside`, `detail-aside-wide`, `editor-aside`, `editor-aside-wide`, `form-page-aside`, `list-aside`, `list-aside-max`,
 `profile-aside`, `profile-aside-max`,
+`query-aside` (a query results page's query column), `query-preview-max` and `query-preview-max-sm` (its preview's greatest height from `lg` and below),
 `settings-nav`, `settings-nav-max`, `assistant-panel` (a side panel's width),
 `assistant-composer` (its field's four lines), `related-thumb`, `facts-column` (the
 right column of a two-column video page panel), `replace-preview` (the preview

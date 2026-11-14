@@ -12,17 +12,22 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Downscale only; never enlarge frames already within ThumbnailFrameMaxSide.
-var frameScale = "scale='min(" + strconv.Itoa(domain.ThumbnailFrameMaxSide) + ",iw)':'min(" +
-	strconv.Itoa(domain.ThumbnailFrameMaxSide) + ",ih)':force_original_aspect_ratio=decrease,setsar=1"
+// frameScale downscales only; it never enlarges frames already within maxSide.
+func frameScale(maxSide int) string {
+	side := strconv.Itoa(maxSide)
+	return "scale='min(" + side + ",iw)':'min(" + side + ",ih)':force_original_aspect_ratio=decrease,setsar=1"
+}
 
-// FrameAt returns a bounded PNG at positionMs for editing; like ThumbnailAt, it never substitutes
-// the first frame.
-func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.ThumbnailFrame, error) {
+// posterScale sizes the poster like a full-size frame, so the poster and FrameAt agree.
+var posterScale = frameScale(domain.ThumbnailFrameMaxSide)
+
+// FrameAt returns a PNG at positionMs whose long side is at most maxSide; like ThumbnailAt, it never
+// substitutes the first frame.
+func FrameAt(ctx context.Context, videoPath string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error) {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
-	output, err := command(ctx, PriorityNormal, thumbnailCommand, frameArgs(videoPath, positionMs)...).Output()
+	output, err := command(ctx, PriorityNormal, thumbnailCommand, frameArgs(videoPath, positionMs, maxSide)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -39,22 +44,22 @@ func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.Th
 }
 
 // Put -ss before -i for the same seeking behavior as thumbnailArgs.
-func frameArgs(videoPath string, positionMs int64) []string {
+func frameArgs(videoPath string, positionMs int64, maxSide int) []string {
 	return []string{
 		"-nostdin",
 		"-v", "error",
 		"-ss", strconv.FormatFloat(positionSeconds(positionMs), 'f', 3, 64),
 		"-i", videoPath,
 		"-frames:v", "1",
-		"-vf", frameScale,
+		"-vf", frameScale(maxSide),
 		"-c:v", "png",
 		"-f", "image2pipe",
 		"pipe:1",
 	}
 }
 
-func (a *Assets) FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error) {
-	return FrameAt(ctx, path, positionMs)
+func (a *Assets) FrameAt(ctx context.Context, path string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error) {
+	return FrameAt(ctx, path, positionMs, maxSide)
 }
 
 func (a *Assets) AutoThumbnailPositions(durationMs int64) []int64 {

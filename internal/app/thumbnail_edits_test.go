@@ -130,7 +130,7 @@ type fakeFrames struct {
 	positions []int64
 }
 
-func (f *fakeFrames) FrameAt(_ context.Context, _ string, positionMs int64) (domain.ThumbnailFrame, error) {
+func (f *fakeFrames) FrameAt(_ context.Context, _ string, positionMs int64, _ int) (domain.ThumbnailFrame, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.positions = append(f.positions, positionMs)
@@ -159,7 +159,7 @@ func TestThumbnailEditsHoldTheDiskWhileReadingAFrame(t *testing.T) {
 	f.frames.read = func() { events = append(events, "frame") }
 	f.edits.foreground = recordedForeground{events: &events}
 
-	if _, err := f.edits.VideoFrame(context.Background(), "/media/a.mp4", 1_000); err != nil {
+	if _, err := f.edits.VideoFrame(context.Background(), "/media/a.mp4", 1_000, domain.ThumbnailFrameMaxSide); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"open /media/a.mp4", "frame", "end"}; !slices.Equal(events, want) {

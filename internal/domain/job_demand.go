@@ -40,8 +40,10 @@ var jobConcurrency = map[JobKind]int{
 	JobQueueFaceImages:   1,
 	JobKeyframes:         2,
 	JobMediaInfo:         2,
+	JobFrameIndex:        1,
 	JobQueueKeyframes:    1,
 	JobQueueMediaInfo:    1,
+	JobQueueFrameIndex:   1,
 	JobVirtualThumbnails: 1,
 }
 
@@ -66,7 +68,7 @@ func JobDemand(kind JobKind) JobResources {
 	case JobProbe:
 		// ffprobe reads the container header.
 		return JobResources{Read: 1}
-	case JobThumbnail, JobSeekThumbnail, JobPreview:
+	case JobThumbnail, JobSeekThumbnail, JobPreview, JobFrameIndex:
 		return JobResources{Read: 1, CPU: 1}
 	case JobKeyframes, JobMediaInfo:
 		// ffprobe reads the packet index or the container.

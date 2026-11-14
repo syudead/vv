@@ -348,6 +348,143 @@ assistant` as chips that can only be removed. The smart folder page shows
 them on its condition lines, and the owner's smart folder card shows the
 folder's own ones as chips after its tags.
 
+### Image search
+
+The owner's library search field (on `/` and `/image-search`) also searches by a file: its
+`Search by image or video` button, before the syntax help, opens
+`ImageUploadDialog` with image-and-video wording, and the chosen file starts a
+search ([image-search.md](image-search.md) has the matching rules). A file
+dropped on the field, or pasted into the focused field, starts a search too;
+a paste of text only types it. While a file is dragged into the window, the
+field's frame turns dashed `primary` with the placeholder `Drop here to search
+by this file`, and over the field it is solid with a `primary-soft` fill and
+the `ScanSearch` icon. A file dropped anywhere else on the page is refused
+without opening it and starts nothing. Folder, group and smart-folder pages,
+and guests, keep the plain field.
+
+An accepted file opens the image search screen at `/image-search`
+([`ImageSearchPage.tsx`](../../web/src/library/imageSearch/ImageSearchPage.tsx)),
+pushed over the library entry, which keeps its filters, scroll and selection
+untouched. The file is handed over in memory under a token that the pushed
+entry's state names, with a mark that the library entry is under it; the
+request starts on the screen. A file given on the screen (the field or
+`Choose another file…`) replaces the entry and keeps that mark, so Back never
+walks through old searches. A guest who opens `/image-search` is sent to `/`.
+
+The owner compares each candidate with the file, so the screen keeps the file
+in view and gives each video its evidence: how close, how many frames, at
+what times.
+
+| Decision                                                                               | Rejected                                                                                                 | Why                                                                                                                                          |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Results on a screen of their own at `/image-search`, pushed over the library entry     | Results in the library's `ListPage` body, the first design, which the maintainer rejected after using it | The library body is a card grid sized by zoom under a toolbar that does not apply; a route gives browser Back and an untouched library entry |
+| The file stays in a query panel beside the results                                     | The file only as the chip in the field                                                                   | A chip cannot be compared with anything                                                                                                      |
+| One row per video, holding every matched frame the server returns                      | One card per matched frame                                                                               | The answer is a video; several frames of one video are more evidence for one answer                                                          |
+| Rows in match-rate bands whose ranges, like the number of frames, come from the server | Thresholds or a frame count fixed in the screen                                                          | The accuracy decision can move them without a screen change                                                                                  |
+| The search field stays the only place that takes a dropped or pasted file              | A drop zone in the query panel                                                                           | The drop is limited to the search field; the panel offers `Choose another file…`                                                             |
+| A frame's rate and time are a caption under its image                                  | Text over the image                                                                                      | [VideoThumbnail](../../web/registry/rules/components.md#videothumbnail) allows only the duration, the notice and the credits on an image     |
+| The file is handed over in memory under a token the entry's state names                | The `File` in history state                                                                              | The browser copies state into session history, and a reload would find a file where Idle is wanted                                           |
+| Same                                                                                   | Starting the request on the library page and navigating with it                                          | The library unmounts on the push; the request, its abort and its progress belong to the screen that shows them                               |
+| The entry's state records whether the library entry is under it                        | `history.length` or the referrer                                                                         | Neither tells which entry is under this one                                                                                                  |
+
+The screen is a `QueryResultsPage`. Its top bar holds only the search field,
+with the query chip (the file's preview, its name from `sm` up, and `Clear
+image search`) at the field's start, holding at most half its width, and the
+placeholder `Or search by text`; filter, sort, view and zoom are not drawn.
+`Enter` with text opens `/` with that text search. The header is `Image
+search` with a `ghost` `Library` button. The `Library` button, the chip's `×`,
+`Escape` in the empty field and `Back to library` go one entry back when the
+library entry is under the screen, as browser Back does, and replace the
+screen with `/` otherwise (opened directly, in a new tab or from another
+site), so they never leave the app.
+
+The query panel is a `card` at the start from `lg`, stuck under the top bar,
+and full width above the results below `lg`. It shows the file whole, never
+cropped: an image, or a muted video with the browser's controls (an icon for
+a file the browser cannot show); the file name and `Image · 1.2 MB` or
+`Video · 2:31 · 48 MB`, the length read from the video until the answer
+gives it; a status line with the elapsed time at its end and, while the
+search runs, a `Progress` under it; the unindexed count after an answer; and
+its actions by state. Below `lg` it starts with a bar (a small preview, the
+name, the status and `Show your file` or `Hide your file`) that is its
+collapsed form: open while the search runs and after a refusal, failure or
+stop, collapsed when an answer arrives so the first rows are on screen, and
+the owner's toggle holds for that answer, or for the whole run. Collapsed,
+the bar sticks under the top bar while the rows scroll.
+
+A video query is uploaded with its progress: `XMLHttpRequest.upload` reports
+the share of bytes sent, because `fetch` can only do that with a streamed
+body, which needs HTTP/2 and is missing in Firefox and Safari. The upload
+([`upload.ts`](../../web/src/api/upload.ts)) takes the same abort signal and
+maps the network failure, the owner check and the error body as every other
+request does. An image is small, so it is sent as one plain request and goes
+straight to Searching; the bar does not flash a measure for a blink. The
+screen measures the elapsed time from the request's start to its answer: it
+counts up each second while the search runs and reads `Took {time}` after an
+answer, to a tenth under 10 s (`0.8 s`), then in whole seconds (`12 s`), then
+as `m:ss` (`1:05`). Refusals, failures and stops show no time.
+
+| State                                              | Panel status and actions                                                                     | Results column                                                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Idle (`/image-search` opened or reloaded, no file) | No panel                                                                                     | `Empty` `Search by an image or a video` with `Choose a file…`                                                                  |
+| Uploading (video queries)                          | `Spinner`, `Uploading… {p}%`, a `Progress` of the share sent, the time counting up; `Cancel` | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading                                                        |
+| Searching                                          | `Spinner`, `Searching…`, an indeterminate `Progress`, the time counting up; `Cancel`         | As Uploading                                                                                                                   |
+| Results                                            | `CircleCheck`, `Found {n} videos`, `Took {time}`; `Choose another file…`                     | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands               |
+| No match                                           | `SearchX`, `No match`, `Took {time}`; `Choose another file…`                                 | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
+| Refused                                            | `CircleAlert`, `Not searched`; `Choose another file…`                                        | A destructive `Alert` with the reason and `Choose another file…`                                                               |
+| Failed (network or server failure)                 | `CircleAlert`, `Search failed`; `Retry`, `Choose another file…`                              | A destructive `Alert` `The search failed` with the error, `Retry` and `Choose another file…`                                   |
+| Stopped (after `Cancel`)                           | `CircleSlash`, `Stopped`; `Search again`, `Choose another file…`                             | `Empty` `Search stopped` with `Search again`                                                                                   |
+
+`Retry` and `Search again` send the same file, kept in memory until the
+entry is left. A stop, a failure and a refusal are kept with the entry like
+an answer, so coming back to the entry shows them without a request.
+
+A file given by the field keeps focus in the field on the screen; one given
+by the dialog moves focus to the title. An answer does not move focus; the
+panel's status and the summary line are statuses.
+
+The rows sit in `ResultBand`s, one per band of the answer in the server's
+order (`Strong match`, `Similar`), each headed by its name, its range as
+`{min}–{max}%` and its count; a band without rows is not drawn, and rows keep
+the server's order. Each video is one `ResultRow`: a `RateRing` with the
+row's rate as a whole percent (`primary` in the answer's first band, `muted`
+below), the title as a link, the meta line and `Play`, and the matched frames
+as its body, expanded when the answer arrives. The first row carries a `soft`
+`Best candidate` badge and a `default` `Play` only when its shown rate is
+above the second row's, so a tie names no row the answer; every other `Play`
+is `secondary`. Title and `Play` open `/videos/{match.videoId}?t=` at the best
+frame, or at a video query's section start, so a version bundle plays the
+member that matched.
+
+An image query's meta reads `{k} matching frames · best at {time}`, where `k`
+is the server's `frameCount`, so a row cut at the limit of 12 frames still
+counts every frame found. Its body is a frame strip: the frames in the
+server's order, each `related-thumb` wide, as one link (`Play from {time}`)
+holding the frame at `maxEdge=320` in `VideoThumbnail` and a caption with the
+frame's rate and time. The strip scrolls sideways inside the row, which cuts
+the frame that does not fit, and is one tab stop on the frame last focused
+there; `ArrowLeft`, `ArrowRight`, `Home` and `End` move along it and scroll
+the frame into view. A video query's meta is `Whole video` or `Part of
+video` with the section's times; its body is a `SpanBar` of the section on
+the listed video's length, from `0:00` to that length, whose block plays from
+the section's start, followed by a frame strip only when the server sends
+frames. The rows have no selection, favorite, tags, preview or drag, because
+the video's own actions are on its page.
+
+The search lives in memory under the entry's token, never in the URL or in
+history state: the file cannot be put in a URL and must not be kept on the
+server. Returning from the player shows the same panel, rows, collapsed rows,
+the frame last focused in each strip and the scroll position without a
+request, and focus returns to the control that opened the player, whether the
+viewer goes back or closes the player: a result passes the token to the
+player, and closing carries it to the new entry. A reload or a direct visit
+has no file and shows Idle. `Cancel`, another file and leaving the screen or
+the entry abort the running request. Two or more files dropped or pasted on the field,
+or a file whose type is neither an image nor a video, open the screen with
+the first file in the panel and the refusal in the results column, without a
+request; the dialog takes one file, as it does for every upload. A file
+without a type goes to the server, which reads its content.
+
 ### Scan entry and progress
 
 A scan starts from `Scan library` in the `Scan status` section of the
@@ -378,11 +515,11 @@ the owner decides between stopping and running while reading what is left
 `Paused` in `warning` with a still `Pause` icon, `Running` in `secondary` with
 a spinner, or `Idle`. Under it come, in order:
 
-| Row | Content |
-| --- | --- |
-| Switch | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import` |
-| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one |
-| `Left to do` | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
+| Row           | Content                                                                                                                                                                                                                                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Switch        | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import`                                                                  |
+| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one                                                                                                                                                |
+| `Left to do`  | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
 
 The counts are one component
 ([`BackgroundCounts.tsx`](../../web/src/shell/BackgroundCounts.tsx)), so every

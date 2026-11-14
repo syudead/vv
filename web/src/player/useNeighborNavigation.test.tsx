@@ -15,7 +15,6 @@ describe("useNeighborNavigation", () => {
         related: { kind: "loading", id: 12 },
         trail: [],
         linkState: { from: "/", trail: [] },
-        backTo: "/",
         videoTo: (id) => `/videos/${String(id)}`,
         keepPlaying: false,
       }),

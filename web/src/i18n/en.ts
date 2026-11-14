@@ -473,6 +473,12 @@ const errorReasons = {
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
+  image_search_unreadable:
+    "The file isn't a PNG, JPEG or still WebP image or a video of at least a second, or it can't be read.",
+  image_search_uninformative: "The file is too plain to search by.",
+  image_search_too_long: "The video is too long: up to 3 hours.",
+  image_search_too_large:
+    "The file is too large: images up to 64 MB and 120 megapixels, videos up to 4 GB.",
   mixed_nodes:
     "Videos and groups of different VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
@@ -670,6 +676,11 @@ export const en = {
       favoriteOff: "Add to favorites",
       favoriteOn: "Remove from favorites",
       tentativeTag: "kyoto",
+      rateRing: {
+        primary: "Primary: the first band",
+        muted: "Muted: lower bands",
+        full: "A whole match",
+      },
     },
     pattern: {
       sidePanel: {
@@ -693,6 +704,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         profilePage: "Profile page",
+        queryResultsPage: "Query results page",
         shelf: "Shelf",
         faceGrid: "Face grid",
         groupedList: "Grouped list",
@@ -882,6 +894,35 @@ export const en = {
       profilePageAgeValue: "34–35",
       profilePagePerformer: "Performer",
       profilePageCount: "4 videos",
+      queryResults: {
+        title: "Image search",
+        back: "Library",
+        query: "Your file",
+        fileName: "harbour-dusk.jpg",
+        fileMeta: "Image · 1.2 MB",
+        status: "Found 4 videos",
+        took: "Took 0.8 s",
+        another: "Choose another file…",
+        summary: "4 videos",
+        strong: "Strong match",
+        strongRange: "90–100%",
+        partial: "Partial match",
+        partialRange: "60–89%",
+        count: (n: number) =>
+          selectPlural(n, {
+            one: `${formatNumber(n)} video`,
+            other: `${formatNumber(n)} videos`,
+          }),
+        best: "Best candidate",
+        meta: (frames: number, time: string) =>
+          `${formatNumber(frames)} matching frames · best at ${time}`,
+        play: "Play",
+        showFrames: "Show frames",
+        hideFrames: "Hide frames",
+        showFramesFor: (title: string) => `Show frames of ${title}`,
+        hideFramesFor: (title: string) => `Hide frames of ${title}`,
+        playFrom: (time: string) => `Play from ${time}`,
+      },
       shelfRowTitle: "Favorite collections",
       shelfRowCount: "6 favorites",
       shelfRowAll: "All collections",
@@ -1066,6 +1107,96 @@ export const en = {
     resultsLabel: "Search results",
     // Library total counts cards, including one per group, not videos.
     resultCount: items,
+    imageSearch: {
+      pick: "Search by image or video",
+      placeholder: "Or search by text",
+      dropHere: "Drop here to search by this file",
+      clear: "Clear image search",
+      dialog: {
+        title: "Search by image or video",
+        description:
+          "PNG, JPEG or WebP images up to 64 MB, or a video up to 4 GB and 3 hours. The file is used for this search only and is not kept.",
+        zone: "Drop an image or a video here, or click to choose a file",
+        zoneHint: "You can also paste an image while this is open.",
+      },
+      title: "Image search",
+      library: "Library",
+      query: "Your file",
+      kinds: { image: "Image", video: "Video", file: "File" },
+      showFile: "Show your file",
+      hideFile: "Hide your file",
+      uploading: (percent: number) => `Uploading… ${formatNumber(percent)}%`,
+      searching: "Searching…",
+      found: (count: number) => `Found ${counted(count, "video", "videos")}`,
+      noMatchStatus: "No match",
+      notSearched: "Not searched",
+      searchFailed: "Search failed",
+      stopped: "Stopped",
+      took: (time: string) => `Took ${time}`,
+      /** Elapsed time under a minute; a tenth is shown under 10 s. */
+      seconds: (seconds: number, digits: number) =>
+        `${formatDecimal(seconds, digits, digits)} s`,
+      cancel: "Cancel",
+      searchAgain: "Search again",
+      searchStopped: "Search stopped",
+      idle: {
+        title: "Search by an image or a video",
+        description: "Find the videos that contain the same footage, and where.",
+        choose: "Choose a file…",
+      },
+      unindexed: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} video isn't indexed yet and wasn't searched.`,
+          other: `${formatNumber(count)} videos aren't indexed yet and weren't searched.`,
+        }),
+      range: (start: string, end: string) => `${start}–${end}`,
+      videos: (count: number) => counted(count, "video", "videos"),
+      collapseAll: "Collapse all",
+      expandAll: "Expand all",
+      bands: { strong: "Strong match", similar: "Similar" },
+      bandRange: (min: number, max: number) =>
+        `${formatNumber(min)}–${formatNumber(max)}%`,
+      best: "Best candidate",
+      frameMeta: (count: number, time: string) =>
+        `${counted(count, "matching frame", "matching frames")} · best at ${time}`,
+      sectionFrames: (count: number) =>
+        counted(count, "matching frame", "matching frames"),
+      play: "Play",
+      showFrames: "Show frames",
+      hideFrames: "Hide frames",
+      showFramesFor: (title: string) => `Show frames of ${title}`,
+      hideFramesFor: (title: string) => `Hide frames of ${title}`,
+      percent: (percent: number) => `${formatNumber(percent)}%`,
+      framesLabel: "Matching frames",
+      whole: "Whole video",
+      part: "Part of video",
+      spanLane: "Matched section",
+      playFrom: (start: string) => `Play from ${start}`,
+      noMatch: "No video has this footage",
+      allSearched: "Every video in your library was searched.",
+      chooseAnother: "Choose another file…",
+      backToLibrary: "Back to library",
+      retry: "Retry",
+      refused: {
+        several: {
+          title: "Search with one file at a time",
+          description: (count: number) => `${formatNumber(count)} files were given.`,
+        },
+        unreadable: {
+          title: "This file can't be searched",
+          description: "Use a PNG, JPEG or WebP image, or a video.",
+        },
+        tooLarge: "This file is too large",
+        tooLong: "This video is too long",
+        limit: (limit: string) => `The limit is ${limit}.`,
+        megapixels: (count: number) => `${formatNumber(count)} megapixels`,
+        uninformative: {
+          title: "There's nothing to compare in this file",
+          description: "A blank or single-colour picture matches no footage.",
+        },
+        failed: "The search failed",
+      },
+    },
     empty: {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",

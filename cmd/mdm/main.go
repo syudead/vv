@@ -187,6 +187,11 @@ func run(opts runOptions) error {
 	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
 	}
+	// Empty the image search uploads before the listener opens, so a search a crash interrupted leaves nothing.
+	searchUploads := artifacts.NewSearchUploads(cfg.SearchUploadsDir())
+	if err := searchUploads.Empty(); err != nil {
+		logger.Warn("could not delete interrupted image search uploads", slog.Any("error", err))
+	}
 	sources := app.MediaFiles{Folders: settingsStore, Resolver: mediafs.New()}
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Sources: sources, Publisher: bus,
@@ -381,7 +386,7 @@ func run(opts runOptions) error {
 	}
 
 	// Shutdown does not cancel active HTTP contexts, so cancel a separate server context first to stop
-	// request-owned transcoders.
+	// request-owned transcoders and image searches.
 	requestMediaCtx, stopRequestMedia := context.WithCancel(context.Background())
 	defer stopRequestMedia()
 
@@ -468,22 +473,30 @@ func run(opts runOptions) error {
 		ThumbnailEdits:    thumbnailEdits,
 		ThumbnailUploads:  ingest,
 		PersonImages:      personImages,
-		WorkInfoPlugins:   workInfoPlugins,
-		TranscodeProbes:   ingestStore,
-		Artifacts:         artifactStore,
-		Catalog:           catalog,
-		Opener:            fileOpener,
-		Files:             mediaFiles,
-		Foreground:        scheduler,
-		Subtitles:         media.NewSubtitleConverter(),
-		Events:            events,
-		Assets:            web.Dist(),
-		Logger:            logger,
-		Auth:              httpAuthenticator,
-		APITokens:         apiTokens,
-		Pairing:           pairing,
-		PeerLink:          peerLink,
-		TrustedProxies:    cfg.TrustedProxies,
+		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
+			Index: libraryStore, Uploads: searchUploads, ServerDone: requestMediaCtx.Done(), Logger: logger,
+			Files: app.MediaFiles{Folders: settingsStore, Resolver: mediaFiles},
+			Media: app.ImageSearchMedia{
+				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
+				Refine: media.RefineFrameHashes,
+			},
+		}),
+		WorkInfoPlugins: workInfoPlugins,
+		TranscodeProbes: ingestStore,
+		Artifacts:       artifactStore,
+		Catalog:         catalog,
+		Opener:          fileOpener,
+		Files:           mediaFiles,
+		Foreground:      scheduler,
+		Subtitles:       media.NewSubtitleConverter(),
+		Events:          events,
+		Assets:          web.Dist(),
+		Logger:          logger,
+		Auth:            httpAuthenticator,
+		APITokens:       apiTokens,
+		Pairing:         pairing,
+		PeerLink:        peerLink,
+		TrustedProxies:  cfg.TrustedProxies,
 	})
 	assistant.UseRunner(assistantRunner)
 
@@ -509,7 +522,7 @@ func run(opts runOptions) error {
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
 }
 
-// addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
+// addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.
 func addBackfillHandlers(
 	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
 ) {
@@ -522,6 +535,9 @@ func addBackfillHandlers(
 	handlers[domain.JobVirtualThumbnails] = func(ctx context.Context, _ domain.Job) error {
 		return ingest.RepublishVirtualThumbnails(ctx)
 	}
+	searchIndex := app.NewSearchIndexBuilder(ingestStore, sources, media.KeyframeHashes)
+	handlers[domain.JobQueueFrameIndex] = searchIndex.QueueAll
+	handlers[domain.JobFrameIndex] = searchIndex.Build
 }
 
 // recoverActivity marks interrupted processing as attention/interrupted, leaving waiting records

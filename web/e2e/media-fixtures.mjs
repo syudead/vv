@@ -502,6 +502,223 @@ export function generateSearchFixtures(root) {
   writeFileSync(file("長さ不明.mp4"), "この中身は動画ではない\n".repeat(64));
 }
 
+/**
+ * Titles of the image search videos; e2e/image-search.e2e.ts reads the same names. Each is footage no other
+ * fixture uses (fractals and gradients), so a query cut from one matches only these.
+ */
+export const IMAGE_SEARCH_VIDEOS = {
+  pan: "画像検索のパン",
+  recurring: "画像検索の繰り返すショット",
+  shotB: "画像検索のショットB",
+};
+/** Shot A holds 3 s at 6k s for k in 0..8 of the recurring video; shot B holds from 54 s to 57 s. */
+export const IMAGE_SEARCH_HOLDS = { a: 9, holdSeconds: 3, shotBStart: 54 };
+/** Short clips beside the image search media, titled with this prefix and a two-digit number. */
+export const IMAGE_SEARCH_FILLERS = 24;
+export const IMAGE_SEARCH_FILLER_PREFIX = "画像検索の並び ";
+
+const imageSearchEncode = (gop) => [
+  "-r",
+  "25",
+  "-c:v",
+  "libx264",
+  "-preset",
+  "veryfast",
+  "-crf",
+  "23",
+  "-g",
+  String(gop),
+  "-keyint_min",
+  String(gop),
+  "-sc_threshold",
+  "0",
+  "-pix_fmt",
+  "yuv420p",
+  "-an",
+  "-movflags",
+  "+faststart",
+];
+
+/** A held still: input options that loop one picture for the given seconds at 25 fps. */
+const heldStill = (still, seconds) => [
+  "-loop",
+  "1",
+  "-framerate",
+  "25",
+  "-t",
+  String(seconds),
+  "-i",
+  still,
+];
+
+/**
+ * The image search media: the pan of cmd/mdm/image_search_test.go (a keyframe every 5 s), a video where a held
+ * shot A returns nine times between moving gradients and a held shot B appears once (a keyframe every second),
+ * and a second video that holds shot B. queryDir, outside the scanned folder, gets the video queries: the pan
+ * re-encoded 160 px wide, the pan from 5 s to 25 s, and the pan re-encoded at a high bitrate for a slow upload.
+ */
+export function generateImageSearchFixtures(root, queryDir) {
+  mkdirSync(root, { recursive: true });
+  mkdirSync(queryDir, { recursive: true });
+  const work = path.join(queryDir, "work");
+  mkdirSync(work, { recursive: true });
+  const stills = {
+    pan: path.join(work, "pan.png"),
+    a: path.join(work, "shot-a.png"),
+    b: path.join(work, "shot-b.png"),
+  };
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "mandelbrot=s=640x360:maxiter=300:start_x=-0.743643887037151:start_y=0.131825904205330:start_scale=0.05",
+    "-frames:v",
+    "1",
+    stills.pan,
+  ]);
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "mandelbrot=s=320x180:maxiter=400:start_x=-1.25066:start_y=0.02012:start_scale=0.004",
+    "-frames:v",
+    "1",
+    stills.a,
+  ]);
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "mandelbrot=s=320x180:maxiter=400:start_x=-0.1011:start_y=0.9563:start_scale=0.02:outer=normalized_iteration_count",
+    "-frames:v",
+    "1",
+    stills.b,
+  ]);
+
+  const pan = path.join(root, `${IMAGE_SEARCH_VIDEOS.pan}.mp4`);
+  ffmpeg([
+    ...heldStill(stills.pan, 30),
+    "-vf",
+    "zoompan=z='1.5+0.3*sin(on/90)':x='(iw-iw/zoom)*(0.5+0.45*sin(on/120))':y='(ih-ih/zoom)*(0.5+0.45*cos(on/150))':d=1:s=320x180:fps=25",
+    ...imageSearchEncode(125),
+    pan,
+  ]);
+
+  const { a: holds, holdSeconds } = IMAGE_SEARCH_HOLDS;
+  const moving = `gradients=s=320x180:r=25:d=${String(holds * holdSeconds)}:speed=0.05:seed=7:n=5`;
+  const graph = [
+    `[1:v]format=yuv420p,setsar=1,split=${String(holds)}${range(holds, "a")}`,
+    `[0:v]format=yuv420p,setsar=1,split=${String(holds)}${range(holds, "g")}`,
+    ...Array.from(
+      { length: holds },
+      (_, k) =>
+        `[g${String(k)}]trim=start=${String(k * holdSeconds)}:duration=${String(holdSeconds)},setpts=PTS-STARTPTS[m${String(k)}]`,
+    ),
+    "[2:v]format=yuv420p,setsar=1[b]",
+    `${Array.from({ length: holds }, (_, k) => `[a${String(k)}][m${String(k)}]`).join("")}[b]concat=n=${String(2 * holds + 1)}:v=1:a=0[out]`,
+  ].join(";");
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    moving,
+    ...heldStill(stills.a, holdSeconds),
+    ...heldStill(stills.b, holdSeconds),
+    "-filter_complex",
+    graph,
+    "-map",
+    "[out]",
+    ...imageSearchEncode(25),
+    path.join(root, `${IMAGE_SEARCH_VIDEOS.recurring}.mp4`),
+  ]);
+  ffmpeg([
+    ...heldStill(stills.b, holdSeconds),
+    "-f",
+    "lavfi",
+    "-i",
+    `gradients=s=320x180:r=25:d=${String(holdSeconds)}:speed=0.05:seed=23:n=5`,
+    "-filter_complex",
+    "[0:v]format=yuv420p,setsar=1[b];[1:v]format=yuv420p,setsar=1[m];[b][m]concat=n=2:v=1:a=0[out]",
+    "-map",
+    "[out]",
+    ...imageSearchEncode(25),
+    path.join(root, `${IMAGE_SEARCH_VIDEOS.shotB}.mp4`),
+  ]);
+
+  ffmpeg([
+    "-i",
+    pan,
+    "-vf",
+    "scale=160:-2",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "32",
+    "-g",
+    "75",
+    "-an",
+    path.join(queryDir, "pan-160.mp4"),
+  ]);
+  ffmpeg([
+    "-ss",
+    "5",
+    "-t",
+    "20",
+    "-i",
+    pan,
+    ...imageSearchEncode(125),
+    path.join(queryDir, "pan-5-25.mp4"),
+  ]);
+  // About 3.7 MB at a constant 1 Mbit/s, so a throttled upload reports its progress for seconds.
+  ffmpeg([
+    "-i",
+    pan,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-b:v",
+    "1M",
+    "-minrate",
+    "1M",
+    "-maxrate",
+    "1M",
+    "-bufsize",
+    "1M",
+    "-x264-params",
+    "nal-hrd=cbr",
+    "-an",
+    path.join(queryDir, "pan-upload.mp4"),
+  ]);
+  rmSync(work, { recursive: true, force: true });
+
+  // Library rows a text filter on the shared title prefix lists, so the spec starts from a scrolled library.
+  const base = path.join(queryDir, "filler.mp4");
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=13:duration=2",
+    ...h264,
+    "-an",
+    base,
+  ]);
+  for (let index = 1; index <= IMAGE_SEARCH_FILLERS; index += 1) {
+    const name = `${IMAGE_SEARCH_FILLER_PREFIX}${String(index).padStart(2, "0")}`;
+    const file = path.join(root, `${name}.mp4`);
+    copyFileSync(base, file);
+    appendFreeBox(file, name);
+  }
+  rmSync(base);
+}
+
+/** Filter pad labels [p0][p1]… for a split into count outputs. */
+function range(count, prefix) {
+  return Array.from({ length: count }, (_, k) => `[${prefix}${String(k)}]`).join("");
+}
+
 /** Use distinct 40-second clips so short playback remains outside the 15-second completion tail. */
 export const HISTORY_VIDEOS = ["履歴の確認A", "履歴の確認B"];
 
