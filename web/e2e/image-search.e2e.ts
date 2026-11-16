@@ -58,8 +58,13 @@ const LIBRARY_FILTER = "画像検索";
 const FILLERS = 24;
 const HOLDS = 9;
 const HOLD_SECONDS = 3;
-/** 1 s after the pan's keyframe at 5 s: the matching finds it by refinement, not on a keyframe. */
-const PAN_FRAME_MS = 6_000;
+/**
+ * 0.4 s after the pan's keyframe at 5 s, about 4 bits from it; 1 s after, the moving shot is 14 bits away and an image
+ * query no longer finds it.
+ */
+const PAN_FRAME_MS = 5_400;
+/** The pan's keyframe the query matches, where its frame and playback start. */
+const PAN_KEYFRAME_S = 5;
 /** 1.5 s into shot A's fifth hold, between the keyframes of a shot that does not move. */
 const SHOT_A_MS = 25_500;
 /** 1.5 s into shot B's hold at 54 s. */
@@ -373,7 +378,7 @@ test.describe("画像検索", () => {
     }
 
     const png = (name: string, data: Buffer) => ({ name, type: "image/png", data });
-    queries.pan = png("pan-6s.png", await cutFrame(request, PAN, PAN_FRAME_MS));
+    queries.pan = png("pan-5.4s.png", await cutFrame(request, PAN, PAN_FRAME_MS));
     queries.shotA = png("shot-a.png", await cutFrame(request, RECURRING, SHOT_A_MS));
     queries.shotB = png("shot-b.png", await cutFrame(request, RECURRING, SHOT_B_MS));
     const mp4 = (name: string) => ({
@@ -428,7 +433,7 @@ test.describe("画像検索", () => {
     expect(removed.status()).toBe(204);
   });
 
-  test("パンの 6 秒のフレームで、パンの行を最初に Best candidate 付きで出し、そのフレームから再生する", async ({
+  test("パンの 5.4 秒のフレームで、パンの行を最初に Best candidate 付きで出し、そのフレームから再生する", async ({
     page,
   }, testInfo) => {
     test.setTimeout(240_000);
@@ -442,9 +447,7 @@ test.describe("画像検索", () => {
         first.getByRole("link", { name: "Play", exact: true }),
       ).toHaveAttribute("data-variant", "default");
       await expect(frameLinks(first)).toHaveCount(1);
-      expect(
-        Math.abs((await startOf(frameLinks(first).first())) - 6),
-      ).toBeLessThanOrEqual(0.25);
+      expect(await startOf(frameLinks(first).first())).toBe(PAN_KEYFRAME_S);
       expect(await pageScrollsSideways(page)).toBe(false);
       await shoot(page, testInfo, `pan-frame-${String(width)}`);
     }
@@ -462,7 +465,7 @@ test.describe("画像検索", () => {
       return element.currentTime;
     });
     const position = (await playedFrom.jsonValue()) as number;
-    expect(Math.abs(position - PAN_FRAME_MS / 1000)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(position - PAN_KEYFRAME_S)).toBeLessThanOrEqual(0.5);
     expect(position).toBeGreaterThanOrEqual(start - 0.5);
   });
 
@@ -1050,9 +1053,7 @@ test.describe("画像検索", () => {
     await expect(rows.first()).toBeVisible({ timeout: 60_000 });
     await expect(title(rows.first())).toHaveText(PAN);
     await expect(rows.first().getByText("Best candidate")).toBeVisible();
-    expect(
-      Math.abs((await startOf(frameLinks(rows.first()).first())) - 6),
-    ).toBeLessThanOrEqual(0.25);
+    expect(await startOf(frameLinks(rows.first()).first())).toBe(PAN_KEYFRAME_S);
     // The dev server's Strict Mode may send the search twice.
     expect(searches()).toBeGreaterThan(0);
   });

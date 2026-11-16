@@ -8,13 +8,7 @@ import (
 )
 
 const (
-	// ImageSearchRefineMaxDistance bounds the near misses worth decoding between keyframes; unrelated hashes fall within 18 bits once in about 2,200 pairs.
-	ImageSearchRefineMaxDistance = 18
-	ImageSearchRefineLimit       = 10
-	ImageSearchRefineMaxMs       = 10_000
-	// ImageSearchRefineIntervalMs decodes a refined gap at 4 frames a second.
-	ImageSearchRefineIntervalMs = 250
-	ImageSearchMaxResults       = 50
+	ImageSearchMaxResults = 50
 
 	imageSearchSeedIntervalMs = 10_000
 	imageSearchMinSeeds       = 64
@@ -66,73 +60,28 @@ type ImageSearchMatch struct {
 	QueryEndMs   int64
 }
 
-// ImageSearchRefinement asks for the frames of [StartMs, EndMs) to be decoded and compared with the query image.
-type ImageSearchRefinement struct {
-	VideoID  int64
-	AddedAt  time.Time
-	Distance int
-	StartMs  int64
-	EndMs    int64
-}
-
 // ImageMatchRate ranks image matches by closeness, since a single query frame cannot be counted as a share.
 func ImageMatchRate(distance int) float64 {
 	return float64(imageSearchHashBits-distance) / imageSearchHashBits
 }
 
-func imageFrameMatch(videoID int64, addedAt time.Time, distance int, positionMs int64) ImageSearchMatch {
-	return ImageSearchMatch{
-		VideoID:    videoID,
-		AddedAt:    addedAt,
-		Kind:       ImageSearchMatchFrame,
-		Rate:       ImageMatchRate(distance),
-		PositionMs: positionMs,
-	}
-}
-
-// MatchImageQuery lists each content whose nearest keyframe is within FingerprintMatchMaxDistance, and returns the closest near misses to refine from the file.
-func MatchImageQuery(query uint64, contents []ImageSearchContent) ([]ImageSearchMatch, []ImageSearchRefinement) {
+// MatchImageQuery lists each content whose nearest keyframe is within FingerprintMatchMaxDistance, at that keyframe.
+func MatchImageQuery(query uint64, contents []ImageSearchContent) []ImageSearchMatch {
 	var matches []ImageSearchMatch
-	var refinements []ImageSearchRefinement
 	for _, content := range contents {
 		index, distance, ok := nearestImageSearchFrame(query, content.Frames)
-		switch {
-		case !ok || distance > ImageSearchRefineMaxDistance:
-		case distance <= FingerprintMatchMaxDistance:
-			matches = append(matches, imageFrameMatch(content.VideoID, content.AddedAt, distance, content.Frames[index].TimeMs))
-		default:
-			start := content.Frames[index].TimeMs
-			refinements = append(refinements, ImageSearchRefinement{
-				VideoID:  content.VideoID,
-				AddedAt:  content.AddedAt,
-				Distance: distance,
-				StartMs:  start,
-				EndMs:    min(entrySpanEnd(content, index), start+ImageSearchRefineMaxMs),
-			})
+		if !ok || distance > FingerprintMatchMaxDistance {
+			continue
 		}
+		matches = append(matches, ImageSearchMatch{
+			VideoID:    content.VideoID,
+			AddedAt:    content.AddedAt,
+			Kind:       ImageSearchMatchFrame,
+			Rate:       ImageMatchRate(distance),
+			PositionMs: content.Frames[index].TimeMs,
+		})
 	}
-	slices.SortStableFunc(refinements, func(a, b ImageSearchRefinement) int {
-		return cmp.Compare(a.Distance, b.Distance)
-	})
-	if len(refinements) > ImageSearchRefineLimit {
-		refinements = refinements[:ImageSearchRefineLimit]
-	}
-	return matches, refinements
-}
-
-// MatchRefinedFrames lists a refined content at its nearest non-flat decoded frame within
-// FingerprintMatchMaxDistance, the earliest on a tie, so playback starts at the scene the query shows.
-func MatchRefinedFrames(query uint64, refinement ImageSearchRefinement, frames []KeyframeHash) (ImageSearchMatch, bool) {
-	best, distance := -1, FingerprintMatchMaxDistance+1
-	for i, frame := range frames {
-		if d := bits.OnesCount64(query ^ frame.Frame.Hash); !frame.Frame.Flat && d < distance {
-			best, distance = i, d
-		}
-	}
-	if best < 0 {
-		return ImageSearchMatch{}, false
-	}
-	return imageFrameMatch(refinement.VideoID, refinement.AddedAt, distance, frames[best].TimeMs), true
+	return matches
 }
 
 // nearestImageSearchFrame returns the earliest frame at the smallest distance.

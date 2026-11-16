@@ -53,11 +53,9 @@ func newImageSearchFixture(t *testing.T) imageSearchFixture {
 		Videos: db.Library(), Assets: fstest.MapFS{}, Logger: slog.New(slog.DiscardHandler), Auth: ownerAuth{},
 		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
 			Index: db.Library(), Uploads: artifacts.NewSearchUploads(uploadsDir),
-			Files:  app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()},
 			Logger: slog.New(slog.DiscardHandler),
 			Media: app.ImageSearchMedia{
 				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
-				Refine: media.RefineFrameHashes,
 			},
 		}),
 	})
@@ -214,42 +212,28 @@ func TestImageSearchFindsTheVideoAFrameOrCopyCameFrom(t *testing.T) {
 	}
 }
 
-// Footage the owner re-encoded or captured between keyframes still finds its video: a smaller, more compressed
-// re-encode with other keyframes is a whole match, and a screenshot 1 s after a keyframe of a moving shot, too far
-// from every keyframe to match one, is refined from the file to its own moment.
-func TestImageSearchFindsMovingFootageThroughReencodesAndBetweenKeyframes(t *testing.T) {
-	ctx := context.Background()
+// Footage the owner re-encoded still finds its video: a smaller, more compressed re-encode of a moving shot with
+// other keyframes is a whole match, which answers no frames and the video bands.
+func TestImageSearchFindsAReencodeOfMovingFootage(t *testing.T) {
 	fixture := newImageSearchFixture(t)
 	video := panFixture(t, fixture.mediaDir)
 	target := fixture.indexVideo(t, video, 30_000)
 	fixture.indexFixtureVideo(t, "preview.mp4", 10_000)
 
-	t.Run("downscaled re-encode", func(t *testing.T) {
-		reencoded := filepath.Join(t.TempDir(), "reencoded.mp4")
-		ffmpegFixture(t, "-i", video, "-vf", "scale=160:-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
-			"-g", "75", reencoded)
-		data, err := os.ReadFile(reencoded)
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := postSearchFile(t, fixture.handler, "reencoded.mp4", data)
-		if len(result.Items) != 1 || result.Items[0].Video.Id != target ||
-			result.Items[0].Match.Kind != gen.ImageSearchMatchKindWhole {
-			t.Fatalf("items = %+v, want only video %d as a whole match", result.Items, target)
-		}
-	})
-
-	t.Run("frame between keyframes", func(t *testing.T) {
-		frame, err := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-ss", "6", "-i", video, "-frames:v", "1",
-			"-f", "image2pipe", "-c:v", "png", "pipe:1").Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := postSearchFile(t, fixture.handler, "frame.png", frame)
-		// A match at the keyframe would report 5000 ms; the refined frame is the one nearest 6 s at 4 frames a second.
-		if len(result.Items) != 1 || result.Items[0].Video.Id != target ||
-			result.Items[0].Match.PositionMs < 5750 || result.Items[0].Match.PositionMs > 6250 {
-			t.Fatalf("items = %+v, want only video %d within 250 ms of 6000 ms", result.Items, target)
-		}
-	})
+	reencoded := filepath.Join(t.TempDir(), "reencoded.mp4")
+	ffmpegFixture(t, "-i", video, "-vf", "scale=160:-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
+		"-g", "75", reencoded)
+	data, err := os.ReadFile(reencoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := postSearchFile(t, fixture.handler, "reencoded.mp4", data)
+	assertBands(t, result, videoBands)
+	if len(result.Items) != 1 || result.Items[0].Video.Id != target ||
+		result.Items[0].Match.Kind != gen.ImageSearchMatchKindWhole {
+		t.Fatalf("items = %+v, want only video %d as a whole match", result.Items, target)
+	}
+	if match := result.Items[0].Match; len(match.Frames) != 0 || match.FrameCount != 0 {
+		t.Fatalf("match = %+v, want no frames", match)
+	}
 }

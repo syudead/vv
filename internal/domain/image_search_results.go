@@ -66,8 +66,8 @@ func ImageSearchBandOf(rate float64) ImageSearchBandID {
 
 // ImageMatchFrames returns the matched frames of an image query's match in content, the match's own video, best
 // first and at most ImageSearchMaxMatchFrames, with the number found. Each run of consecutive entries within
-// FingerprintMatchMaxDistance gives its closest entry, the earliest on a tie, so a held shot is one frame. A refined
-// match, whose content has no such entry, has its one refined frame; a video query's match has none.
+// FingerprintMatchMaxDistance gives its closest entry, the earliest on a tie, so a held shot is one frame. A video
+// query's match has none.
 func ImageMatchFrames(query uint64, content ImageSearchContent, match ImageSearchMatch) ([]ImageSearchMatchedFrame, int) {
 	if match.Kind != ImageSearchMatchFrame {
 		return []ImageSearchMatchedFrame{}, 0
@@ -92,9 +92,6 @@ func ImageMatchFrames(query uint64, content ImageSearchContent, match ImageSearc
 		}
 	}
 	closeRun()
-	if len(frames) == 0 {
-		return []ImageSearchMatchedFrame{{PositionMs: match.PositionMs, Rate: match.Rate}}, 1
-	}
 	slices.SortStableFunc(frames, func(a, b ImageSearchMatchedFrame) int {
 		if c := cmp.Compare(b.Rate, a.Rate); c != 0 {
 			return c

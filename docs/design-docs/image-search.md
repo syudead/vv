@@ -16,8 +16,6 @@ flowchart LR
   search -->|hash the query| media[ffmpeg and hashing]
   search -->|index snapshot| store[Store]
   search -->|match| domain[Domain rules]
-  search -->|refine an image match| mediafs[mediafs]
-  mediafs --> media
   job[frame_index job] -->|keyframe hashes| store
 ```
 
@@ -70,32 +68,22 @@ would make every match 100%. PNG, JPEG and still WebP are decoded in memory
 with the thumbnail upload's decoder and limits; any other file is read as a
 video.
 
-A screenshot taken several seconds after a keyframe in a moving shot misses
-that keyframe by more than 12 bits. A content whose nearest keyframe is 13 to
-18 bits away is refined: for the ten closest such contents, the search opens
-the file through `internal/mediafs` and decodes from that keyframe to the next
-index entry, at most 10 s, at 4 frames a second, hashed as the index is. The
-nearest frame within 12 bits is the match, at that frame's time, so playback
-starts at the scene the query shows; with none, the content is not listed. The
-search tries the content's locations in turn until one opens and decodes; when
-none does, the content is left out without failing the search. A failure to
-read the media folders or the index fails the search.
+An image query matches index entries only, and a search opens no library
+file. A moment between the keyframes of a moving shot that is more than 12 bits
+from every keyframe is not found: in a pan with a keyframe every 5 s, a
+screenshot 0.4 s after a keyframe is 4 bits from it, and one 1 s after is 14
+bits away.
 
 ```mermaid
 flowchart LR
   img[Query image] --> scan[Nearest keyframe per content]
   scan -->|12 or less| hit[Match at the keyframe]
-  scan -->|13 to 18, ten closest| refine[Decode the gap at 4 fps, up to 10 s]
-  scan -->|over 18| drop[Not listed]
-  refine -->|a frame within 12| hitr[Match at that frame]
-  refine -->|none, or no file| drop
+  scan -->|over 12| drop[Not listed]
 ```
 
-| Rejected                                | Why                                                                      |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| List only keyframe matches              | A screenshot between keyframes of a moving shot would not find its video |
-| Refine every near miss                  | Each refinement opens a file; ten bound a search to ten short decodes    |
-| The keyframe's time for a refined match | Playback would start up to 10 s before the scene asked for               |
+| Rejected                                                                                                                    | Why                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Refine near misses at search time: decode the gap after the nearest keyframe of the ten closest contents 13 to 18 bits away | Over about 100 videos, unrelated hashes fill all ten places on every search, so each search decodes about ten unrelated library files one after another, 4 to 80 s per search; in measurements this almost never turned a near miss into a match |
 
 ## Video queries
 
@@ -167,7 +155,7 @@ Neither changes which videos are listed, their rate, position or order.
   within 12 bits of the query gives one frame: its closest entry, the earliest
   on a tie. Frames are ordered by rate, then the earlier time, so the first is
   the match itself; a match carries at most 12 and counts all it found. A
-  refined match has only its refined frame, and a video query's match has none.
+  video query's match has none.
 - **Bands.** `strong` holds 90 to 100% and `similar` the rates under it down to
   the listing floor of the query's kind: 81% for an image, from
   `FingerprintMatchMaxDistance`, and 50% for a video. A match is in the band of
@@ -179,7 +167,6 @@ flowchart LR
   listed[A listed content] --> runs[Runs of consecutive entries within 12 bits]
   runs --> one[One frame per run: its closest entry, the earliest on a tie]
   one --> order[Order by rate, then time; keep 12; count all]
-  refined[A refined match] --> single[Its one decoded frame]
 ```
 
 | Decision                                                                                   | Rejected                                               | Why                                                                                                                               |
@@ -219,12 +206,13 @@ whole index and may decode a three-hour video.
 ## Evidence from real footage
 
 Matching is shown on footage that moves, never only on hand-built hashes or
-answers: those let the first version pass while a screenshot one second after
-a keyframe of real footage found nothing. The `cmd/mdm` tests run the real
-index job, hashing and ffmpeg on generated video, and the browser spec
+answers: those let the first version pass while the matching it claimed did not
+hold on real footage. The `cmd/mdm` tests run the real index job, hashing and
+ffmpeg on generated video, and the browser spec
 [`image-search.e2e.ts`](../../web/e2e/image-search.e2e.ts) searches generated
-footage on the real stack with queries cut between keyframes. A query the
-current matching cannot find is reported as a finding; it is never moved, and
-no threshold is changed, to make a test pass. Component tests on hand-built
+footage on the real stack with queries cut between keyframes, each within 12
+bits of one. A query the current matching cannot find is reported as a
+finding; it is moved only when a decision changes what an image query finds,
+and no threshold is changed, to make a test pass. Component tests on hand-built
 answers cover only the states a real search cannot be made to produce on
 demand.

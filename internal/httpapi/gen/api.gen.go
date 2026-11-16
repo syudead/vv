@@ -5573,7 +5573,7 @@ type ImageSearchMatch struct {
 	// FrameCount The matched frames found before the limit of 12.
 	FrameCount int `json:"frameCount"`
 
-	// Frames Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query (a refined match has its one refined frame), ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty.
+	// Frames Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query, ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty.
 	Frames []ImageSearchMatchFrame `json:"frames"`
 
 	// Kind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
