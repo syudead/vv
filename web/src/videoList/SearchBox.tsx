@@ -24,7 +24,7 @@ import {
   useSuggestionBox,
 } from "./SearchSuggestions";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
-import { type FileDrag, useFileIntake } from "./useFileIntake";
+import { type FileDrag, fileDragFrame, useFileIntake } from "./useFileIntake";
 
 /** Debounce so each keystroke does not replace the list. */
 export const searchDebounceMs = 250;
@@ -71,13 +71,6 @@ function endPadding(syntaxHelp: boolean, empty: boolean, pick: boolean): string 
   if (!syntaxHelp) return pick ? "pr-16" : "pr-8";
   if (pick) return empty ? "pr-16 sm:pr-24" : "pr-24";
   return empty ? "pr-8 sm:pr-16" : "pr-16";
-}
-
-/** The frame of a field a file is dragged toward: dashed while over the page, filled over the field. */
-function dragFrame(drag: FileDrag): string | false {
-  if (drag === "page") return "border-dashed border-primary hover:border-primary";
-  if (drag === "field") return "border-primary bg-primary-soft hover:border-primary";
-  return false;
 }
 
 function fieldPlaceholder(drag: FileDrag, chip: boolean, placeholder: UiText): UiText {
@@ -204,7 +197,7 @@ export default function SearchBox({
           // With a chip the frame holds the chip and the borderless input, so both read as one field.
           chip !== undefined && [
             "h-8 gap-1 rounded-md border border-input bg-muted pl-0.5 hover:border-muted-foreground",
-            dragFrame(intake.drag),
+            fileDragFrame(intake.drag),
           ],
         )}
       >
@@ -281,7 +274,7 @@ export default function SearchBox({
           className={cn(
             "[&::-webkit-search-cancel-button]:hidden",
             chip === undefined
-              ? ["h-8 pl-8", dragFrame(intake.drag)]
+              ? ["h-8 pl-8", fileDragFrame(intake.drag)]
               : "h-full border-0 bg-transparent pl-1 hover:border-0",
             endPadding(syntaxHelp, input === "", fileSearch !== undefined),
           )}

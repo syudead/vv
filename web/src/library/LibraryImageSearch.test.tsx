@@ -207,6 +207,13 @@ function files(given: File[]) {
   return { dataTransfer: { types: ["Files"], files: given } };
 }
 
+/** The first element of the query panel showing the text; a drop there bubbles to the panel. */
+function inPanel(panel: HTMLElement, text: string): HTMLElement {
+  const found = within(panel).getAllByText(text)[0];
+  if (found === undefined) throw new Error(`panel does not show ${text}`);
+  return found;
+}
+
 /** The element that takes a drop: the frame around the search input. */
 function searchField(): HTMLElement {
   const box = screen.getByLabelText("Search videos");
@@ -467,6 +474,44 @@ describe("ライブラリの画像検索", () => {
     expect(
       screen.getByRole<HTMLInputElement>("searchbox", { name: "Search videos" }).value,
     ).toBe("");
+  });
+
+  it("パネルに落としたファイルはエントリを置き換えて前の要求を中断し、そのファイルで検索する", async () => {
+    const user = userEvent.setup();
+    await openSearch(user, png("first.png"));
+    const panel = screen.getByRole("complementary", { name: "Your file" });
+
+    const taken = fireEvent.drop(inPanel(panel, "first.png"), files([png("second.png")]));
+
+    expect(taken).toBe(false);
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[0]?.signal.aborted).toBe(true);
+    expect(sent[1]?.file.name).toBe("second.png");
+    sent[1]?.answer(result([item(5, 7, 12_500)]));
+    await screen.findByRole("link", { name: /動画 5/ });
+
+    // The replaced entry keeps the library under it, so one step back reaches the library.
+    await user.click(screen.getByRole("button", { name: "Library" }));
+    expect(await screen.findByRole("link", { name: /ライブラリの動画/ })).toBeDefined();
+    expect(address()).toBe("/");
+  });
+
+  it("パネルに 2 つのファイルを落とすと要求せずに理由を結果の列に出す", async () => {
+    const user = userEvent.setup();
+    await openSearch(user, png("first.png"));
+    sent[0]?.answer(result([item(5, 7, 12_500)]));
+    await screen.findByRole("link", { name: /動画 5/ });
+    const panel = screen.getByRole("complementary", { name: "Your file" });
+
+    fireEvent.drop(
+      inPanel(panel, "first.png"),
+      files([png("second.png"), png("third.png")]),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Search with one file at a time");
+    expect(within(panel).getAllByText("second.png")).not.toHaveLength(0);
+    expect(imageSearchCount()).toBe(1);
   });
 
   it("検索欄の外に落としたファイルはブラウザに開かせず、何も要求しない", async () => {

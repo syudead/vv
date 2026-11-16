@@ -179,8 +179,8 @@ export function matchedSection(
   };
 }
 
-/** Where the owner gave the files; the screen they open puts focus back there. */
-export type GivenFrom = "field" | "dialog";
+/** Where the owner gave the files; the screen they open puts focus back there, or leaves it after a panel drop. */
+export type GivenFrom = "field" | "dialog" | "panel";
 
 /** What the screen keeps of one search, under the token its history entry names. */
 export interface SearchEntry {
