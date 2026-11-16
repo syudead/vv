@@ -5127,7 +5127,7 @@ export interface components {
              */
             queryEndMs?: number;
             band: components["schemas"]["ImageSearchBandId"];
-            /** @description Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query (a refined match has its one refined frame), ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty. */
+            /** @description Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query, ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty. */
             frames: components["schemas"]["ImageSearchMatchFrame"][];
             /** @description The matched frames found before the limit of 12. */
             frameCount: number;

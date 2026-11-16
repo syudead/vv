@@ -475,10 +475,8 @@ func run(opts runOptions) error {
 		PersonImages:      personImages,
 		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
 			Index: libraryStore, Uploads: searchUploads, ServerDone: requestMediaCtx.Done(), Logger: logger,
-			Files: app.MediaFiles{Folders: settingsStore, Resolver: mediaFiles},
 			Media: app.ImageSearchMedia{
 				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
-				Refine: media.RefineFrameHashes,
 			},
 		}),
 		WorkInfoPlugins: workInfoPlugins,

@@ -46,7 +46,7 @@ func every(step, until int) []int {
 	return out
 }
 
-func TestMatchImageQueryListsRefinesOrDrops(t *testing.T) {
+func TestMatchImageQueryListsOrDrops(t *testing.T) {
 	scenes := randomHashes(1, 3)
 	query := scenes[1]
 	content := func(id int64, distance int) ImageSearchContent {
@@ -56,9 +56,7 @@ func TestMatchImageQueryListsRefinesOrDrops(t *testing.T) {
 			{TimeMs: 30_000, Hash: scenes[2]},
 		}}
 	}
-	matches, refinements := MatchImageQuery(query, []ImageSearchContent{
-		content(1, 12), content(2, 13), content(3, 18), content(4, 19),
-	})
+	matches := MatchImageQuery(query, []ImageSearchContent{content(1, 12), content(2, 13)})
 
 	if len(matches) != 1 {
 		t.Fatalf("一致 %+v、距離 12 の 1 件だけのはず", matches)
@@ -66,65 +64,6 @@ func TestMatchImageQueryListsRefinesOrDrops(t *testing.T) {
 	want := ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchFrame, Rate: 51.0 / 63, PositionMs: 8_000}
 	if matches[0] != want {
 		t.Errorf("一致 = %+v、want %+v", matches[0], want)
-	}
-	wantRefine := []ImageSearchRefinement{
-		{VideoID: 2, Distance: 13, StartMs: 8_000, EndMs: 18_000},
-		{VideoID: 3, Distance: 18, StartMs: 8_000, EndMs: 18_000},
-	}
-	if len(refinements) != len(wantRefine) {
-		t.Fatalf("絞り込み %+v、want %+v", refinements, wantRefine)
-	}
-	for i := range wantRefine {
-		if refinements[i] != wantRefine[i] {
-			t.Errorf("絞り込み[%d] = %+v、want %+v", i, refinements[i], wantRefine[i])
-		}
-	}
-}
-
-func TestMatchImageQueryRefinesTheTenClosest(t *testing.T) {
-	query := randomHashes(2, 1)[0]
-	var contents []ImageSearchContent
-	// Distances 18, 17, ..., 13, then 18 again: the six 18s compete for the last places.
-	for i, distance := range []int{18, 17, 16, 15, 14, 13, 18, 18, 18, 18, 18, 18} {
-		contents = append(contents, ImageSearchContent{
-			VideoID: int64(i + 1), DurationMs: 5_000,
-			Frames: []ImageSearchFrame{{TimeMs: 1_000, Hash: flipBits(query, distance)}},
-		})
-	}
-	_, refinements := MatchImageQuery(query, contents)
-
-	if len(refinements) != ImageSearchRefineLimit {
-		t.Fatalf("絞り込み %d 件、want %d", len(refinements), ImageSearchRefineLimit)
-	}
-	for i, wantDistance := range []int{13, 14, 15, 16, 17, 18, 18, 18, 18, 18} {
-		if refinements[i].Distance != wantDistance {
-			t.Errorf("絞り込み[%d] の距離 %d、want %d", i, refinements[i].Distance, wantDistance)
-		}
-	}
-	// The last entry's gap runs to the video's end.
-	if got := refinements[0]; got.StartMs != 1_000 || got.EndMs != 5_000 {
-		t.Errorf("最後のエントリの区間 %d〜%d、want 1000〜5000", got.StartMs, got.EndMs)
-	}
-}
-
-// A refined content is listed at its nearest non-flat frame within 12 bits, the earliest of equals; a gap whose frames
-// are all flat or over 12 bits away is not listed.
-func TestMatchRefinedFramesListsTheNearestFrame(t *testing.T) {
-	query := randomHashes(3, 1)[0]
-	refinement := ImageSearchRefinement{VideoID: 7, AddedAt: time.Unix(7, 0), Distance: 15, StartMs: 8_000, EndMs: 16_000}
-	frame := func(timeMs int64, distance int, flat bool) KeyframeHash {
-		return KeyframeHash{TimeMs: timeMs, Frame: FrameHash{Hash: flipBits(query, distance), Flat: flat}}
-	}
-	match, ok := MatchRefinedFrames(query, refinement, []KeyframeHash{
-		frame(8_000, 0, true), frame(8_250, 13, false), frame(8_500, 5, false), frame(8_750, 5, false),
-	})
-	want := ImageSearchMatch{VideoID: 7, AddedAt: time.Unix(7, 0), Kind: ImageSearchMatchFrame, Rate: 58.0 / 63,
-		PositionMs: 8_500}
-	if !ok || match != want {
-		t.Errorf("match = %+v, %v, want %+v", match, ok, want)
-	}
-	if match, ok := MatchRefinedFrames(query, refinement, []KeyframeHash{frame(8_000, 0, true), frame(8_250, 13, false)}); ok {
-		t.Errorf("matched %+v with only a flat frame and one 13 bits away", match)
 	}
 }
 

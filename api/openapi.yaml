@@ -8442,7 +8442,7 @@ components:
         frames:
           type: array
           maxItems: 12
-          description: "Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query (a refined match has its one refined frame), ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty."
+          description: "Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query, ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty."
           items:
             $ref: "#/components/schemas/ImageSearchMatchFrame"
         frameCount:

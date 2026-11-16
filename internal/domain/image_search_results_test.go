@@ -58,18 +58,11 @@ func TestImageMatchFramesKeepsTheTwelveBest(t *testing.T) {
 	}
 }
 
-// A refined match has only its decoded frame, and a video query's match has none.
-func TestImageMatchFramesOfRefinedAndVideoMatches(t *testing.T) {
+// A video query's match has no frames.
+func TestImageMatchFramesOfVideoMatch(t *testing.T) {
 	query := randomHashes(13, 1)[0]
 	content := ImageSearchContent{VideoID: 1, DurationMs: 20_000, Frames: matchRun(query,
-		[]int64{0, 10_000}, []int{15, 30})}
-	refined := ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchFrame, Rate: ImageMatchRate(6), PositionMs: 1_250}
-
-	frames, count := ImageMatchFrames(query, content, refined)
-	if want := []ImageSearchMatchedFrame{{PositionMs: 1_250, Rate: ImageMatchRate(6)}}; count != 1 ||
-		!slices.Equal(frames, want) {
-		t.Fatalf("refined: frames = %+v (%d), want %+v (1)", frames, count, want)
-	}
+		[]int64{0, 10_000}, []int{6, 30})}
 
 	video := ImageSearchMatch{VideoID: 1, Kind: ImageSearchMatchWhole, Rate: 1, PositionMs: 0}
 	if frames, count := ImageMatchFrames(query, content, video); count != 0 || frames == nil || len(frames) != 0 {

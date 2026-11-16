@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -117,43 +116,4 @@ func TestImageSearchReturnsAFramePerAppearanceOfARecurringShot(t *testing.T) {
 	if len(holds) != recurringHolds {
 		t.Fatalf("frames %+v cover %d holds, want one in each of %d", match.Frames, len(holds), recurringHolds)
 	}
-}
-
-// A frame of the pan between keyframes answers its one refined frame near 6 s; the pan's re-encode, a video query,
-// answers no frames and the video bands.
-func TestImageSearchReturnsFramesAndBandsForThePan(t *testing.T) {
-	fixture := newImageSearchFixture(t)
-	video := panFixture(t, fixture.mediaDir)
-	target := fixture.indexVideo(t, video, 30_000)
-
-	t.Run("frame between keyframes", func(t *testing.T) {
-		result := postSearchFile(t, fixture.handler, "frame.png", cutFrame(t, video, "6"))
-		assertBands(t, result, imageBands)
-		if len(result.Items) != 1 || result.Items[0].Video.Id != target {
-			t.Fatalf("items = %+v, want only video %d", result.Items, target)
-		}
-		match := result.Items[0].Match
-		if len(match.Frames) != 1 || match.FrameCount != 1 || match.Frames[0].PositionMs < 5750 ||
-			match.Frames[0].PositionMs > 6250 || match.Frames[0].Rate != match.Rate {
-			t.Fatalf("match = %+v, want one frame within 250 ms of 6000 ms", match)
-		}
-	})
-
-	t.Run("downscaled re-encode", func(t *testing.T) {
-		reencoded := filepath.Join(t.TempDir(), "reencoded.mp4")
-		ffmpegFixture(t, "-i", video, "-vf", "scale=160:-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
-			"-g", "75", reencoded)
-		data, err := os.ReadFile(reencoded)
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := postSearchFile(t, fixture.handler, "reencoded.mp4", data)
-		assertBands(t, result, videoBands)
-		if len(result.Items) != 1 || result.Items[0].Video.Id != target {
-			t.Fatalf("items = %+v, want only video %d", result.Items, target)
-		}
-		if match := result.Items[0].Match; len(match.Frames) != 0 || match.FrameCount != 0 {
-			t.Fatalf("match = %+v, want no frames", match)
-		}
-	})
 }
