@@ -434,7 +434,10 @@ density for a query and the results it found, such as an image search: the
 | From `lg`  | Two columns `gap-6` apart: `query` `query-aside` wide at the start, stuck under the top bar and scrolling inside itself when taller than the viewport; the results take the rest |
 | Below `lg` | One column: `query` full width above the results. With `queryCollapsed` it is one bar that sticks under the top bar; expanded, it scrolls with the page                          |
 
-Without a `query` the results take the full width.
+Without a `query` the results take the full width. When the query is a file,
+the whole panel, its collapsed bar included, takes a dropped file to search
+again ([ImageUploadDialog](components.md#imageuploaddialog) has the drop
+rules).
 
 | Slot             | Put in it                                                                                                                                                                                            | Never                                        |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |

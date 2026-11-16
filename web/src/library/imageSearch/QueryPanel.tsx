@@ -6,6 +6,7 @@ import {
   File as FileIcon,
   Film,
   type LucideIcon,
+  ScanSearch,
   SearchX,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -18,6 +19,11 @@ import { Button } from "../../ui/shadcn/button";
 import { Progress } from "../../ui/shadcn/progress";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
+import {
+  type FileDrag,
+  fileDragFrame,
+  useFileIntake,
+} from "../../videoList/useFileIntake";
 import { formatElapsed, type ImageSearchPhase, isRunning } from "./imageSearchState";
 import { type FileKind, fileKind, useFilePreview } from "./useFilePreview";
 
@@ -28,6 +34,8 @@ export interface QueryPanelProps {
   onOpenChange: (open: boolean) => void;
   /** Opens the search-by-file dialog. */
   onChoose: () => void;
+  /** Takes the files dropped on the panel, as the search field does. */
+  onFiles: (files: readonly File[]) => void;
   /** Stops the running search. */
   onCancel: () => void;
   /** Sends the same file again after a failure or a stop. */
@@ -290,12 +298,37 @@ function PanelBar({
   );
 }
 
+/**
+ * What covers the panel while a file is dragged: the search field's drop wording over the card, filled
+ * `primary-soft` over the panel. Pointer events pass to the panel, which takes the drop.
+ */
+function DropCover({ drag }: { drag: FileDrag }) {
+  if (drag === "none") return null;
+  const over = drag === "field";
+  return (
+    <div
+      data-slot="query-panel-drop"
+      className={cn(
+        "pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-md p-3 text-center text-sm font-medium",
+        over ? "bg-primary-soft" : "bg-card/90",
+      )}
+    >
+      <ScanSearch
+        aria-hidden="true"
+        className={cn("size-4 shrink-0", over ? "text-primary" : "text-muted-foreground")}
+      />
+      {t.library.imageSearch.dropHere}
+    </div>
+  );
+}
+
 /** The file an image search runs on, beside its results: what it is, the search's state and what to do next. */
 export function QueryPanel({
   phase,
   open,
   onOpenChange,
   onChoose,
+  onFiles,
   onCancel,
   onRetry,
 }: QueryPanelProps) {
@@ -303,13 +336,20 @@ export function QueryPanel({
   const { file } = phase;
   const url = useFilePreview(file, previewKinds);
   const [readDuration, setReadDuration] = useState<number>();
+  const intake = useFileIntake(onFiles);
   const answered = phase.kind === "results" ? phase.result : undefined;
   const durationMs = answered?.query.durationMs ?? readDuration;
   const status = panelStatus(phase);
   return (
+    // The whole panel, its collapsed bar included, takes a dropped file as `Choose another file…` does.
     <div
+      {...intake.dropProps}
       data-slot="query-panel"
-      className="flex min-w-0 flex-col gap-3 rounded-md border border-border bg-card p-3"
+      data-file-drag={intake.drag === "none" ? undefined : intake.drag}
+      className={cn(
+        "relative flex min-w-0 flex-col gap-3 rounded-md border border-border bg-card p-3",
+        fileDragFrame(intake.drag),
+      )}
     >
       <PanelBar
         file={file}
@@ -344,6 +384,7 @@ export function QueryPanel({
           onRetry={onRetry}
         />
       </div>
+      <DropCover drag={intake.drag} />
     </div>
   );
 }

@@ -6,8 +6,15 @@ import {
   useState,
 } from "react";
 
-/** Where a file being dragged is: not at all, somewhere over the page, or over the field. */
+/** Where a file being dragged is: not at all, somewhere over the page, or over the element that takes it. */
 export type FileDrag = "none" | "page" | "field";
+
+/** The frame of an element a file is dragged toward: dashed while over the page, filled over the element. */
+export function fileDragFrame(drag: FileDrag): string | false {
+  if (drag === "page") return "border-dashed border-primary hover:border-primary";
+  if (drag === "field") return "border-primary bg-primary-soft hover:border-primary";
+  return false;
+}
 
 function carriesFiles(event: { dataTransfer: DataTransfer | null }): boolean {
   return event.dataTransfer?.types.includes("Files") ?? false;
@@ -27,9 +34,9 @@ export interface FileIntake {
 }
 
 /**
- * A field that takes a dropped or pasted file. While `onFiles` is given, a file dragged into the
- * window marks the field, and a drop anywhere else on the page is refused so the browser does not
- * replace the page with the file. See web/registry/rules/components.md, ImageUploadDialog.
+ * An element that takes a dropped or pasted file: the search field, or the image search's query panel.
+ * While `onFiles` is given, a file dragged into the window marks the element, and a drop anywhere else
+ * on the page is refused so the browser does not replace the page with the file. See web/registry/rules/components.md, ImageUploadDialog.
  */
 export function useFileIntake(
   onFiles: ((files: File[]) => void) | undefined,

@@ -531,10 +531,14 @@ dialog shows in an `Alert` while it stays open. Check types and sizes there,
 so a dropped or pasted file is refused as a chosen one is.
 
 Do not take files dropped or pasted on the page itself, or add a hidden file
-input of your own beside a menu item. The one exception is the owner's library
+input of your own beside a menu item. The exceptions are the owner's library
 search field, which takes a file dropped on it or pasted into it while focused
-(`SearchBox` with `fileSearch`); while a file is dragged over that page, a drop
-anywhere else is refused, so the browser does not open the file in its place.
+(`SearchBox` with `fileSearch`), and on `/image-search` the query panel, which
+takes a dropped file as its `Choose another file…` does. Both use
+`useFileIntake`: while a file is dragged into the window each target's frame
+turns dashed `primary` with `Drop here to search by this file`, and the one
+under the pointer is solid with a `primary-soft` fill. A drop anywhere else is
+refused, so the browser does not open the file in its place.
 
 ### TentativeMark
 

@@ -128,12 +128,9 @@ async function titlesFound(request: APIRequestContext, file: Query): Promise<str
 /** The library listing the image search media, its URL as the search field writes it. */
 const filteredLibrary = `/?q=${encodeURIComponent(LIBRARY_FILTER)}`;
 
-/** Drops the file on the search field of the page already open, as the browser does with a file from outside. */
-async function dropOnField(page: Page, file: Query) {
-  const box = page.getByLabel("Search videos", { exact: true });
-  await expect(box).toBeVisible();
-  const field = box.locator("..");
-  const dataTransfer = await page.evaluateHandle(
+/** A drag's data holding the file, as the browser builds one for a file from outside the page. */
+async function fileTransfer(page: Page, file: Query) {
+  return page.evaluateHandle(
     ({ base64, name, type }) => {
       const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
       const transfer = new DataTransfer();
@@ -142,6 +139,14 @@ async function dropOnField(page: Page, file: Query) {
     },
     { base64: file.data.toString("base64"), name: file.name, type: file.type },
   );
+}
+
+/** Drops the file on the search field of the page already open, as the browser does with a file from outside. */
+async function dropOnField(page: Page, file: Query) {
+  const box = page.getByLabel("Search videos", { exact: true });
+  await expect(box).toBeVisible();
+  const field = box.locator("..");
+  const dataTransfer = await fileTransfer(page, file);
   await field.dispatchEvent("dragenter", { dataTransfer });
   await field.dispatchEvent("dragover", { dataTransfer });
   await expect(field).toHaveAttribute("data-file-drag", "field");
@@ -783,6 +788,38 @@ test.describe("画像検索", () => {
     if (stuck === null) throw new Error("panel bar is not drawn");
     expect(Math.abs(stuck.y - (navbar.y + navbar.height))).toBeLessThanOrEqual(16);
     expect(await pageScrollsSideways(page)).toBe(false);
+  });
+
+  test("結果のあとパネルに別のファイルを落とすと、ドロップの印を出して置き換えた検索の行を出す", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    for (const width of [375, 1280]) {
+      const rows = await searchAt(page, width, query("pan"));
+      await expect(title(rows.first())).toHaveText(PAN);
+      const panel = queryPanel(page);
+      // Below lg the answer collapses the panel into its bar, which takes the drop.
+      const target = width < 1024 ? page.locator("[data-slot=query-panel-bar]") : panel;
+      await expect(target).toBeVisible();
+      const shotA = query("shotA");
+      const dataTransfer = await fileTransfer(page, shotA);
+
+      await resultsColumn(page).dispatchEvent("dragenter", { dataTransfer });
+      await expect(panel).toHaveAttribute("data-file-drag", "page");
+      await expect(panel.getByText("Drop here to search by this file")).toBeVisible();
+      expect(await pageScrollsSideways(page)).toBe(false);
+      await shoot(page, testInfo, `panel-drag-page-${String(width)}`);
+      await target.dispatchEvent("dragenter", { dataTransfer });
+      await target.dispatchEvent("dragover", { dataTransfer });
+      await expect(panel).toHaveAttribute("data-file-drag", "field");
+      await shoot(page, testInfo, `panel-drag-over-${String(width)}`);
+
+      await target.dispatchEvent("drop", { dataTransfer });
+      await expect(panel).not.toHaveAttribute("data-file-drag");
+      await expect(title(rows.first())).toHaveText(RECURRING, { timeout: 60_000 });
+      await expect(panel.getByText(shotA.name).first()).toBeAttached();
+      await expect(page).toHaveURL(/\/image-search$/);
+    }
   });
 
   test("直接開いた /image-search は Idle を出し、外に落としたファイルでは何も始まらず、Library はアプリ内で / を開く", async ({

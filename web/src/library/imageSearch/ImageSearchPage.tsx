@@ -140,6 +140,7 @@ function ImageSearchScreen() {
               open={panelOpen}
               onOpenChange={setPanelOpen}
               onChoose={choose}
+              onFiles={giving.onPanelFiles}
               onCancel={search.cancel}
               onRetry={search.retry}
             />

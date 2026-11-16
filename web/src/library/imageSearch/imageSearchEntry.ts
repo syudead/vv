@@ -58,6 +58,8 @@ export function useBackToLibrary(): () => void {
 export interface FileGiving {
   /** Files dropped on or pasted into the search field. */
   onFiles: (files: readonly File[]) => void;
+  /** Files dropped on the image search's query panel; they leave focus where it was. */
+  onPanelFiles: (files: readonly File[]) => void;
   dialogOpen: boolean;
   setDialogOpen: (open: boolean) => void;
   /** The dialog's `onFile`: a file refused in the browser keeps the dialog open with the reason. */
@@ -91,6 +93,10 @@ export function useGiveFiles(
     [beforeLeave, below, mode, navigate],
   );
   const onFiles = useCallback((files: readonly File[]) => give(files, "field"), [give]);
+  const onPanelFiles = useCallback(
+    (files: readonly File[]) => give(files, "panel"),
+    [give],
+  );
   const takeDialogFile = useCallback(
     (file: File) => {
       const refusal = refuseFiles([file]);
@@ -101,5 +107,5 @@ export function useGiveFiles(
     },
     [give],
   );
-  return { onFiles, dialogOpen, setDialogOpen, takeDialogFile };
+  return { onFiles, onPanelFiles, dialogOpen, setDialogOpen, takeDialogFile };
 }
