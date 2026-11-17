@@ -17,7 +17,7 @@ import {
   TriangleAlert,
   Wrench,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   stopAssistantTurn,
@@ -27,6 +27,7 @@ import {
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
+import { useNow } from "../lib/useNow";
 import { Button } from "../ui/shadcn/button";
 import {
   Collapsible,
@@ -156,16 +157,6 @@ function ToolLine({
       </div>
     </li>
   );
-}
-
-/** Ticks once a second, for the running line's elapsed time. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
 }
 
 /** The turn has no time limit, so the running line carries the owner's way to stop it. */

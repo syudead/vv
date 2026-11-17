@@ -154,10 +154,11 @@ func TestStartupJobsQueueOnceAndEndWhenFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	var left string
-	if err := db.sql.QueryRowContext(ctx, `select group_concat(kind) from jobs`).Scan(&left); err != nil {
+	if err := db.sql.QueryRowContext(ctx, `select group_concat(kind) from (select kind from jobs order by kind)`).
+		Scan(&left); err != nil {
 		t.Fatal(err)
 	}
-	if left != string(domain.JobQueueMediaInfo) {
-		t.Fatalf("jobs left = %v, want only the unclaimed queue_media_info", left)
+	if want := string(domain.JobQueueFrameIndex) + "," + string(domain.JobQueueMediaInfo); left != want {
+		t.Fatalf("jobs left = %v, want only the unclaimed %s", left, want)
 	}
 }

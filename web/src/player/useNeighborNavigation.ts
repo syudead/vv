@@ -10,14 +10,12 @@ export function useNeighborNavigation({
   related,
   trail,
   linkState,
-  backTo,
   videoTo,
   keepPlaying,
 }: {
   related: RelatedState;
   trail: readonly number[];
   linkState: VideoLinkState;
-  backTo: string;
   videoTo: (videoId: number) => string;
   keepPlaying: boolean;
 }) {
@@ -52,7 +50,7 @@ export function useNeighborNavigation({
     title: video.title,
     go: () =>
       void navigate(`/videos/${String(video.id)}`, {
-        state: { from: backTo, trail: trail.slice(0, -1), autoplay: keepPlaying },
+        state: { ...linkState, trail: trail.slice(0, -1), autoplay: keepPlaying },
       }),
   });
   let previous: Neighbor | undefined;

@@ -46,6 +46,8 @@ face job.
 | `keyframes` | 1 | 0 | 0 | 0 | ffprobe reads the packet index of the whole file |
 | `media_info` | 1 | 0 | 0 | 0 | ffprobe reads the container |
 | `queue_keyframes`, `queue_media_info` | 0 | 0 | 0 | 0 | Inserts one `keyframes` or `media_info` job per video whose stored result is out of date |
+| `frame_index` | 1 | 1 | 0 | 0 | ffmpeg reads the whole file once and decodes only its keyframes into the content's search index |
+| `queue_frame_index` | 0 | 0 | 0 | 0 | Inserts one `frame_index` job per content without a search index of the current version |
 | `virtual_thumbnails` | 0 | 0 | 0 | 0 | Copies stored image bytes into thumbnail files |
 
 Every queued unit of work is a `jobs` row, enqueued in the transaction that
@@ -91,10 +93,11 @@ slots.
 | Kind | Cap | Why |
 | --- | --- | --- |
 | `thumbnail`, `seek_thumbnail`, `preview`, `fingerprint` | 1 | One decode or encode per stage, as before the scheduler |
+| `frame_index` | 1 | It reads a whole file; a second would make a rotational disk seek between two files |
 | `probe`, `keyframes`, `media_info` | 2 | ffprobe reads little and parses between reads, so two keep a disk busy without competing |
 | `auto_tag`, `version_judge` | 1 | The classifier slot already allows one |
 | `face`, `face_image`, `face_cast` | 1 | The face lane already allows one |
-| `queue_face_images`, `queue_keyframes`, `queue_media_info`, `virtual_thumbnails` | 1 | Each writes rows or files in bulk; a second instance would only contend |
+| `queue_face_images`, `queue_keyframes`, `queue_media_info`, `queue_frame_index`, `virtual_thumbnails` | 1 | Each writes rows or files in bulk; a second instance would only contend |
 
 | Rejected | Why |
 | --- | --- |
@@ -308,17 +311,17 @@ and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
 | --- | --- | --- |
 | Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue, and "Judge again" on Duplicates |
 | Import | 1 | Everything an import, a scan or an after-import rule queues, and "Tag all videos again" |
-| Backfill | 2 | Work that only refreshes stored results: the jobs each startup queues and the jobs they queue ([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)) |
+| Backfill | 2 | Work that only refreshes stored results: the jobs each startup queues and the jobs they queue ([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)), and the `frame_index` job a probe result queues for a content without a current search index |
 
 Backfill kinds stay out of import tracking. They open no activity entry, do not
 keep the current import from settling, and do not make the desktop app busy
 (`HasUnfinishedJobs`), so a version bump never looks like an import. Their
 row is deleted when the job ends, done or failed, because the result lives in
-the domain tables and the next startup queues the work again. A `keyframes`
-or `media_info` job whose video gained or lost a location, or whose file
-changed, during the read saved nothing, so it is queued again, as an import
+the domain tables and the next startup queues the work again. A `keyframes`,
+`media_info` or `frame_index` job whose video gained or lost a location, or
+whose file changed, during the read saved nothing, so it is queued again, as an import
 stage is. A
-`queue_keyframes`, `queue_media_info` or `virtual_thumbnails` job names no
+`queue_keyframes`, `queue_media_info`, `queue_frame_index` or `virtual_thumbnails` job names no
 video, so each claim is one attempt.
 
 An owner request over a job that is already queued raises it to class 0 and

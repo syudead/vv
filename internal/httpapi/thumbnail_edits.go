@@ -33,13 +33,22 @@ type ThumbnailEdits interface {
 	Cancel(ctx context.Context, id string) (domain.ThumbnailEdit, error)
 	Apply(ctx context.Context, id string) (domain.Video, error)
 	Discard(ctx context.Context, id string)
-	VideoFrame(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
+	VideoFrame(ctx context.Context, path string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error)
 }
 
-// GetVideoFrame answers a bounded PNG of the video at positionMs, for framing a person's face.
+// GetVideoFrame answers a PNG of the video at positionMs whose long side is at most maxEdge, for framing a person's
+// face and for image search's matched frames.
 func (s *server) GetVideoFrame(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoFrameParams) {
 	if s.thumbnailEdits == nil || s.files == nil {
 		s.internalError(w, "Frame extraction is not configured.", nil)
+		return
+	}
+	maxSide := domain.ThumbnailFrameMaxSide
+	if params.MaxEdge != nil {
+		maxSide = *params.MaxEdge
+	}
+	if maxSide < domain.VideoFrameMinSide || maxSide > domain.ThumbnailFrameMaxSide {
+		s.invalidRequest(w, "maxEdge must be between 64 and 2048.")
 		return
 	}
 	video, ok := s.lookupVideo(w, r, id)
@@ -55,7 +64,7 @@ func (s *server) GetVideoFrame(w http.ResponseWriter, r *http.Request, id gen.Vi
 		s.mediaFileError(w, err)
 		return
 	}
-	frame, err := s.thumbnailEdits.VideoFrame(r.Context(), path, params.PositionMs)
+	frame, err := s.thumbnailEdits.VideoFrame(r.Context(), path, params.PositionMs, maxSide)
 	if errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
 		s.conflictReason(w, reasonThumbnailFrameUnavailable, "No frame could be read at this position.")
 		return
@@ -305,15 +314,8 @@ func (s *server) readMultipart(
 	w http.ResponseWriter, r *http.Request, maxBody int64, tooLarge func(),
 	readPart func(name string, part *multipart.Part) bool,
 ) bool {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "multipart/form-data" {
-		s.invalidRequest(w, "Content-Type must be multipart/form-data.")
-		return false
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-	reader, err := r.MultipartReader()
-	if err != nil {
-		s.invalidRequest(w, "The request body is not valid multipart/form-data.")
+	reader, ok := s.multipartReader(w, r, maxBody)
+	if !ok {
 		return false
 	}
 	seen := map[string]bool{}
@@ -341,6 +343,22 @@ func (s *server) readMultipart(
 			return false
 		}
 	}
+}
+
+// multipartReader checks the content type and caps the body at maxBody, writing the failure itself.
+func (s *server) multipartReader(w http.ResponseWriter, r *http.Request, maxBody int64) (*multipart.Reader, bool) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "multipart/form-data" {
+		s.invalidRequest(w, "Content-Type must be multipart/form-data.")
+		return nil, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	reader, err := r.MultipartReader()
+	if err != nil {
+		s.invalidRequest(w, "The request body is not valid multipart/form-data.")
+		return nil, false
+	}
+	return reader, true
 }
 
 func (s *server) readThumbnailEditPart(w http.ResponseWriter, name string, part io.Reader, input *domain.ThumbnailEditRunInput) bool {

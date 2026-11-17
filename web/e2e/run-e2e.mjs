@@ -19,6 +19,7 @@ import {
   generateFolderFixtures,
   generateHistoryFixtures,
   generateHomeFixtures,
+  generateImageSearchFixtures,
   generateOnboardingFixtures,
   generateMediaFixtures,
   generateMultiPeerFixtures,
@@ -52,6 +53,8 @@ function fixtureDirs(root) {
     backgroundPauseMediaDir: path.join(root, "background-pause-media"),
     peerMediaDir: path.join(root, "peer-media"),
     multiPeerMediaDir: path.join(root, "multi-peer-media"),
+    imageSearchMediaDir: path.join(root, "image-search-media"),
+    imageSearchQueryDir: path.join(root, "image-search-queries"),
   };
 }
 
@@ -70,6 +73,7 @@ function generateFixtures(dirs) {
   generateBackgroundPauseFixtures(dirs.backgroundPauseMediaDir);
   generatePeerFixtures(dirs.peerMediaDir);
   generateMultiPeerFixtures(dirs.multiPeerMediaDir);
+  generateImageSearchFixtures(dirs.imageSearchMediaDir, dirs.imageSearchQueryDir);
 }
 
 // Cache FFmpeg fixtures by generator sources, directory layout and FFmpeg version; CI preserves this cache between runs.
@@ -168,6 +172,8 @@ function run() {
           MDM_E2E_BACKGROUND_PAUSE_MEDIA_DIR: fixtures.backgroundPauseMediaDir,
           MDM_E2E_PEER_MEDIA_DIR: fixtures.peerMediaDir,
           MDM_E2E_MULTI_PEER_MEDIA_DIR: fixtures.multiPeerMediaDir,
+          MDM_E2E_IMAGE_SEARCH_MEDIA_DIR: fixtures.imageSearchMediaDir,
+          MDM_E2E_IMAGE_SEARCH_QUERY_DIR: fixtures.imageSearchQueryDir,
         },
         stdio: "inherit",
       },

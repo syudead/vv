@@ -45,7 +45,7 @@ flowchart LR
   idx --> auth[Delete expired sessions]
   auth --> rec[Close scans, requeue jobs]
   rec --> act[Mark activity interrupted]
-  act --> tmp[Remove unfinished artifacts]
+  act --> tmp[Remove unfinished artifacts and search uploads]
   tmp --> work[Subscribe and start workers]
   work --> resume[Resume interrupted scan]
   resume --> auto[Start auto-import]
@@ -61,6 +61,7 @@ flowchart LR
 | Folder index | Logged; the previous index stays until the next rebuild  |
 | Marking activity entries interrupted | Logged; the entries stay `running` until the next startup ([activity.md](activity.md)) |
 | Unfinished artifacts under `.tmp` | Logged |
+| Image search uploads under `search-uploads` | Logged ([image-search.md](image-search.md#uploads-leave-nothing-behind)) |
 | Resuming the interrupted scan | Logged; the user can start a scan |
 | Starting auto-import | Logged; the watches are added in the background and never delay the listener, and no scan starts ([folder-watching.md](folder-watching.md)) |
 | Encoder checks | Run in the background and never delay the listener ([hardware-encoding.md](hardware-encoding.md)) |
@@ -83,6 +84,7 @@ unfinished from an earlier run:
 | --- | --- |
 | `queue_keyframes` | Queues a `keyframes` job per H.264 video whose keyframe sample is missing, of an older version, or for another file size or modification time ([live-transcode-seek.md](live-transcode-seek.md#bounded-keyframe-sampling)) |
 | `queue_media_info` | Queues a `media_info` job per video without media information of this version, unless reading the same file failed at this version ([media-information.md](media-information.md#videos-imported-earlier-are-read-again-in-the-background)) |
+| `queue_frame_index` | Queues a `frame_index` job per content with a file and without a search index of the current version ([job-scheduling.md](job-scheduling.md#each-kind-declares-a-demand)) |
 | `virtual_thumbnails` | Publishes each virtual video's missing thumbnail file from its stored image |
 
 A video with a probe pending is left to the import. Nothing polls for this
@@ -134,7 +136,8 @@ flowchart LR
 
 The `/api/events` streams never end on their own, so they close before the
 10-second request grace starts, and the stream this node holds open to its paired
-VVMDM closes with them. A cancelled job stays `running` and the next
+VVMDM closes with them. Live transcodes and image searches stop at the same
+point, because draining does not cancel a request's context. A cancelled job stays `running` and the next
 startup requeues it; a job is never lost between the queue and a worker.
 
 Auto-import stops before the scan is cancelled, so it removes its watches and

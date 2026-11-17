@@ -34,9 +34,9 @@ type ComfyUISettingsReader interface {
 	ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error)
 }
 
-// ThumbnailFrameSource extracts a PNG at positionMs, preserving the video long side up to domain.ThumbnailFrameMaxSide; implemented by media.Assets.
+// ThumbnailFrameSource extracts a PNG at positionMs, preserving the video long side up to maxSide; implemented by media.Assets.
 type ThumbnailFrameSource interface {
-	FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
+	FrameAt(ctx context.Context, path string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error)
 	// AutoThumbnailPositions returns automatic then first-frame positions in milliseconds for durationMs (zero means unknown); see docs/design-docs/thumbnail-editing.md.
 	AutoThumbnailPositions(durationMs int64) []int64
 }
@@ -235,7 +235,7 @@ func (e *ThumbnailEdits) startImage(
 		if err := domain.CheckThumbnailPosition(video, *start.PositionMs); err != nil {
 			return thumbnailEditImage{}, err
 		}
-		return e.frameAt(ctx, path, *start.PositionMs)
+		return e.frameAt(ctx, path, *start.PositionMs, domain.ThumbnailFrameMaxSide)
 	case domain.ThumbnailEditFromThumbnail:
 		return e.currentThumbnail(ctx, video, path)
 	case domain.ThumbnailEditFromImage:
@@ -268,7 +268,7 @@ func (e *ThumbnailEdits) currentThumbnail(
 		return thumbnailEditImage{}, domain.ErrMediaFileUnavailable
 	}
 	if selection.PositionMs != nil {
-		return e.frameAt(ctx, path, *selection.PositionMs)
+		return e.frameAt(ctx, path, *selection.PositionMs, domain.ThumbnailFrameMaxSide)
 	}
 	var durationMs int64
 	if video.DurationMs != nil {
@@ -276,7 +276,7 @@ func (e *ThumbnailEdits) currentThumbnail(
 	}
 	var first error
 	for _, positionMs := range e.frames.AutoThumbnailPositions(durationMs) {
-		image, err := e.frameAt(ctx, path, positionMs)
+		image, err := e.frameAt(ctx, path, positionMs, domain.ThumbnailFrameMaxSide)
 		if err == nil {
 			return image, nil
 		}
@@ -285,11 +285,11 @@ func (e *ThumbnailEdits) currentThumbnail(
 	return thumbnailEditImage{}, cmp.Or(first, error(domain.ErrThumbnailFrameUnavailable))
 }
 
-func (e *ThumbnailEdits) frameAt(ctx context.Context, path string, positionMs int64) (thumbnailEditImage, error) {
+func (e *ThumbnailEdits) frameAt(ctx context.Context, path string, positionMs int64, maxSide int) (thumbnailEditImage, error) {
 	if e.foreground != nil {
 		defer e.foreground.ReadInForeground(path)()
 	}
-	frame, err := e.frames.FrameAt(ctx, path, positionMs)
+	frame, err := e.frames.FrameAt(ctx, path, positionMs, maxSide)
 	if err != nil {
 		return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
 	}
@@ -327,10 +327,10 @@ func (e *ThumbnailEdits) Get(ctx context.Context, id string) (domain.ThumbnailEd
 	return e.view(session), nil
 }
 
-// VideoFrame returns a bounded PNG of the video file at positionMs without starting a session, as the person page
-// reads a frame to frame a face from; an unreadable frame wraps domain.ErrThumbnailFrameUnavailable.
-func (e *ThumbnailEdits) VideoFrame(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error) {
-	image, err := e.frameAt(ctx, path, positionMs)
+// VideoFrame returns a PNG of the video file at positionMs, its long side at most maxSide, without starting a session,
+// as the person page frames a face from it; an unreadable frame wraps domain.ErrThumbnailFrameUnavailable.
+func (e *ThumbnailEdits) VideoFrame(ctx context.Context, path string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error) {
+	image, err := e.frameAt(ctx, path, positionMs, maxSide)
 	return image.frame, err
 }
 

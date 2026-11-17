@@ -70,6 +70,8 @@ import CardTagRow from "./CardTagRow";
 import EmptyLibrary, { AllFoldersOff } from "./EmptyLibrary";
 import { FavoriteFolderBand, useFavoriteFolders } from "./FavoriteFolderBand";
 import { GroupCard, GroupRow } from "./GroupCard";
+import { ImageSearchDialog } from "./imageSearch/ImageSearchDialog";
+import { useGiveFiles } from "./imageSearch/imageSearchEntry";
 import {
   DraggableGroupRow,
   DraggableVideoRow,
@@ -417,6 +419,10 @@ export default function LibraryPage() {
     total,
   ]);
 
+  // A file given to the owner's search field opens the image search over this entry, which Back
+  // restores from the snapshot as it does after a card.
+  const imageSearch = useGiveFiles("push", saveSnapshot);
+
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const target = sentinel.current;
@@ -637,6 +643,14 @@ export default function LibraryPage() {
               extraFilterCount={filters.toolbar.extraFilterCount}
               onFilterOpen={filters.toolbar.onFilterOpen}
               suggestions={filters.toolbar.suggestions}
+              fileSearch={
+                owner
+                  ? {
+                      onPick: () => imageSearch.setDialogOpen(true),
+                      onFiles: imageSearch.onFiles,
+                    }
+                  : undefined
+              }
             />
           </TopBarPortal>
         }
@@ -658,6 +672,7 @@ export default function LibraryPage() {
           )
         }
       >
+        {owner && <ImageSearchDialog giving={imageSearch} />}
         <section
           ref={results}
           aria-label={conditioned ? t.library.resultsLabel : undefined}

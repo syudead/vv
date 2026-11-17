@@ -187,7 +187,7 @@ one group, and a domain test fails for a kind without one.
 | `auto_tag` | `auto_tag` | Unfinished jobs |
 | `face` | `face`, `face_image`, `face_cast`, `queue_face_images` | Unfinished jobs |
 | `version_judge` | `version_judge` | Unfinished jobs |
-| `backfill` | `keyframes`, `media_info`, `queue_keyframes`, `queue_media_info`, `virtual_thumbnails` | Unfinished jobs |
+| `backfill` | `keyframes`, `media_info`, `frame_index`, `queue_keyframes`, `queue_media_info`, `queue_frame_index`, `virtual_thumbnails` | Unfinished jobs |
 
 `scan` carries `waiting` while a scan is `paused` or a held watch directory
 exists; every job group carries `featureOff` while its feature holds one of its

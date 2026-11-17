@@ -353,6 +353,8 @@ type Options struct {
 	ThumbnailUploads ThumbnailUploads
 	// Nil PersonImages makes the person image routes fail with 500.
 	PersonImages PersonImages
+	// Nil ImageSearch makes the image search route fail with 500.
+	ImageSearch ImageSearch
 
 	WorkInfoPlugins WorkInfoPlugins
 	// Nil TranscodeProbes disables persistence, requiring uncached videos to be probed on every
@@ -449,6 +451,7 @@ type server struct {
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
 	personImages      PersonImages
+	imageSearch       ImageSearch
 	workInfoPlugins   WorkInfoPlugins
 	// thumbnailUploadBuffers bounds aggregate concurrent upload memory.
 	thumbnailUploadBuffers *semaphore.Weighted
@@ -547,6 +550,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,
 		personImages:           opts.PersonImages,
+		imageSearch:            opts.ImageSearch,
 		workInfoPlugins:        opts.WorkInfoPlugins,
 		thumbnailUploadBuffers: newThumbnailUploadBuffers(),
 		transcodeStarts:        newTranscodeStarts(),
