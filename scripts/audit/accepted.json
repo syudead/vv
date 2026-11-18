@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GHSA-fc5q-39xc-vjpf",
+    "package": "picomatch",
+    "reason": "No patched picomatch exists (every release up to 4.0.7 is affected). It reaches the repository only through build, lint and test tooling, which matches globs the repository itself writes.",
+    "revisit": "a picomatch release newer than 4.0.7 is published"
+  }
+]

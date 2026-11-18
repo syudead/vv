@@ -1,0 +1,55 @@
+# A failed run means a dependency has an advisory that no merged update fixes;
+# docs/how-to/dependency-updates.md says what to do with it.
+name: Audit
+
+on:
+  schedule:
+    # 06:23 JST every day, before the Renovate routine reads the result.
+    - cron: "23 21 * * *"
+  workflow_dispatch: {}
+  # Check changes to the audit itself. Dependency PRs do not run it, so an
+  # advisory nobody has fixed yet cannot block every update.
+  pull_request:
+    paths:
+      - .github/workflows/audit.yml
+      - scripts/audit/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+        with:
+          install_args: "task"
+
+      - name: npmの依存を検査する
+        run: task audit-npm
+
+      # Report Go findings even when npm has some.
+      - name: Goの依存を検査する
+        if: ${{ !cancelled() }}
+        run: task audit-go

@@ -47,7 +47,7 @@ flowchart LR
 | `task` and `jq` in `mise.toml`; `alpine` in `Dockerfile` | In scope, in the mise tools and container images groups | — |
 | `ghcr.io/syudead/vv:latest` in `compose.hosting.yaml` | Excluded | `latest` follows the image published from `main`; pinning its digest would stop that behavior |
 | FFmpeg bundled in the Windows zip (`ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`) | Raised by a person ([Raise the bundled FFmpeg version](#raise-the-bundled-ffmpeg-version)) | Renovate does not read these constants |
-| Dependabot security updates | Disabled in the repository settings | Renovate's `vulnerabilityAlerts` does the same job |
+| Dependabot security updates | Disabled in the repository settings | Renovate's `vulnerabilityAlerts` opens the fix PRs; the [vulnerability audit](#vulnerability-audit) finds the advisories it opens none for |
 
 The exclusion uses `matchDepNames`, not `matchPackageNames`, because the mise
 manager names `go` as `golang/go` and `node` as `nodejs`, while the dependency
@@ -145,6 +145,10 @@ flowchart TD
   `needs-human`. The routine does not revert it. Until that job passes on
   `main` again, the routine keeps fixing PRs but merges none; it then removes
   the label itself.
+- The routine reads the latest `Audit` run on `main` and lists the advisories
+  no open Renovate PR fixes, and the accepted advisories whose `revisit`
+  condition now holds. It fixes neither; a person does
+  ([Vulnerability audit](#vulnerability-audit)).
 - Each run that changes anything lists what it did in a comment on Renovate's
   Dependency Dashboard Issue.
 
@@ -169,6 +173,39 @@ flowchart TD
   the routine removes the label once the failed job passes on `main`.
 - To pause an update, close the PR (the same version is not opened again) or set
   `enabled: false` in `packageRules` in `renovate.json`.
+
+## Vulnerability audit
+
+The `Audit` workflow
+([`.github/workflows/audit.yml`](../../.github/workflows/audit.yml)) runs
+`task audit` every day at 06:23 JST and fails while a dependency on `main` has
+a known advisory. It covers what Renovate opens no PR for: an advisory in a
+transitive npm dependency, one without a patched release, and the Go standard
+library, whose version Renovate does not raise
+([Excluded dependencies](#excluded-dependencies)).
+
+| Task | Checks | Fails on |
+| --- | --- | --- |
+| `task audit-npm` | `npm audit` on the lockfiles of `web/`, `tools/` and `docs-site/` | An advisory that `scripts/audit/accepted.json` does not list, or an entry there that no lockfile has any more |
+| `task audit-go` | `govulncheck` on the Linux build and the Windows desktop build | A vulnerable function that the code calls, in a module or the standard library |
+
+The workflow does not run on dependency PRs, so a new advisory does not block
+every update. The Renovate routine reads its latest run and reports the
+findings no open PR fixes ([The Renovate routine](#the-renovate-routine)).
+
+Clear a finding in this order:
+
+1. Update the lockfile so the dependency resolves to a patched version:
+   `npm --prefix <dir> update <package>`, or merge the Renovate PR that does it.
+2. When a parent pins the vulnerable range, add an `overrides` entry to that
+   `package.json` and remove it once the parent allows the patched version.
+   `web/package.json` holds `minimatch` 10 at 11 this way, for
+   GHSA-g3hv-75wg-m249.
+3. For the Go standard library, raise the Go patch version in `go.mod`,
+   `tools/go.mod` and `mise.toml` together.
+4. When no patched version exists and the advisory does not reach what the
+   repository ships, add it to `scripts/audit/accepted.json` with the reason
+   and a `revisit` condition. The routine checks that condition every run.
 
 ## Changing the configuration
 
