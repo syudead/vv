@@ -162,6 +162,7 @@ tasks:
     cmds:
       - task: audit-npm
       - task: audit-go
+      - task: audit-go-windows
 
   audit-npm:
     desc: Fail on an npm advisory that scripts/audit/accepted.json does not list.
@@ -170,12 +171,20 @@ tasks:
       - go run ./scripts/audit web tools docs-site
 
   audit-go:
-    desc: Run govulncheck on the Linux build and the Windows desktop build.
+    desc: Run govulncheck on the host build.
     vars:
       GOVULNCHECK:
         sh: go -C tools tool -n govulncheck
     cmds:
       - '"{{.GOVULNCHECK}}" ./...'
+
+  # A separate task, so that CI still runs it when the host build has findings.
+  audit-go-windows:
+    desc: Run govulncheck on the Windows desktop build (VVMDM.exe).
+    vars:
+      GOVULNCHECK:
+        sh: go -C tools tool -n govulncheck
+    cmds:
       - 'GOOS=windows CGO_ENABLED=0 "{{.GOVULNCHECK}}" -tags desktop ./...'
 
   fmt-check:

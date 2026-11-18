@@ -234,14 +234,21 @@ dispatch the workflow on `main` and wait for it as for
 [CI](#waiting-for-ci). Build two lists:
 
 - **Uncovered findings**: when the run failed, read the log of each failed
-  step. `task audit-npm` prints one line per advisory with its package and
-  GHSA ID; `task audit-go` prints govulncheck's findings. Leave out a finding
-  whose package an open Renovate PR without the `deferred` label updates. For
-  each of the rest, record the advisory, the package, the directory or module,
-  and whether a patched version is published (`npm view <package> versions`,
-  or the fixed version govulncheck names).
+  step. `task audit-npm` prints one line per advisory with its directory,
+  package, vulnerable range and GHSA ID; `task audit-go` and
+  `task audit-go-windows` print govulncheck's findings with the fixed version.
+  Leave out a finding only when an open Renovate PR without the `deferred`
+  label raises that package, in that directory or module, to a version outside
+  the vulnerable range. For each of the rest, record the advisory, the
+  package, the directory or module, and whether a patched version is published
+  (`npm view <package> versions`, or the fixed version govulncheck names).
 - **Acceptances to end**: for each entry of `scripts/audit/accepted.json`,
   check its `revisit` condition. Record the entries whose condition holds.
+
+A failed step whose log has no finding did not finish the audit (the registry
+or the vulnerability database was unreachable, or the step broke). Then the
+lists are incomplete: say in the [report](#report) which step could not run,
+link the run, and post no `renovate-triage:advisories` comment in this run.
 
 The routine does not fix either list: an override, a Go version or an
 acceptance is the maintainer's change. Compare the two lists with the latest

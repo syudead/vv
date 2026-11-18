@@ -49,7 +49,11 @@ jobs:
       - name: npmの依存を検査する
         run: task audit-npm
 
-      # Report Go findings even when npm has some.
+      # Each target reports its findings even when an earlier one has some.
       - name: Goの依存を検査する
         if: ${{ !cancelled() }}
         run: task audit-go
+
+      - name: Windowsデスクトップ版のGoの依存を検査する
+        if: ${{ !cancelled() }}
+        run: task audit-go-windows

@@ -187,7 +187,7 @@ library, whose version Renovate does not raise
 | Task | Checks | Fails on |
 | --- | --- | --- |
 | `task audit-npm` | `npm audit` on the lockfiles of `web/`, `tools/` and `docs-site/` | An advisory that `scripts/audit/accepted.json` does not list, or an entry there that no lockfile has any more |
-| `task audit-go` | `govulncheck` on the Linux build and the Windows desktop build | A vulnerable function that the code calls, in a module or the standard library |
+| `task audit-go`, `task audit-go-windows` | `govulncheck` on the Linux build and on the Windows desktop build | A vulnerable function that the code calls, in a module or the standard library |
 
 The workflow does not run on dependency PRs, so a new advisory does not block
 every update. The Renovate routine reads its latest run and reports the
