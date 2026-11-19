@@ -10,8 +10,8 @@ required checks pass ([dependency-updates.md](../../../docs/how-to/dependency-up
 but only on its own schedule and only while it alone has committed to the
 branch. This skill takes every open Renovate PR the rest of the way without a
 person: green ones, ones with a failed check or a conflict, and major updates.
-It also clears the daily vulnerability audit, which finds the advisories
-Renovate opens no PR for. The maintainer has delegated the merge of Renovate
+It also runs the vulnerability audit, which finds the advisories Renovate
+opens no PR for, and fixes what it finds. The maintainer has delegated the merge of Renovate
 PRs, major updates included, and of the routine's own `audit/*` PR into `main`,
 under the gates below. Nothing else is delegated: this skill merges no other
 PR, and never reverts a merge.
@@ -52,8 +52,8 @@ this skill is processed like any other: remove the label first.
 ### Preflight
 
 Check that the session can read and write PRs, Issues and labels, push to
-`renovate/*` and `audit/*` branches, merge into `main`, and read workflow
-runs. Stop and report when one is missing; change nothing.
+`renovate/*` and `audit/*` branches, and merge into `main`. Stop and report
+when one is missing; change nothing.
 
 ### Watch what earlier runs merged
 
@@ -208,11 +208,11 @@ these hold on its current head commit:
 
 - GitHub reports it mergeable, with no conflict.
 - Every check run on the head commit has concluded `success`, `skipped` or
-  `neutral`. `Checks`, `Browser E2E (*)` and `Docker image` run on Renovate
-  and `audit/*` PRs (see the comments in `.github/workflows/ci.yml`), and none
-  of them may be `skipped` when the PR changes code. On an audit PR,
-  `Vulnerability audit` has run, and it may fail only on the findings the
-  worker returned as blocked.
+  `neutral`. `Checks`, `Browser E2E (*)` and `Docker image` run on Renovate PRs
+  (see the comments in `.github/workflows/ci.yml`), and none of them may be
+  `skipped` when the PR changes code. On an audit PR only `Checks` runs;
+  `Browser E2E` and `Docker image` run on `main` after the merge, where
+  [the watch](#watch-what-earlier-runs-merged) reads them.
 - For a major update, the PR has the worker's `renovate-triage` comment
   ([references/worker.md, Major updates](references/worker.md#major-updates))
   and its verdict is `safe to merge`.
@@ -227,25 +227,18 @@ and merge with a merge commit, as the repository does for other PRs.
 ### Clear the vulnerability audit
 
 Renovate opens no PR for some advisories: one in a transitive npm dependency,
-one without a patched release, one in the Go standard library. The `Audit`
-workflow finds them every day
+one without a patched release, one in the Go standard library. `task audit`
+finds them
 ([dependency-updates.md](../../../docs/how-to/dependency-updates.md#vulnerability-audit)),
 and this step fixes them. Do it after the Renovate PRs, so that what this run
 merged is not fixed twice.
 
-Start one `audit-fixer` worker (`audit_fixer` on Codex) when any of these
-holds; otherwise skip the step:
-
-- An open `security` PR from `audit/*` by the routine's account exists.
-- The latest completed run of `.github/workflows/audit.yml` on `main` failed,
-  on a finding the latest `renovate-triage:advisories` comment does not
-  already list as blocked with a `Revisit when:` that does not hold yet.
-- This is the first run of the week (Monday in JST): upkeep is due.
+Start one `audit-fixer` worker (`audit_fixer` on Codex) on every run:
 
 ```text
-Audit run: <URL of the latest completed Audit run on main>
-PR: <number of the open audit PR, or ->
-Upkeep: <yes on the first run of the week, otherwise no>
+PR: <number of the open `security` PR from `audit/*` by the routine's account, or ->
+Upkeep: <yes on the first run of the week (Monday in JST), otherwise no>
+Skip: <the findings the latest `renovate-triage:advisories` comment lists as blocked, or ->
 Attempt: <n> of 3
 Follow .agents/skills/renovate-triage/references/audit.md.
 ```
@@ -287,7 +280,7 @@ is separate and follows its own rule.
   defer the PR with `Revisit when: a person decides` instead.
 - Leave a PR open labelled `needs-human`, or open with nothing left to try
   without the `deferred` label.
-- Change `task audit` or the `Audit` workflow to get the audit green.
+- Change `task audit` to get the audit green.
 - Change the excluded dependencies in
   [dependency-updates.md](../../../docs/how-to/dependency-updates.md#excluded-dependencies).
 - Push to `main` directly or rewrite a Renovate branch's history.

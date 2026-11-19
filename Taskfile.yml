@@ -158,7 +158,7 @@ tasks:
       - go test -count=1 ./scripts/sddguard
 
   audit:
-    desc: Check npm and Go dependencies for known vulnerabilities (CI runs it daily).
+    desc: Check npm and Go dependencies for known vulnerabilities (the Renovate routine runs it daily).
     cmds:
       - task: audit-npm
       - task: audit-go

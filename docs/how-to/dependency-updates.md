@@ -145,9 +145,9 @@ flowchart TD
   `needs-human`. The routine does not revert it. Until that job passes on
   `main` again, the routine keeps fixing PRs but merges none; it then removes
   the label itself.
-- When the latest `Audit` run on `main` failed, the routine opens one
-  `audit/<date>` PR that fixes the advisories, waits for its checks and merges
-  it through the same gates ([Vulnerability audit](#vulnerability-audit)).
+- Every run, the routine runs `task audit`, opens one `audit/<date>` PR that
+  fixes the advisories it finds, waits for its checks and merges it
+  ([Vulnerability audit](#vulnerability-audit)).
 - Each run that changes anything lists what it did in a comment on Renovate's
   Dependency Dashboard Issue.
 
@@ -175,28 +175,20 @@ flowchart TD
 
 ## Vulnerability audit
 
-The `Audit` workflow
-([`.github/workflows/audit.yml`](../../.github/workflows/audit.yml)) runs
-`task audit` every day at 06:23 JST and fails while a dependency on `main` has
-a known advisory. It covers what Renovate opens no PR for: an advisory in a
-transitive npm dependency, one without a patched release, and the Go standard
-library, whose version Renovate does not raise
-([Excluded dependencies](#excluded-dependencies)).
+`task audit` fails while a dependency has a known advisory. It covers what
+Renovate opens no PR for: an advisory in a transitive npm dependency, one
+without a patched release, and the Go standard library, whose version Renovate
+does not raise ([Excluded dependencies](#excluded-dependencies)).
 
 | Task | Checks | Fails on |
 | --- | --- | --- |
 | `task audit-npm` | `npm audit` on the lockfiles of `web/`, `tools/` and `docs-site/` | Any advisory |
-| `task audit-go`, `task audit-go-windows` | `govulncheck` on the Linux build and on the Windows desktop build | A vulnerable function that the code calls, in a module or the standard library |
+| `task audit-go`, `task audit-go-windows` | `govulncheck` on the Linux build and on the Windows desktop build; needs `vuln.go.dev` | A vulnerable function that the code calls, in a module or the standard library |
 
-The workflow also runs on a PR that changes a `package.json`, a lockfile,
-`go.mod`, `go.sum`, `mise.toml` or the audit itself. It is not a required
-check.
-
-The Renovate routine clears a failed audit without a person. Its worker fixes
-each finding by the first step that applies
+The Renovate routine runs it every day and fixes what it finds without a
+person: its worker opens one `audit/<date>` PR
 ([audit.md](../../.agents/skills/renovate-triage/references/audit.md)), and
-the routine merges the PR once `Checks`, `Browser E2E`, `Docker image` and
-`Vulnerability audit` pass on it.
+the routine merges it once `Checks` passes.
 
 | Finding | Fix |
 | --- | --- |
@@ -208,11 +200,11 @@ the routine merges the PR once `Checks`, `Browser E2E`, `Docker image` and
 On the first run of each week the worker also removes each `overrides` entry
 the audit passes without.
 
-A finding the worker cannot fix is listed in a comment on the Dependency
+A finding the worker cannot fix is listed once in a comment on the Dependency
 Dashboard Issue with its `Revisit when:` condition: an npm advisory without a
 patched version, a Go patch newer than the pinned `golang` image, or a PR
-still red after three attempts. The audit stays red until the condition
-holds, and the routine takes the finding up again then.
+still red after three attempts. The routine takes it up again when the
+condition holds.
 
 ## Changing the configuration
 

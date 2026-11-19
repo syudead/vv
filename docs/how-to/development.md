@@ -78,7 +78,6 @@ CI runs these additional checks without making them a local pre-push gate;
 | `e2e-groups-check` | Changing E2E files or CI grouping |
 | `lint-go-windows-desktop`, `build-windows-check` | Changing Windows, desktop or cross-platform code |
 | `build-check-web` | Changing bundling, assets or build configuration |
-| `audit` (the `Audit` workflow, not part of `check-ci`) | Adding or raising a dependency; see [Vulnerability audit](dependency-updates.md#vulnerability-audit) |
 
 `task check-ci` supplements local checks; it does not run them or browser E2E.
 CI also runs full Go and Web suites, coverage/report uploads and quality metrics.

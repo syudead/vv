@@ -17,9 +17,12 @@ Collect the findings:
 - **npm**: run `task audit-npm`. It prints `npm audit`'s report for `web/`,
   `tools/` and `docs-site/`: each advisory with its package, vulnerable range
   and GHSA link.
-- **Go**: run `task audit-go` and `task audit-go-windows`. When the
-  vulnerability database is unreachable from the session, read the failed
-  steps of the `Audit` run named in the brief instead.
+- **Go**: run `task audit-go` and `task audit-go-windows`. When
+  `vuln.go.dev` is unreachable from the session, say so in `REASON` and go on
+  with the npm findings.
+
+Leave out the findings the brief lists under `Skip`, unless the fix their
+`Revisit when:` waits for now exists.
 
 ## Fix each finding
 
@@ -65,7 +68,7 @@ what the commit changes.
 
 ## Never
 
-- Change `Taskfile.yml`, `.github/workflows/audit.yml` or `renovate.json`.
+- Change `Taskfile.yml` or `renovate.json`.
 - Skip, disable, loosen or quarantine a test or a check.
 - Touch a pull request other than the one this page opens.
 
