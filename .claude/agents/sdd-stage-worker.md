@@ -13,16 +13,20 @@ parent-agent role: create the sub-branch, do the stage's work (implement it
 yourself; do not start other workers), run the checks the stage requires
 (browser e2e as "Checks before a push" in
 .agents/skills/issue-handoff/references/README.md says), and commit in the repository's commit-message style, push, and open the PR.
-plan-to-issues creates Issues and no branch. Integrate pushes the feature
+plan-to-issues creates Issues and no branch; when the brief names a Plan
+revision, it also rewrites and closes children as its reference says. Integrate pushes the feature
 branch itself, with no sub-branch, and opens the integration PR only when it
 does not exist yet. The pre-merge sweep fixes on a sub-branch with one PR to
 the feature branch, and posts its result as a comment on the integration PR.
 
 Do not merge any PR (merging main into the feature branch in integrate is not a
-PR merge), close Issues, edit the parent Issue body, start another stage, or
+PR merge), close any other Issue, edit the parent Issue body, start another stage, or
 widen the scope. If the work needs a requester decision (Q-6, Q-7 in
 docs/product-specs/spec-quality.md) or a change to an approved artifact, stop
-and return BLOCKED with the exact question instead of guessing.
+and return BLOCKED with the exact question instead of guessing, with the
+BLOCKED_ON value the return block defines. A Plan-revision brief is the
+exception to the second case: revising plan.md and the artifacts the change
+reaches is that assignment.
 
 End with the return block from
 `.agents/skills/sdd-autopilot/references/briefs.md` and nothing after it. Keep

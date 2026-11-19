@@ -27,6 +27,13 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
 - merging stage and implementation PRs into the feature branch once they pass
   the gates in [references/loop.md](references/loop.md)
 - closing a child Issue as completed after its PR merges
+- revising the Plan this run merged, when a later stage finds that it
+  contradicts the code, another artifact or itself and the parent Issue still
+  decides the answer
+  ([references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)).
+  The parent Issue is never changed here
+- closing, without merging it, an implementation PR whose unit that revision
+  dropped
 
 The integration PR is never merged here. Before handing it over, the run makes
 it as ready as it can: after the initial review pass, a pre-merge sweep runs
@@ -92,7 +99,7 @@ everything downstream or a miss is expensive to find later.
 
 | Work | Model | Why |
 | --- | --- | --- |
-| `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
+| `plan`, Plan revision and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
 | Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
 | Implementation, `plan-to-issues`, review fixers, conflict-free integrate, pre-merge sweep | inherit | Bounded by an approved artifact or a child Issue; high volume |
 
@@ -122,9 +129,12 @@ report to the maintainer when:
 
 - a worker returns `BLOCKED` for a question that belongs to the requester
   (Q-6, Q-7 in
-  [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md))
-  or to an approved artifact
-- a review finding can only be fixed by changing an approved artifact
+  [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)),
+  or for anything else that is not `BLOCKED_ON: artifact`
+- a worker returns `BLOCKED_ON: artifact` and
+  [references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)
+  says to stop: the integration PR exists, two revisions have merged, or the
+  same work is blocked again
 - an integration fix or refresh reaches a limit in
   [references/loop.md, Drive a feature PR to merge](references/loop.md#drive-a-feature-pr-to-merge)
 - a required GitHub capability is missing, or the stage selection would stop
@@ -132,11 +142,12 @@ report to the maintainer when:
 - the free disk space stays below the threshold after removing finished
   worktrees
 
-Revising an approved artifact is outside this skill. The stage selection
-never re-runs a stage whose artifact exists, so it does not notice that, for
-example, `ui-design.md` predates a revised Plan. The maintainer names and
-reruns the affected stages with `issue-handoff` first, and starts
-this skill again afterwards.
+Any other revision of an approved artifact is outside this skill: one the
+maintainer wants, or one that follows a changed parent Issue. The stage
+selection never re-runs a stage whose artifact exists, so it does not notice
+that, for example, `ui-design.md` predates a Plan the maintainer revised. The
+maintainer names and reruns the affected stages with `issue-handoff` first,
+and starts this skill again afterwards.
 
 Leave everything already merged in place. A later run of this skill on the same
 parent picks up from GitHub where this one stopped.
