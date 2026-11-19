@@ -185,7 +185,7 @@ library, whose version Renovate does not raise
 
 | Task | Checks | Fails on |
 | --- | --- | --- |
-| `task audit-npm` | `npm audit` on the lockfiles of `web/`, `tools/` and `docs-site/` | An advisory that `scripts/audit/accepted.json` does not list, or an entry there that no lockfile has any more |
+| `task audit-npm` | `npm audit` on the lockfiles of `web/`, `tools/` and `docs-site/` | Any advisory |
 | `task audit-go`, `task audit-go-windows` | `govulncheck` on the Linux build and on the Windows desktop build | A vulnerable function that the code calls, in a module or the standard library |
 
 The workflow also runs on a PR that changes a `package.json`, a lockfile,
@@ -202,19 +202,17 @@ the routine merges the PR once `Checks`, `Browser E2E`, `Docker image` and
 | --- | --- |
 | npm advisory with a patched version in the range its parents ask for | Lockfile update |
 | npm advisory whose parent pins the vulnerable range | `overrides` entry in that `package.json` |
-| npm advisory without a patched version, in development tooling only | Entry in `scripts/audit/accepted.json` with the reason and a `revisit` condition |
-| Accepted advisory that no lockfile has any more | The entry is removed |
 | Go standard library | Go patch version raised in `go.mod`, `tools/go.mod` and `mise.toml` |
 | Go module | `go get` of the fixed version |
 
 On the first run of each week the worker also removes each `overrides` entry
-the audit passes without, and each acceptance whose `revisit` condition holds.
+the audit passes without.
 
 A finding the worker cannot fix is listed in a comment on the Dependency
-Dashboard Issue with its `Revisit when:` condition: an advisory without a
-patched version in a package the SPA ships, a Go patch newer than the pinned
-`golang` image, or a PR still red after three attempts. Only these need a
-person.
+Dashboard Issue with its `Revisit when:` condition: an npm advisory without a
+patched version, a Go patch newer than the pinned `golang` image, or a PR
+still red after three attempts. The audit stays red until the condition
+holds, and the routine takes the finding up again then.
 
 ## Changing the configuration
 

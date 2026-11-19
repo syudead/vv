@@ -14,9 +14,9 @@ first.
 
 Collect the findings:
 
-- **npm**: run `task audit-npm`. It prints one line per advisory with its
-  directory, package, vulnerable range and GHSA ID, and one line per entry of
-  `scripts/audit/accepted.json` that no lockfile has any more.
+- **npm**: run `task audit-npm`. It prints `npm audit`'s report for `web/`,
+  `tools/` and `docs-site/`: each advisory with its package, vulnerable range
+  and GHSA link.
 - **Go**: run `task audit-go` and `task audit-go-windows`. When the
   vulnerability database is unreachable from the session, read the failed
   steps of the `Audit` run named in the brief instead.
@@ -31,9 +31,7 @@ one by hand.
 | --- | --- |
 | npm advisory, and a patched version satisfies the range its parents ask for | `npx --yes npm@11 update <package> --package-lock-only` in that directory |
 | npm advisory, and a parent pins the vulnerable range | Add `"<package>@<vulnerable range>": "<patched range>"` to `overrides` in that `package.json` |
-| npm advisory without a patched version, in a package only development tooling loads (`npm ls --omit=dev <package>` in the directory prints no path) | Add it to `scripts/audit/accepted.json` with the reason and a `revisit` condition a later run can check, such as `a <package> release newer than <version> is published` |
-| npm advisory without a patched version, in a package the SPA ships | None: return `BLOCKED` |
-| Accepted advisory that no lockfile has any more | Remove the entry |
+| npm advisory without a patched version | None: return `BLOCKED` with `REVISIT: a <package> release newer than <version> is published` |
 | Go standard library | Raise the Go patch version to the newest patch of the same minor in `go.mod`, `tools/go.mod` and `mise.toml`. Never raise the minor or major version. When the `golang` image pinned in `Dockerfile` is older than that patch, return `BLOCKED` with `REVISIT: the container images PR is merged` |
 | Go module | `go get <module>@<fixed version>` and `go mod tidy`, in the module that requires it |
 
@@ -43,17 +41,13 @@ test, as for a Renovate update
 
 ## Weekly upkeep
 
-With `Upkeep: yes` in the brief, also undo what is no longer needed:
-
-- For each `overrides` entry in `web/package.json`, `tools/package.json` and
-  `docs-site/package.json`: remove it, regenerate the lockfile, and run
-  `task audit-npm`. Keep the removal when the audit passes; otherwise restore
-  the entry and the lockfile. When a document names the removed entry
-  (`docs/how-to/docs-site.md` names the Vite one), update it in the same
-  commit.
-- For each entry of `scripts/audit/accepted.json`: check its `revisit`
-  condition. When it holds, remove the entry and fix the advisory by the table
-  above.
+With `Upkeep: yes` in the brief, also remove the `overrides` no longer needed.
+For each entry in `web/package.json`, `tools/package.json` and
+`docs-site/package.json`: remove it, regenerate the lockfile, and run
+`task audit-npm`. Keep the removal when the report has no more advisories than
+before; otherwise restore the entry and the lockfile. When a document names
+the removed entry (`docs/how-to/docs-site.md` names the Vite one), update it
+in the same commit.
 
 ## Before pushing
 
@@ -71,8 +65,7 @@ what the commit changes.
 
 ## Never
 
-- Change `scripts/audit/`, `Taskfile.yml`, `.github/workflows/audit.yml` or
-  `renovate.json`, or accept an advisory that has a patched version.
+- Change `Taskfile.yml`, `.github/workflows/audit.yml` or `renovate.json`.
 - Skip, disable, loosen or quarantine a test or a check.
 - Touch a pull request other than the one this page opens.
 
@@ -89,6 +82,7 @@ REVISIT: <for BLOCKED: the condition a later run can check, or `a person decides
 ```
 
 - `PUSHED`: a commit was pushed. CI has to run.
-- `CLEAN`: `task audit` passes on `main` and upkeep changed nothing.
+- `CLEAN`: nothing on `main` has a fix this page allows, and upkeep changed
+  nothing.
 - `BLOCKED`: a finding has no fix this page allows. Push the fixes for the
   other findings first and name the blocked one in `REASON`.

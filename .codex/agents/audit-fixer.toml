@@ -10,8 +10,7 @@ Handle the brief from the renovate-triage routine. Follow
 repository's applicable AGENTS.md instructions.
 
 Fix each advisory by the first step of that page that applies: a lockfile
-update, an override, a Go patch version, or an acceptance only where the page
-allows one. Never skip, disable, loosen or quarantine a test or a check, and
+update, an override or a Go patch version. Never skip, disable, loosen or quarantine a test or a check, and
 never change the audit itself to get it green.
 
 Push only to the `audit/*` branch of the brief, once per run, and only after

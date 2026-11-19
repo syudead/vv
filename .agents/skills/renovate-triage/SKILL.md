@@ -211,7 +211,8 @@ these hold on its current head commit:
   `neutral`. `Checks`, `Browser E2E (*)` and `Docker image` run on Renovate
   and `audit/*` PRs (see the comments in `.github/workflows/ci.yml`), and none
   of them may be `skipped` when the PR changes code. On an audit PR,
-  `Vulnerability audit` has run and passed.
+  `Vulnerability audit` has run, and it may fail only on the findings the
+  worker returned as blocked.
 - For a major update, the PR has the worker's `renovate-triage` comment
   ([references/worker.md, Major updates](references/worker.md#major-updates))
   and its verdict is `safe to merge`.
@@ -236,7 +237,9 @@ Start one `audit-fixer` worker (`audit_fixer` on Codex) when any of these
 holds; otherwise skip the step:
 
 - An open `security` PR from `audit/*` by the routine's account exists.
-- The latest completed run of `.github/workflows/audit.yml` on `main` failed.
+- The latest completed run of `.github/workflows/audit.yml` on `main` failed,
+  on a finding the latest `renovate-triage:advisories` comment does not
+  already list as blocked with a `Revisit when:` that does not hold yet.
 - This is the first run of the week (Monday in JST): upkeep is due.
 
 ```text
@@ -284,8 +287,7 @@ is separate and follows its own rule.
   defer the PR with `Revisit when: a person decides` instead.
 - Leave a PR open labelled `needs-human`, or open with nothing left to try
   without the `deferred` label.
-- Accept an advisory that has a patched version, or change `scripts/audit/`
-  or the `Audit` workflow, to get the audit green.
+- Change `task audit` or the `Audit` workflow to get the audit green.
 - Change the excluded dependencies in
   [dependency-updates.md](../../../docs/how-to/dependency-updates.md#excluded-dependencies).
 - Push to `main` directly or rewrite a Renovate branch's history.

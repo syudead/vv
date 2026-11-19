@@ -12,7 +12,6 @@ on:
   pull_request:
     paths:
       - .github/workflows/audit.yml
-      - scripts/audit/**
       - "**/package.json"
       - "**/package-lock.json"
       - "**/go.mod"
