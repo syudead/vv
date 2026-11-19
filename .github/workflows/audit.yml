@@ -1,5 +1,5 @@
-# A failed run means a dependency has an advisory that no merged update fixes;
-# docs/how-to/dependency-updates.md says what to do with it.
+# A failed run means a dependency has an advisory that no merged update fixes.
+# The Renovate routine fixes it; see docs/how-to/dependency-updates.md.
 name: Audit
 
 on:
@@ -7,12 +7,17 @@ on:
     # 06:23 JST every day, before the Renovate routine reads the result.
     - cron: "23 21 * * *"
   workflow_dispatch: {}
-  # Check changes to the audit itself. Dependency PRs do not run it, so an
-  # advisory nobody has fixed yet cannot block every update.
+  # Check changes to the audit and to what it reads, so that the routine's fix
+  # is proven before it merges. The check is not required.
   pull_request:
     paths:
       - .github/workflows/audit.yml
       - scripts/audit/**
+      - "**/package.json"
+      - "**/package-lock.json"
+      - "**/go.mod"
+      - "**/go.sum"
+      - mise.toml
 
 permissions:
   contents: read

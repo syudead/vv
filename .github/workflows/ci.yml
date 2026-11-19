@@ -362,12 +362,12 @@ jobs:
         if: needs.changes.outputs.code == 'false'
         run: task check-docs
 
-  # Run E2E on main, manual runs and Renovate PRs (which may merge unattended).
+  # Run E2E on main, manual runs, and Renovate and audit/* PRs (which may merge unattended).
   # Every E2E file must belong to one group; e2e-groups-check enforces this.
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || startsWith(github.head_ref, 'renovate/'))
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || startsWith(github.head_ref, 'renovate/') || startsWith(github.head_ref, 'audit/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -526,11 +526,11 @@ jobs:
             test "$RESULT" = success || test "$RESULT" = skipped
           fi
 
-  # Publish main builds; Renovate PRs validate dependency images without publishing.
+  # Publish main builds; Renovate and audit/* PRs validate the image without publishing.
   docker:
     name: Docker image
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name == 'push' || startsWith(github.head_ref, 'renovate/'))
+    if: needs.changes.outputs.code == 'true' && (github.event_name == 'push' || startsWith(github.head_ref, 'renovate/') || startsWith(github.head_ref, 'audit/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read

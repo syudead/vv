@@ -145,10 +145,9 @@ flowchart TD
   `needs-human`. The routine does not revert it. Until that job passes on
   `main` again, the routine keeps fixing PRs but merges none; it then removes
   the label itself.
-- The routine reads the latest `Audit` run on `main` and lists the advisories
-  no open Renovate PR fixes, and the accepted advisories whose `revisit`
-  condition now holds. It fixes neither; a person does
-  ([Vulnerability audit](#vulnerability-audit)).
+- When the latest `Audit` run on `main` failed, the routine opens one
+  `audit/<date>` PR that fixes the advisories, waits for its checks and merges
+  it through the same gates ([Vulnerability audit](#vulnerability-audit)).
 - Each run that changes anything lists what it did in a comment on Renovate's
   Dependency Dashboard Issue.
 
@@ -189,23 +188,33 @@ library, whose version Renovate does not raise
 | `task audit-npm` | `npm audit` on the lockfiles of `web/`, `tools/` and `docs-site/` | An advisory that `scripts/audit/accepted.json` does not list, or an entry there that no lockfile has any more |
 | `task audit-go`, `task audit-go-windows` | `govulncheck` on the Linux build and on the Windows desktop build | A vulnerable function that the code calls, in a module or the standard library |
 
-The workflow does not run on dependency PRs, so a new advisory does not block
-every update. The Renovate routine reads its latest run and reports the
-findings no open PR fixes ([The Renovate routine](#the-renovate-routine)).
+The workflow also runs on a PR that changes a `package.json`, a lockfile,
+`go.mod`, `go.sum`, `mise.toml` or the audit itself. It is not a required
+check.
 
-Clear a finding in this order:
+The Renovate routine clears a failed audit without a person. Its worker fixes
+each finding by the first step that applies
+([audit.md](../../.agents/skills/renovate-triage/references/audit.md)), and
+the routine merges the PR once `Checks`, `Browser E2E`, `Docker image` and
+`Vulnerability audit` pass on it.
 
-1. Update the lockfile so the dependency resolves to a patched version:
-   `npm --prefix <dir> update <package>`, or merge the Renovate PR that does it.
-2. When a parent pins the vulnerable range, add an `overrides` entry to that
-   `package.json` and remove it once the parent allows the patched version.
-   `web/package.json` holds `minimatch` 10 at 11 this way, for
-   GHSA-g3hv-75wg-m249.
-3. For the Go standard library, raise the Go patch version in `go.mod`,
-   `tools/go.mod` and `mise.toml` together.
-4. When no patched version exists and the advisory does not reach what the
-   repository ships, add it to `scripts/audit/accepted.json` with the reason
-   and a `revisit` condition. The routine checks that condition every run.
+| Finding | Fix |
+| --- | --- |
+| npm advisory with a patched version in the range its parents ask for | Lockfile update |
+| npm advisory whose parent pins the vulnerable range | `overrides` entry in that `package.json` |
+| npm advisory without a patched version, in development tooling only | Entry in `scripts/audit/accepted.json` with the reason and a `revisit` condition |
+| Accepted advisory that no lockfile has any more | The entry is removed |
+| Go standard library | Go patch version raised in `go.mod`, `tools/go.mod` and `mise.toml` |
+| Go module | `go get` of the fixed version |
+
+On the first run of each week the worker also removes each `overrides` entry
+the audit passes without, and each acceptance whose `revisit` condition holds.
+
+A finding the worker cannot fix is listed in a comment on the Dependency
+Dashboard Issue with its `Revisit when:` condition: an advisory without a
+patched version in a package the SPA ships, a Go patch newer than the pinned
+`golang` image, or a PR still red after three attempts. Only these need a
+person.
 
 ## Changing the configuration
 
