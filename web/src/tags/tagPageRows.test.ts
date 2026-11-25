@@ -176,6 +176,23 @@ describe("操作のあとの反映", () => {
       expect([result.total, result.totalAll]).toEqual([5, 5]);
     });
 
+    it("接続先だけの統合先がこのノードの新しい ID で返れば、古い ID のカードを置き換える", () => {
+      const remote = { ...all[3]!, id: 2 ** 40 + 4 };
+      const base = page([all[0]!, remote, all[1]!], {
+        total: 3,
+        totalAll: 3,
+        query: query({ sort: "countDesc" }),
+      });
+      const merged = {
+        ...remote,
+        id: 7,
+        videoCount: remote.videoCount + all[1]!.videoCount,
+      };
+      const result = replaceTag(removeTags(base, [all[1]!]), remote, merged);
+      expect(result.rows.map((item) => item.id)).toEqual([7, 1]);
+      expect([result.total, result.totalAll]).toEqual([2, 2]);
+    });
+
     it("統合の前に条件に合わず、統合で合うようになった統合先は total を増やす", () => {
       const base = page([tag({ id: 1, name: "Action" })], {
         total: 1,

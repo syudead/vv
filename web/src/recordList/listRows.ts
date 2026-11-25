@@ -124,9 +124,14 @@ export function replaceRow<R extends ListRow, Q extends ListRowsQuery>(
     before !== undefined &&
     (page.rows.some((tag) => tag.id === before.id) || matches(before, page.query));
   const now = matches(after, page.query);
+  // A merge into a remote-only entry answers with this node's new id, so the row under the old id goes too.
+  const others =
+    before === undefined || before.id === after.id
+      ? page.rows
+      : page.rows.filter((tag) => tag.id !== before.id);
   const rows = now
-    ? placeTag(page.rows, after, page.query.sort, page.boundary)
-    : page.rows.filter((tag) => tag.id !== after.id);
+    ? placeTag(others, after, page.query.sort, page.boundary)
+    : others.filter((tag) => tag.id !== after.id);
   return { ...page, rows, total: page.total + Number(now) - Number(was) };
 }
 
