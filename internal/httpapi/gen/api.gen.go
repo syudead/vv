@@ -9780,7 +9780,7 @@ type ListFolderVideosParams struct {
 	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
 	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
 
-	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video.
+	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.
 	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 }
 
@@ -9897,7 +9897,7 @@ type ListLibraryParams struct {
 	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
 	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
 
-	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video.
+	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.
 	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 }
 
@@ -10166,7 +10166,7 @@ type ListVideosParams struct {
 	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
 	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
 
-	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video.
+	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.
 	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 
 	// Kind Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both.

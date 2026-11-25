@@ -9065,7 +9065,7 @@ export interface components {
         TagKindNameFilter: string;
         /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
         PersonNameFilter: string;
-        /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video. */
+        /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
         OrganizationNameFilter: string;
         /** @description Media folder ID */
         MediaFolderId: number;
@@ -9390,7 +9390,7 @@ export interface operations {
                 tagKindName?: components["parameters"]["TagKindNameFilter"];
                 /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
                 personName?: components["parameters"]["PersonNameFilter"];
-                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video. */
+                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
                 organizationName?: components["parameters"]["OrganizationNameFilter"];
                 /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
                 kind?: "all" | "file" | "virtual";
@@ -9452,7 +9452,7 @@ export interface operations {
                 tagKindName?: components["parameters"]["TagKindNameFilter"];
                 /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
                 personName?: components["parameters"]["PersonNameFilter"];
-                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video. */
+                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
                 organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;
@@ -15556,7 +15556,7 @@ export interface operations {
                 tagKindName?: components["parameters"]["TagKindNameFilter"];
                 /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
                 personName?: components["parameters"]["PersonNameFilter"];
-                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video. */
+                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
                 organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;

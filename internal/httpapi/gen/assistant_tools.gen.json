@@ -6384,7 +6384,7 @@
             "type": "integer"
           },
           "organizationName": {
-            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video.",
+            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.",
             "minLength": 1,
             "type": "string"
           },
@@ -6805,7 +6805,7 @@
             "type": "integer"
           },
           "organizationName": {
-            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video.",
+            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.",
             "minLength": 1,
             "type": "string"
           },
@@ -7985,7 +7985,7 @@
             "type": "integer"
           },
           "organizationName": {
-            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and `organizationRole` applies to it as to `organization`. A name no organization has matches no video.",
+            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.",
             "minLength": 1,
             "type": "string"
           },

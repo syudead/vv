@@ -156,6 +156,8 @@ func listedCreditsCTE(t creditTables, audience domain.Audience, filter creditFil
 		whereArgs = append(whereArgs, filter.onlyID)
 	}
 	if filter.parentID > 0 {
+		countFilter += ` and l.{id} in (select id from {entity} where parent_id = ?)`
+		countArgs = append(countArgs, filter.parentID)
 		conditions = append(conditions, `e.parent_id = ?`)
 		whereArgs = append(whereArgs, filter.parentID)
 	}
