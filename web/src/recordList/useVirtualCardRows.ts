@@ -13,7 +13,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import { rowFocusables } from "./useVirtualTagRows";
+import { tabIntoUndrawnRow } from "./useVirtualTagRows";
 
 /** Rows drawn past each edge of the viewport; also how near the end the next page is asked for. */
 export const CARD_ROW_OVERSCAN = 3;
@@ -113,26 +113,8 @@ export function useVirtualCardRows({
 
   /** Tab from a row's last card (Shift+Tab from its first) into an undrawn neighbour row; pass to onKeyDown. */
   const onKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLElement>) => {
-      if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.defaultPrevented) return;
-      const grid = event.currentTarget;
-      const target = event.target as HTMLElement;
-      const row = target.closest<HTMLElement>("[data-index]");
-      if (row === null || !grid.contains(row)) return;
-      const stops = rowFocusables(row);
-      if (target !== (event.shiftKey ? stops[0] : stops.at(-1))) return;
-      const next = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
-      if (next < 0 || next >= rowCount) return;
-      const selector = `[data-index="${String(next)}"]`;
-      if (grid.querySelector(selector) !== null) return;
-      event.preventDefault();
-      flushSync(() => setPinnedRow(next));
-      const drawn = grid.querySelector(selector);
-      if (drawn === null) return;
-      const into = rowFocusables(drawn);
-      (event.shiftKey ? into.at(-1) : into[0])?.focus();
-    },
+    (event: KeyboardEvent<HTMLElement>) =>
+      tabIntoUndrawnRow(event, rowCount, (next) => flushSync(() => setPinnedRow(next))),
     [rowCount],
   );
 

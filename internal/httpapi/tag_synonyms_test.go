@@ -2,10 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -149,5 +152,246 @@ func TestPromoteWithTheStoppedPeerChangesNothing(t *testing.T) {
 	})
 	if tag, _ := tagNamed(t, fb, "猫"); tag.Name != "猫" {
 		t.Errorf("b's tag = %+v, want 猫 unchanged", tag)
+	}
+}
+
+// lockProbeTags records, per store write, whether the server's tagNameWrites was held when the write arrived.
+type lockProbeTags struct {
+	*fakeTags
+	srv  *server
+	held map[string]bool
+}
+
+func (p *lockProbeTags) probe(operation string) {
+	free := p.srv.tagNameWrites.TryLock()
+	if free {
+		p.srv.tagNameWrites.Unlock()
+	}
+	p.held[operation] = !free
+}
+
+func (p *lockProbeTags) RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	p.probe("rename")
+	return p.fakeTags.RenameTag(ctx, id, name)
+}
+
+func (p *lockProbeTags) DeleteTag(ctx context.Context, id int64) error {
+	p.probe("delete")
+	return p.fakeTags.DeleteTag(ctx, id)
+}
+
+func (p *lockProbeTags) MergeTags(ctx context.Context, target int64, sources []int64) (domain.TagMergeOutcome, error) {
+	p.probe("merge")
+	return p.fakeTags.MergeTags(ctx, target, sources)
+}
+
+func (p *lockProbeTags) AddSynonym(ctx context.Context, id int64, name string, merge *int64) (domain.Tag, error) {
+	p.probe("add-synonym")
+	return p.fakeTags.AddSynonym(ctx, id, name, merge)
+}
+
+func (p *lockProbeTags) RemoveSynonym(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	p.probe("remove-synonym")
+	return p.fakeTags.RemoveSynonym(ctx, id, name)
+}
+
+func (p *lockProbeTags) PromoteSynonym(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	p.probe("promote")
+	return p.fakeTags.PromoteSynonym(ctx, id, name)
+}
+
+func (p *lockProbeTags) MoveSynonym(ctx context.Context, id int64, name string, target int64) (domain.Tag, domain.Tag, error) {
+	p.probe("move")
+	return p.fakeTags.MoveSynonym(ctx, id, name, target)
+}
+
+func (p *lockProbeTags) DetachSynonym(ctx context.Context, id int64, name string) (domain.Tag, domain.Tag, error) {
+	p.probe("detach")
+	return p.fakeTags.DetachSynonym(ctx, id, name)
+}
+
+func (p *lockProbeTags) RejectTag(ctx context.Context, id int64) (string, error) {
+	p.probe("reject")
+	return p.fakeTags.RejectTag(ctx, id)
+}
+
+func (p *lockProbeTags) BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error) {
+	p.probe("batch")
+	return p.fakeTags.BatchTags(ctx, req, ids)
+}
+
+func (p *lockProbeTags) CreateTag(ctx context.Context, name string) (domain.Tag, error) {
+	p.probe("create")
+	return p.fakeTags.CreateTag(ctx, name)
+}
+
+func (p *lockProbeTags) AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error) {
+	p.probe("attach-by-name")
+	return p.fakeTags.AttachTagByName(ctx, videoIDs, name)
+}
+
+func (p *lockProbeTags) ApplyVideoTags(
+	ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string, tentative bool,
+) (domain.VideoTagsOutcome, error) {
+	p.probe("apply-video-tags")
+	return p.fakeTags.ApplyVideoTags(ctx, videos, action, names, tentative)
+}
+
+type lockProbeVideoEdits struct {
+	VideoEdits
+	probe *lockProbeTags
+}
+
+func (e lockProbeVideoEdits) Apply(context.Context, []int64, domain.VideoEdit) (domain.VideoEditResult, error) {
+	e.probe.probe("video-edit")
+	return domain.VideoEditResult{}, nil
+}
+
+type lockProbeOnboarding struct {
+	Onboarding
+	probe *lockProbeTags
+}
+
+func (o lockProbeOnboarding) PickInterests(context.Context, []string) (domain.InterestPickResult, error) {
+	o.probe.probe("pick-interests")
+	return domain.InterestPickResult{}, nil
+}
+
+// A promote or rename sends the links its change before the local write, so every local write that can take the
+// synonym or the tag away, or give a tag the new name, waits for tagNameWrites; otherwise the local write fails
+// after the links changed.
+func TestTagNameWritesWaitForAPromoteOrRename(t *testing.T) {
+	srv := &server{logger: discardLogger()}
+	probe := &lockProbeTags{fakeTags: &fakeTags{}, srv: srv, held: map[string]bool{}}
+	srv.tags = probe
+	srv.videoEdits = lockProbeVideoEdits{probe: probe}
+	srv.onboarding = lockProbeOnboarding{probe: probe}
+	name := "猫"
+	external := &externalServer{s: srv}
+	post := func(target, body string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		return r
+	}
+	calls := []struct {
+		operation string
+		call      func(w http.ResponseWriter)
+	}{
+		{"rename", func(w http.ResponseWriter) { srv.RenameTag(w, post("/api/tags/3", `{"name":"猫"}`), 3) }},
+		{"promote", func(w http.ResponseWriter) { srv.PromoteTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
+		{"move", func(w http.ResponseWriter) { srv.MoveTagSynonym(w, post("/", `{"name":"ねこ","targetId":4}`), 3) }},
+		{"detach", func(w http.ResponseWriter) { srv.DetachTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
+		{"add-synonym", func(w http.ResponseWriter) { srv.AddTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
+		{"remove-synonym", func(w http.ResponseWriter) {
+			srv.RemoveTagSynonym(w, httptest.NewRequest(http.MethodDelete, "/", nil), 3, gen.RemoveTagSynonymParams{Name: "ねこ"})
+		}},
+		{"delete", func(w http.ResponseWriter) { srv.DeleteTag(w, httptest.NewRequest(http.MethodDelete, "/", nil), 3) }},
+		{"merge", func(w http.ResponseWriter) { srv.MergeTag(w, post("/", `{"sourceIds":[4]}`), 3) }},
+		{"reject", func(w http.ResponseWriter) { srv.RejectTag(w, httptest.NewRequest(http.MethodPost, "/", nil), 3) }},
+		{"batch", func(w http.ResponseWriter) { srv.BatchTags(w, post("/", `{"action":"delete","ids":[3]}`)) }},
+		{"external merge", func(w http.ResponseWriter) { external.MergeTags(w, post("/", `{"targetId":3,"sourceIds":[4]}`)) }},
+		{"external remove-synonym", func(w http.ResponseWriter) {
+			external.UpdateTagSynonyms(w, post("/", `{"id":3,"action":"remove","name":"ねこ"}`))
+		}},
+		{"external batch", func(w http.ResponseWriter) { external.BatchTags(w, post("/", `{"action":"delete","ids":[3]}`)) }},
+		{"create", func(w http.ResponseWriter) { srv.CreateTag(w, post("/api/tags", `{"name":"猫"}`)) }},
+		{"external rename", func(w http.ResponseWriter) { external.RenameTag(w, post("/", `{"id":3,"name":"猫"}`)) }},
+		{"attach-by-name", func(http.ResponseWriter) {
+			_, _, _ = srv.applyTag(context.Background(), []int64{1}, domain.VideoEdit{TagsAdd: []domain.TagInput{{Name: &name}}})
+		}},
+		{"external apply-video-tags", func(w http.ResponseWriter) {
+			external.UpdateVideoTags(w, post("/", `{"action":"add","videos":[{"id":1}],"tags":["猫"]}`))
+		}},
+		{"video-edit", func(http.ResponseWriter) {
+			_, _ = srv.applyVideoEdit(context.Background(), []int64{1}, domain.VideoEdit{TagsAdd: []domain.TagInput{{Name: &name}}})
+		}},
+		{"pick-interests", func(w http.ResponseWriter) { srv.PickOnboardingInterests(w, post("/", `{"ids":["anime"]}`)) }},
+	}
+	for _, tc := range calls {
+		probe.held = map[string]bool{}
+		rec := httptest.NewRecorder()
+		tc.call(rec)
+		held, called := probe.held[strings.TrimPrefix(tc.operation, "external ")]
+		switch {
+		case !called:
+			t.Errorf("%s: the store write was not called: %d %s", tc.operation, rec.Code, rec.Body)
+		case !held:
+			t.Errorf("%s: the store write ran without tagNameWrites", tc.operation)
+		}
+	}
+}
+
+// linkedLockProbe is one connected link whose node records whether the server's tagNameWrites was held when a
+// vocabulary change arrived, and applies every change.
+type linkedLockProbe struct {
+	Pairing
+	srv  *server
+	sent []bool
+}
+
+func (l *linkedLockProbe) State(context.Context) (domain.PeerState, error) {
+	return domain.PeerState{Links: []domain.PeerLinkState{{
+		Link: domain.PeerLink{Slot: 1, Name: "node-a"}, State: domain.PeerConnected,
+	}}}, nil
+}
+
+func (l *linkedLockProbe) Forward(req *http.Request, _ int64, _, _ bool) (*http.Response, error) {
+	answer := `{"items":[]}`
+	if req.URL.Path == "/api/peer/vocabulary" {
+		free := l.srv.tagNameWrites.TryLock()
+		if free {
+			l.srv.tagNameWrites.Unlock()
+		}
+		l.sent = append(l.sent, !free)
+		answer = `{"changed":true,"skipped":[]}`
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {contentTypeJSON}},
+		Body:       io.NopCloser(strings.NewReader(answer)),
+		Request:    req,
+	}, nil
+}
+
+// linkedTags is tag 3, 猫, which holds ねこ as a synonym when synonym is set.
+type linkedTags struct {
+	*lockProbeTags
+	synonym bool
+}
+
+func (l *linkedTags) TagNames(context.Context, []int64) (map[int64]string, error) {
+	return map[int64]string{3: "猫"}, nil
+}
+
+func (l *linkedTags) LookupTagName(context.Context, string) (domain.TagRef, bool, error) {
+	return domain.TagRef{ID: 3, Name: "猫"}, l.synonym, nil
+}
+
+// A promote or rename writes the links under tagNameWrites as well as the local write, so a write that waits for
+// the lock cannot fall between them.
+func TestPromoteAndRenameWriteTheLinksUnderTagNameWrites(t *testing.T) {
+	for _, tc := range []struct {
+		operation string
+		synonym   bool
+		call      func(srv *server, w http.ResponseWriter, r *http.Request)
+	}{
+		{"promote", true, func(srv *server, w http.ResponseWriter, r *http.Request) { srv.PromoteTagSynonym(w, r, 3) }},
+		{"rename", false, func(srv *server, w http.ResponseWriter, r *http.Request) { srv.RenameTag(w, r, 3) }},
+	} {
+		srv := &server{logger: discardLogger()}
+		link := &linkedLockProbe{srv: srv}
+		srv.pairing, srv.peerLink = link, link
+		srv.tags = &linkedTags{
+			lockProbeTags: &lockProbeTags{fakeTags: &fakeTags{}, srv: srv, held: map[string]bool{}}, synonym: tc.synonym,
+		}
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"ねこ"}`))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		tc.call(srv, rec, r)
+
+		if !slices.Equal(link.sent, []bool{true}) {
+			t.Errorf("%s: tagNameWrites held at each links' write = %v, want [true]: %d %s",
+				tc.operation, link.sent, rec.Code, rec.Body)
+		}
 	}
 }

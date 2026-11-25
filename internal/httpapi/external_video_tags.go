@@ -66,7 +66,9 @@ func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-
+	if action != domain.VideoTagsRemove {
+		defer e.s.holdTagNames()()
+	}
 	outcome, err := e.s.tags.ApplyVideoTags(r.Context(), refs, action, body.Tags, tentative)
 	if err != nil {
 		e.writeVideoTagsError(w, err)

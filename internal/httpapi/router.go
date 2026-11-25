@@ -408,8 +408,9 @@ type Options struct {
 type server struct {
 	// favoritesMaxBody overrides the default byte limit for this server instance.
 	favoritesMaxBody int64
-	// tagNameWrites holds a local tag's rename or promote from the links' write through the local write, so a
-	// concurrent change of the same tag sends the links the canonical name the earlier one left.
+	// tagNameWrites holds a local tag's rename or promote from the links' write through the local write, and every
+	// other local write that can give, change or take away a tag's name waits for it, so the local write cannot fail
+	// after the links changed (docs/design-docs/tag-organizing.md).
 	tagNameWrites sync.Mutex
 
 	build        domain.BuildInfo

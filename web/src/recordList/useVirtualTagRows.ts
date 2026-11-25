@@ -39,6 +39,36 @@ export function rowFocusables(row: Element): HTMLElement[] {
   );
 }
 
+/**
+ * Tab from a virtual row's last focusable (Shift+Tab from its first) into its undrawn neighbour: draw
+ * the neighbour with reveal, which must render it synchronously, then focus its first (last) focusable.
+ * Native Tab is left alone when the neighbour is drawn or the row is the list's first or last.
+ */
+export function tabIntoUndrawnRow(
+  event: KeyboardEvent<HTMLElement>,
+  rowCount: number,
+  reveal: (index: number) => void,
+) {
+  if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.defaultPrevented) return;
+  const list = event.currentTarget;
+  const target = event.target as HTMLElement;
+  const row = target.closest<HTMLElement>("[data-index]");
+  if (row === null || !list.contains(row)) return;
+  const stops = rowFocusables(row);
+  if (target !== (event.shiftKey ? stops[0] : stops.at(-1))) return;
+  const next = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
+  if (next < 0 || next >= rowCount) return;
+  const selector = `[data-index="${String(next)}"]`;
+  if (list.querySelector(selector) !== null) return;
+  event.preventDefault();
+  reveal(next);
+  const drawn = list.querySelector(selector);
+  if (drawn === null) return;
+  const into = rowFocusables(drawn);
+  (event.shiftKey ? into.at(-1) : into[0])?.focus();
+}
+
 /** Virtualize admin rows while coordinating offscreen focus and Tab boundaries; rowIdAttribute identifies rows and synonymsButton maps the second action. */
 export function useVirtualTagRows<R extends { id: number }>({
   visibleRows,
@@ -240,28 +270,10 @@ export function useVirtualTagRows<R extends { id: number }>({
 
   /** Render adjacent rows at virtual Tab boundaries; only actual list endpoints allow native Tab to leave. */
   function handleListKeyDown(event: KeyboardEvent<HTMLTableSectionElement>) {
-    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.defaultPrevented) return;
-    const list = event.currentTarget;
-    const target = event.target as HTMLElement;
-    const row = target.closest<HTMLElement>("[data-index]");
-    if (row === null || !list.contains(row)) return;
-    const focusables = rowFocusables(row);
-    const edge = event.shiftKey ? focusables[0] : focusables[focusables.length - 1];
-    if (target !== edge) return;
-    const nextIndex = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
-    const next = visibleRows[nextIndex];
-    if (next === undefined) return;
-    if (list.querySelector(`[data-index="${String(nextIndex)}"]`) !== null) return;
-    event.preventDefault();
-    revealRow(next.id);
-    const nextRow = list.querySelector(`[data-index="${String(nextIndex)}"]`);
-    if (nextRow === null) return;
-    const nextFocusables = rowFocusables(nextRow);
-    const into = event.shiftKey
-      ? nextFocusables[nextFocusables.length - 1]
-      : nextFocusables[0];
-    into?.focus();
+    tabIntoUndrawnRow(event, visibleRows.length, (index) => {
+      const next = visibleRows[index];
+      if (next !== undefined) revealRow(next.id);
+    });
   }
 
   return {
