@@ -1436,6 +1436,10 @@
         {
           "path": "src/designSystem/blocks/record-editor-page-example.tsx",
           "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/record-list-example.tsx",
+          "type": "registry:component"
         }
       ]
     },

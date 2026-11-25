@@ -83,10 +83,10 @@ export function PageHeader({
           {description && <p className="text-sm text-muted-foreground">{description}</p>}
         </div>
         {hasFilter && (
-          // Its own line under the title and actions below lg; between them from lg.
+          // Its own line under the title and actions below lg; between them from lg. The inset keeps the shared focus ring inside the scroll area.
           <div
             data-slot="page-header-filter"
-            className="order-last min-w-0 basis-full overflow-x-auto lg:order-none lg:flex-1 lg:basis-0"
+            className="order-last -m-1 min-w-0 grow basis-full overflow-x-auto p-1 lg:order-none lg:flex-1 lg:basis-0"
           >
             {filter}
           </div>

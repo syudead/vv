@@ -962,6 +962,8 @@ export const en = {
         showNotice: "Show the change notice",
         cards: "Tags",
         loading: "Loading tags",
+        noMatches: "No tags match these filters",
+        showAll: "Show all tags",
         tentativeDetail: (kind: string) => `Tentative · ${kind}`,
         videoCount: (n: number) =>
           selectPlural(n, {

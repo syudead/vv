@@ -1,16 +1,18 @@
-import { Check, Merge, Plus, Shapes } from "lucide-react";
+import { Check, Merge, Plus, Shapes, Tags } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
 import { t } from "@/i18n";
 import { FloatingNotice } from "@/ui/FloatingNotice";
 import { KindToggleGroup } from "@/ui/KindToggleGroup";
 import { CardGrid } from "@/ui/patterns/card-grid";
+import { EmptyState } from "@/ui/patterns/empty-state";
 import { ListPage } from "@/ui/patterns/list-page";
 import { LoadingState } from "@/ui/patterns/loading-state";
 import { PageHeader } from "@/ui/patterns/page-header";
 import { SelectionBar } from "@/ui/patterns/selection-bar";
 import { RecordCard } from "@/ui/RecordCard";
 import { Button } from "@/ui/shadcn/button";
+import { Skeleton } from "@/ui/shadcn/skeleton";
 import { TallyStrip } from "@/ui/TallyStrip";
 import TentativeMark from "@/ui/TentativeMark";
 
@@ -35,6 +37,35 @@ const tags: SampleTag[] = [
 ];
 
 const stay = (event: MouseEvent) => event.preventDefault();
+
+interface Criteria {
+  kind: string;
+  tentative: boolean;
+  unused: boolean;
+}
+
+const allTags: Criteria = { kind: "all", tentative: false, unused: false };
+
+function kindKey(tag: SampleTag): string {
+  return tag.kind === undefined ? "none" : String(tag.kind);
+}
+
+// All criteria apply together; the counts stay of every tag.
+function matches(tag: SampleTag, criteria: Criteria): boolean {
+  if (criteria.kind !== "all" && kindKey(tag) !== criteria.kind) return false;
+  if (criteria.tentative && tag.tentative !== true) return false;
+  return !criteria.unused || tag.count === 0;
+}
+
+function countOf(predicate: (tag: SampleTag) => boolean): number {
+  return tags.filter(predicate).length;
+}
+
+const countSkeleton = (
+  <Skeleton asChild className="inline-block h-3 w-2 align-middle">
+    <span />
+  </Skeleton>
+);
 
 export function sampleKinds() {
   const r = t.designSystem.pattern.record;
@@ -91,15 +122,21 @@ function SampleTagCard({
 export function RecordListExample({ loading = false }: { loading?: boolean }) {
   const r = t.designSystem.pattern.record;
   const p = t.designSystem.pattern;
-  const [kind, setKind] = useState("all");
-  const [tentative, setTentative] = useState(false);
-  const [unused, setUnused] = useState(false);
+  const [criteria, setCriteria] = useState<Criteria>(allTags);
+  const { kind, tentative, unused } = criteria;
+  const setKind = (next: string) => {
+    setCriteria((current) => ({ ...current, kind: next }));
+  };
   const [notice, setNotice] = useState(true);
   const [selected, setSelected] = useState<ReadonlySet<TagId>>(() => new Set(["trains"]));
-  const counts = loading
-    ? undefined
-    : { all: 6, 1: 2, 2: 1, 3: 2, none: 1, tentative: 1, unused: 1 };
   const kinds = sampleKinds();
+  const kindCount = (key: string) =>
+    loading ? countSkeleton : countOf((tag) => key === "all" || kindKey(tag) === key);
+  const tally = (predicate: (tag: SampleTag) => boolean) => {
+    const n = countOf(predicate);
+    return { count: loading ? undefined : n, empty: !loading && n === 0 };
+  };
+  const visible = tags.filter((tag) => matches(tag, criteria));
   const toggle = (id: TagId, on: boolean) => {
     setSelected((current) => {
       const next = new Set(current);
@@ -140,14 +177,14 @@ export function RecordListExample({ loading = false }: { loading?: boolean }) {
           value={kind}
           onValueChange={setKind}
           options={[
-            { value: "all", label: r.all, count: counts?.all },
+            { value: "all", label: r.all, count: kindCount("all") },
             ...kinds.map((entry) => ({
               value: String(entry.id),
               label: entry.name,
               kind: entry.id,
-              count: counts?.[entry.id as 1 | 2 | 3],
+              count: kindCount(String(entry.id)),
             })),
-            { value: "none", label: r.noKind, count: counts?.none },
+            { value: "none", label: r.noKind, count: kindCount("none") },
           ]}
         />
       }
@@ -158,16 +195,18 @@ export function RecordListExample({ loading = false }: { loading?: boolean }) {
           tallies={[
             {
               id: "tentative",
-              count: counts?.tentative,
+              ...tally((tag) => tag.tentative === true),
               label: r.tentative,
               hint: r.tentativeHint,
               action: r.review,
               pressed: tentative,
-              onPressedChange: setTentative,
+              onPressedChange: (on) => {
+                setCriteria((current) => ({ ...current, tentative: on }));
+              },
             },
             {
               id: "no-kind",
-              count: counts?.none,
+              ...tally((tag) => tag.kind === undefined),
               label: r.noKind,
               hint: r.noKindHint,
               action: r.sort,
@@ -178,12 +217,14 @@ export function RecordListExample({ loading = false }: { loading?: boolean }) {
             },
             {
               id: "unused",
-              count: counts?.unused,
+              ...tally((tag) => tag.count === 0),
               label: r.unused,
               hint: r.unusedHint,
               action: r.cleanUp,
               pressed: unused,
-              onPressedChange: setUnused,
+              onPressedChange: (on) => {
+                setCriteria((current) => ({ ...current, unused: on }));
+              },
             },
           ]}
         />
@@ -227,9 +268,25 @@ export function RecordListExample({ loading = false }: { loading?: boolean }) {
     >
       {loading ? (
         <LoadingState label={r.loading} layout="grid" size="record" count={6} />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={<Tags aria-hidden="true" />}
+          title={r.noMatches}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setCriteria(allTags);
+              }}
+            >
+              {r.showAll}
+            </Button>
+          }
+        />
       ) : (
         <CardGrid size="record">
-          {tags.map((tag) => (
+          {visible.map((tag) => (
             <SampleTagCard
               key={tag.id}
               tag={tag}
