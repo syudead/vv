@@ -62,6 +62,32 @@ function buildTargetOptions(
 }
 
 /**
+ * Page through the tags matching q until `enough` of them, counting the exact match, pass keep or the
+ * matches run out; `kept` holds the passing items in server order.
+ */
+export async function collectTags(
+  q: string,
+  limit: number,
+  keep: (tag: Tag) => boolean,
+  enough: number,
+  signal?: AbortSignal,
+): Promise<{ kept: Tag[]; exact: Tag | null }> {
+  const kept: Tag[] = [];
+  let exact: Tag | null = null;
+  let cursor: string | undefined;
+  const found = () =>
+    kept.length +
+    (exact !== null && keep(exact) && !kept.some((tag) => tag.id === exact?.id) ? 1 : 0);
+  do {
+    const page = await listTagPage({ q, limit, cursor }, signal);
+    exact ??= page.exact ?? null;
+    kept.push(...page.items.filter(keep));
+    cursor = page.nextCursor;
+  } while (found() < enough && cursor !== undefined && cursor !== "");
+  return { kept, exact };
+}
+
+/**
  * Search every server tag for a merge or move target, exact matches first. `excluded` tags never
  * show; `localOnly` also leaves out tags only the paired VVMDM holds, which a move cannot name.
  */
@@ -81,11 +107,13 @@ export function useTagTargetSearch(
     const controller = new AbortController();
     setSearching(true);
     setSearchError(null);
-    listTagPage({ q: value.trim(), limit: requestLimit }, controller.signal)
-      .then((page) => {
+    // Remote tags a move leaves out can fill whole pages, so read on until enough local ones show.
+    const keep = (tag: Tag) => !(localOnly && isRemoteId(tag.id));
+    collectTags(value.trim(), requestLimit, keep, requestLimit, controller.signal)
+      .then(({ kept, exact }) => {
         if (controller.signal.aborted) return;
-        setCandidates(page.items);
-        setExactCandidate(page.exact ?? null);
+        setCandidates(kept);
+        setExactCandidate(exact);
         setSearching(false);
       })
       .catch((failure: unknown) => {
@@ -94,7 +122,7 @@ export function useTagTargetSearch(
         setSearching(false);
       });
     return () => controller.abort();
-  }, [value, requestLimit]);
+  }, [value, requestLimit, localOnly]);
 
   const allowed = (tag: Tag) =>
     !excluded.has(tag.id) && !(localOnly && isRemoteId(tag.id));

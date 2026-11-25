@@ -11,6 +11,7 @@ import {
 } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
 
+import type { Video } from "../api/client";
 import { installFakeEventSource } from "../api/fakeEventSource";
 import { clearTagListSnapshot } from "../api/tagListSnapshot";
 import { type TagKind, __resetTagKindsForTest } from "../api/tagKinds";
@@ -164,6 +165,10 @@ export const server = {
   /** Synonym operations the tag page sent: promote, move or detach. */
   synonymOps: [] as { op: string; id: number; name: string; targetId?: number }[],
   videoRequests: [] as URLSearchParams[],
+  /** The videos the tag page's row reads, whatever the request. */
+  videos: [] as Video[],
+  /** The first page's `exact`, as a merged list can give a tag holding the name as a synonym. */
+  pageExact: null as Tag | null,
 };
 
 /** Deleting a kind preserves its tags without a kind; unrelated routes return undefined. */
@@ -328,7 +333,7 @@ function tagPageRoute(
   const path = url.pathname;
   if (path === "/api/videos" && method === "GET") {
     server.videoRequests.push(url.searchParams);
-    return jsonResponse({ items: [], total: 0 });
+    return jsonResponse({ items: server.videos, total: server.videos.length });
   }
   const read = /^\/api\/tags\/(\d+)$/.exec(path);
   if (read && method === "GET") {
@@ -427,6 +432,9 @@ export function install() {
         params.set("limit", String(server.pageLimitOverride));
       }
       const body = fail ? null : pageOf(server.tags, params);
+      if (body !== null && server.pageExact !== null && !params.has("cursor")) {
+        Object.assign(body, { exact: structuredClone(server.pageExact) });
+      }
       const respond = () => (body === null ? failed() : jsonResponse(body));
       if (hold.getsFrom !== null && server.getCalls >= hold.getsFrom) {
         return new Promise((resolve, reject) => {
@@ -900,6 +908,8 @@ export function setUpTagsPageServer() {
     server.tagGets = [];
     server.synonymOps = [];
     server.videoRequests = [];
+    server.videos = [];
+    server.pageExact = null;
     server.tags = [
       tag({ id: 1, name: "旅行" }),
       tag({ id: 2, name: "Anime", synonyms: ["アニメ"], videoCount: 3 }),

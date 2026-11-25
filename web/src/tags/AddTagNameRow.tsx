@@ -1,26 +1,33 @@
 import { useState } from "react";
 
 import { RequestFailed } from "../api/client";
-import { addTagSynonym, listTagPage, type Tag } from "../api/tags";
+import { addTagSynonym, type Tag } from "../api/tags";
 import { errorText, t } from "../i18n";
+import { isRemoteId } from "../lib/remoteId";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { nameInputProps, useTagNameField, type TagFieldError } from "../ui/nameField";
 import { tagFieldError } from "./tagNameField";
+import { collectTags } from "./tagTargetSearch";
 import type { TagRecord } from "./useTagRecord";
 
 const text = t.tags.page;
+const ownerPageLimit = 8;
 
 interface MergeAsk {
   name: string;
   owner: Tag;
 }
 
-/** The tag that holds name as its main name, read fresh so the merge names the current owner. */
+/**
+ * This node's tag whose main name is name, read fresh so the merge names the current owner. The
+ * search's exact match can be a tag holding name only as a synonym a paired VVMDM gave it.
+ */
 async function findOwner(name: string): Promise<Tag | undefined> {
-  const page = await listTagPage({ q: name, limit: 8 });
-  return page.exact ?? page.items.find((item) => item.name === name);
+  const isOwner = (item: Tag) => item.name === name && !isRemoteId(item.id);
+  const { kept, exact } = await collectTags(name, ownerPageLimit, isOwner, 1);
+  return exact !== null && isOwner(exact) ? exact : kept[0];
 }
 
 /** `Add a name`: Enter adds; a name that is another tag asks before merging that tag into this one. */

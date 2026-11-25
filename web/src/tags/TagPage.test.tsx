@@ -3,8 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
+import { remoteIdOffset } from "../lib/remoteId";
+import { video } from "../testing/groupPage";
 import {
   install,
+  kind,
   probe,
   renderPage,
   server,
@@ -169,5 +172,78 @@ describe("TagPage 統合", () => {
     expect(probe.search).toBe("?sort=countDesc");
     expect(await screen.findByTitle("Anime")).toBeDefined();
     expect(screen.queryByTitle("Drama")).toBeNull();
+  });
+});
+
+const remote = (n: number) => remoteIdOffset + n;
+
+describe("TagPage 接続先のあるとき", () => {
+  it("名前の追加で統合を確かめるのは、その名前を代表名に持つこのノードのタグ", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 2, name: "Anime" }),
+      tag({ id: 4, name: "Jazz", videoCount: 2 }),
+      ...Array.from({ length: 8 }, (_, i) =>
+        tag({ id: 10 + i, name: `Acid Jazz ${String(i + 1)}` }),
+      ),
+    ];
+    // A merged list's exact match can be a tag holding the name only as a paired node's synonym.
+    server.pageExact = tag({ id: remote(1), name: "Art", synonyms: ["Jazz"] });
+    await openTag(2);
+
+    await user.type(screen.getByRole("textbox", { name: "Add a name" }), "Jazz{Enter}");
+    const confirm = await screen.findByRole("alertdialog", { name: 'Merge "Jazz"' });
+    await user.click(within(confirm).getByRole("button", { name: "Merge" }));
+
+    await waitFor(() => expect(nameRows()).toEqual(["Anime", "Jazz"]));
+    expect(server.tags.some((item) => item.id === 4)).toBe(false);
+  });
+
+  it("名前の移動先は、接続先のタグが先のページを埋めても、このノードのタグを出す", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 2, name: "Anime", synonyms: ["アニメ"] }),
+      tag({ id: 3, name: "Drama" }),
+      ...Array.from({ length: 9 }, (_, i) =>
+        tag({ id: remote(i + 1), name: `Ab Drama ${String(i + 1)}` }),
+      ),
+    ];
+    await openTag(2);
+
+    await openNameMenu(user, "アニメ", "Move to another tag…");
+    const dialog = await screen.findByRole("dialog");
+    await chooseTarget(user, dialog, "Tag to move it to", "Drama");
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await waitFor(() => expect(nameRows()).toEqual(["Anime"]));
+    expect(server.synonymOps).toEqual([
+      { op: "move", id: 2, name: "アニメ", targetId: 3 },
+    ]);
+  });
+
+  it("種類の選択肢に接続先だけの種類を出さない", async () => {
+    server.tagKinds = [
+      kind({ id: 1, name: "Genre" }),
+      kind({ id: remote(1), name: "Mood" }),
+    ];
+    await openTag(2);
+
+    const section = screen.getByRole("region", { name: "Kind" });
+    expect(await within(section).findByRole("radio", { name: "Genre" })).toBeDefined();
+    expect(within(section).queryByRole("radio", { name: "Mood" })).toBeNull();
+  });
+});
+
+describe("TagPage 動画", () => {
+  it("タグの動画を既定の並び順で 6 本まで読み、それぞれの動画へのリンクを出す", async () => {
+    server.videos = [video(7, { title: "First" }), video(8, { title: "Second" })];
+    await openTag(2);
+
+    const link = await screen.findByRole("link", { name: "First" });
+    expect(link.getAttribute("href")).toBe("/videos/7");
+    expect(screen.getByRole("link", { name: "Second" })).toBeDefined();
+    expect(server.videoRequests.map((params) => params.toString())).toEqual([
+      "sort=addedDesc&limit=6&tag=2",
+    ]);
   });
 });

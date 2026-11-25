@@ -22,6 +22,7 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, formatNumber, t, type UiText } from "../i18n";
+import { isRemoteId } from "../lib/remoteId";
 import { KindToggleGroup } from "../ui/KindToggleGroup";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
@@ -397,6 +398,8 @@ function TagKindSection({
   onChange: (value: string) => void;
 }) {
   const { kinds } = useTagKinds();
+  // The shared list also holds the kinds only a paired VVMDM has, which this node's tag cannot take.
+  const settable = (kinds ?? []).filter((kind) => !isRemoteId(kind.id));
   return (
     <PageSection title={text.kind}>
       <div className="flex items-center gap-2">
@@ -409,7 +412,7 @@ function TagKindSection({
           onValueChange={onChange}
           disabled={busy !== null}
           options={[
-            ...(kinds ?? []).map((kind) => ({
+            ...settable.map((kind) => ({
               value: String(kind.id),
               label: kind.name,
               kind: kind.id,
