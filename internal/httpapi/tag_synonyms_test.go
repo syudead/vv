@@ -3,9 +3,11 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -149,5 +151,118 @@ func TestPromoteWithTheStoppedPeerChangesNothing(t *testing.T) {
 	})
 	if tag, _ := tagNamed(t, fb, "猫"); tag.Name != "猫" {
 		t.Errorf("b's tag = %+v, want 猫 unchanged", tag)
+	}
+}
+
+// lockProbeTags records, per store write, whether the server's tagNameWrites was held when the write arrived.
+type lockProbeTags struct {
+	*fakeTags
+	srv  *server
+	held map[string]bool
+}
+
+func (p *lockProbeTags) probe(operation string) {
+	free := p.srv.tagNameWrites.TryLock()
+	if free {
+		p.srv.tagNameWrites.Unlock()
+	}
+	p.held[operation] = !free
+}
+
+func (p *lockProbeTags) RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	p.probe("rename")
+	return p.fakeTags.RenameTag(ctx, id, name)
+}
+
+func (p *lockProbeTags) DeleteTag(ctx context.Context, id int64) error {
+	p.probe("delete")
+	return p.fakeTags.DeleteTag(ctx, id)
+}
+
+func (p *lockProbeTags) MergeTags(ctx context.Context, target int64, sources []int64) (domain.TagMergeOutcome, error) {
+	p.probe("merge")
+	return p.fakeTags.MergeTags(ctx, target, sources)
+}
+
+func (p *lockProbeTags) AddSynonym(ctx context.Context, id int64, name string, merge *int64) (domain.Tag, error) {
+	p.probe("add-synonym")
+	return p.fakeTags.AddSynonym(ctx, id, name, merge)
+}
+
+func (p *lockProbeTags) RemoveSynonym(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	p.probe("remove-synonym")
+	return p.fakeTags.RemoveSynonym(ctx, id, name)
+}
+
+func (p *lockProbeTags) PromoteSynonym(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	p.probe("promote")
+	return p.fakeTags.PromoteSynonym(ctx, id, name)
+}
+
+func (p *lockProbeTags) MoveSynonym(ctx context.Context, id int64, name string, target int64) (domain.Tag, domain.Tag, error) {
+	p.probe("move")
+	return p.fakeTags.MoveSynonym(ctx, id, name, target)
+}
+
+func (p *lockProbeTags) DetachSynonym(ctx context.Context, id int64, name string) (domain.Tag, domain.Tag, error) {
+	p.probe("detach")
+	return p.fakeTags.DetachSynonym(ctx, id, name)
+}
+
+func (p *lockProbeTags) RejectTag(ctx context.Context, id int64) (string, error) {
+	p.probe("reject")
+	return p.fakeTags.RejectTag(ctx, id)
+}
+
+func (p *lockProbeTags) BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error) {
+	p.probe("batch")
+	return p.fakeTags.BatchTags(ctx, req, ids)
+}
+
+// A promote or rename sends the links its change before the local write, so every local write that can take the
+// synonym or the tag away waits for tagNameWrites; otherwise the local write fails after the links changed.
+func TestTagNameWritesWaitForAPromoteOrRename(t *testing.T) {
+	srv := &server{logger: discardLogger()}
+	probe := &lockProbeTags{fakeTags: &fakeTags{}, srv: srv, held: map[string]bool{}}
+	srv.tags = probe
+	external := &externalServer{s: srv}
+	post := func(target, body string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		return r
+	}
+	calls := []struct {
+		operation string
+		call      func(w http.ResponseWriter)
+	}{
+		{"rename", func(w http.ResponseWriter) { srv.RenameTag(w, post("/api/tags/3", `{"name":"猫"}`), 3) }},
+		{"promote", func(w http.ResponseWriter) { srv.PromoteTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
+		{"move", func(w http.ResponseWriter) { srv.MoveTagSynonym(w, post("/", `{"name":"ねこ","targetId":4}`), 3) }},
+		{"detach", func(w http.ResponseWriter) { srv.DetachTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
+		{"add-synonym", func(w http.ResponseWriter) { srv.AddTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
+		{"remove-synonym", func(w http.ResponseWriter) {
+			srv.RemoveTagSynonym(w, httptest.NewRequest(http.MethodDelete, "/", nil), 3, gen.RemoveTagSynonymParams{Name: "ねこ"})
+		}},
+		{"delete", func(w http.ResponseWriter) { srv.DeleteTag(w, httptest.NewRequest(http.MethodDelete, "/", nil), 3) }},
+		{"merge", func(w http.ResponseWriter) { srv.MergeTag(w, post("/", `{"sourceIds":[4]}`), 3) }},
+		{"reject", func(w http.ResponseWriter) { srv.RejectTag(w, httptest.NewRequest(http.MethodPost, "/", nil), 3) }},
+		{"batch", func(w http.ResponseWriter) { srv.BatchTags(w, post("/", `{"action":"delete","ids":[3]}`)) }},
+		{"external merge", func(w http.ResponseWriter) { external.MergeTags(w, post("/", `{"targetId":3,"sourceIds":[4]}`)) }},
+		{"external remove-synonym", func(w http.ResponseWriter) {
+			external.UpdateTagSynonyms(w, post("/", `{"id":3,"action":"remove","name":"ねこ"}`))
+		}},
+		{"external batch", func(w http.ResponseWriter) { external.BatchTags(w, post("/", `{"action":"delete","ids":[3]}`)) }},
+	}
+	for _, tc := range calls {
+		probe.held = map[string]bool{}
+		rec := httptest.NewRecorder()
+		tc.call(rec)
+		held, called := probe.held[strings.TrimPrefix(tc.operation, "external ")]
+		switch {
+		case !called:
+			t.Errorf("%s: the store write was not called: %d %s", tc.operation, rec.Code, rec.Body)
+		case !held:
+			t.Errorf("%s: the store write ran without tagNameWrites", tc.operation)
+		}
 	}
 }

@@ -230,6 +230,12 @@ another of its tags holds answers `409 tag_name_taken`.
 One lock on the node holds a promote or a rename of a local tag from the
 links' write through the local write, so two concurrent changes of one tag
 send the links the canonical name the earlier one left, not a stale one.
+Every other write here that can take a synonym or a tag away (adding or
+removing a synonym, `move`, `detach`, delete, merge, reject and the batch
+actions, from the screen API or the external API) waits for the same lock. A
+`move` that comes first leaves the promote nothing to send, and a promote that
+comes first leaves the `move` a name that is no longer a synonym, so a promote
+never fails here after the links changed.
 
 | Rejected | Why |
 | --- | --- |
@@ -237,6 +243,7 @@ send the links the canonical name the earlier one left, not a stale one.
 | A plain rename on the link | A rename to the link's own synonym is a conflict, and the nodes may hold different synonyms |
 | A link rename that drops `name` | A video tagged only through a folder named `name` loses the tag on that link, and a repeated promote finds `name` gone and `newName` taken |
 | No lock, relying on each store transaction | The links' write and the local write are separate transactions, so two promotes of one tag can both pass the checks and leave the nodes with different canonical names |
+| Locking only promotes and renames | A `move` between the promote's check and its local write takes the synonym away, so the links keep the new canonical name while the local promote fails, and a repeated promote finds no synonym to promote |
 | Sending `move` and `detach` to the links | Synonyms and tag creation are per node already |
 
 ### A remote id names no tag here

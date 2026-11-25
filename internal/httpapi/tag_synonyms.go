@@ -45,8 +45,7 @@ func (s *server) PromoteTagSynonym(w http.ResponseWriter, r *http.Request, id ge
 	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) {
 		return
 	}
-	s.tagNameWrites.Lock()
-	defer s.tagNameWrites.Unlock()
+	defer s.holdTagNames()()
 	if !s.promoteTagOnPeer(w, r, id, body.Name) {
 		return
 	}
@@ -59,6 +58,7 @@ func (s *server) MoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen.T
 	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) {
 		return
 	}
+	defer s.holdTagNames()()
 	source, target, err := s.tags.MoveSynonym(r.Context(), id, body.Name, body.TargetId)
 	s.answerTag(w, http.StatusOK, func() any {
 		return gen.TagSynonymMoveResponse{Source: toAPITag(source), Target: toAPITag(target)}
@@ -70,6 +70,7 @@ func (s *server) DetachTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) {
 		return
 	}
+	defer s.holdTagNames()()
 	source, created, err := s.tags.DetachSynonym(r.Context(), id, body.Name)
 	s.answerTag(w, http.StatusCreated, func() any {
 		return gen.TagSynonymDetachResponse{Source: toAPITag(source), Created: toAPITag(created)}
@@ -97,6 +98,12 @@ func (s *server) localTagID(w http.ResponseWriter, id int64) bool {
 		return false
 	}
 	return true
+}
+
+// holdTagNames takes tagNameWrites and returns its unlock, for a deferred call.
+func (s *server) holdTagNames() (unlock func()) {
+	s.tagNameWrites.Lock()
+	return s.tagNameWrites.Unlock
 }
 
 // promoteTagOnPeer makes name the canonical name of every link's tag of id's canonical name before PromoteSynonym
