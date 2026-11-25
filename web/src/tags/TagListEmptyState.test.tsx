@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { t } from "../i18n";
 import TagListEmptyState from "./TagListEmptyState";
 import type { TagKindFilter } from "./tagListUrl";
-import type { TagListEmpty } from "./tagListView";
+import type { TagListEmpty } from "../recordList/listView";
 
 function renderEmpty(
   empty: TagListEmpty,

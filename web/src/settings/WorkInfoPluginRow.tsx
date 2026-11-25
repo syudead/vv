@@ -10,7 +10,7 @@ import { Fragment, type ReactNode, type Ref, useId } from "react";
 
 import type { WorkInfoPlugin, WorkInfoPluginState } from "../api/workInfoPlugins";
 import { formatDateTime, formatRelative, t, type UiText } from "../i18n";
-import { RowMoreMenu } from "../tags/TagRow";
+import { RowMoreMenu } from "../ui/RowMoreMenu";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { DropdownMenuItem } from "../ui/shadcn/dropdown-menu";

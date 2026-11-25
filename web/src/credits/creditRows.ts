@@ -9,10 +9,10 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import { readListSortPreferences } from "../preferences/tagListPreferences";
-import { isTagListSort, type TagListSort } from "../tags/tagListOrder";
-import type { ListRowsQuery, PageRows } from "../tags/tagPageRows";
-import type { TagFieldError } from "../tags/tagNameField";
-import type { RowsPage } from "../tags/useTagPage";
+import { isTagListSort, type TagListSort } from "../api/tags";
+import type { ListRowsQuery, PageRows } from "../recordList/listRows";
+import type { TagFieldError } from "../ui/nameField";
+import type { RowsPage } from "../recordList/usePagedRows";
 import { normalizeQuery } from "../videoList/listCriteria";
 
 export const creditPageLimit = 100;

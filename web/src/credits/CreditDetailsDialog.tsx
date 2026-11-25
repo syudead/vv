@@ -20,7 +20,7 @@ import {
   Problem,
   saveOnEnter,
 } from "../player/detailsEditor/fields";
-import { DialogError } from "../tags/DialogError";
+import { DialogError } from "../ui/DialogError";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Combobox, type ComboboxOption } from "../ui/shadcn/combobox";
 import { Field, FieldError, FieldLegend, FieldSet } from "../ui/shadcn/field";

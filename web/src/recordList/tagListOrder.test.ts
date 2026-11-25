@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isTagListSort,
-  tagSortDirection,
-  tagSortKind,
-  withTagSortDirection,
-} from "./tagListOrder";
+import { isTagListSort } from "../api/tags";
+import { tagSortDirection, tagSortKind, withTagSortDirection } from "./tagListOrder";
 
 describe("並び順の種類と向き", () => {
   it("種類と向きを読み、向きを変える", () => {

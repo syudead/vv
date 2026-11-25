@@ -14,8 +14,9 @@ import {
 } from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
 import type { ShowToast } from "../ui/Toast";
-import { kindFieldError, type TagFieldError } from "./tagNameField";
-import { isShown } from "./useVirtualTagRows";
+import { kindFieldError } from "./tagNameField";
+import type { TagFieldError } from "../ui/nameField";
+import { isShown } from "../recordList/useVirtualTagRows";
 
 export interface KindRowRefs {
   nameLink: HTMLAnchorElement | null;

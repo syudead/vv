@@ -2,8 +2,8 @@ import { ArrowRight, Search } from "lucide-react";
 import { type ComponentType, type ReactNode, useCallback, useId, useState } from "react";
 
 import type { UiText } from "../i18n";
-import type { NameChoice, NameCommandLayout } from "../ui/NameCommand";
-import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
+import type { NameChoice, NameCommandLayout } from "./NameCommand";
+import { Field, FieldError, FieldLabel } from "./shadcn/field";
 
 interface MergeCommandProps {
   layout: NameCommandLayout;
