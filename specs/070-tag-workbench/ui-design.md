@@ -1,4 +1,4 @@
-# UI design: Tag workbench
+# UI design: Tag cards and tag pages
 
 Sources: [plan.md](plan.md);
 [design-system.md](../../docs/design-docs/design-system.md) and its rules
@@ -6,252 +6,395 @@ Sources: [plan.md](plan.md);
 [components.md](../../web/registry/rules/components.md),
 [foundations.md](../../web/registry/rules/foundations.md));
 [library-ui.md](../../docs/design-docs/library-ui.md) for the top-bar toolbar,
-window scrolling and the tag rows' virtualization; the current screens in
-`web/src/tags/` and `web/src/credits/CreditsPage.tsx`; the screen text in
-[web/src/i18n/en.ts](../../web/src/i18n/en.ts) (`tags`).
+window scrolling, card selection and the selection bar; the current screens in
+`web/src/tags/` and `web/src/credits/`; the screen text in
+[web/src/i18n/en.ts](../../web/src/i18n/en.ts) (`tags`, `credits`).
+
+The diagram shows the screens this design covers and how the owner moves
+between them.
+
+```mermaid
+flowchart LR
+  tags[Tag list /tags] -->|open a card| tag[Tag page /tags/:id]
+  tag -->|Tags, Back| tags
+  tags -->|Kinds| kinds[Kinds page]
+  tags -->|Rejected names| rejected[Rejected names page]
+  kinds -->|a kind's tag count| tags
+  tag -->|Open in library| lib[Library]
+  orgs[Organization list] -->|open a card| org[Organization page]
+  org -->|Organizations, Back| orgs
+```
 
 ## Why this shape
 
-Every organizing operation of a tag lives in one pane beside the list, so the
-owner reads a tag's names and counts in the list, picks it, and finds merge,
-make-a-synonym-of and the per-synonym operations in the same place every time.
-The list rows carry no buttons: today's row of icons and the nested synonyms
-dialog are what the Issue asks to remove, and a row without controls stays
-dense enough to scan thousands. Rejected: a per-row menu that opens dialogs, as
-today, because the owner has to open each tag's menu and then a dialog to see
-its synonyms.
+The list answers "what is left to tidy" and the tag page answers "how is this
+one tag organized", so neither crowds the other: cards carry no buttons, and
+every operation on one tag has a fixed place on that tag's page. The two
+boards the maintainer approved (the tag card list and the tag page) are the
+intent; this document translates them into the design system. Their colours,
+pill shapes and sizes are not values.
 
-This design narrows the plan in two places:
+The table shows where the translation departs from the boards.
 
-| Plan said | This design | Why |
+| Board | This design | Why |
 | --- | --- | --- |
-| The list scrolls inside its own region | The window keeps scrolling, and the pane sticks under the top bar | [library-ui.md, The window owns scrolling](../../docs/design-docs/library-ui.md#the-window-owns-scrolling); the existing window virtualizer and its focus handling stay |
-| On a narrow width the pane opens as a sheet | Below `lg` the pane opens in a `Dialog` | [components.md, Sheet](../../web/registry/rules/components.md#sheet) keeps `Sheet` for the sidebar and sends details to `Dialog` |
+| A page title and tally counts larger than `text-xl` | The title is `text-xl`; a tally count is `text-lg` | [foundations.md, Type](../../web/registry/rules/foundations.md#type) has no larger step, and the Issue keeps the tokens |
+| A cyan fill on the `Tentative` tally at rest | Tallies rest on `card`; only a pressed one is `primary-soft` | Cyan marks actions and selection only ([foundations.md, Colour roles](../../web/registry/rules/foundations.md#colour-roles)) |
+| A gear button for kinds and rejected names | Two named links, `Kinds` and `Rejected names` | A `DropdownMenu` is not navigation ([components.md, DropdownMenu](../../web/registry/rules/components.md#dropdownmenu)), and a gear does not say what is behind it |
+| `Confirm`, `Rename`, `Reject` and `Delete` together | `Confirm` and `Reject…` on a tentative tag, `Delete…` on a confirmed one | Reject applies to tentative tags only and delete to confirmed ones, as today |
+| A cyan `Merge into one…` and a plain `Reject` in the selection bar | `ghost` actions with merge first; `Reject…` and `Delete…` in `More` | [patterns.md, Sections](../../web/registry/rules/patterns.md#sections) for `SelectionBar`; the Issue puts delete and reject one step back |
+| A round icon-only back button | A `ghost` `sm` button with `ArrowLeft` and the list's title | The back link of `RecordPage` and `SettingsPage` |
+| Six thumbnails that fill the row | `Shelf layout="row"`: thumbnails `card-0` wide, the body's edge cutting the last | The existing row shelf; five show in full at 1280px |
 
-## WorkbenchPage pattern
+## Design-system changes
 
-`WorkbenchPage` (item `workbench-page`) replaces `AdminTablePage` in
+These pieces are added to the design system before a screen uses them, in the
+plan's design-system unit. `RecordCard`, `CardGrid size="record"`,
+`RecordEditorPage` and the kind colours are the plan's; the rest are what the
+approved list needs that `ListPage` lacks.
+
+| Piece | Item | What it is |
+| --- | --- | --- |
+| `ListPage` `filter` slot | `list-page` | One `ToggleGroup type="single"` for the list's main dimension, a count after each choice. From `lg` it sits on the header's row after the title, taking the width left before the header's actions and scrolling sideways inside it; below `lg` it is one line under the header that scrolls sideways |
+| `ListPage` `summary` slot | `list-page` | One `TallyStrip`, between the header and the body |
+| `ListPage` `notice` slot | `list-page` | One `FloatingNotice` |
+| `TallyStrip` | `tally-strip` | Up to three tallies in equal columns, `gap-3` apart. A tally is a `Toggle` on `card` with a `border` line and `rounded-md`: the count (`text-lg font-semibold tabular-nums`), its label (`text-sm font-medium`) over a hint (`text-xs`, muted, from `md`), and from `lg` a trailing word in `primary`. Pressed, it is `primary-soft` and the trailing word is `Clear` |
+| `FloatingNotice` | `floating-notice` | One line and one `ghost` `sm` action on `popover` with `rounded-full` and `shadow-elevated`, stuck under the top bar at the body's centre, over the content, with `animate-fade-in`. It is for a condition that lasts until the viewer acts and whose message must not move the list |
+| `KindMark` | `kind-mark` | The mark of a tag kind in its `kind-N` colour: `bar` (the start edge of a `RecordCard`) or `dot` (before a kind's name). It never stands without the kind's name on the same card, row or control |
+| `KindToggleGroup` | `kind-toggle-group` | A `ToggleGroup type="single"` of `pill` `sm` items, one per kind with its `dot`, plus the plain choices the caller passes. A pressed kind is its `kind-N-soft` fill with a `kind-N` edge and `foreground` text; a pressed plain choice is the standard `primary-soft` |
+
+The eight `kind-N` colours are told apart from each other and from `primary`,
+`destructive` and `favorite` on `card`, and each `kind-N-soft` keeps
+`foreground` text readable.
+
+### RecordCard
+
+A `RecordCard` is one link on `card` with a `border` line and `rounded-md`,
+`record-card` high (a new named step) at every width, so a row of the grid is
+the unit that is virtualized. `CardGrid size="record"` puts two columns at
+360px and six at 1280px (`card-record`, a new named step), `gap-3` apart.
+
+| Line | Content | Type |
+| --- | --- | --- |
+| First | The name, truncated, the full name in `title`; `TentativeMark` after it; the count at the line's end | Name `text-sm font-medium`; count `text-sm font-semibold tabular-nums` |
+| Second | The `detail`: one short phrase | `text-xs`, muted, truncated |
+| Third | The secondary names as `secondary` `Badge`s on one line; the card's edge cuts what does not fit | `text-xs`, normal weight |
+
+- The `KindMark` `bar` runs along the start edge; a record without a kind
+  draws none and keeps the same inset.
+- `tentative` draws the edge dashed in `input`.
+- The selection mark is a `Checkbox` at the bottom end corner, outside the
+  link, shown as the library's card check is
+  ([library-ui.md, List view and selection](../../docs/design-docs/library-ui.md#list-view-and-selection)).
+  A selected card is `primary-soft` with a `primary` edge.
+- Hover is `shadow-card-hover`. A card with no third line keeps its height.
+- Its loading form is `LoadingState layout="grid" size="record"`.
+
+### RecordEditorPage
+
+`RecordEditorPage` (item `record-editor-page`) joins
 [patterns.md, Choosing the skeleton](../../web/registry/rules/patterns.md#choosing-the-skeleton)
-with the row "Organizes many records: a list beside the selected record's
-details and operations". It is library density. The diagram shows its parts
-from `lg`.
-
-```mermaid
-flowchart TB
-  top[Top bar: toolbar] --- header[header: title, count, main action]
-  header --- band[band: tabs, filter chips]
-  band --- body
-  subgraph body[Body]
-    direction LR
-    list[list: DataTable] --- pane[pane: sticky, scrolls inside]
-  end
-```
+with the row "Organizes one record: its names, its properties and the
+operations on it". It is a shell page at library density, one column at most
+`max-w-6xl`, centred, `p-3` (`p-4` from `sm`), its parts `gap-6` apart.
 
 | Slot | Put in it | Never |
 | --- | --- | --- |
-| `toolbar` | A `Toolbar` with `placement="topBar"` in the shell's `TopBarPortal` | The main action |
-| `header` | `PageHeader` with the title, the count, at most one `default` action, and the change notice's `Refresh` | Bulk actions |
-| `band` | A `TabsList` for the screen's views, then the active filter chips | Actions on a record |
-| children | The list: a `DataTable`, or one state block | Row action buttons or menus |
-| `pane` | The selected record's details and operations, or the bulk actions, or the pane's empty state | A second list |
-| `paneTitle` | The pane's heading text, used as the `Dialog`'s title below `lg` | |
-| `selectionBar` | A bottom `SelectionBar`, drawn below `lg` only | Actions that need no selection |
+| `back` | A `ghost` `sm` `Button` around a router link, with `ArrowLeft` and the list's title | A second navigation link |
+| `title` | The record's name as the `h1` (`text-xl font-semibold`, wrapping in full), or the field that renames it | A status |
+| `figures` | One or two figures after the title: the number in `foreground` `font-semibold tabular-nums`, its unit in `text-sm` muted | A sentence |
+| `actions` | `sm` `pill` buttons with an icon and a name: at most one `default`, the rest `secondary`, then at most one `ghost-destructive` after a `Separator`. They wrap under the title when they do not fit | An action on one part of the record |
+| `notice` | One `Alert` under the header: the reason of a failed or stale operation, or the result of one that made another record, with a link to it | Field errors |
+| `main` | `PageSection`s for the record's lists, such as its names | Cards; a table |
+| `side` | `PageSection`s for single properties and for operations that take another record, such as merge | Lists longer than the main column |
+| children | One `Shelf` of the items the record is on | A second list of records |
+| `status` | One state block in place of everything under `back` | Loading; draw `Skeleton`s in the slots |
 
-- The column is at most `max-w-6xl`, centred, `p-3` (`p-4` from `sm`), `gap-3`.
-- From `lg` the body is two columns (`grid-cols-workbench`): the list fills
-  the rest and the pane is `workbench-pane` wide, `gap-4` apart. Both are new
-  named steps in `tokens.css`; `workbench-pane` is wide enough for a
-  `TagCommand` input and its `Add` button on one row.
-- The pane is a `card` surface with a `border` edge and `rounded-md`, `p-3`,
-  stuck under the top bar (`top-navbar`), at most the viewport's height under
-  it, scrolling inside itself. It keeps its place and width in every state of
-  the list and of itself.
-- The header and the band scroll with the page; the `DataTable`'s column
-  header sticks under the top bar.
-- Without `pane` (the Kinds and Rejected names views), the list takes the
-  whole width of the column.
-- Below `lg` the pane is not drawn in the page; choosing a record opens its
-  content in a `Dialog` titled `paneTitle`, and a checked selection shows the
-  bottom `SelectionBar`.
-
-The example block `workbench-page-example` shows a list of sample records, one
-selected, with a pane of facts, a section of names with row controls and the
+From `lg`, `main` and `side` are two columns in the ratio 8:5 (the named
+utility `grid-cols-record-editor`), `gap-6` apart; below `lg` they stack,
+`main` first. A row of a section holds its text first and its controls at the
+end: at most one named `outline` `sm` `pill` button, then a `ghost` `icon-sm`
 `More` menu.
 
 ## Words
 
-New and changed text in `t.tags` and `t.organizations`. Unchanged text (tabs,
-filters, sort, empty states, kinds and rejected names, delete and reject
-dialogs, bulk results) stays as `en.ts` holds it.
+"Main name" is the screen's word for a tag's canonical name; the other names
+are its synonyms. Text not listed here is today's.
 
 | Place | Text | Notes |
 | --- | --- | --- |
-| List row, synonyms | `Also: {names}` | Comma-separated, one line, truncated; the full list in `title` |
-| List column | `Kind` | Beside `Name` and `Videos` |
-| Pane, nothing selected | `Select a tag` / `Its names, kind and videos show here, with merge and synonym actions.` | `EmptyState` without action |
-| Pane, meta line | `{videos} · Kind: {name}` / `{videos} · No kind` | `videos` is the existing plural helper |
-| Pane, link | `Show in library` | Opens `/?tag=<id>` |
-| Pane, rename | `Rename` | `icon-sm` ghost button with `Pencil`, tooltip and label |
-| Pane, tentative line | `Tentative` and `Confirm` | `TentativeMark` `row` before the word; `Confirm` is an `outline` `sm` button |
-| Pane, kind | `Kind` / `No kind` | `Select` `sm` |
-| Pane, section | `Synonyms` | `text-sm font-medium` heading |
-| Pane, no synonyms | `No synonyms. A synonym finds this tag by another name.` | `text-xs` muted |
-| Synonym row, button | `Make main name` | `icon-sm` ghost with `ArrowUpToLine`; tooltip and label `Make "{name}" the main name` |
-| Synonym row, menu | `Move to another tag…`, `Make a separate tag`, `Remove synonym` | `DropdownMenu` behind an `icon-sm` ghost `Ellipsis` labelled `More for "{name}"` |
-| Pane, add | `Add synonym` placeholder, `Add` button | Existing `synonymsDialog.add` / `submit` move here |
-| Pane, organize | `Make a synonym of another tag…` | `outline` `sm`, the first button of the pane |
-| Pane, more | `More` menu: `Reject…` (tentative only), `Delete…` | `ghost` `sm` with `Ellipsis` at the pane header's right |
-| Make-a-synonym-of dialog | Title `Make "{name}" a synonym of another tag`; field `Tag to keep`; submit `Make synonym` | The existing merge warning text explains what moves |
-| Move dialog | Title `Move "{synonym}" to another tag`; field `Move to`; text `"{synonym}" becomes a synonym of "{target}". Videos you tagged "{name}" keep that tag; videos in a folder named "{synonym}" get "{target}" instead.`; submit `Move` | `FormDialog` with `TagCommand` `inline` |
-| Toast | `"{synonym}" is now the main name` | Promote |
-| Toast | `Moved "{synonym}" to "{target}"` | Move |
-| Toast | `"{synonym}" is now a separate tag` | Detach |
-| Toast | `Removed the synonym "{synonym}"` | Remove |
-| Error | `"{synonym}" is no longer a synonym of this tag, so the list was reloaded` | `tag_synonym_not_found`, `Alert` in the pane |
-| Error | `A tag can't receive its own synonym.` | `move_same_tag`, in `t.errors` |
-| Header, change notice | `The list changed elsewhere` and `Refresh` | `text-xs` `warning` text with an icon, then a `ghost` `sm` `Refresh` with `RefreshCw`, before `New tag` |
-| Bulk pane | `{n} tags selected`; `Merge into one tag…`; `Confirm`; `Kind`; `More`: `Reject…`, `Delete…`; `Clear selection` | Existing `selection.*` text moves here |
-| Organizations pane, nothing selected | `Select an organization` / `Its names, links and parent show here, with merge and delete.` | |
+| Kind filter | `All`, each kind's name, `No kind` | A count follows each |
+| Tallies | `Tentative` / `Created by automatic tagging` / `Review`; `No kind` / `Give them a kind` / `Sort`; `Unused` / `Not on any video` / `Clean up` | Label, hint, trailing word |
+| Pressed tally | `Clear` | Replaces the trailing word |
+| Tag list header | `Kinds`, `Rejected names`, `New tag` | |
+| Filtered empty state | `Show all tags` | Clears the search and every filter |
+| Change notice | `Tags changed elsewhere` · `Refresh` | |
+| Tag card, second line | `No kind`; `Tentative · {kind}` | |
+| Selection bar | `Select all`, `Merge into one tag…`, `Set kind…`, `Confirm`, `More` (`Reject…`, `Delete…`) | |
+| `Select all` menu | `All {n} loaded tags`, `All {n} matching tags` | |
+| Tag page back link | `Tags` | |
+| Tag page actions | `Confirm`, `Rename`, `Reject…`, `Delete…` | |
+| Names section | `Names`, `Main name`, `Main`, `Add a name` | `Main` is named `Make "{name}" the main name` for screen readers |
+| Name menu | `Move to another tag…`, `Make it a tag of its own`, `Remove this name` | |
+| Move dialog | `Move "{name}" to another tag`, `Tag to move it to`, `Move` | |
+| Toasts | `"{name}" is now the main name`, `Moved "{name}" to "{tag}"`, `Removed the name "{name}"`, `Created "{name}"` | |
+| Detach notice | `"{name}" is now a tag of its own.` · `Open "{name}"` | In `notice` |
+| Kind section | `Kind`, `None` | |
+| Merge section | `Merge into another tag`, `Makes "{name}" and its synonyms synonyms of the tag you choose. Its videos get that tag.`, `Tag to keep`, `Merge…` | |
+| Videos shelf | `Videos`, `Open in library` | |
+| Gone state | `This tag no longer exists`, `Back to tags` | |
+| Kinds page | `Kinds`, `{n} tags`, `First on cards`, `Rename`, `Delete…`, `New kind` | |
+| Rejected names page | `Rejected names`, `Allow again` | |
+| Organization page | `Organizations`, `Save`, `Delete…`, `Merge into another organization`, `Organization to keep`, `Merge…`, `Discard changes?`, `Discard` | Section names are today's `Names`, `Profile`, `External IDs`, `Parent organization` |
 
-`Main name` is the screen's word for a tag's canonical name (W-8).
+## Tag list
 
-## Tags view
+`/tags` is a `ListPage`. Search and sort stay in the top bar as today.
 
-### List
+| Slot | Content |
+| --- | --- |
+| `toolbar` | The top-bar `Toolbar`: search, then the sort as a view control |
+| `header` | `PageHeader` with `Tags`; actions `Kinds` and `Rejected names` (`ghost` `sm` links), then `New tag` (`default` `sm`) |
+| `filter` | A `KindToggleGroup`: `All`, the kinds in natural name order, `No kind` |
+| `summary` | A `TallyStrip`: `Tentative`, `No kind`, `Unused` |
+| `notice` | The change notice, while it applies |
+| children | `CardGrid size="record"` of tag cards, then `LoadMoreRow`; or one state block |
+| `selectionBar` | The `SelectionBar`, while cards are selected |
 
-| Column | Content | Type |
-| --- | --- | --- |
-| Check | `Checkbox` | |
-| Name | The main name, then `TentativeMark` `row` when tentative; under it nothing, beside it `Also: …` when the tag has synonyms | Main name `text-sm font-medium`; synonyms `text-xs` `muted-foreground`, one line |
-| Kind | The kind's name, empty without one | `text-xs` `muted-foreground` |
-| Videos | The count | `text-sm` `tabular-nums`, right-aligned |
-
-- Every row is one line high (`p-3` table row), whatever the synonyms' length;
-  the name and synonyms truncate.
-- Pressing a row (outside its checkbox) or Enter on a focused row makes it the
-  current tag: its fill turns `primary-soft` and the pane shows it. Up and
-  Down move the focus between rows; the current tag changes only on press or
-  Enter, so scanning with the keyboard does not reload the pane.
-- A checked row carries `data-state="selected"` (the table's own selected
-  fill). The current fill wins over it.
-- After promote, rename or kind changes, the row stays where it is until the
-  list reloads, as a rename does today.
-
-### Pane, one tag
-
-Top to bottom:
-
-1. Pane header: the main name `text-lg font-semibold`, wrapping in full,
-   `Rename` beside it, `More` at the right.
-2. Meta line `text-xs` `muted-foreground`: videos and kind, then
-   `Show in library`.
-3. When tentative: `TentativeMark`, `Tentative`, `Confirm`.
-4. `Make a synonym of another tag…`, full width of the pane.
-5. `Kind` select.
-6. `Synonyms`: one row per synonym (`text-sm font-normal`), each ending with
-   `Make main name` and its menu, then the add field and `Add`.
-
-The pane's sections are `gap-4` apart and a `Separator` sits above
-`Synonyms`. The main name is the heaviest text in the pane; the synonyms are
-normal weight at the same size as the list, so the two read apart by weight
-alone.
-
-`Rename` turns the heading into an `Input` with the name selected; Enter
-saves, Esc cancels, as the row rename does today.
-
-### Pane, several tags checked
-
-The pane header reads `{n} tags selected` with `Clear selection` at the right,
-then `Merge into one tag…` full width, `Confirm` when any checked tag is
-tentative, the `Kind` select, and `More` with `Reject…` and `Delete…`. Over
-20,000 checked, an `Alert` (`warning`) with the existing `overLimit` text sits
-under the header and every action is `aria-disabled`.
+- **Counts**: every count in the filter and the strip is of the whole
+  vocabulary, not of the current search, so it reads as "how many are left".
+  They are read with the list and after the owner's own writes. While they
+  load, a `Skeleton` stands for each number; a tally at zero is muted, has no
+  trailing word and is not pressable unless it is pressed.
+- **Filters**: the kind filter sets `kind`; `Tentative` and `Unused` toggle
+  `tentative` and `unused`; the `No kind` tally sets `kind=none`, so it and the
+  filter's `No kind` are pressed together. All apply together with the search.
+  No chip band repeats them. A `kind` that no longer exists falls back to
+  `All` with today's toast.
+- **Tag card**: a `RecordCard` with the tag's kind as its `bar`, the video
+  count, the kind's name as the `detail` (`No kind` without one, `Tentative ·`
+  before it on a tentative tag) and the synonyms as the secondary names. The
+  count's `title` reads `{n} videos`. Pressing the card opens the tag page.
+- **Selection**: checks, Shift ranges, a press on a card while anything is
+  selected, and Escape work as on the library. Drawn boxes are left out: the
+  cards fill the grid, so there is no empty area to start a drag from.
+- **Selection bar**: the count and `Clear selection`, `Select all` (a menu of
+  its two choices), then `Merge into one tag…`, `Set kind…` and `Confirm`, and
+  `More` with `Reject…` and `Delete…`. The dialogs, impact counts, the
+  disabled reasons and the 20,000 limit message are today's. `Set kind…` lists
+  each kind with its `dot`. While `All {n} matching tags` loads the rest, its
+  button shows a `Spinner` and the other actions are disabled.
+- **New tag**: a `FormDialog` with the name field and `Create`. On success it
+  closes and the new tag's page opens, because a tag sorted by count would
+  land out of view and its names and kind are the next step.
+- **Change notice**: a `FloatingNotice`. `Refresh` reloads the list with the
+  same criteria from the top and keeps the selected tags that still exist. The
+  end-of-list notice for a list that changed under paging stays as today.
 
 ### States
 
-| State | List | Pane |
-| --- | --- | --- |
-| Loading | `LoadingState` rows | Empty state |
-| No tags | `EmptyState` `No tags yet` with `New tag` | Not drawn |
-| No matches | The existing no-match state for the search and filters, with `Show all tags` | Empty state |
-| Nothing selected | Rows | `Select a tag` |
-| One tag current | Current row `primary-soft` | The tag |
-| Several checked | Checked rows | Bulk actions |
-| Operation running | Rows | The pressed control shows `Spinner` and is `disabled`; the rest of the pane stays |
-| Target gone (`tag_not_found`, `tag_synonym_not_found`) | Reloads in place | `Alert` `destructive` with the reason at the top; after reload the pane shows the tag again, or the empty state when it is gone |
-| Changed elsewhere | Rows unchanged | Unchanged; the header shows the change notice |
-| Current tag merged away | The tag leaves the list | The tag it merged into |
-| Synonym detached | The new tag appears at its sorted place | The source tag, without the synonym |
+| State | What the screen shows |
+| --- | --- |
+| Loading | The header, filter and strip in place with `Skeleton` counts; `LoadingState layout="grid" size="record"` |
+| No tags | `EmptyState`: `No tags yet`, today's description, `New tag` |
+| No matches | `EmptyState` titled by the criteria with today's texts (`No tags match "{q}"`, `No tentative tags`, `No unused tags`, `No tags of the kind "{name}"`), and `Show all tags` |
+| Load failed | `ErrorState` with `Retry` |
+| Cards | The grid; more cards load at the end with `LoadMoreRow` |
+| Selected | Checks on every card, selected cards `primary-soft`, the `SelectionBar` at the bottom |
+| Bulk action in flight | The bar's actions and `Clear selection` disabled, a `Spinner` on the pressed one |
+| Over the limit | The bar's actions disabled with today's limit message in the bar |
+| Changed elsewhere | The cards, scroll position and selection as they were, and the notice over the first row |
+| Stale target | Today's toast (`Some of the tags no longer existed, so the list was reloaded`) and a reloaded list |
 
-The diagram shows how the pane moves between its states.
+The diagram shows the list's states and what moves between them.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Empty
-  Empty --> Tag: press a row
-  Tag --> Tag: press another row
-  Tag --> Bulk: check a row
-  Empty --> Bulk: check a row
-  Bulk --> Tag: clear selection, a tag current
-  Bulk --> Empty: clear selection, none current
-  Tag --> Target: make a synonym of
-  Target --> Tag: shows the kept tag
-  Tag --> Empty: delete or reject
+  [*] --> Loading
+  Loading --> Cards: tags
+  Loading --> Empty: none
+  Loading --> Failed: request failed
+  Failed --> Loading: Retry
+  Empty --> Loading: Show all tags
+  Cards --> Loading: search, filter, sort
+  Cards --> Selected: check a card
+  Selected --> Cards: Clear, Escape
+  Selected --> Loading: bulk action done
+  Cards --> Changed: tags event differs
+  Changed --> Loading: Refresh
+  Cards --> TagPage: open a card
+  TagPage --> Cards: Back, no write
+  TagPage --> Loading: Back, after a write
 ```
 
-### Organizing in a dialog
+## Tag page
 
-`Make a synonym of another tag…` and `Move to another tag…` open a
-`FormDialog` with `TagCommand` `layout="inline"` for the other tag, as the
-merge dialog does today, and the summary of what moves before the submit
-button. `Make main name`, `Make a separate tag` and `Remove synonym` act at
-once and report with a toast. None of them changes the videos tagged by hand;
-a video in a folder whose name is the synonym follows the name, as
-folder-derived tags always do, so after `Make a separate tag` it carries the
-new tag and after `Remove synonym` it loses the tag. Typing another tag's main
-name in `Add synonym` keeps today's merge confirmation.
+`/tags/:id` is a `RecordEditorPage`. Every control acts at once; nothing on
+the page waits for a save.
 
-## Change notice
+| Slot | Content |
+| --- | --- |
+| `back` | `Tags`. It returns to the list the owner came from, or opens `/tags` |
+| `title` | The main name, with `TentativeMark` after it on a tentative tag |
+| `figures` | `{n} videos` |
+| `actions` | Tentative: `Confirm` (`default`, `Check`), `Rename` (`secondary`, `Pencil`), `Reject…` (`ghost-destructive`, `Ban`). Confirmed: `Rename`, `Delete…` (`ghost-destructive`, `Trash2`) |
+| `main` | `Names` |
+| `side` | `Kind`, then `Merge into another tag` |
+| children | `Shelf layout="row"` titled `Videos` |
 
-The notice sits in the header row, before `New tag`, so it takes no row of its
-own and nothing below it moves. `Refresh` reloads the list with the same
-criteria, keeps the current tag when it is still listed, and removes the
-notice. A later change brings it back.
+- **Rename**: the title becomes today's name field in place; Enter saves, Esc
+  cancels, and a name error shows under the field.
+- **Names**: a `PageSection`. The first row is the main name in
+  `text-sm font-semibold` on `primary-soft`, a filled `Star` in `primary`
+  before it and `Main name` (`text-xs`, `primary`) at its end. Each synonym is
+  a row in `text-sm` at normal weight with `Main` (`outline` `sm` `pill`,
+  `Star`) and a `More` menu: `Move to another tag…`, `Make it a tag of its
+  own`, a separator, `Remove this name` (destructive). The last row is the
+  `Add a name` field; Enter adds. Names wrap in full instead of truncating.
+- **Kind**: a `KindToggleGroup` that wraps: the kinds in natural name order,
+  then `None`.
+- **Merge into another tag**: the description, a tag `Combobox` labelled `Tag
+  to keep` and `Merge…` (`default` `sm`), disabled until a tag is chosen.
+  `Merge…` opens a `ConfirmDialog` with today's merge warning.
+- **Videos**: up to six of the tag's videos in the library's order, each a
+  `VideoThumbnail` that links to its video and carries the title as its name
+  and `title`. `Open in library` (`ghost` `sm`) in the shelf's `actions` opens
+  the library filtered by the tag. A tag on no video shows the one line `Not on
+  any video` in place of the row.
 
-## Organizations view
+The diagram shows what each operation on a name leaves on the screen.
 
-The organizations screen is the same pattern without the check column, the
-bulk pane and the tabs. Its pane holds the name with `Rename`, the aliases with
-remove and an add field, the external ids, the parent, then
-`Merge into another organization…` and `More` with `Delete…`, which today sit
-in the details dialog and the row menu. The details dialog is removed.
+```mermaid
+flowchart LR
+  row[Synonym row] -->|Main| swap[Rows swap, title changes, toast]
+  row -->|Move to another tag| dialog[Pick a tag, Move]
+  dialog --> gone[Row leaves, toast]
+  row -->|Make it a tag of its own| notice[Row leaves, notice links the new tag]
+  row -->|Remove this name| removed[Row leaves, toast]
+  add[Add a name] --> taken{Name is another tag}
+  taken -->|no| added[New row]
+  taken -->|yes| confirm[Confirm the merge]
+  confirm --> added
+```
+
+`Move to another tag…` is a `FormDialog` with today's merge-target field.
+`Make it a tag of its own` and `Remove this name` run at once: each can be put
+back from this page or the other tag's. Adding a name that is another tag asks
+with a `ConfirmDialog` carrying today's synonym merge warning.
+
+### States
+
+| State | What the screen shows |
+| --- | --- |
+| Loading | `back`, then `Skeleton`s in the title, the sections and the shelf |
+| Tentative | `TentativeMark` after the title; `Confirm` and `Reject…` |
+| Confirmed | `Delete…` in place of `Confirm` and `Reject…`; a tentative tag becomes this after `Confirm`, `Main`, a merge into it or a name moved to it |
+| Operation in flight | The pressed control shows a `Spinner`; the other controls of the page are `aria-disabled` |
+| Operation failed | A `destructive` `Alert` in `notice` with the reason, such as the paired VVMDM not being reachable; the page as it was |
+| Stale target | The reason in `notice` (`This tag no longer exists`, or that the name is no longer this tag's) and the page re-read |
+| Changed elsewhere | The page re-reads its tag in place; text being typed in a field is kept |
+| Merged, rejected or deleted here | The tag list, reloaded with its criteria, and today's toast |
+| Gone | `status`: `EmptyState` `This tag no longer exists` with `Back to tags` |
+
+## Kinds page
+
+`/tags/kinds` is a `SettingsPage` without `nav`: the back link `Tags` in the
+header's `leading`, the title `Kinds`, today's description, and one
+`PageSection` with a row per kind in natural name order.
+
+| Part of a row | Content |
+| --- | --- |
+| Start | `KindMark` `dot`, the name (`text-sm font-medium`), then `{n} tags` as a `link` button to `/tags?kind=<id>` (`text-xs`) |
+| End | A `Switch` labelled `First on cards`, then a `More` menu: `Rename`, a separator, `Delete…` |
+| Last row of the section | The `New kind` field; Enter creates |
+
+`Rename` edits the name in place. `Delete…` opens today's `ConfirmDialog`.
+Below `sm` the switch and the menu move to a second line of the row. With no
+kinds, the section holds an `EmptyState` (`No kinds yet`) above the `New kind`
+row. More than eight kinds share colours, so the name stays beside every mark.
+
+## Rejected names page
+
+`/tags/rejected` is a `SettingsPage` without `nav`: the back link `Tags`, the
+title `Rejected names`, today's description, and one `PageSection` with a row
+per name: the name, then `Allow again` (`outline` `sm`). The rows load in
+pages with `LoadMoreRow`. `Allow again` removes the row at once; a failure
+shows today's message as an `Alert` row in the section. With no names the
+section holds `EmptyState` `No rejected names`.
+
+## Organization list
+
+`/organizations` is a `ListPage`: the top-bar `Toolbar` with search and sort,
+a `PageHeader` with `Organizations`, the count and `New organization`
+(`default` `sm`, a `FormDialog` with the name), and a `CardGrid size="record"`
+of `RecordCard`s. It has no `filter`, `summary`, checks or selection bar.
+
+A card shows the display name, the video count, `Part of {parent}` as its
+`detail` and the other names as its secondary names, and opens the
+organization page. Loading, the two empty states, a failed load and the
+end-of-list notice follow the tag list's table with today's texts. Creating
+an organization opens its page.
+
+## Organization page
+
+`/organizations/:id` is a `RecordEditorPage` that holds today's details form:
+the fields are held until `Save`, as in the dialog it replaces, because
+`About`, `Links` and the IDs are typed at length and the server names the
+field an error belongs to. Merge and delete act through their dialogs.
+
+| Slot | Content |
+| --- | --- |
+| `back` | `Organizations` |
+| `title` | The display name |
+| `figures` | `{n} videos` |
+| `actions` | `Save` (`default`, disabled until a field differs), then `Delete…` (`ghost-destructive`) |
+| `main` | `Names` (today's name rows: display name, other names, language, reorder, add), then `Profile` (logo, founded, dissolved, location, about, links) |
+| `side` | `Parent organization`, `External IDs`, then `Merge into another organization` (as the tag page's merge section) |
+| children | `Shelf layout="row"` titled `Videos`, as on the tag page |
+
+A rename is a change of the display name in `Names`. The logo is uploaded and
+removed at once, as today. Leaving with unsaved fields asks `Discard
+changes?` in a `ConfirmDialog`. A failed save shows field errors under their
+fields and the rest in `notice`. Loading, in flight, failed and gone follow
+the tag page's table, with `This organization no longer exists` and `Back to
+organizations`.
 
 ## Responsive behaviour
 
-| Width | Layout |
-| --- | --- |
-| 360px | One column; the toolbar in the top bar as today; rows show name and count, kind hidden; pressing a row opens the pane in a `Dialog`; checking rows shows the bottom `SelectionBar` with `Merge into one tag…` and `More` |
-| 768px | One column with the kind column; the pane in a `Dialog`; the bottom `SelectionBar` |
-| 1024px | Two columns: list and pane side by side, the pane sticky; bulk actions in the pane |
-| 1280px | Two columns, the page at `max-w-6xl` centred |
+The sidebar is the rail from 640px and a drawer below it.
+
+| Width | Tag list and organization list | Tag page and organization page | Kinds and rejected names |
+| --- | --- | --- | --- |
+| 360px | Two columns of cards. The header's actions wrap under the title; the filter is one line that scrolls sideways; three tallies with count and label only; the selection bar wraps onto more lines | One column: `main`, `side`, the shelf. The actions wrap under the title; a name wraps and keeps `Main` and `More` at the row's end; the shelf shows one thumbnail and part of the next | One column; a kind row's switch and menu on a second line |
+| 768px | Three columns. The header's actions on the title's row; the filter on its own line; tallies with hints | One column; the actions on the title's row | One column, `max-w-3xl` |
+| 1024px | Five columns. The filter on the title's row; tallies with trailing words | Two columns, 8:5 | The same |
+| 1280px | Six columns; at 1280×820 with nothing selected, four full rows show under the strip | Two columns; five thumbnails in full and the edge of the sixth | The same |
 
 ## Review criteria
 
-1. At 1280px with 5,000 tags, the eye goes first to the tag names in the list
-   and the pane's main name; no control in the list rows competes with them.
-2. A main name and its synonyms are told apart by weight alone, in the list
-   (`font-medium` against muted `text-xs`) and in the pane (`text-lg
-   font-semibold` against `text-sm` normal).
-3. The video counts form a right-aligned column whose digits line up.
-4. From a selected tag, `Make a synonym of another tag…`, `Make main name` and
-   the synonym menu are reached without opening a menu first; `Delete…` and
-   `Reject…` are only in `More`.
-5. Pressing another row, checking rows, a running operation and the change
-   notice leave the pane at the same place and width, and the list rows do not
-   move.
-6. A tag with twelve synonyms shows them one per row in the pane without
-   cropping, while its list row stays one line high.
-7. At 360px a pressed row opens the pane in a dialog with the same order of
-   controls as the pane at 1280px.
-8. The organizations screen at 1280px has the same column, list and pane
-   positions as the tags screen.
+1. On the tag list at 1280px, the first things read are tag names and their
+   counts; the header's links, the tallies' trailing words and the checks are
+   quieter than any card's first line.
+2. A card's name, count, kind and synonyms are told apart by weight and
+   position without colour: the name and count in medium and semibold, the
+   kind line and synonym chips smaller and at normal weight. Counts align at
+   the cards' end edges in tabular figures.
+3. Every card is the same height with or without synonyms, a kind or the
+   tentative state, and the gaps between cards, the strip and the header are
+   equal, so the grid reads as one block.
+4. Applying a filter, selecting cards, the change notice and a bulk action in
+   flight move neither the header, the filter, the strip nor any card.
+5. A tentative card is told from a confirmed one at a glance by its dashed
+   edge and mark, and a card's kind by its colour bar together with the kind's
+   name.
+6. On the tag page, the main name is the heaviest text of `Names`, synonyms
+   are lighter, and a synonym row's `Main` is found without opening anything.
+7. On the tag page, `Main` and the merge section's `Merge…` are in view
+   without scrolling at 1280×820 for a tag with five names, and `Reject…` or
+   `Delete…` is the quietest and last of the header's actions.
+8. The tag page's sections have room: one name per row, kinds as separate
+   pills, and `gap-6` between sections, wider than the gaps inside one.
+9. At 360px no screen scrolls sideways as a whole, no action loses its name,
+   and a 40-character tag name reads in full on the tag page.
+10. The organization list and page are recognisably the same pieces as the
+    tag ones: the same card, header, section and shelf rhythm.
