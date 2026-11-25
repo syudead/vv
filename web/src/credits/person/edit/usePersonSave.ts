@@ -24,6 +24,7 @@ function placeProblem(error: RequestFailed, sent: SentTargets): FieldProblem | n
 }
 
 export function usePersonSave(args: {
+  id: number;
   person: Person;
   loaded: PersonDraft;
   draftRef: RefObject<PersonDraft>;
@@ -32,6 +33,7 @@ export function usePersonSave(args: {
 }): EditorSave {
   return useCreditSave({
     kind: "person",
+    id: args.id,
     credit: args.person,
     loaded: args.loaded,
     draftRef: args.draftRef,

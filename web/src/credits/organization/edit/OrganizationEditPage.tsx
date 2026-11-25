@@ -122,6 +122,7 @@ function OrganizationEditAside({
 
 function OrganizationForm({
   credit: organization,
+  id,
   onLeave,
   onSaved,
   onGone,
@@ -134,6 +135,7 @@ function OrganizationForm({
   draftRef.current = draft;
   const { saving, failure, problem, save } = useCreditSave({
     kind: "organization",
+    id,
     credit: organization,
     loaded,
     draftRef,
@@ -165,7 +167,7 @@ function OrganizationForm({
       aside={
         <OrganizationEditAside
           organization={organization}
-          backTo={organizationPath(organization.id)}
+          backTo={organizationPath(id)}
           onBack={onLeave}
         />
       }

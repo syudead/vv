@@ -323,28 +323,25 @@ func (s *server) remoteOrganizationPatch(w http.ResponseWriter, r *http.Request)
 }
 
 // peerOrganizationID is the id on the link r reaches of the organization id names on the screens; among that
-// link's organizations of a local organization's name it takes the lowest id, as the join does. Another link's
-// organization is mixed_nodes.
+// link's organizations of the name of a local or another link's organization it takes the lowest id, as the join
+// does, because the joined list shows a name once with the first node's id.
 func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id int64) (int64, bool) {
 	slot := s.requestSlot(r)
-	if domain.IsRemoteID(id) {
-		if domain.RemoteSlot(id) != slot {
-			s.mixedNodes(w)
-			return 0, false
-		}
+	if domain.IsRemoteID(id) && domain.RemoteSlot(id) == slot {
 		return domain.FromRemoteID(id), true
 	}
-	local, err := s.credits.Get(r.Context(), domain.CreditOrganization, id)
-	if errors.Is(err, domain.ErrNotFound) {
+	names, err := s.vocabularyNames(r, domain.VocabularyOrganization, []int64{id})
+	if err != nil {
+		s.vocabularyFailure(w, err)
+		return 0, false
+	}
+	name, found := names[id]
+	if !found {
 		s.parentNotFound(w, "The parent organization was not found.")
 		return 0, false
 	}
-	if err != nil {
-		s.internalError(w, "Could not load the parent organization.", err)
-		return 0, false
-	}
 	var answer gen.OrganizationList
-	if err := s.peerGet(r, slot, "/api/organizations", url.Values{"q": {local.Name}}, &answer); err != nil {
+	if err := s.peerGet(r, slot, "/api/organizations", url.Values{"q": {name}}, &answer); err != nil {
 		if errors.Is(err, domain.ErrPeerUnreachable) {
 			s.peerUnreachable(w)
 		} else {
@@ -354,7 +351,7 @@ func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id i
 	}
 	var peerID int64
 	for _, organization := range answer.Items {
-		if organization.Name == local.Name && (peerID == 0 || organization.Id < peerID) {
+		if organization.Name == name && (peerID == 0 || organization.Id < peerID) {
 			peerID = organization.Id
 		}
 	}

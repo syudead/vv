@@ -26,6 +26,11 @@ const text = t.credits.personEdit;
 /** What a kind's form receives once the record is read. */
 export interface CreditFormProps<T extends Credit> {
   credit: T;
+  /**
+   * The route's id, where the save goes: a remote record read by its offset id answers with the id
+   * of this node's record of its name, whose profile the form does not show.
+   */
+  id: number;
   onLeave: () => void;
   onSaved: (credit: T) => void;
   onGone: () => void;
@@ -77,15 +82,18 @@ export function CreditEditor<T extends Credit>({
     credit === undefined ? undefined : text.title(creditDisplayName(credit)),
   );
 
-  if (credit !== undefined) {
+  if (credit !== undefined && id !== null) {
     return (
       <>
         {form({
           credit,
+          id,
           onLeave: leaving.requestLeave,
           onSaved: (saved) => leaving.leave(saved),
           onGone: () => {
+            // The form unmounts mid-save, so it never reports the save's end.
             setChanged(false);
+            setSaving(false);
             markGone();
           },
           onChangedChange: setChanged,

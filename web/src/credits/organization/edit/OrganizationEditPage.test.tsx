@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Organization } from "../../../api/credits";
@@ -29,20 +29,31 @@ const candidates: Organization[] = [
 
 const server = {
   organization: (): Response => jsonResponse(studio),
+  // A peer's Studio, read by its offset id, answers with the id of this node's Studio.
+  peerOrganization: (): Response =>
+    jsonResponse({ ...studio, profile: { location: "Kyoto" } }),
   patch: vi.fn<(body: unknown) => Response>(),
+  patched: [] as string[],
 };
 
 function Where() {
-  return <p data-testid="where">{useLocation().pathname}</p>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <p data-testid="where">{useLocation().pathname}</p>
+      <button type="button" onClick={() => void navigate(-1)}>
+        History back
+      </button>
+    </>
+  );
 }
 
-function renderEditor() {
+type Entry = string | { pathname: string; state: unknown };
+
+function renderEditor(entries: Entry[] = ["/organizations", "/organizations/5/edit"]) {
   render(
     <TooltipProvider>
-      <MemoryRouter
-        initialEntries={["/organizations", "/organizations/5/edit"]}
-        initialIndex={1}
-      >
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
         <Where />
         <Routes>
           <Route path="/organizations/:id/edit" element={<OrganizationEditPage />} />
@@ -55,8 +66,8 @@ function renderEditor() {
 }
 
 /** Opens the page and returns the first name row's input. */
-async function opened() {
-  renderEditor();
+async function opened(entries?: Entry[]) {
+  renderEditor(entries);
   const [first] = await screen.findAllByRole<HTMLInputElement>("textbox", {
     name: "Name",
   });
@@ -81,15 +92,20 @@ describe("OrganizationEditPage", () => {
   beforeEach(() => {
     server.organization = () => jsonResponse(studio);
     server.patch.mockReset();
+    server.patched = [];
     server.patch.mockImplementation(() => jsonResponse(studio));
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>((input, init) => {
         const url = new URL(String(input), "http://localhost");
-        if (url.pathname === "/api/organizations/5" && init?.method === "PATCH")
+        if (init?.method === "PATCH") {
+          server.patched.push(url.pathname);
           return Promise.resolve(server.patch(JSON.parse(String(init.body))));
+        }
         if (url.pathname === "/api/organizations/5")
           return Promise.resolve(server.organization());
+        if (url.pathname === "/api/organizations/9")
+          return Promise.resolve(server.peerOrganization());
         if (url.pathname === "/api/organizations")
           return Promise.resolve(
             jsonResponse({ items: [studio, ...candidates], total: 3, totalAll: 3 }),
@@ -191,5 +207,55 @@ describe("OrganizationEditPage", () => {
     renderEditor();
     expect(await screen.findByText("This organization no longer exists")).toBeDefined();
     expect(screen.getByRole("link", { name: "Back to organizations" })).toBeDefined();
+  });
+
+  it("保存で団体がもうないと分かった後も、履歴の戻るで団体ページへ離れる", async () => {
+    server.patch.mockImplementation(() =>
+      jsonResponse(
+        { code: "not_found", message: "x", reason: "organization_not_found" },
+        404,
+      ),
+    );
+    await opened();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Location" }), " West");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("This organization no longer exists")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "History back" }));
+    expect(await screen.findByText("organization page")).toBeDefined();
+    expect(where()).toBe("/organizations/5");
+  });
+
+  it("読んだ団体の id が URL と違っても、表示した URL の団体へ保存して、その団体ページへ戻る", async () => {
+    await opened(["/organizations", "/organizations/9/edit"]);
+    const location = screen.getByRole<HTMLInputElement>("textbox", { name: "Location" });
+    expect(location.value).toBe("Kyoto");
+    const user = userEvent.setup();
+    await user.clear(location);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("organization page")).toBeDefined();
+    expect(where()).toBe("/organizations/9");
+    expect(server.patched).toEqual(["/api/organizations/9"]);
+    expect(server.patch.mock.calls).toEqual([
+      [{ organizationProfile: { location: null } }],
+    ]);
+  });
+
+  it("団体ページの Edit から開くと、保存で履歴を戻り、編集ページを履歴に残さない", async () => {
+    await opened([
+      "/organizations",
+      "/organizations/5",
+      { pathname: "/organizations/5/edit", state: { fromPage: true } },
+    ]);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Location" }), " West");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("organization page")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "History back" }));
+    expect(await screen.findByText("organizations")).toBeDefined();
+    expect(where()).toBe("/organizations");
   });
 });

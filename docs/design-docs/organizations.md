@@ -100,7 +100,10 @@ first and every other organization after it.
 
 `Save` sends one `PATCH /api/organizations/{id}` with only the properties that
 differ from the organization as loaded, so a change made elsewhere to another
-property survives. Both edit pages share the record's read, the leaving, the
+property survives. The `{id}` is the route's: a remote organization read by
+its offset id answers with the id of this node's organization of its name, and
+saving there would write the profile the form shows onto another record. Both
+edit pages share the record's read, the leaving, the
 band and this save in
 [`web/src/credits/edit/`](../../web/src/credits/edit/), and the mapping of a
 refused field to its input in
@@ -114,10 +117,13 @@ the edit page into the gone state. When the parent candidates cannot be read,
 the select stays disabled on the current parent with the reason under it.
 
 A forwarded edit of a remote organization sends the parent as the peer's id
-([peer-library.md](peer-library.md)). When the peer has no organization of the
-chosen local parent's name, this node answers `404 organization_not_found` with
-`field: parentId` itself, so the owner picks another parent instead of seeing
-the organization as gone.
+([peer-library.md](peer-library.md)). The candidates join every node's
+organizations by name, so a parent shown with this node's id or another link's
+goes to the peer's organization of that name. When the peer has none, this node
+answers `404 organization_not_found` with `field: parentId` itself, so the
+owner picks another parent instead of seeing the organization as gone. The
+parent is resolved before a rename reaches the other links, so that refusal
+leaves every node's name as it was.
 
 | Rejected | Why |
 | --- | --- |

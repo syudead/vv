@@ -22,6 +22,7 @@ import {
  */
 export function useCreditSave<T extends Credit, D, S>({
   kind,
+  id,
   credit,
   loaded,
   draftRef,
@@ -31,6 +32,8 @@ export function useCreditSave<T extends Credit, D, S>({
   onGone,
 }: {
   kind: CreditKind;
+  /** The id the record was read by, which `credit.id` may not be. */
+  id: number;
   credit: T;
   loaded: D;
   draftRef: RefObject<D>;
@@ -50,7 +53,7 @@ export function useCreditSave<T extends Credit, D, S>({
     }
     let saved: T;
     try {
-      saved = (await updateCredit(kind, credit.id, patch, signal)) as T;
+      saved = (await updateCredit(kind, id, patch, signal)) as T;
     } catch (error) {
       if (signal.aborted || isAborted(error)) return;
       if (isCreditGone(error)) {

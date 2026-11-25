@@ -68,6 +68,7 @@ function PersonEditor({ id }: { id: number | null }) {
 
 function PersonForm({
   credit: person,
+  id,
   onLeave,
   onSaved,
   onGone,
@@ -79,6 +80,7 @@ function PersonForm({
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const { saving, failure, problem, save } = usePersonSave({
+    id,
     person,
     loaded,
     draftRef,
@@ -110,13 +112,7 @@ function PersonForm({
       onLeave={onLeave}
       onSave={save}
       asideLabel={t.credits.personPage.profile}
-      aside={
-        <PersonEditAside
-          person={person}
-          backTo={personPath(person.id)}
-          onBack={onLeave}
-        />
-      }
+      aside={<PersonEditAside person={person} backTo={personPath(id)} onBack={onLeave} />}
       panels={[
         { key: "profile", legend: text.profile, content: <ProfilePanel {...panel} /> },
         {
