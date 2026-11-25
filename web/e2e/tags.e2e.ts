@@ -45,6 +45,11 @@ async function waitForScan(request: APIRequestContext, scanId: number) {
     .toBe("done");
 }
 
+/** Tags outlive a failed attempt, so each CI retry names its own tags instead of hitting 409 on the first one. */
+function attemptName(base: string): string {
+  return `${base}r${String(test.info().retry)}`;
+}
+
 async function createTag(request: APIRequestContext, name: string): Promise<Tag> {
   const response = await request.post("/api/tags", {
     headers: mutationHeaders,
@@ -137,8 +142,8 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      const before = "e2e入替前の名前";
-      const after = "e2e入替後の名前";
+      const before = attemptName("e2e入替前の名前");
+      const after = attemptName("e2e入替後の名前");
       const a = video("タグ動画A");
       await clearVideoTags(request, a.id);
       const tag = await createTag(request, before);
@@ -164,9 +169,9 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      const moved = "e2e移す名前";
-      const source = await createTag(request, "e2e移動元");
-      const target = await createTag(request, "e2e移動先");
+      const moved = attemptName("e2e移す名前");
+      const source = await createTag(request, attemptName("e2e移動元"));
+      const target = await createTag(request, attemptName("e2e移動先"));
       await addSynonym(request, source.id, moved);
       const b = video("タグ動画B");
       await clearVideoTags(request, b.id);
@@ -199,8 +204,8 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      const detached = "e2e独立する名前";
-      const source = await createTag(request, "e2e独立元");
+      const detached = attemptName("e2e独立する名前");
+      const source = await createTag(request, attemptName("e2e独立元"));
       await addSynonym(request, source.id, detached);
 
       await page.goto(`/tags/${String(source.id)}`);
@@ -225,16 +230,30 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      const longName = `e2e長い名前${"あ".repeat(33)}`;
-      const synonym = `e2e長いシノニム${"い".repeat(30)}`;
+      const longName = attemptName("e2e長い名前").padEnd(40, "あ");
+      const synonym = attemptName("e2e長いシノニム").padEnd(40, "い");
+      // No API makes a tentative tag to reject, so the list returns one long name.
+      const rejectedName = "e2e却下した長い名前".padEnd(40, "う");
+      await page.route("**/api/tags/rejected-names**", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({ json: { items: [rejectedName], total: 1 } })
+          : route.fallback(),
+      );
       const tag = await createTag(request, longName);
       await addSynonym(request, tag.id, synonym);
       const width = 360;
       await page.setViewportSize({ width, height: 800 });
       const fitsWidth = () =>
         page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-      async function expectInside(locator: ReturnType<Page["locator"]>) {
+      /** A visible label is the rendered text, so an action shrunk to its icon fails even though its aria-label stays. */
+      async function expectInside(locator: ReturnType<Page["locator"]>, label?: string) {
         await expect(locator).toBeVisible();
+        if (label !== undefined) {
+          await expect(locator).toHaveText(label, { useInnerText: true });
+          expect(
+            await locator.evaluate((node) => node.scrollWidth <= node.clientWidth),
+          ).toBe(true);
+        }
         const box = await locator.boundingBox();
         if (box === null) throw new Error("no layout");
         expect(box.x).toBeGreaterThanOrEqual(0);
@@ -248,8 +267,7 @@ test.describe.serial("video tags", () => {
           name,
           exact: true,
         });
-        await expect(action).toHaveText(name);
-        await expectInside(action);
+        await expectInside(action, name);
       }
       expect(await fitsWidth()).toBe(true);
 
@@ -263,24 +281,25 @@ test.describe.serial("video tags", () => {
       const row = page.locator(`[data-synonym="${synonym}"]`);
       await expectInside(
         row.getByRole("button", { name: `Make "${synonym}" the main name` }),
+        "Main",
       );
       await expectInside(
         row.getByRole("button", { name: `More actions for "${synonym}"` }),
       );
-      await expectInside(page.getByRole("button", { name: "Delete…" }));
+      await expectInside(page.getByRole("button", { name: "Delete…" }), "Delete…");
       expect(await fitsWidth()).toBe(true);
 
-      for (const [path, ready] of [
-        ["/tags/kinds", page.getByRole("textbox", { name: "New kind name" })],
-        [
-          "/tags/rejected",
-          page.getByRole("heading", { level: 1, name: "Rejected names" }),
-        ],
-      ] as const) {
-        await page.goto(path);
-        await expect(ready).toBeVisible();
-        expect(await fitsWidth()).toBe(true);
-      }
+      await page.goto("/tags/kinds");
+      await expect(page.getByRole("textbox", { name: "New kind name" })).toBeVisible();
+      expect(await fitsWidth()).toBe(true);
+
+      // The heading renders while the list loads; measure once the row is there.
+      await page.goto("/tags/rejected");
+      await expectInside(
+        page.getByRole("button", { name: `Allow "${rejectedName}" again` }),
+        "Allow again",
+      );
+      expect(await fitsWidth()).toBe(true);
       await page.setViewportSize({ width: 1280, height: 800 });
     });
   });
@@ -288,9 +307,12 @@ test.describe.serial("video tags", () => {
   // Overflow chips wrap without truncation, stay inside the viewport and scroll internally when needed; see docs/design-docs/library-ui.md.
   test.describe("カードの「+N」の一覧（041-tag-overflow-list）", () => {
     /** A 60-character unbroken name forces wrapping within the chip. */
-    const longName = (
-      "e2e一覧の長い名前_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    ).slice(0, 60);
+    function longName() {
+      return (
+        attemptName("e2e一覧の長い名前_") +
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+      ).slice(0, 60);
+    }
 
     /** Respect Radix collisionPadding of 8 px. */
     function expectInsideViewport(
@@ -319,13 +341,13 @@ test.describe.serial("video tags", () => {
       await clearVideoTags(request, targetId);
       const tagIds = new Map<string, number>();
       for (let index = 1; index < 30; index += 1) {
-        const name = `e2e一覧${String(index).padStart(2, "0")}`;
+        const name = attemptName(`e2e一覧${String(index).padStart(2, "0")}`);
         const tag = await createTag(request, name);
         tagIds.set(name, tag.id);
         await attachTag(request, targetId, tag.id);
       }
-      const long = await createTag(request, longName);
-      tagIds.set(longName, long.id);
+      const long = await createTag(request, longName());
+      tagIds.set(long.name, long.id);
       await attachTag(request, targetId, long.id);
 
       // Thirty chips fit at normal heights; 390 x 300 requires internal scrolling to reach the last chip.
@@ -375,7 +397,7 @@ test.describe.serial("video tags", () => {
         }
 
         const longChip = dialog.getByRole("button", {
-          name: `Filter by ${longName}`,
+          name: `Filter by ${long.name}`,
           exact: true,
         });
         await longChip.scrollIntoViewIfNeeded();
@@ -389,7 +411,7 @@ test.describe.serial("video tags", () => {
             lines: name.getBoundingClientRect().height / parseFloat(style.lineHeight),
           };
         });
-        expect(rendered.text).toBe(longName);
+        expect(rendered.text).toBe(long.name);
         expect(rendered.textOverflow).not.toBe("ellipsis");
         expect(rendered.clipped).toBe(false);
         expect(rendered.lines).toBeGreaterThanOrEqual(2);
