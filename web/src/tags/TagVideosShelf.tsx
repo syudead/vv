@@ -14,13 +14,18 @@ import { DEFAULT_SORT } from "../videoList/listCriteria";
 const text = t.tags.page;
 const shelfLimit = 6;
 
-/** Up to six of the tag's videos in the library's default order, read again when its count changes. */
+/**
+ * Up to six of the tag's videos in the library's default order, read again when its count or the
+ * tag's `revision` changes; the count leaves fileless videos out, so it alone misses their removal.
+ */
 export function TagVideosShelf({
   tagId,
   videoCount,
+  revision,
 }: {
   tagId: number;
   videoCount: number;
+  revision: number;
 }) {
   const location = useLocation();
   const [videos, setVideos] = useState<readonly Video[] | undefined>(undefined);
@@ -47,7 +52,7 @@ export function TagVideosShelf({
       },
     );
     return () => controller.abort();
-  }, [tagId, videoCount]);
+  }, [tagId, videoCount, revision]);
 
   return (
     <Shelf

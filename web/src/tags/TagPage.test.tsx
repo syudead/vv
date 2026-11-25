@@ -246,4 +246,18 @@ describe("TagPage 動画", () => {
       "sort=addedDesc&limit=6&tag=2",
     ]);
   });
+
+  it("tags イベントでは件数が同じでも動画を読み直し、消えた動画を外す", async () => {
+    server.videos = [video(7, { title: "First" }), video(8, { title: "Fileless" })];
+    await openTag(2);
+    await screen.findByRole("link", { name: "Fileless" });
+    server.videos = [video(7, { title: "First" })];
+
+    await emitServerEvent("tags");
+
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Fileless" })).toBeNull(),
+    );
+    expect(server.videoRequests).toHaveLength(2);
+  });
 });

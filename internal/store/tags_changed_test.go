@@ -85,7 +85,7 @@ func TestTagWritesPublishTagsChangedAfterCommit(t *testing.T) {
 	}
 }
 
-// Deleting or merging away a fileless video changes the counts and videos of the tags it had, and only those.
+// Deleting or merging away a fileless video changes the videos of the tags it had, and only those.
 func TestVirtualVideoRemovalPublishesTagsChangedWhenTagged(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
