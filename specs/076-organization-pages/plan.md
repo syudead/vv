@@ -61,8 +61,8 @@ and [web/registry/rules/patterns.md](../../web/registry/rules/patterns.md) for
 
 | Rule | Source | Verdict |
 | --- | --- | --- |
-| Every read knows its viewer | ARCHITECTURE.md | The children read and `organizationRole` are owner-only in `api/openapi.yaml`, so the routing test covers them |
-| Remote ids carry an offset | ARCHITECTURE.md, peer-library.md | The children read sits under `/api/organizations/{id}`, so a remote id is forwarded by the existing boundary; `organizationRole` goes to links by name as `personRole` does ([Reads](#reads)) |
+| Every read knows its viewer | ARCHITECTURE.md | The children read is owner-only in `api/openapi.yaml`, so the routing test covers it; `organizationRole` is a guest filter that `Audience.CheckVideoQuery` refuses, so a handler test covers it as it covers `personRole` |
+| Remote ids carry an offset | ARCHITECTURE.md, peer-library.md | The children read sits under `/api/organizations/{id}`, so a remote id is forwarded by the existing boundary once its `OrganizationList` answer has a rewrite; `organizationRole` goes wherever the organization filter goes, as `personRole` does ([Reads](#reads)) |
 | Pages never call `fetch` | ARCHITECTURE.md, Web layer | `web/src/api/credits.ts` and `web/src/api/useVideos.ts` are the only callers of the new reads |
 | Generated files are not hand-edited | AGENTS.md | `api/openapi.yaml` changes, then `task generate` |
 | Complexity 25 and no copies | AGENTS.md | The organization page, edit page and card list reuse the person screens' pieces ([Screens](#screens), [Shared pieces](#shared-pieces)) instead of copying them |
@@ -77,11 +77,12 @@ Two owner-only reads are added
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
-| `GET /api/organizations/{id}/children` returns the organization's direct children as an `OrganizationList`, ordered by name, unpaged | A `parent` filter on `GET /api/organizations` | That list merges every node's organizations by name, so a filter by one node's id would need translating per link; a path under `{id}` is forwarded for a remote id with no change |
+| `GET /api/organizations/{id}/children` returns the organization's direct children as an `OrganizationList`, ordered by name, unpaged | A `parent` filter on `GET /api/organizations` | That list merges every node's organizations by name, so a filter by one node's id would need translating per link; a path under `{id}` is forwarded for a remote id by the existing boundary, given an `OrganizationList` entry in `remoteRewrites` |
 | Same | A `children` field on `Organization` | Every list item and every write answer would carry it, and the card grid never shows it |
 | Same | Paging the children | Children are entered by the owner one parent at a time; the list read already returns every match when unpaged |
 | Children are read from the node that holds the id, as the parent is | Merging children across nodes by name | A parent is a per-node link; a merged answer would show children whose parent the other node does not record |
-| `organizationRole` (`maker`, `label`) on `GET /api/videos` narrows `organization` to one role, with the same rules as `personRole`: it requires `organization` or `organizationName`, and goes to links by name | Filtering the page's videos in the browser | Totals and paging must stay the server's, as the person page's shelves do |
+| A forwarded children answer rewrites each item as a forwarded `Organization` is rewritten: the same-named local id, else the offset form | Keeping every child's offset id | peer-library.md joins organizations by name on every screen, and the forwarded parent already takes that id; without an `OrganizationList` rewrite the boundary does not forward the operation at all |
+| `organizationRole` (`maker`, `label`) on `GET /api/videos` narrows `organization` to one role, with the same rules as `personRole`: it requires `organization` or `organizationName`, and goes to the links with the organization filter: by name for a local organization, by id to its own link for a remote one | Filtering the page's videos in the browser | Totals and paging must stay the server's, as the person page's shelves do |
 | Same | A shelf-only endpoint under `/api/organizations/{id}/videos` | The library list already applies the audience, the order and the peer join |
 
 ## Screens
@@ -99,6 +100,7 @@ Two owner-only reads are added
 | `/organizations/:id/edit` is a `FormPage` outside the shell that edits the names list, external IDs, profile and parent and saves one `PATCH` of the changed properties | Keeping the details dialog | Requirement 8; the person edit page already has the band, the discard check and the return |
 | A `404 organization_not_found` without a `field` (the organization itself is missing, as `isCreditGone` decides) turns the page and the edit page into a gone state with a link to `/organizations`; the same answer with `field: parentId` stays on the edit page under the parent field | Redirecting to the list | The person page settled the gone state; a redirect hides why the page left |
 | Same | Treating every `organization_not_found` as gone | A parent deleted while the edit page is open answers it with `field: parentId`, and the owner can pick another parent and save |
+| A forwarded edit whose parent the peer lacks (`peerOrganizationID`) answers `404 organization_not_found` with `field: parentId`, as `updateOrganization` documents | Leaving that answer without a `field` | Today it has none, so picking a parent only this node has while editing a remote organization would turn the edit page into the gone state |
 | The video page's organization name links to `/organizations/:id` | Keeping the filtered library link | Requirement 9; the page's `Show in library` is one press away |
 
 The layout, the card, the states and the widths are decided in `ui-design.md`.
@@ -161,7 +163,8 @@ flowchart LR
 ### Read an organization's children and filter videos by organization role
 
 **Scope**: `GET /api/organizations/{id}/children` and `organizationRole` on
-`GET /api/videos`, with the peer list parameter
+`GET /api/videos`, with the peer list parameter and the `OrganizationList`
+rewrite of a forwarded answer
 ([contracts/organization-reads.md](contracts/organization-reads.md)); the
 `web/src/api/` functions for both; the reads in library-ui.md.
 
@@ -170,8 +173,10 @@ flowchart LR
 **Acceptance**: Store tests show the children of a parent in name order and
 none for a leaf, and videos narrowed to `maker` or `label`; handler tests show
 `400` for `organizationRole` without `organization` or with an unknown role,
-and `404 organization_not_found` for a missing parent; the routing test covers
-the new operation as owner-only; `task generate-check` passes.
+`400 guest_filter_not_allowed` for a guest, `404 organization_not_found` for a
+missing parent, and a remote parent's children forwarded with the joined ids;
+the routing test covers the new operation as owner-only;
+`task generate-check` passes.
 
 ### Show each organization on a page of its own
 
@@ -207,7 +212,8 @@ actions.
 
 **Scope**: `/organizations/:id/edit` on `FormPage` with the names list,
 external IDs, profile and parent, one `PATCH` of the changed properties, the
-discard check and the return to the page; the helpers move out of
+discard check and the return to the page; `field: parentId` on the `404` of a
+forwarded edit whose parent the peer lacks; the helpers move out of
 `CreditDetailsDialog`; organizations.md updated ([Screens](#screens),
 [Shared pieces](#shared-pieces)).
 
@@ -216,8 +222,9 @@ discard check and the return to the page; the helpers move out of
 **Acceptance**: Component tests show a save sending only the changed
 properties and returning to the page, `Cancel` with changes asking before it
 leaves, a parent cycle answer and a missing parent (`404` with
-`field: parentId`) shown at the parent field, and the gone state;
-the person edit page tests still pass. A visual review of the edit page.
+`field: parentId`) shown at the parent field, and the gone state; a handler
+test shows a forwarded edit with a parent the peer lacks answering `404` with
+`field: parentId`; the person edit page tests still pass. A visual review of the edit page.
 
 ### Replace the organizations table with a grid of logo cards
 

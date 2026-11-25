@@ -16,13 +16,14 @@ Lists the organizations whose parent is `{id}`, one level down.
 the name sort key then id, `total` and `totalAll` equal to the item count, no
 `nextCursor`. An organization without children answers an empty list.
 
-| Status | `code` | When |
+| Status | `code`, `reason` | When |
 | --- | --- | --- |
-| 404 | `organization_not_found` | No organization has `{id}` |
+| 404 | `not_found`, `organization_not_found`, no `field` | No organization has `{id}` |
 | As every owner-only operation | — | The viewer is a guest; the operation is not added to the guest routes in `internal/httpapi/auth.go` |
 
-A remote id is forwarded to its link by the existing boundary, and the answer
-names that link's children with remote ids
+A remote id is forwarded to its link by the existing boundary. Its
+`OrganizationList` answer is rewritten item by item as a forwarded
+`Organization` is: a child takes the same-named local id, else the offset form
 ([peer-library.md](../../../docs/design-docs/peer-library.md)).
 
 ## `GET /api/videos`: `organizationRole`
@@ -38,8 +39,9 @@ names that link's children with remote ids
 | 400 | `invalid_request` | `organizationRole` without `organization` or `organizationName`, or an unknown role |
 | 400 | `invalid_request`, reason `guest_filter_not_allowed` | The viewer is a guest |
 
-On a paired node the parameter goes to each link with the organization's name,
-as `personRole` goes with `personName`.
+On a paired node the parameter goes wherever the organization filter goes, as
+`personRole` does: to each link with `organizationName` for a local
+organization, and with `organization` to its own link only for a remote one.
 
 ## Client use
 
