@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useLocation } from "react-router";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
@@ -39,6 +40,8 @@ function TagCardGrid({
       rowEstimate: ROW_ESTIMATE,
       gap: GAP,
     });
+  const location = useLocation();
+  const backTo = `${location.pathname}${location.search}`;
   const items = virtualizer.getVirtualItems();
   const lastDrawn = items.at(-1)?.index ?? -1;
   // Every new page is checked too: one read under other criteria can bring a cursor with the same rows drawn.
@@ -73,7 +76,7 @@ function TagCardGrid({
           }}
         >
           {tags.slice(item.index * columns, (item.index + 1) * columns).map((tag) => (
-            <TagCard key={tag.id} tag={tag} onOpen={onOpen} />
+            <TagCard key={tag.id} tag={tag} backTo={backTo} onOpen={onOpen} />
           ))}
         </div>
       ))}

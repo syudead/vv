@@ -1,10 +1,9 @@
 import { useEffect, useRef } from "react";
 
 import type { UiText } from "../i18n";
-import { isComposingKeyEvent } from "../lib/ime";
 import type { NameRules } from "./NameCommand";
 import { Input } from "./shadcn/input";
-import { useTagNameField, type TagFieldError } from "./nameField";
+import { nameInputProps, useTagNameField, type TagFieldError } from "./nameField";
 
 /** Keep the rename input open while saving; distinguish inline validation from alert-level failures. */
 export default function RowNameInput({
@@ -57,20 +56,7 @@ export default function RowNameInput({
     <>
       <Input
         ref={inputRef}
-        value={field.value}
-        onChange={(event) => field.setValue(event.target.value)}
-        onPaste={field.onPaste}
-        onBeforeInput={field.onBeforeInput}
-        onKeyDown={(event) => {
-          if (isComposingKeyEvent(event)) return;
-          if (event.key === "Enter") {
-            event.preventDefault();
-            submit();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            cancel();
-          }
-        }}
+        {...nameInputProps(field, submit, cancel)}
         aria-label={label}
         aria-describedby={
           field.reason !== null ? reasonId : error !== null ? errorId : undefined

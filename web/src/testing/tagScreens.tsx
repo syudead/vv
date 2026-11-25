@@ -21,6 +21,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import RejectedNamesPage from "../tags/RejectedNamesPage";
 import TagKindsPage from "../tags/TagKindsPage";
+import TagPage from "../tags/TagPage";
 import TagsPage from "../tags/TagsPage";
 
 export function jsonResponse(body: unknown, status = 200): Response {
@@ -158,6 +159,11 @@ export const server = {
   tagKindGets: 0,
   failTagKindGets: false,
   failNextKindDelete: false,
+  /** Ids read with getTag, in order. */
+  tagGets: [] as number[],
+  /** Synonym operations the tag page sent: promote, move or detach. */
+  synonymOps: [] as { op: string; id: number; name: string; targetId?: number }[],
+  videoRequests: [] as URLSearchParams[],
 };
 
 /** Deleting a kind preserves its tags without a kind; unrelated routes return undefined. */
@@ -273,6 +279,73 @@ function kindBatch(body: { action: string; ids: number[]; kindId?: number }): Re
     }
   }
   return jsonResponse({ appliedIds, notFoundIds, notApplicableIds });
+}
+
+function notFound(): Response {
+  return jsonResponse({ code: "tag_not_found", message: "Tag not found." }, 404);
+}
+
+/** Make one synonym of source canonical, move it to target, or detach it into a new tag, as the server does. */
+function synonymOp(
+  op: string,
+  source: Tag,
+  body: { name: string; targetId?: number },
+): Response {
+  if (!source.synonyms.includes(body.name)) {
+    return jsonResponse(
+      { code: "tag_synonym_not_found", message: "server-side message" },
+      409,
+    );
+  }
+  const rest = source.synonyms.filter((name) => name !== body.name);
+  if (op === "promote") {
+    source.synonyms = [...rest, source.name];
+    source.name = body.name;
+    source.tentative = false;
+    return jsonResponse(source);
+  }
+  if (op === "move") {
+    const target = server.tags.find((item) => item.id === body.targetId);
+    if (target === undefined) return notFound();
+    source.synonyms = rest;
+    target.synonyms = [...target.synonyms, body.name];
+    target.tentative = false;
+    return jsonResponse({ source, target });
+  }
+  source.synonyms = rest;
+  const created = tag({ id: server.nextId, name: body.name });
+  server.nextId += 1;
+  server.tags.push(created);
+  return jsonResponse({ source, created }, 201);
+}
+
+/** The tag page's own reads and writes: getTag, the synonym operations and its row of videos. */
+function tagPageRoute(
+  url: URL,
+  method: string,
+  init?: RequestInit,
+): Response | undefined {
+  const path = url.pathname;
+  if (path === "/api/videos" && method === "GET") {
+    server.videoRequests.push(url.searchParams);
+    return jsonResponse({ items: [], total: 0 });
+  }
+  const read = /^\/api\/tags\/(\d+)$/.exec(path);
+  if (read && method === "GET") {
+    const id = Number(read[1]);
+    server.tagGets.push(id);
+    const found = server.tags.find((item) => item.id === id);
+    return found === undefined ? notFound() : jsonResponse(structuredClone(found));
+  }
+  const op = /^\/api\/tags\/(\d+)\/synonyms\/(promote|move|detach)$/.exec(path);
+  if (op && method === "POST") {
+    const id = Number(op[1]);
+    const body = JSON.parse(String(init?.body)) as { name: string; targetId?: number };
+    server.synonymOps.push({ op: op[2]!, id, ...body });
+    const source = server.tags.find((item) => item.id === id);
+    return source === undefined ? notFound() : synonymOp(op[2]!, source, body);
+  }
+  return undefined;
 }
 
 /** Capture rejected names on request, then gate delivery to simulate a stale pre-removal refresh. */
@@ -726,6 +799,9 @@ export function install() {
       });
     }
 
+    const tagPageResponse = tagPageRoute(url, method, init);
+    if (tagPageResponse !== undefined) return Promise.resolve(tagPageResponse);
+
     throw new Error(`unexpected request: ${method} ${path}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -762,11 +838,14 @@ export function renderPage({
   url = "/tags",
   topBar = false,
   strict = false,
+  tagPage = false,
 }: {
   url?: string;
   topBar?: boolean;
   /** Replay effects as development builds do. */
   strict?: boolean;
+  /** Draw the real tag page at `/tags/:id` instead of a placeholder that sends no requests. */
+  tagPage?: boolean;
 } = {}) {
   const Mode = strict ? StrictMode : Fragment;
   return render(
@@ -783,7 +862,7 @@ export function renderPage({
               <Route path="/tags" element={<TagsPage />} />
               <Route path="/tags/kinds" element={<TagKindsPage />} />
               <Route path="/tags/rejected" element={<RejectedNamesPage />} />
-              <Route path="/tags/:id" element={<p>Tag page</p>} />
+              <Route path="/tags/:id" element={tagPage ? <TagPage /> : <p>Tag page</p>} />
             </Routes>
             <LocationProbe />
           </ToastProvider>
@@ -818,6 +897,9 @@ export function setUpTagsPageServer() {
     server.tagKindGets = 0;
     server.failTagKindGets = false;
     server.failNextKindDelete = false;
+    server.tagGets = [];
+    server.synonymOps = [];
+    server.videoRequests = [];
     server.tags = [
       tag({ id: 1, name: "旅行" }),
       tag({ id: 2, name: "Anime", synonyms: ["アニメ"], videoCount: 3 }),

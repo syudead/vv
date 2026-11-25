@@ -95,6 +95,25 @@ flowchart LR
 | An event during the list's own write, or while a first page loads, is checked once that settles | Own writes are applied to the shown cards first, so the later check matches them; a timer would hide other writes or report the list's own |
 | A check whose criteria were replaced by a newer read is dropped, and a new first page clears the notice | The newer read already shows the current rows |
 
+## The tag page
+
+`/tags/:id` ([`TagPage.tsx`](../../web/src/tags/TagPage.tsx)) is a
+`RecordEditorPage` for one tag: the title with `Rename`, `Confirm` and
+`Reject…` on a tentative tag or `Delete…` on a confirmed one, the names, the
+kind, the merge into another tag and a row of up to six of its videos. Every
+control acts at once; there is no save.
+
+| Rule | Why |
+| --- | --- |
+| The page reads its tag with `getTag` on open, not from the list's cards | It opens from its URL without the list |
+| A `tags` event reads the tag again in place; during the page's own write, once the write settles | One tag's page has no positions to keep, so updating it moves nothing |
+| One write runs at a time; the pressed control shows a spinner and the others are `aria-disabled` | Two writes from one stale page could undo each other |
+| `tag_not_found`, `tag_synonym_not_found` or `tag_not_tentative` shows the reason under the header and reads the tag again; a tag that is gone shows `This tag no longer exists` instead of the page | The owner acted on a tag that changed elsewhere, and retrying would apply to what they no longer see |
+| Merging, rejecting or deleting returns to the list the card was opened from, with its criteria; Back does too | The tag is gone, and the write dropped the list's snapshot, so the list reads its criteria again from the top |
+| `Move to another tag…` offers only tags this node holds | A move names its target by id, and a remote id answers 404 |
+| A detached name's new tag is linked from the notice under the header | The new tag has no videos and would otherwise be found only by searching the list |
+| Adding a name that is another tag asks before merging that tag into this one | The add would remove the other tag from the list |
+
 ## Reading one tag and synonym operations
 
 The tag page reads one tag (`getTag`) and changes one synonym at a time with

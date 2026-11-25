@@ -23,13 +23,23 @@ function detailOf(tag: Tag): string {
  * One tag as a record card. A tag only the paired VVMDM holds has no page here, so its card opens the
  * library filtered by it instead.
  */
-function TagCard({ tag, onOpen }: { tag: Tag; onOpen: (tag: Tag) => void }) {
+function TagCard({
+  tag,
+  backTo,
+  onOpen,
+}: {
+  tag: Tag;
+  /** The list's URL with its criteria, so the tag page's back link returns to it. */
+  backTo: string;
+  onOpen: (tag: Tag) => void;
+}) {
   const remote = isRemoteId(tag.id);
   return (
     <RecordCard
       link={
         <Link
           to={remote ? libraryFilterPath(TAG_PARAM, tag.id) : tagPagePath(tag.id)}
+          state={remote ? undefined : { from: backTo }}
           data-tag-id={tag.id}
           onClick={() => onOpen(tag)}
         />
