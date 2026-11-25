@@ -66,6 +66,7 @@ function dialog(): ReactElement {
         sources={[source]}
         onClose={() => {}}
         onMerged={() => {}}
+        track={(write) => write}
         onStale={() => {}}
       />
     </TooltipProvider>
@@ -243,6 +244,7 @@ describe("MergeTagDialog の数え直し", () => {
           fromSelection
           onClose={() => {}}
           onMerged={() => {}}
+          track={(write) => write}
           onStale={() => {}}
         />
       </TooltipProvider>,
@@ -284,6 +286,7 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
           fromSelection
           onClose={() => {}}
           onMerged={() => {}}
+          track={(write) => write}
           onStale={() => {}}
         />
       </TooltipProvider>

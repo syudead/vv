@@ -156,6 +156,11 @@ describe("TagsPage キーボード", () => {
     const name = (row: number) => `Tag${String(row + 1).padStart(2, "0")}`;
 
     card(name(last)).focus();
+    // The card's selection check comes after its link.
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: `Select "${name(last)}"` }),
+    );
     await user.tab();
     expect(document.activeElement).toBe(card(name(last + 1)));
   });

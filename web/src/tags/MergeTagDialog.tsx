@@ -26,6 +26,7 @@ export default function MergeTagDialog({
   onClose,
   onMerged,
   onStale,
+  track,
 }: {
   /** Freeze nonempty sources when opening. */
   sources: readonly Tag[];
@@ -39,6 +40,8 @@ export default function MergeTagDialog({
     target: Tag,
   ) => void;
   onStale: () => void;
+  /** Runs the merge as one of the caller's own writes, so a change check can wait for it. */
+  track: <T>(write: Promise<T>) => Promise<T>;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
   const mergeButton = useRef<HTMLButtonElement>(null);
@@ -157,7 +160,7 @@ export default function MergeTagDialog({
     setError(null);
     setPending(true);
     try {
-      const { tag: merged, notFoundIds } = await mergeTag(target.id, sourceIds);
+      const { tag: merged, notFoundIds } = await track(mergeTag(target.id, sourceIds));
       // All-missing sources performed no merge; close and refresh as for a missing target.
       if (notFoundIds.length >= sourceIds.length) {
         onStale();

@@ -1935,17 +1935,23 @@ export const en = {
       select: (name: string) => `Select "${name}"`,
       actions: "Actions",
     },
-    selectAllLoaded: (count: number) =>
-      selectPlural(count, {
-        one: `Select the ${formatNumber(count)} loaded tag`,
-        other: `Select all ${formatNumber(count)} loaded tags`,
-      }),
-    selectAllOverLimit: (limit: number) =>
-      `Too many tags are loaded to select them all at once (limit ${formatNumber(limit)}). Narrow the list with search or a filter.`,
-    clearSelection: "Clear selection",
     selection: {
       region: "Selected tags",
       count: (count: number) => `${tagCount(count)} selected`,
+      selectAll: "Select all",
+      allLoaded: (count: number) =>
+        selectPlural(count, {
+          one: `The ${formatNumber(count)} loaded tag`,
+          other: `All ${formatNumber(count)} loaded tags`,
+        }),
+      allMatching: (count: number) =>
+        selectPlural(count, {
+          one: `The ${formatNumber(count)} matching tag`,
+          other: `All ${formatNumber(count)} matching tags`,
+        }),
+      matchingOverLimit: (limit: number) =>
+        `Too many tags match to select them all at once (limit ${formatNumber(limit)}). Narrow the list with search or a filter.`,
+      matchingFailed: (reason: string) => `Couldn't load the matching tags: ${reason}`,
       confirm: "Confirm",
       more: "More",
       clear: "Clear selection",
