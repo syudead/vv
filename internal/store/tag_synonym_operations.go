@@ -63,7 +63,7 @@ func (s *TagStore) DetachSynonym(ctx context.Context, sourceID int64, name strin
 }
 
 // changeSynonym checks that name is a synonym of sourceID, applies change, which answers the other tag it changed,
-// and commits as a match change with both tags read in the transaction.
+// and commits as a match change that also changes the tag list, with both tags read in the transaction.
 func (s *TagStore) changeSynonym(
 	ctx context.Context, verb string, sourceID int64, name string, change func(tx *sql.Tx, normalized string) (int64, error),
 ) (source, other domain.Tag, err error) {
@@ -90,7 +90,7 @@ func (s *TagStore) changeSynonym(
 	if other, err = tagByID(ctx, tx, otherID); err != nil {
 		return domain.Tag{}, domain.Tag{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.Tag{}, domain.Tag{}, fmt.Errorf("cannot %s the synonym: %w", verb, err)
 	}
 	return source, other, nil

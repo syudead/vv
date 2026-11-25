@@ -43,7 +43,7 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, err
 	}
 
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot create the tag: %w", err)
 	}
 	return tag, nil
@@ -69,7 +69,7 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot rename the tag: %w", err)
 	}
 	return tag, nil
@@ -117,7 +117,7 @@ func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
 		return fmt.Errorf("cannot delete the tag (id=%d): %w", id, err)
 	}
 
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return fmt.Errorf("cannot delete the tag: %w", err)
 	}
 	return nil
@@ -135,7 +135,7 @@ func (s *TagStore) MergeTags(ctx context.Context, targetID int64, sourceIDs []in
 	if err != nil {
 		return domain.TagMergeOutcome{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.TagMergeOutcome{}, fmt.Errorf("cannot merge the tags: %w", err)
 	}
 	return outcome, nil

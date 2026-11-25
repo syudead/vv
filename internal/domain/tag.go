@@ -174,3 +174,10 @@ func SortTagSummaryItems(items []TagSummaryItem) {
 		return compareTagRefs(a.Tag, b.Tag)
 	})
 }
+
+// TagsChanged is published after a committed write that can change the rows of the tag list: names, synonyms, kinds,
+// tentative state, creation, deletion, merges and video attachments. Folder-derived count changes from a scan do not
+// publish it.
+type TagsChanged struct{}
+
+func (TagsChanged) event() {}

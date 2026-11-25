@@ -204,8 +204,9 @@ func TestFolderTagsFollowAPromotedMovedOrDetachedName(t *testing.T) {
 	}
 }
 
-// The peer's promote swaps a synonym it holds and otherwise renames, as the nodes may hold different synonyms.
-func TestApplyTagByNamePromoteSwapsOrRenames(t *testing.T) {
+// The peer's promote swaps a synonym it holds and otherwise adds the new name, keeping the old one as a synonym as
+// the local promote does, since the nodes may hold different synonyms; a promote already applied changes nothing.
+func TestApplyTagByNamePromoteKeepsTheOldName(t *testing.T) {
 	ctx := context.Background()
 	promote := func(name, newName string) domain.VocabularyChange {
 		return domain.VocabularyChange{Kind: domain.VocabularyTag, Action: domain.VocabularyPromote, Name: name, NewName: newName}
@@ -218,12 +219,18 @@ func TestApplyTagByNamePromoteSwapsOrRenames(t *testing.T) {
 	if want := map[string]bool{"アニメ": true, "Anime": false}; !reflect.DeepEqual(tagNamesOf(t, f.db, f.anime), want) {
 		t.Errorf("after the swap: names = %v, want %v", tagNamesOf(t, f.db, f.anime), want)
 	}
+	if outcome, err := f.db.Tags().ApplyTagByName(ctx, promote("Anime", "アニメ")); err != nil || outcome.Changed {
+		t.Errorf("repeated promote: outcome = %+v, err = %v, want no change", outcome, err)
+	}
 
 	if outcome, err := f.db.Tags().ApplyTagByName(ctx, promote("Cartoon", "まんが")); err != nil || !outcome.Changed {
-		t.Fatalf("rename: outcome = %+v, err = %v", outcome, err)
+		t.Fatalf("new name: outcome = %+v, err = %v", outcome, err)
 	}
-	if want := map[string]bool{"まんが": true}; !reflect.DeepEqual(tagNamesOf(t, f.db, f.cartoon), want) {
-		t.Errorf("after the rename: names = %v, want %v", tagNamesOf(t, f.db, f.cartoon), want)
+	if want := map[string]bool{"まんが": true, "Cartoon": false}; !reflect.DeepEqual(tagNamesOf(t, f.db, f.cartoon), want) {
+		t.Errorf("after the new name: names = %v, want %v", tagNamesOf(t, f.db, f.cartoon), want)
+	}
+	if f.tentative(t, f.cartoon) {
+		t.Error("after the new name: the tag stays tentative, want confirmed")
 	}
 
 	if outcome, err := f.db.Tags().ApplyTagByName(ctx, promote("Drama", "ドラマ")); err != nil || outcome.Changed {

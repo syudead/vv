@@ -30,6 +30,8 @@ export interface ServerEventHandlers {
   mediaFolders?: () => void;
   /** Owner streams only: the pause switch, the running work or a remaining count changed. */
   background?: () => void;
+  /** Owner streams only: the rows of the tag list may have changed; re-read the loaded rows. */
+  tags?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -111,6 +113,7 @@ function connect(): void {
   current.addEventListener("onboarding", () => dispatch("onboarding"));
   current.addEventListener("assistant", () => dispatch("assistant"));
   current.addEventListener("background", () => dispatch("background"));
+  current.addEventListener("tags", () => dispatch("tags"));
   current.addEventListener("mediaFolders", () => {
     // A saved list may hold a switched-off folder's videos, and no open screen reloads it.
     clearListSnapshot();
