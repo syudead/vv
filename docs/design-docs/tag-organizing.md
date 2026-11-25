@@ -59,6 +59,25 @@ elsewhere. A `tags` event re-reads neither: the counts follow the list, as the
 cards do. The cards are drawn a row at a time near the viewport
 ([library-ui.md](library-ui.md#no-virtual-scrolling)).
 
+### Selection and bulk actions
+
+Cards are selected as on the library: a check, Shift for a range from the
+previously changed card, a press on a card while anything is selected, and
+Escape to clear. There are no drawn boxes, because the cards fill the grid.
+`Select all` takes the loaded cards or every card the criteria match; the
+second reads the rest of the list in pages of 200 first. The selection bar
+merges the selection into one tag, sets or clears its kind, confirms it, and
+rejects or deletes it after a dialog that counts the affected tags and videos
+([`useTagBulkActions.tsx`](../../web/src/tags/useTagBulkActions.tsx)).
+
+| Rule | Why |
+| --- | --- |
+| A selection over 20,000 (`MaxTagBatch`) disables every action with the limit's reason, and `Select all` offers no matching set over it | Batch requests are atomic and refuse more; stopping before the request keeps the owner's selection instead of failing it |
+| An action that cannot apply to the selection, such as `Confirm` with no tentative tag, stays in place disabled with its reason | The bar does not move as the selection changes |
+| A result is applied to the shown cards, and only the tags it changed leave the selection | The cards stay where the owner is working; the rest of the selection is what still needs the action |
+| Ids in `notFoundIds` were merged or deleted elsewhere: the list says so and reads again from the top, keeping the selected tags that are still loaded | The shown cards are stale, and guessing which of them moved would show a wrong list |
+| Each action runs as one of the list's own writes ([change notice](#the-change-notice)) | Its own `tags` event must not report the change as made elsewhere |
+
 ### Back from a tag page
 
 Opening a card keeps the list in memory: the loaded cards, the cursor, the

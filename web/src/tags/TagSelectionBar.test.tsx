@@ -17,21 +17,29 @@ function renderBar(
     kinds = [],
     sharedKind,
     onSetKind = vi.fn(),
+    hasTentative = true,
   }: {
     kinds?: TagKind[] | null;
     sharedKind?: string;
     onSetKind?: (choice: KindChoice) => void;
+    hasTentative?: boolean;
   } = {},
 ) {
   render(
     <TooltipProvider>
       <TagSelectionBar
         count={2}
-        hasTentative
+        hasTentative={hasTentative}
         hasConfirmed
-        overLimit={false}
-        busy={busy}
-        confirming={busy}
+        pending={busy ? "confirm" : null}
+        selectAll={{
+          loaded: 2,
+          matching: 2,
+          matchingReason: undefined,
+          pending: false,
+          onLoaded: vi.fn(),
+          onMatching: vi.fn(),
+        }}
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onDelete={vi.fn()}
@@ -39,7 +47,6 @@ function renderBar(
         onClear={onClear}
         kinds={kinds ?? undefined}
         sharedKind={sharedKind}
-        settingKind={false}
         onSetKind={onSetKind}
       />
     </TooltipProvider>,
@@ -62,14 +69,29 @@ describe("TagSelectionBar", () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  it("「Set kind…」は「Confirm」と「Merge into one tag…」の間に置く", () => {
+  it("操作は Select all、Merge into one tag…、Set kind…、Confirm、More の順に並ぶ", () => {
     renderBar(false);
     const names = screen.getAllByRole("button").map((button) => button.textContent);
-    const confirm = names.indexOf(t.tags.selection.confirm);
-    const setKind = names.indexOf(t.tags.selection.setKind);
-    const merge = names.indexOf(t.tags.selection.mergeInto);
-    expect(confirm).toBeLessThan(setKind);
-    expect(setKind).toBeLessThan(merge);
+    expect(names.slice(1)).toEqual([
+      t.tags.selection.selectAll,
+      t.tags.selection.mergeInto,
+      t.tags.selection.setKind,
+      t.tags.selection.confirm,
+      t.tags.selection.more,
+    ]);
+  });
+
+  it("仮のタグを選んでいなければ Confirm と Reject… は理由を添えて押せない", async () => {
+    const user = userEvent.setup();
+    renderBar(false, vi.fn(), { hasTentative: false });
+    const confirm = screen.getByRole("button", { name: t.tags.selection.confirm });
+    expect(confirm).toHaveProperty("disabled", true);
+    expect(confirm.getAttribute("title")).toBe(t.tags.selection.noTentative);
+    await user.click(screen.getByRole("button", { name: t.tags.selection.more }));
+    const reject = await screen.findByRole("menuitem", { name: t.tags.selection.reject });
+    expect(reject.getAttribute("aria-disabled")).toBe("true");
+    const remove = screen.getByRole("menuitem", { name: t.tags.selection.delete });
+    expect(remove.hasAttribute("aria-disabled")).toBe(false);
   });
 
   it("メニューは種類・区切り線・No kind の 1 つの組で、みなが持つ種類に印を付け、選ぶと渡す", async () => {

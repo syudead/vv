@@ -8,34 +8,18 @@ import {
 } from "react";
 
 import { subscribeServerEvents } from "../api/serverEvents";
-import { maxTagPageLimit, type Tag } from "../api/tags";
-import { fetchTagPage } from "./useTagPage";
+import type { Tag } from "../api/tags";
+import { readTagPages, type TagPagesRead } from "./useTagPage";
 import type { TagPageRows } from "./tagPageRows";
 
-interface Reread {
-  rows: Tag[];
-  total: number;
-  totalAll: number;
-}
-
-/** Read the first count rows again with the shown criteria, in the server's largest pages. */
-async function reread(
-  shown: TagPageRows,
-  search: string,
-  signal: AbortSignal,
-): Promise<Reread> {
-  const count = shown.rows.length;
-  const rows: Tag[] = [];
-  let cursor: string | undefined;
-  for (;;) {
-    const limit = Math.min(maxTagPageLimit, Math.max(1, count - rows.length));
-    const page = await fetchTagPage(shown.query, search, cursor, signal, limit);
-    rows.push(...page.items);
-    cursor = page.nextCursor;
-    if (cursor === undefined || rows.length >= count) {
-      return { rows: rows.slice(0, count), total: page.total, totalAll: page.totalAll };
-    }
-  }
+/** Read the first count rows again with the shown criteria. */
+function reread(shown: TagPageRows, search: string, signal: AbortSignal) {
+  return readTagPages(
+    shown.query,
+    search,
+    { cursor: undefined, wanted: shown.rows.length },
+    signal,
+  );
 }
 
 function sameTag(a: Tag, b: Tag): boolean {
@@ -51,7 +35,7 @@ function sameTag(a: Tag, b: Tag): boolean {
 }
 
 /** Whether a card or a total the list shows differs from what the server now answers. */
-export function differsFromShown(shown: TagPageRows, fresh: Reread): boolean {
+export function differsFromShown(shown: TagPageRows, fresh: TagPagesRead): boolean {
   if (shown.total !== fresh.total || shown.totalAll !== fresh.totalAll) return true;
   if (shown.rows.length !== fresh.rows.length) return true;
   return shown.rows.some((tag, index) => !sameTag(tag, fresh.rows[index]!));

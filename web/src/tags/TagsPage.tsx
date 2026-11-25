@@ -1,5 +1,12 @@
 import { Plus, Shapes } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate } from "react-router";
 
 import {
@@ -29,7 +36,7 @@ import { Button } from "../ui/shadcn/button";
 import { useToast } from "../ui/Toast";
 import type { HistoryMode } from "../videoList/listCriteria";
 import NewTagDialog from "./NewTagDialog";
-import { tagPagePath } from "./TagCard";
+import { type TagCardSelection, tagPagePath } from "./TagCard";
 import { TagCards } from "./TagCardGrid";
 import TagListEmptyState from "./TagListEmptyState";
 import { TagKindFilterGroup, TagTallyStrip } from "./TagListFilters";
@@ -42,8 +49,12 @@ import {
 import { useTagKinds } from "./useTagKinds";
 import { kindNameOf, useTagKindFilter } from "./useTagKindFilter";
 import { useTagListChanges } from "./useTagListChanges";
+import { useTagBulkActions } from "./useTagBulkActions";
 import { useTagPage } from "./useTagPage";
+import { useTagSelection } from "./useTagSelection";
 import { useTagTallies } from "./useTagTallies";
+
+const noTags: readonly Tag[] = [];
 
 const allTags = {
   query: "",
@@ -104,7 +115,9 @@ export default function TagsPage() {
   }, [reloadTallies, reloadKinds]);
   const paged = useTagPage(onFirstPage);
   const { page, loadError, firstPending, more, appliedSearch, pageRef } = paged;
-  const { load, reload, loadMore, retryMore, restore } = paged;
+  const { load, reload, loadMore, retryMore, restore, applyLocal } = paged;
+  const selection = useTagSelection(page?.rows ?? noTags);
+  const { clear: clearSelection } = selection;
 
   const searchRef = useRef(appliedSearch);
   useLayoutEffect(() => {
@@ -141,6 +154,7 @@ export default function TagsPage() {
     }
     restoredRef.current = null;
     clearTagListSnapshot();
+    clearSelection();
     void load({
       query: normalizedQuery,
       search: typedRef.current,
@@ -161,6 +175,7 @@ export default function TagsPage() {
     reloadTallies,
     check,
     typedRef,
+    clearSelection,
   ]);
 
   // Cards embed kind refs; re-read them when a kind edit lands after this list loaded, as after Back mid-delete.
@@ -207,10 +222,36 @@ export default function TagsPage() {
     applyCriteria({ query: next }, mode);
   }
 
-  function refresh() {
+  const refresh = useCallback(() => {
     reset();
     void reload();
-  }
+  }, [reset, reload]);
+
+  const afterWrite = useCallback(() => {
+    reloadTallies();
+  }, [reloadTallies]);
+
+  const bulk = useTagBulkActions({
+    page,
+    pageRef,
+    searchRef,
+    selection,
+    kinds: kindList.kinds,
+    applyLocal,
+    refresh,
+    track: changes.track,
+    afterWrite,
+  });
+
+  const selectionMode = selection.selected.size > 0;
+  const cardSelection = useMemo<TagCardSelection>(
+    () => ({
+      selectionMode,
+      onSelectedChange: selection.change,
+      onToggle: selection.toggle,
+    }),
+    [selectionMode, selection.change, selection.toggle],
+  );
 
   function created(tag: Tag) {
     setCreating(false);
@@ -266,6 +307,7 @@ export default function TagsPage() {
           onApply={applyFilter}
         />
       }
+      selectionBar={bulk.bar}
       notice={
         changes.changed && (
           <FloatingNotice
@@ -313,12 +355,15 @@ export default function TagsPage() {
         <TagCards
           tags={page.rows}
           tail={view.tail}
+          selected={selection.selected}
+          selection={cardSelection}
           onOpen={openCard}
           onNearEnd={loadMore}
           onRetryMore={retryMore}
           onReload={refresh}
         />
       )}
+      {bulk.dialogs}
       {creating && (
         <NewTagDialog
           track={changes.track}

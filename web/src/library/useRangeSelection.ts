@@ -10,15 +10,8 @@ import {
 import type { LibraryItem } from "../api/client";
 import { itemsBetween, type LibrarySelection, setItems } from "./selection";
 
-/**
- * Shift with a check or a selection-mode click gives every item from the previous one to this
- * one the same state. Shift is read when the press starts, so card callbacks keep their signature.
- */
-export function useRangeSelection(
-  /** The items as displayed, including pending moves, so a range never reaches hidden items. */
-  displayed: RefObject<readonly LibraryItem[]>,
-  setSelection: Dispatch<SetStateAction<LibrarySelection>>,
-) {
+/** Whether Shift was held when the latest press or key started, so callbacks keep their signature. */
+export function useShiftAtPress(): RefObject<boolean> {
   const shift = useRef(false);
   useEffect(() => {
     const note = (event: PointerEvent | KeyboardEvent) => {
@@ -31,7 +24,19 @@ export function useRangeSelection(
       document.removeEventListener("keydown", note, true);
     };
   }, []);
+  return shift;
+}
 
+/**
+ * Shift with a check or a selection-mode click gives every item from the previous one to this
+ * one the same state.
+ */
+export function useRangeSelection(
+  /** The items as displayed, including pending moves, so a range never reaches hidden items. */
+  displayed: RefObject<readonly LibraryItem[]>,
+  setSelection: Dispatch<SetStateAction<LibrarySelection>>,
+) {
+  const shift = useShiftAtPress();
   const anchor = useRef<string | null>(null);
 
   const select = useCallback(
@@ -50,7 +55,7 @@ export function useRangeSelection(
         range === null ? single(current) : setItems(current, range, selected),
       );
     },
-    [displayed, setSelection],
+    [displayed, setSelection, shift],
   );
   const point = useCallback((key: string | null) => {
     anchor.current = key;

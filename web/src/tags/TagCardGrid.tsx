@@ -9,7 +9,7 @@ import {
 } from "../recordList/TagListNotices";
 import type { MoreState } from "../recordList/usePagedRows";
 import { CARD_ROW_OVERSCAN, useVirtualCardRows } from "../recordList/useVirtualCardRows";
-import TagCard from "./TagCard";
+import TagCard, { type TagCardSelection } from "./TagCard";
 
 /** `gap-3`: between columns, and under each row as its padding. */
 const GAP = 12;
@@ -23,12 +23,16 @@ const ROW_ESTIMATE = 96 + GAP;
 function TagCardGrid({
   tags,
   busy,
+  selected,
+  selection,
   onOpen,
   onNearEnd,
 }: {
   tags: readonly Tag[];
   /** More cards are loading at the end. */
   busy: boolean;
+  selected: ReadonlySet<number>;
+  selection: TagCardSelection;
   onOpen: (tag: Tag) => void;
   onNearEnd: () => void;
 }) {
@@ -73,7 +77,13 @@ function TagCardGrid({
           }}
         >
           {tags.slice(item.index * columns, (item.index + 1) * columns).map((tag) => (
-            <TagCard key={tag.id} tag={tag} onOpen={onOpen} />
+            <TagCard
+              key={tag.id}
+              tag={tag}
+              selected={selected.has(tag.id)}
+              selection={selection}
+              onOpen={onOpen}
+            />
           ))}
         </div>
       ))}
@@ -85,6 +95,8 @@ function TagCardGrid({
 export function TagCards({
   tags,
   tail,
+  selected,
+  selection,
   onOpen,
   onNearEnd,
   onRetryMore,
@@ -92,6 +104,8 @@ export function TagCards({
 }: {
   tags: readonly Tag[];
   tail: MoreState;
+  selected: ReadonlySet<number>;
+  selection: TagCardSelection;
   onOpen: (tag: Tag) => void;
   onNearEnd: () => void;
   onRetryMore: () => void;
@@ -102,6 +116,8 @@ export function TagCards({
       <TagCardGrid
         tags={tags}
         busy={tail.kind === "loading"}
+        selected={selected}
+        selection={selection}
         onOpen={onOpen}
         onNearEnd={onNearEnd}
       />

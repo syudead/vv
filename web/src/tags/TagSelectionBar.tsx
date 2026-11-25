@@ -1,22 +1,87 @@
-import { Ban, Check, Merge, Trash2 } from "lucide-react";
-import { useId, type Ref } from "react";
+import {
+  Ban,
+  Check,
+  ChevronDown,
+  ListChecks,
+  Merge,
+  Ellipsis,
+  Trash2,
+} from "lucide-react";
+import { useId } from "react";
 
 import type { TagKind } from "../api/tagKinds";
 import { maxTagBatch } from "../api/tags";
-import { t } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { SelectionBar } from "../ui/patterns/selection-bar";
 import { Button } from "../ui/shadcn/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
 import { Spinner } from "../ui/shadcn/spinner";
 import TagSetKindMenu, { type KindChoice } from "./TagSetKindMenu";
 
-/** Hide inapplicable batch actions and keep labels visible at every width. */
+/** What `Select all` offers: the loaded cards, or every card the criteria match. */
+export interface TagSelectAll {
+  loaded: number;
+  matching: number;
+  /** Why every matching card cannot be selected, or undefined. */
+  matchingReason: UiText | undefined;
+  /** The rest of the matching cards are loading. */
+  pending: boolean;
+  onLoaded: () => void;
+  onMatching: () => void;
+}
+
+export type TagBulkPending = "confirm" | "kind" | "dialog" | "selectAll" | null;
+
+function SelectAllMenu({ all, disabled }: { all: TagSelectAll; disabled: boolean }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" disabled={disabled}>
+          {all.pending ? (
+            <Spinner aria-hidden="true" />
+          ) : (
+            <ListChecks aria-hidden="true" />
+          )}
+          <span>{t.tags.selection.selectAll}</span>
+          <ChevronDown aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onSelect={all.onLoaded}>
+          {t.tags.selection.allLoaded(all.loaded)}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={all.matchingReason !== undefined}
+          title={all.matchingReason}
+          onSelect={all.onMatching}
+        >
+          {t.tags.selection.allMatching(all.matching)}
+        </DropdownMenuItem>
+        {all.matchingReason !== undefined && (
+          <p className="max-w-menu px-2 py-1.5 text-xs text-muted-foreground">
+            {all.matchingReason}
+          </p>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The bottom bar while tag cards are selected. An action that cannot apply to the selection stays
+ * in place, disabled with its reason, so the bar does not move as the selection changes.
+ */
 export default function TagSelectionBar({
   count,
   hasTentative,
   hasConfirmed,
-  overLimit,
-  busy,
-  confirming,
+  pending,
+  selectAll,
   onConfirm,
   onReject,
   onDelete,
@@ -24,20 +89,13 @@ export default function TagSelectionBar({
   onClear,
   kinds,
   sharedKind,
-  settingKind,
   onSetKind,
-  setKindRef,
-  confirmRef,
-  mergeRef,
-  rejectRef,
-  deleteRef,
 }: {
   count: number;
   hasTentative: boolean;
   hasConfirmed: boolean;
-  overLimit: boolean;
-  busy: boolean;
-  confirming: boolean;
+  pending: TagBulkPending;
+  selectAll: TagSelectAll;
   onConfirm: () => void;
   onReject: () => void;
   onDelete: () => void;
@@ -46,18 +104,19 @@ export default function TagSelectionBar({
   kinds: readonly TagKind[] | undefined;
   /** Shared kind ID or none; undefined for mixed kinds. */
   sharedKind: string | undefined;
-  settingKind: boolean;
   onSetKind: (choice: KindChoice) => void;
-  setKindRef?: Ref<HTMLButtonElement>;
-  confirmRef?: Ref<HTMLButtonElement>;
-  mergeRef?: Ref<HTMLButtonElement>;
-  rejectRef?: Ref<HTMLButtonElement>;
-  deleteRef?: Ref<HTMLButtonElement>;
 }) {
-  const overLimitId = useId();
+  const reasonId = useId();
+  const busy = pending !== null;
+  const overLimit = count > maxTagBatch;
+  const limitReason = overLimit ? t.tags.selection.overLimit(maxTagBatch) : undefined;
   const disabled = busy || overLimit;
-  const reason = overLimit && !busy ? t.tags.selection.overLimit(maxTagBatch) : undefined;
-  const describedBy = reason === undefined ? undefined : overLimitId;
+  const tentativeReason = hasTentative ? undefined : t.tags.selection.noTentative;
+  const confirmedReason = hasConfirmed ? undefined : t.tags.selection.noConfirmed;
+  const shared = {
+    title: limitReason,
+    "aria-describedby": limitReason === undefined ? undefined : reasonId,
+  };
 
   return (
     <div role="region" aria-label={t.tags.selection.region} className="contents">
@@ -66,77 +125,73 @@ export default function TagSelectionBar({
         clearLabel={t.tags.selection.clear}
         clearDisabled={busy}
         onClear={onClear}
-        placement="header"
       >
-        {hasTentative && (
-          <Button
-            ref={confirmRef}
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            title={reason}
-            aria-describedby={describedBy}
-            onClick={onConfirm}
-          >
-            {confirming ? <Spinner aria-hidden="true" /> : <Check aria-hidden="true" />}
-            <span>{t.tags.selection.confirm}</span>
-          </Button>
-        )}
-        <TagSetKindMenu
-          kinds={kinds}
-          checked={sharedKind}
-          disabled={disabled}
-          pending={settingKind}
-          title={reason}
-          describedBy={describedBy}
-          onChoose={onSetKind}
-          buttonRef={setKindRef}
-        />
+        <SelectAllMenu all={selectAll} disabled={busy} />
         <Button
-          ref={mergeRef}
           variant="ghost"
           size="sm"
           disabled={disabled}
-          title={reason}
-          aria-describedby={describedBy}
           onClick={onMerge}
+          {...shared}
         >
           <Merge aria-hidden="true" />
           <span>{t.tags.selection.mergeInto}</span>
         </Button>
-        {hasTentative && (
-          <Button
-            ref={rejectRef}
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            title={reason}
-            aria-describedby={describedBy}
-            onClick={onReject}
-            className="text-destructive"
-          >
-            <Ban aria-hidden="true" />
-            <span>{t.tags.selection.reject}</span>
-          </Button>
-        )}
-        {hasConfirmed && (
-          <Button
-            ref={deleteRef}
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            title={reason}
-            aria-describedby={describedBy}
-            onClick={onDelete}
-            className="text-destructive"
-          >
-            <Trash2 aria-hidden="true" />
-            <span>{t.tags.selection.delete}</span>
-          </Button>
-        )}
-        {reason !== undefined && (
-          <span id={overLimitId} className="sr-only">
-            {reason}
+        <TagSetKindMenu
+          kinds={kinds}
+          checked={sharedKind}
+          disabled={disabled}
+          pending={pending === "kind"}
+          title={limitReason}
+          describedBy={shared["aria-describedby"]}
+          onChoose={onSetKind}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled || !hasTentative}
+          onClick={onConfirm}
+          {...shared}
+          title={limitReason ?? tentativeReason}
+        >
+          {pending === "confirm" ? (
+            <Spinner aria-hidden="true" />
+          ) : (
+            <Check aria-hidden="true" />
+          )}
+          <span>{t.tags.selection.confirm}</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" disabled={disabled} {...shared}>
+              <Ellipsis aria-hidden="true" />
+              <span>{t.tags.selection.more}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={!hasTentative}
+              title={tentativeReason}
+              onSelect={onReject}
+            >
+              <Ban aria-hidden="true" />
+              {t.tags.selection.reject}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={!hasConfirmed}
+              title={confirmedReason}
+              onSelect={onDelete}
+            >
+              <Trash2 aria-hidden="true" />
+              {t.tags.selection.delete}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {limitReason !== undefined && (
+          <span id={reasonId} className="w-full text-end text-xs text-muted-foreground">
+            {limitReason}
           </span>
         )}
       </SelectionBar>
