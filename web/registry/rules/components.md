@@ -515,6 +515,84 @@ and it always has its number inside, so it is not read as a loading ring or a
 button. Put it in a `ResultRow`'s `mark`. Do not use it for progress; that is
 `Progress`.
 
+### RecordCard
+
+Item `record-card`. One named record, such as a tag, as one link on `card`
+with a `border` line and `rounded-md`, `record-card` high at every width, in a
+`CardGrid size="record"`. Pass a router link with no content as `link`; the
+card's lines become its content.
+
+| Line   | Content                                                                                                                                         | Type                                                                   |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| First  | `name`, truncated with the full name in `title`; `nameMarks` after it (`TentativeMark`); `count` at the line's end, its wording in `countTitle` | Name `text-sm font-medium`; count `text-sm font-semibold tabular-nums` |
+| Second | `detail`: one short phrase, such as the kind's name                                                                                             | `text-xs`, muted, truncated                                            |
+| Third  | `secondary` names as `secondary` `Badge`s on one line; the card's edge cuts what does not fit                                                   | `text-xs`, normal weight                                               |
+
+- `kind` draws a `KindMark` `bar` along the start edge; a record without a
+  kind draws none and keeps the same inset.
+- `tentative` draws the edge dashed in `input`.
+- `selection` adds a `Checkbox` at the bottom end corner, outside the link,
+  shown as the library's card check is: on hover or focus, always where
+  hover is impossible, and on every card while `selectionMode`. A selected
+  card is `primary-soft` with a `primary` edge.
+- Hover is `shadow-card-hover`. A card with no third line keeps its height.
+
+Do not put buttons on the card; every operation on one record belongs on its
+own page. Do not use it for videos, folders or people, which have their own
+cards.
+
+### KindMark
+
+Item `kind-mark`. The mark of a tag kind in its colour, `kind-1` to `kind-8`,
+taken from the kind's id (`kindColour`: N = (id − 1) mod 8 + 1), so a kind
+keeps its colour when others are created or deleted. `variant="bar"` is the
+start edge of a `RecordCard`; `variant="dot"` (`size-2`, `rounded-full`) goes
+before a kind's name. It is decorative: the kind's name always stands on the
+same card, row or control, since more than eight kinds share colours.
+
+Do not use the `kind-*` colours for anything but tag kinds.
+
+### KindToggleGroup
+
+Item `kind-toggle-group`. One choice among kinds and plain choices, acting at
+once: a `ToggleGroup type="single"` of `outline` `sm` `pill` items, one per
+option in the caller's order. An option with `kind` shows its `dot` before
+its name; a `count` follows the name in `text-xs` muted `tabular-nums` (a
+`Skeleton` with `asChild` on a `span` while it loads). A pressed kind is its
+`kind-N-soft` fill with a `kind-N` edge and `foreground` text; a pressed plain
+choice is the standard `primary-soft`. Pressing the pressed item again
+reports nothing, so one choice always stays pressed.
+
+`layout="scroll"` keeps one line for `ListPage`'s `filter`; `layout="wrap"`
+wraps, for a kind picker in a `PageSection` row. Do not use it for choices
+that are not kinds; that is `ToggleGroup`.
+
+### TallyStrip
+
+Item `tally-strip`. Up to three counts in equal columns, `gap-3` apart, for
+`ListPage`'s `summary`: each is a `Toggle` on `card` with a `border` line and
+`rounded-md` that toggles the filter it counts. A tally holds its `count`
+(`text-lg font-semibold tabular-nums`), its `label` (`text-sm font-medium`)
+over a `hint` (`text-xs`, muted, from `md`), and from `lg` a trailing
+`action` word in `primary`. Pressed, it is `primary-soft` with a `primary`
+edge and the trailing word is the strip's `clearLabel`. Without `count` a
+`Skeleton` stands for the number. An `empty` tally (a zero count) is muted,
+has no trailing word and cannot be pressed unless it is pressed.
+
+Do not use it for figures that do not filter the list.
+
+### FloatingNotice
+
+Item `floating-notice`. One line and one `ghost` `sm` action on `popover`,
+`rounded-full` with `shadow-elevated`, appearing with `animate-fade-in`
+(`role="status"`). Put it in `ListPage`'s `notice`, which sticks it under the
+top bar at the body's centre, over the content, so the list does not move.
+Use it for a condition that lasts until the viewer acts, such as the list
+having changed elsewhere with `Refresh`.
+
+Do not use it for a finished action (use `Sonner`) or for an error (use
+`Alert`).
+
 ### ImageUploadDialog
 
 Item `image-upload-dialog`. Every control that takes an image file opens

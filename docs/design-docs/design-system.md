@@ -129,6 +129,7 @@ no renaming, plus vv's own roles that shadcn lacks.
 | `border`, `input`, `ring`                                                                      | Dividers, control edges, keyboard focus                                                 |
 | `destructive`, `warning`, `success`, each with `-foreground` and `-soft`; `destructive-strong` | Status, always with words and an icon                                                   |
 | `favorite`, `overlay`                                                                          | The favorite heart only; the one translucent colour, behind dialogs and over thumbnails |
+| `kind-1` … `kind-8`, each with `-soft`                                                         | A tag kind's mark and its pressed fill, always beside the kind's name                   |
 
 Values are six-digit hex, so `web/src/theme/tokens.test.ts` can check every
 text and border pair on every surface; one dark set exists
@@ -284,6 +285,9 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `PersonFace`                                                                                              | —                                                                         | vv component; a person's face or the `UserRound` placeholder in one frame, in the `card`, `profile`, `chip`, `token`, `option`, `compare`, `judge` and `scene` shapes               |
 | `SpanBar` | — | vv component; when something happens in a video, as blocks on a lane the video's length, pressable while the player can play |
 | `RateRing` | — | vv component; a rate of 100 as a ring with its whole percent inside, in `primary` or `muted-foreground`; not a control |
+| `RecordCard` | The tag admin's table rows | vv component; one named record as a fixed-height link card with its kind's bar, a count, a detail line, other names and a selection check |
+| `KindMark`, `KindToggleGroup` | The tag admin's kind select | vv components; a tag kind's colour as a bar or a dot, and a single choice of kinds with their dots and plain choices |
+| `TallyStrip`, `FloatingNotice` | — | vv components; `ListPage`'s `summary` (counts that each toggle a filter) and `notice` (a lasting notice over the body with one action) |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -314,7 +318,7 @@ to pick, what goes in each slot and what must not is in
 
 | Layer          | What it is                                                                                                                                                                                                                                                                             | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `SidePanel`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `QueryResultsPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `RecordEditorPage`, `DetailPage`, `SidePanel`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `QueryResultsPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
 | Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `Shelf`, `CardList`, `ResultRow`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                            | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                                                          | `registry:ui`, one item each |
 
@@ -442,6 +446,28 @@ whose body, such as a strip of matched frames, the caller shows or hides; it
 shares the expand button with `CardListItem`. `RateRing` marks a row with its
 rate, so the eye finds the closest rows by the length of the arc before
 reading a number.
+
+`RecordEditorPage` is a shell page for organizing one record, such as a tag:
+a back link, the title with its figures and a row of actions, a `notice`,
+then `main` and `side` columns of `PageSection`s in the ratio 8:5 from `lg`
+(the named utility `grid-cols-record-editor`), then a `Shelf` of the items
+the record is on, in one column at most `max-w-6xl`. A list of such records
+is a `CardGrid size="record"` of `RecordCard`s, each `record-card` high so a
+grid row is the unit to virtualize. `ListPage` gains three optional slots for
+that list: `filter`, the main filter that its `PageHeader` draws between the
+title and the actions from `lg` (through a context, so the header stays one
+component); `summary`, a `TallyStrip` of counts that each toggle a filter;
+and `notice`, a `FloatingNotice` stuck over the body with no height of its
+own, so the list does not move. A page that passes none of them is drawn as
+before. A tag kind's colour comes from its id, N = (id − 1) mod 8 + 1.
+
+| Rejected                                         | Why                                                                                                              |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Widening `RecordPage` for operations              | `RecordPage` is for reading one record and rules out operations in its actions                                   |
+| `ProfilePage` for a record to organize            | It puts viewing first and sends work on the subject to another page                                              |
+| A kind colour the owner picks                     | A picker is a new setting and API field                                                                          |
+| A kind's colour from its position among the kinds | Deleting a kind with a lower id would move every later kind to another colour                                    |
+| Building the filter, tallies and notice in a screen | Other lists could not take them up without copying that screen                                                 |
 
 `StepsPage` is a page outside the shell for steps taken in a fixed order, one
 at a time, such as the first setup: a header band with the logo and a strip of

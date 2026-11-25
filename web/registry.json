@@ -307,6 +307,72 @@
       ]
     },
     {
+      "name": "record-card",
+      "type": "registry:ui",
+      "title": "RecordCard",
+      "description": "vv component: one named record as a fixed-height link card on card (record-card high): the name with its marks and the count, a detail line and a line of secondary-name badges, a KindMark bar on the start edge, a dashed input edge while tentative and a selection check outside the link. Uses badge, checkbox and kind-mark.",
+      "docs": "Usage rules: web/registry/rules/components.md#recordcard (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/RecordCard.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "kind-mark",
+      "type": "registry:ui",
+      "title": "KindMark",
+      "description": "vv component: a tag kind's colour, kind-1 to kind-8 from its id, as a card's start-edge bar or a dot before the kind's name; decorative.",
+      "docs": "Usage rules: web/registry/rules/components.md#kindmark (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/KindMark.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "kind-toggle-group",
+      "type": "registry:ui",
+      "title": "KindToggleGroup",
+      "description": "vv component: a single-choice ToggleGroup of pill sm items, kinds with their dots and plain choices, each with an optional count; a pressed kind is its kind-N-soft fill with a kind-N edge. One line, or wrapping. Uses toggle-group and kind-mark.",
+      "docs": "Usage rules: web/registry/rules/components.md#kindtogglegroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/KindToggleGroup.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tally-strip",
+      "type": "registry:ui",
+      "title": "TallyStrip",
+      "description": "vv component: up to three counts in equal columns, each a Toggle on card that toggles the filter it counts, with a label, a hint from md and a trailing word from lg; for ListPage's summary slot. Uses toggle and skeleton.",
+      "docs": "Usage rules: web/registry/rules/components.md#tallystrip (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/TallyStrip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "floating-notice",
+      "type": "registry:ui",
+      "title": "FloatingNotice",
+      "description": "vv component: one line and one ghost sm action on popover, rounded-full with shadow-elevated, for ListPage's notice slot, which sticks it over the body without moving the list. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#floatingnotice (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/FloatingNotice.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",
@@ -866,7 +932,7 @@
       "name": "list-page",
       "type": "registry:ui",
       "title": "ListPage",
-      "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), band, body (grid, table or grouped list) with an optional aside column from lg, selection bar.",
+      "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), a main filter in the header's PageHeader, band, a summary strip, body (grid, table or grouped list) with a floating notice over it and an optional aside column from lg, selection bar.",
       "docs": "Usage rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
       "files": [
         {
@@ -911,6 +977,19 @@
       "files": [
         {
           "path": "src/ui/patterns/record-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "record-editor-page",
+      "type": "registry:ui",
+      "title": "RecordEditorPage",
+      "description": "Page skeleton for organizing one record inside the shell: a back link, the title with its figures and a row of actions, a notice, a two-column body of sections (main and side, 8:5 from lg), then a Shelf of the items it is on. Holds RecordEditorFigure.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#record-editor-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/record-editor-page.tsx",
           "type": "registry:ui"
         }
       ]
@@ -1023,7 +1102,7 @@
       "name": "page-header",
       "type": "registry:ui",
       "title": "PageHeader",
-      "description": "Section: page title, count, description, leading (Back) and the main action.",
+      "description": "Section: page title, count, description, leading (Back), the list page's filter between the title and the actions, and the main action.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -1088,7 +1167,7 @@
       "name": "card-grid",
       "type": "registry:ui",
       "title": "CardGrid",
-      "description": "Section: cards at least card-0 to card-3 wide, or card-face for face cards, stretched so both edges line up with the toolbar.",
+      "description": "Section: cards at least card-0 to card-3 wide, card-face for face cards or card-record for record cards, stretched so both edges line up with the toolbar.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -1183,7 +1262,7 @@
       "name": "loading-state",
       "type": "registry:ui",
       "title": "LoadingState",
-      "description": "State: Skeleton shapes of the final grid (face circles with size face), table, grouped list or cards in the body slot. Uses skeleton.",
+      "description": "State: Skeleton shapes of the final grid (face circles with size face, record cards with size record), table, grouped list or cards in the body slot. Uses skeleton.",
       "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
       "files": [
         {
@@ -1330,6 +1409,36 @@
       "files": [
         {
           "path": "src/designSystem/blocks/record-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "record-list-example",
+      "type": "registry:block",
+      "title": "Record list example",
+      "description": "A working tag list: a ListPage with a kind filter beside the title, a strip of tallies, the change notice over a grid of record cards with checks, a selection bar, and its loading state.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/record-list-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "record-editor-page-example",
+      "type": "registry:block",
+      "title": "Record editor page example",
+      "description": "A working tag page: back link, a title with its figure and actions, a names section with the main name and synonym rows, a kind picker and a merge section beside it, then a row shelf of videos.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#record-editor-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/record-editor-page-example.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/record-list-example.tsx",
           "type": "registry:component"
         }
       ]
