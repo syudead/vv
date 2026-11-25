@@ -84,3 +84,37 @@ func TestTagWritesPublishTagsChangedAfterCommit(t *testing.T) {
 		t.Errorf("rolled-back rename published %v", recorder.events)
 	}
 }
+
+// Deleting or merging away a fileless video changes the videos of the tags it had, and only those.
+func TestVirtualVideoRemovalPublishesTagsChangedWhenTagged(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	fileID := upsertAll(t, db, listingFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1))[fixturePath("/media/clip.mp4")]
+	untagged := createVirtual(t, db, "Plain", fixedTime)
+	deleted := createVirtual(t, db, "Doomed", fixedTime)
+	merged := createVirtual(t, db, "Moonlight", fixedTime)
+	attachTags(t, db, deleted.ID, "piano")
+	attachTags(t, db, merged.ID, "night")
+
+	for _, removal := range []struct {
+		name   string
+		remove func() error
+		want   int
+	}{
+		{"delete untagged", func() error { return db.VirtualVideos().Delete(ctx, untagged.ID, untagged.UserKey) }, 0},
+		{"delete tagged", func() error { return db.VirtualVideos().Delete(ctx, deleted.ID, deleted.UserKey) }, 1},
+		{"merge tagged", func() error {
+			_, err := db.VirtualVideos().Merge(ctx, merged.ID, merged.UserKey, fileID, "key-clip")
+			return err
+		}, 1},
+	} {
+		recorder := &eventRecorder{}
+		db.PublishTo(recorder)
+		if err := removal.remove(); err != nil {
+			t.Fatalf("%s: %v", removal.name, err)
+		}
+		if got := tagsChangedCount(recorder.events); got != removal.want {
+			t.Errorf("%s: TagsChanged %d times, want %d", removal.name, got, removal.want)
+		}
+	}
+}

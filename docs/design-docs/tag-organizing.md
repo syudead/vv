@@ -28,6 +28,7 @@ carries no rows; a screen that receives it re-reads what it shows.
 | Tag kind create, rename, delete, card-first; a tag's kind set or cleared | Yes |
 | A video's tag attached, detached, confirmed or rejected, by the owner, the external API, work-info apply, a group turned into a tag, or automatic tagging and its undo | Yes |
 | Tentative tags created by the external API or work-info apply | Yes |
+| A fileless video with tags deleted or merged into a file video | Yes |
 | Interests picked during setup that create, confirm or classify a tag | Yes |
 | A scan that changes folder names, so folder-derived counts | No |
 | A rolled-back write | No |
@@ -128,6 +129,7 @@ control acts at once; there is no save.
 | --- | --- |
 | The page reads its tag with `getTag` on open, not from the list's cards | It opens from its URL without the list |
 | A `tags` event reads the tag again in place; during the page's own write, once the write settles | One tag's page has no positions to keep, so updating it moves nothing |
+| Each read of the tag also reads its row of videos again, and so does a change of its count | The count leaves fileless videos out, so deleting or merging away one that the row shows leaves the count as it was |
 | One write runs at a time; the pressed control shows a spinner and the others are `aria-disabled` | Two writes from one stale page could undo each other |
 | `tag_not_found`, `tag_synonym_not_found` or `tag_not_tentative` shows the reason under the header and reads the tag again; a tag that is gone shows `This tag no longer exists` instead of the page | The owner acted on a tag that changed elsewhere, and retrying would apply to what they no longer see |
 | Merging, rejecting or deleting returns to the list the card was opened from, with its criteria; Back does too | The tag is gone, and the write dropped the list's snapshot, so the list reads its criteria again from the top |

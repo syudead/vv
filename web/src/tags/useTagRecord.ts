@@ -41,6 +41,8 @@ function staleReason(failure: RequestFailed, name: string | undefined): UiText {
  */
 export function useTagRecord(id: number) {
   const [tag, setTag] = useState<Tag | undefined>(undefined);
+  // Counts the reads, so the videos shelf re-reads with the tag even when its count is unchanged.
+  const [revision, setRevision] = useState(0);
   const [gone, setGone] = useState(false);
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -57,6 +59,7 @@ export function useTagRecord(id: number) {
       (fresh) => {
         if (controller.signal.aborted) return;
         setTag(fresh);
+        setRevision((previous) => previous + 1);
         setLoadError(null);
       },
       (failure: unknown) => {
@@ -120,7 +123,7 @@ export function useTagRecord(id: number) {
     [load],
   );
 
-  return { tag, setTag, gone, loadError, load, busy, notice, setNotice, run };
+  return { tag, setTag, revision, gone, loadError, load, busy, notice, setNotice, run };
 }
 
 export type TagRecord = ReturnType<typeof useTagRecord>;

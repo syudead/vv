@@ -357,7 +357,11 @@ function LoadedTagPage({
         </>
       }
     >
-      <TagVideosShelf tagId={tag.id} videoCount={tag.videoCount} />
+      <TagVideosShelf
+        tagId={tag.id}
+        videoCount={tag.videoCount}
+        revision={record.revision}
+      />
       {moving !== null && (
         <MoveSynonymDialog
           tag={tag}
