@@ -65,7 +65,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-states-example`        | Block         | The list body in every state                                                 |
 | `load-more-row`              | State         | The next page loading, or failed with Retry                                  |
 | `loading-state`              | State         | Skeleton shapes of the final layout: grid, table, grouped list or cards      |
-| `merge-parts`                | vv component  | The target field and source → target line of a merge dialog                  |
+| `merge-parts`                | vv component  | The target field and source → target line of a merge or move dialog          |
 | `page-column`                | Pattern       | The reading column settings and record pages share; patterns only            |
 | `page-header`                | Section       | Page title, count and the main action                                        |
 | `page-section`               | Section       | A titled card of rows                                                        |

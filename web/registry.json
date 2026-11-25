@@ -684,7 +684,7 @@
       "name": "merge-parts",
       "type": "registry:ui",
       "title": "MergeParts",
-      "description": "vv components: MergeTargetField, the merge target field of a merge dialog around an inline TagCommand or CreditCommand, and MergeSummary, the source-to-target line. Uses field.",
+      "description": "vv components: MergeTargetField, the target field of a merge or move dialog around an inline TagCommand or CreditCommand, and MergeSummary, the source-to-target line of a merge. Uses field.",
       "docs": "Usage rules: web/registry/rules/components.md#mergeparts (item vv-rules).",
       "dependencies": ["lucide-react"],
       "files": [

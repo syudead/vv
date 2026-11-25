@@ -670,8 +670,8 @@ Do not use it outside rows, where a labelled `Button` fits.
 
 Item `row-more-menu`. The Ellipsis button at a row's end, with its label in a
 tooltip, that opens a `DropdownMenu` aligned to its end; the children are the
-row's other actions as `DropdownMenuItem`s, the destructive one last after a
-separator. `describedBy` names the reason the trigger is disabled.
+row's other actions as `DropdownMenuItem`s, the destructive one last and,
+when other actions precede it, after a `DropdownMenuSeparator`. `describedBy` names the reason the trigger is disabled.
 `TagRowRefs` names the focus targets of a virtualized admin row: the name
 link, rename, synonyms, the menu and the compact actions button.
 
@@ -693,15 +693,18 @@ Do not use it for a name that is not edited in place in a row.
 Item `create-tag-row`. The first table row of an admin list while a new entry
 is named: an `Input` with Create and Cancel, the same keys and name checks as
 `RowNameInput`, and the failure under it. `label`, `placeholder` and `rules`
-default to the tag's; the people and tag-kind lists pass their own.
+default to the tag's; the credit list passes its own three and the tag-kind
+list its own `label` and `placeholder`.
 
 Do not use it outside a `DataTable`.
 
 ### MergeParts
 
-Item `merge-parts`. Two pieces of a merge dialog. `MergeTargetField` is the
-target field: a visible label above an `inline` `TagCommand` or
-`CreditCommand` (passed as `Command`), with the search failure under it.
-`MergeSummary` is the line that reads source → target, each name truncated.
+Item `merge-parts`. Two pieces of a dialog that moves one entry, or part of
+it, into another. `MergeTargetField` is the target field: a visible label
+above an `inline` `TagCommand` or `CreditCommand` (passed as `Command`), with
+the search failure under it; the merge dialogs and the dialog that moves faces
+to another person use it. `MergeSummary` is the line of a merge dialog that
+reads source → target, each name truncated.
 
-Do not use them for picks that do not merge one entry into another.
+Do not use them for picks that do not move anything into the chosen entry.

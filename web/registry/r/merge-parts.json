@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "merge-parts",
   "title": "MergeParts",
-  "description": "vv components: MergeTargetField, the merge target field of a merge dialog around an inline TagCommand or CreditCommand, and MergeSummary, the source-to-target line. Uses field.",
+  "description": "vv components: MergeTargetField, the target field of a merge or move dialog around an inline TagCommand or CreditCommand, and MergeSummary, the source-to-target line of a merge. Uses field.",
   "dependencies": [
     "lucide-react"
   ],
