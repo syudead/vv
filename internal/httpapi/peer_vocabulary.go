@@ -336,7 +336,7 @@ func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id i
 	}
 	local, err := s.credits.Get(r.Context(), domain.CreditOrganization, id)
 	if errors.Is(err, domain.ErrNotFound) {
-		s.notFoundReason(w, gen.ErrorReasonOrganizationNotFound, "The parent organization was not found.")
+		s.parentNotFound(w, "The parent organization was not found.")
 		return 0, false
 	}
 	if err != nil {
@@ -359,9 +359,14 @@ func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id i
 		}
 	}
 	if peerID == 0 {
-		s.notFoundReason(w, gen.ErrorReasonOrganizationNotFound,
-			"The parent organization does not exist on the other VVMDM.")
+		s.parentNotFound(w, "The parent organization does not exist on the other VVMDM.")
 		return 0, false
 	}
 	return peerID, true
+}
+
+// parentNotFound names parentId, so the screens keep the edited organization and show the reason at its parent.
+func (s *server) parentNotFound(w http.ResponseWriter, message string) {
+	reason, field := gen.ErrorReasonOrganizationNotFound, "parentId"
+	s.writeErrorBody(w, http.StatusNotFound, gen.Error{Code: codeNotFound, Reason: &reason, Field: &field, Message: message})
 }

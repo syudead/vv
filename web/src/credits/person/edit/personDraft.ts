@@ -2,14 +2,8 @@ import type { CreditPatch, Person } from "../../../api/credits";
 import type { components } from "../../../api/gen/openapi";
 import type { IdRow, LinkRow } from "../../../player/detailsEditor/draft";
 import { newRowKey } from "../../../player/detailsEditor/draft";
-import { idRowsOf, idsToSend, type Sent } from "../../CreditDetailsDialog";
-import {
-  type NameRow,
-  nameControl,
-  nameRowsControl,
-  nameRowsOf,
-  nameRowsToSend,
-} from "../../NameRows";
+import { idRowsOf, namesAndIdsPatch, sameJson, type Sent } from "../../creditEditFields";
+import { type NameRow, nameControl, nameRowsControl, nameRowsOf } from "../../NameRows";
 
 type ProfilePatch = components["schemas"]["PersonProfilePatch"];
 
@@ -74,10 +68,6 @@ function sentLinks(rows: readonly LinkRow[]): { values: string[]; keys: string[]
   return { values: kept.map((row) => row.url.trim()), keys: kept.map((row) => row.key) };
 }
 
-function sameJson(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 function profilePatch(draft: PersonDraft, loaded: PersonDraft): ProfilePatch {
   const patch: ProfilePatch = {};
   for (const field of textFields) {
@@ -108,23 +98,10 @@ export function buildPersonPatch(
   draft: PersonDraft,
   loaded: PersonDraft,
 ): { patch: CreditPatch; sent: SentTargets } {
-  const patch: CreditPatch = {};
-  const names = nameRowsToSend(draft.names);
-  if (!sameJson(names.values, nameRowsToSend(loaded.names).values))
-    patch.names = names.values;
-  const ids = idsToSend(draft.externalIds);
-  if (!sameJson(ids.values, idsToSend(loaded.externalIds).values))
-    patch.externalIds = ids.values;
+  const { patch, sent } = namesAndIdsPatch(draft, loaded);
   const profile = profilePatch(draft, loaded);
   if (Object.keys(profile).length > 0) patch.profile = profile;
-  return {
-    patch,
-    sent: {
-      nameKeys: names.keys,
-      idKeys: ids.keys,
-      linkKeys: sentLinks(draft.links).keys,
-    },
-  };
+  return { patch, sent: { ...sent, linkKeys: sentLinks(draft.links).keys } };
 }
 
 export function draftChanged(draft: PersonDraft, loaded: PersonDraft): boolean {

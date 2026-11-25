@@ -1,20 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
-import { isAborted, RequestFailed } from "../api/client";
 import {
   type Credit,
   type CreditKind,
   type CreditPatch,
-  type ExternalId,
   isCreditGone,
   type Organization,
-  listCredits,
   updateCredit,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
-import { type IdRow, newRowKey } from "../player/detailsEditor/draft";
+import type { IdRow } from "../player/detailsEditor/draft";
 import {
-  controlId,
   type FieldProblem,
   IdRows,
   Problem,
@@ -22,56 +18,28 @@ import {
 } from "../player/detailsEditor/fields";
 import { DialogError } from "../tags/DialogError";
 import { FormDialog } from "../ui/patterns/form-dialog";
-import { Combobox, type ComboboxOption } from "../ui/shadcn/combobox";
-import { Field, FieldError, FieldLegend, FieldSet } from "../ui/shadcn/field";
+import { FieldLegend, FieldSet } from "../ui/shadcn/field";
 import { Spinner } from "../ui/shadcn/spinner";
-import { parentOf } from "./creditRows";
 import {
-  type NameRow,
-  NameRows,
-  nameRowsControl,
-  nameRowsOf,
-  nameRowsToSend,
-} from "./NameRows";
+  idRowsOf,
+  idsToSend,
+  maxExternalIds,
+  problemOf,
+  type Sent,
+} from "./creditEditFields";
+import { type NameRow, NameRows, nameRowsOf, nameRowsToSend } from "./NameRows";
+import {
+  OrganizationParentField,
+  parentIdOf,
+  parentValueOf,
+} from "./OrganizationParentField";
 import {
   type OrganizationDraft,
   organizationDraftOf,
   OrganizationLogoField,
-  organizationProfileControl,
   organizationProfilePatch,
   OrganizationProfileFields,
 } from "./OrganizationProfileFields";
-
-export const maxExternalIds = 20;
-
-/** Combobox values cannot be empty, so None needs a sentinel. */
-const noParent = "none";
-
-/** Map submitted array indexes back to stable row keys for field errors. */
-export interface Sent {
-  nameKeys: string[];
-  idKeys: string[];
-}
-
-export function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
-  if (!(failure instanceof RequestFailed)) return null;
-  const text = errorText(failure);
-  if (failure.reason === "organization_parent_cycle" || failure.field === "parentId") {
-    return { control: "parent", text };
-  }
-  const field = failure.field ?? "";
-  const profileControl = organizationProfileControl(field);
-  if (profileControl !== undefined) return { control: profileControl, text };
-  const name = nameRowsControl(field, sent.nameKeys);
-  if (name !== undefined) return { control: name, text };
-  if (field === "externalIds") return { control: "ids", text };
-  const id = /^externalIds\[(\d+)\](?:\.(source|value))?$/.exec(field);
-  if (id !== null) {
-    const key = sent.idKeys[Number(id[1])];
-    if (key !== undefined) return { control: `id-${id[2] ?? "value"}-${key}`, text };
-  }
-  return null;
-}
 
 /** Submit only fields edited since opening the dialog. */
 interface Edited {
@@ -84,11 +52,6 @@ interface Edited {
 interface OrganizationEdit {
   draft: OrganizationDraft;
   loaded: OrganizationDraft;
-}
-
-/** Ignore newly added ID rows whose inputs are all blank. */
-function blank(...values: string[]): boolean {
-  return values.every((value) => value.trim() === "");
 }
 
 /**
@@ -109,28 +72,12 @@ function buildPatch(
   const patch: CreditPatch = {};
   if (edited.names) patch.names = sentNames.values;
   if (edited.ids) patch.externalIds = sentIds.values;
-  if (kind === "organization" && edited.parent)
-    patch.parentId = parent === noParent ? null : Number(parent);
+  if (kind === "organization" && edited.parent) patch.parentId = parentIdOf(parent);
   if (organization !== null) {
     const profile = organizationProfilePatch(organization.draft, organization.loaded);
     if (Object.keys(profile).length > 0) patch.organizationProfile = profile;
   }
   return { patch, sent: { nameKeys: sentNames.keys, idKeys: sentIds.keys } };
-}
-
-export function idsToSend(rows: readonly IdRow[]): {
-  values: ExternalId[];
-  keys: string[];
-} {
-  const kept = rows.filter((row) => !blank(row.source, row.value));
-  return {
-    values: kept.map((row) => ({ source: row.source.trim(), value: row.value.trim() })),
-    keys: kept.map((row) => row.key),
-  };
-}
-
-export function idRowsOf(ids: readonly ExternalId[]): IdRow[] {
-  return ids.map((id) => ({ key: newRowKey("i"), source: id.source, value: id.value }));
 }
 
 /** Keep field errors in the open dialog; missing records call onStale. */
@@ -158,10 +105,7 @@ export default function CreditDetailsDialog({
   const [loadedOrganization] = useState(organizationDraft);
   const [names, setNames] = useState<NameRow[]>(() => nameRowsOf(credit.names));
   const [ids, setIds] = useState<IdRow[]>(() => idRowsOf(credit.externalIds));
-  const [parent, setParent] = useState(() => {
-    const current = parentOf(credit);
-    return current === undefined ? noParent : String(current.id);
-  });
+  const [parent, setParent] = useState(() => parentValueOf(credit as Organization));
   const [edited, setEdited] = useState<Edited>({
     names: false,
     ids: false,
@@ -259,8 +203,8 @@ export default function CreditDetailsDialog({
       {kind === "organization" && (
         <FieldSet>
           <FieldLegend>{d.parent}</FieldLegend>
-          <ParentField
-            credit={credit}
+          <OrganizationParentField
+            organization={credit as Organization}
             value={parent}
             onChange={(next) => {
               setParent(next);
@@ -301,75 +245,5 @@ export default function CreditDetailsDialog({
       )}
       {error !== null && <DialogError message={error} />}
     </FormDialog>
-  );
-}
-
-/**
- * Load all other organizations as parent candidates; until loaded, show only the current parent
- * and disable selection.
- */
-function ParentField({
-  credit,
-  value,
-  onChange,
-  disabled,
-  problem,
-}: {
-  credit: Credit;
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-  problem: FieldProblem | null;
-}) {
-  const d = t.credits.details;
-  const [organizations, setOrganizations] = useState<readonly Credit[] | null>(null);
-  const [failure, setFailure] = useState<UiText | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    listCredits("organization", {}, controller.signal).then(
-      (page) => {
-        if (!controller.signal.aborted) setOrganizations(page.items);
-      },
-      (error: unknown) => {
-        if (controller.signal.aborted || isAborted(error)) return;
-        setFailure(d.parentsFailed(errorText(error)));
-      },
-    );
-    return () => controller.abort();
-  }, [d]);
-
-  const current = parentOf(credit);
-  const others =
-    organizations ??
-    (current === undefined ? [] : [{ id: current.id, name: current.name }]);
-  const options: ComboboxOption[] = [
-    { value: noParent, label: d.parentNone },
-    ...others
-      .filter((organization) => organization.id !== credit.id)
-      .map((organization) => ({
-        value: String(organization.id),
-        label: organization.name,
-      })),
-  ];
-
-  return (
-    <Field data-invalid={problem?.control === "parent" || undefined}>
-      <div id={controlId("parent")}>
-        <Combobox
-          options={options}
-          value={value}
-          onValueChange={onChange}
-          placeholder={d.parentNone}
-          searchPlaceholder={d.parentSearch}
-          emptyText={d.parentEmpty}
-          disabled={disabled || organizations === null}
-          aria-label={d.parent}
-          className="w-full"
-        />
-      </div>
-      <Problem problem={problem} control="parent" />
-      {failure !== null && <FieldError>{failure}</FieldError>}
-    </Field>
   );
 }

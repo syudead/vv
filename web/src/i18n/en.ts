@@ -2142,6 +2142,10 @@ export const en = {
       gone: "This organization no longer exists",
       backToOrganizations: "Back to organizations",
     },
+    organizationEdit: {
+      back: "Back to the organization",
+      namesAndParent: "Names and parent",
+    },
     personPage: {
       profile: "Person",
       loading: "Loading…",

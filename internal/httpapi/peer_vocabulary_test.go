@@ -222,6 +222,9 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 	rec := b.owner(http.MethodPatch, path, fmt.Sprintf(`{"parentId":%d}`, localOnly))
 	assertErrorBody(t, "相手に無い親", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound})
+	if got := decode[gen.Error](t, rec).Field; got == nil || *got != "parentId" {
+		t.Errorf("相手に無い親: field = %v, want parentId", got)
+	}
 	if got := parentOnA(); got != peerLabel {
 		t.Errorf("拒否の後の a の親 = %d, want %d のまま", got, peerLabel)
 	}
