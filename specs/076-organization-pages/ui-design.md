@@ -198,7 +198,9 @@ One `Shelf` per role with videos, `Maker` then `Label`, each with `{n} videos`
 as its count over a `CardGrid size={0}` of video cards that loads more as its
 end comes into view. These are the person page's shelves
 ([people.md](../../docs/design-docs/people.md#the-person-page)) with
-`organizationRole` in place of `personRole`.
+`organizationRole` in place of `personRole`, with one difference: a role whose
+first read fails keeps its shelf and shows the failure, where the person page
+leaves that shelf out.
 
 ### States
 
@@ -209,12 +211,18 @@ stateDiagram-v2
   [*] --> Loading
   Loading --> Shown: organization read
   Loading --> Failed: read failed
-  Loading --> Gone: 404
+  Loading --> Gone: organization missing
   Failed --> Loading: Retry
-  Shown --> Gone: any request answers 404
+  Shown --> Gone: organization missing
   Shown --> Shown: favorite, logo, save on the edit page
   Shown --> [*]: merge opens the target, delete opens the grid
 ```
+
+"Organization missing" is the answer the plan names for the gone state: `404
+organization_not_found` without a `field`, meaning the organization this page
+shows no longer exists. Any other 404, such as the `field: parentId` answer on
+the edit page or one about something other than this organization, is that
+request's failure and is shown where the request was made, with the page kept.
 
 | State | What the screen shows |
 | --- | --- |
@@ -224,6 +232,7 @@ stateDiagram-v2
 | No logo | The `Building2` placeholder as an `Add logo` button; the name is the `h1` beside it |
 | No videos | The spread and the family, then one `EmptyState`: `Film`, `No videos yet` |
 | Videos loading, videos failed | The person page's blocks, in the videos' place |
+| One role's first read failed | That role's shelf keeps its heading, without a count, and shows `ErrorState`: `Couldn't load videos: {reason}` with `Retry` in place of its cards; the other role's shelf stays. A failed role is never left out, so it cannot be read as a role without videos |
 | Logo change failed | `Couldn't change the logo: {reason}` in `text-sm` `text-destructive` under the frame; the previous logo stays |
 
 ## Edit page
