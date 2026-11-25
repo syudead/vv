@@ -1,24 +1,12 @@
 import { Camera, Crop, Film, ImageUp, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import {
-  isCreditGone,
-  type Person,
-  personFaceSrc,
-  removePersonImage,
-} from "../../api/credits";
+import { type Person, personFaceSrc, removePersonImage } from "../../api/credits";
 import { updateFavorites } from "../../api/favorites";
-import { errorText, t, type UiText } from "../../i18n";
-import { formatBytes } from "../../lib/format";
-import {
-  UPLOAD_MAX_BYTES,
-  UPLOAD_TYPES,
-  uploadRefusal,
-} from "../../player/thumbnailUpload/uploadRules";
-import { DialogError } from "../../tags/DialogError";
+import { t, type UiText } from "../../i18n";
+import { UPLOAD_TYPES } from "../../player/thumbnailUpload/uploadRules";
 import FavoriteToggle from "../../ui/FavoriteToggle";
 import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
-import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
 import { Button } from "../../ui/shadcn/button";
 import {
@@ -27,20 +15,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
-import { Spinner } from "../../ui/shadcn/spinner";
+import { imageRefusal, RemoveImageDialog, withImageOf } from "../CreditImageParts";
 import { creditDisplayName } from "../displayName";
 import FaceCropDialog from "./FaceCropDialog";
 import FacePickerDialog from "./FacePickerDialog";
 
 const text = t.credits.personPage;
-
-/** Take only the face from an image response, so a heart pressed meanwhile keeps its state. */
-function withFaceOf(saved: Person) {
-  return (current: Person): Person => ({
-    ...current,
-    imageRevision: saved.imageRevision,
-  });
-}
 
 /**
  * The face with its heart, upload, reframing and removal; an image chosen, dropped or pasted in an ImageUploadDialog,
@@ -57,8 +37,6 @@ export default function PersonFaceControl({
 }) {
   const [cropping, setCropping] = useState<File | string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState<UiText | null>(null);
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -67,29 +45,11 @@ export default function PersonFaceControl({
   }
 
   function frame(file: File): UiText | null {
-    const refusal = uploadRefusal(file);
-    if (refusal === "type") return text.face.refusedType;
-    if (refusal === "size") return text.face.tooLarge(formatBytes(UPLOAD_MAX_BYTES));
+    const refusal = imageRefusal(file);
+    if (refusal !== null) return refusal;
     setUploading(false);
     setCropping(file);
     return null;
-  }
-
-  async function remove() {
-    setRemoveError(null);
-    setRemoving(true);
-    try {
-      onChanged(withFaceOf(await removePersonImage(person.id)));
-      setConfirmRemove(false);
-    } catch (failure) {
-      if (isCreditGone(failure)) {
-        onGone();
-        return;
-      }
-      setRemoveError(errorText(failure));
-    } finally {
-      setRemoving(false);
-    }
   }
 
   async function toggleFavorite() {
@@ -148,10 +108,7 @@ export default function PersonFaceControl({
                 {src !== undefined && (
                   <DropdownMenuItem
                     variant="destructive"
-                    onSelect={() => {
-                      setRemoveError(null);
-                      setConfirmRemove(true);
-                    }}
+                    onSelect={() => setConfirmRemove(true)}
                   >
                     <Trash2 aria-hidden="true" />
                     {text.face.remove}
@@ -177,7 +134,7 @@ export default function PersonFaceControl({
           onClose={() => setCropping(null)}
           onSaved={(saved) => {
             setCropping(null);
-            onChanged(withFaceOf(saved));
+            onChanged(withImageOf(saved));
           }}
           onGone={onGone}
         />
@@ -188,31 +145,20 @@ export default function PersonFaceControl({
           onClose={() => setPicking(false)}
           onSaved={(saved) => {
             setPicking(false);
-            onChanged(withFaceOf(saved));
+            onChanged(withImageOf(saved));
           }}
           onGone={onGone}
         />
       )}
       {confirmRemove && (
-        <ConfirmDialog
-          open
-          onOpenChange={(open) => {
-            if (!open && !removing) setConfirmRemove(false);
-          }}
+        <RemoveImageDialog
           title={text.face.removeTitle(creditDisplayName(person))}
-          description={text.face.removeText}
-          cancelLabel={t.common.cancel}
-          actionLabel={
-            <>
-              {removing && <Spinner aria-hidden="true" />}
-              {removing ? text.face.removing : text.face.removeSubmit}
-            </>
-          }
-          onConfirm={() => void remove()}
-          pending={removing}
-        >
-          {removeError !== null && <DialogError message={removeError} />}
-        </ConfirmDialog>
+          onRemove={async () => {
+            onChanged(withImageOf(await removePersonImage(person.id)));
+          }}
+          onClose={() => setConfirmRemove(false)}
+          onGone={onGone}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { Ellipsis, LibraryBig, Merge, Pencil, Trash2 } from "lucide-react";
+import { LibraryBig, Pencil } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -8,15 +8,8 @@ import { personEditPath } from "../../lib/personEditPath";
 import { isPlainClick } from "../../lib/plainClick";
 import { libraryFilterPath } from "../../library/libraryPath";
 import { Button } from "../../ui/shadcn/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../ui/shadcn/dropdown-menu";
+import { CreditMoreMenu } from "../CreditMoreMenu";
 import { Bio, creditFactsCard, CreditHeading } from "../CreditProfile";
-import { kindTexts } from "../creditRows";
 import { creditDisplayName } from "../displayName";
 import { type PersonFigure, personFigures, profileFacts } from "./personFacts";
 import { handPerson } from "./personHandoff";
@@ -108,24 +101,7 @@ export function PersonIdentity({
           </Link>
         </Button>
         {facesEntry}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={text.more}>
-              <Ellipsis aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={onMerge}>
-              <Merge aria-hidden="true" />
-              {kindTexts("person").mergeInto}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-              <Trash2 aria-hidden="true" />
-              {text.delete}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <CreditMoreMenu kind="person" onMerge={onMerge} onDelete={onDelete} />
       </div>
     </>
   );

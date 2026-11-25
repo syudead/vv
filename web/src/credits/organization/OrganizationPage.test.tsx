@@ -1,11 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Organization } from "../../api/credits";
 import { jsonResponse } from "../../testing/personPage";
 import { video } from "../../testing/groupPage";
+import { ToastProvider } from "../../ui/Toast";
 import OrganizationPage from "./OrganizationPage";
 
 function organization(overrides: Partial<Organization> = {}): Organization {
@@ -33,9 +34,42 @@ const server = {
   held: null as string | null,
   release: () => {},
   requests: [] as URL[],
+  /** Requests other than reads, with their bodies. */
+  writes: [] as { method: string; url: URL; body: BodyInit | null | undefined }[],
+  /** Other organizations, offered by the merge dialog's search. */
+  others: [] as Organization[],
+  /** The reason a logo upload fails with, or null to accept it. */
+  logoFailure: null as string | null,
 };
 
+/** Answers the page's writes as the server does; null for a read. */
+function respondToWrite(method: string, url: URL): Response | null {
+  if (method === "PUT" && url.pathname === "/api/favorites") {
+    return jsonResponse({ videoIds: [], groupIds: [] });
+  }
+  if (method === "PUT" && url.pathname === "/api/organizations/5/image") {
+    if (server.logoFailure !== null) {
+      return jsonResponse({ code: "invalid", message: server.logoFailure }, 400);
+    }
+    return jsonResponse({ ...server.organization, imageRevision: 3 });
+  }
+  if (method === "POST" && url.pathname === "/api/organizations/8/merge") {
+    return jsonResponse({ organization: server.others[0], notFoundIds: [] });
+  }
+  if (method === "DELETE" && url.pathname === "/api/organizations/5") {
+    return new Response(null, { status: 204 });
+  }
+  return null;
+}
+
 function respond(url: URL): Response {
+  if (url.pathname === "/api/organizations") {
+    return jsonResponse({
+      items: server.others,
+      total: server.others.length,
+      totalAll: server.others.length,
+    });
+  }
   if (url.pathname === "/api/videos") {
     const role = url.searchParams.get("organizationRole");
     if (role !== null && server.failing.includes(role)) {
@@ -68,10 +102,19 @@ beforeEach(() => {
   server.failing = [];
   server.held = null;
   server.requests = [];
+  server.writes = [];
+  server.others = [];
+  server.logoFailure = null;
   vi.stubGlobal(
     "fetch",
-    vi.fn<typeof fetch>((input) => {
+    vi.fn<typeof fetch>((input, init) => {
       const url = new URL(String(input), "http://localhost");
+      const method = init?.method ?? "GET";
+      if (method !== "GET") {
+        server.writes.push({ method, url, body: init?.body });
+        const answer = respondToWrite(method, url);
+        if (answer !== null) return Promise.resolve(answer);
+      }
       server.requests.push(url);
       if (
         server.held !== null &&
@@ -98,14 +141,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function Location() {
+  const location = useLocation();
+  return <output aria-label="location">{location.pathname}</output>;
+}
+
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/organizations/5"]}>
-      <Routes>
-        <Route path="/organizations/:id" element={<OrganizationPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={["/organizations/5"]}>
+        <Routes>
+          <Route path="/organizations/:id" element={<OrganizationPage />} />
+          <Route path="/organizations" element={<p>Organizations list</p>} />
+        </Routes>
+        <Location />
+      </MemoryRouter>
+    </ToastProvider>,
   );
+}
+
+function location(): string | null {
+  return screen.getByRole("status", { name: "location" }).textContent;
+}
+
+/** Opens `More actions` and picks the item. */
+async function chooseMore(user: ReturnType<typeof userEvent.setup>, item: string) {
+  await user.click(await screen.findByRole("button", { name: "More actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
 }
 
 function href(name: string): string | null {
@@ -234,5 +296,86 @@ describe("OrganizationPage", () => {
 
     expect(await screen.findByText("This organization no longer exists")).toBeTruthy();
     expect(href("Back to organizations")).toBe("/organizations");
+  });
+
+  it("sends the organization's favorite and shows it pressed after the response", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Add to favorites" }));
+
+    const pressed = await screen.findByRole("button", { name: "Remove from favorites" });
+    expect(pressed.getAttribute("aria-pressed")).toBe("true");
+    const favorite = server.writes.find(
+      (write) => write.url.pathname === "/api/favorites",
+    );
+    expect(JSON.parse(String(favorite?.body))).toEqual({
+      videoIds: [],
+      groupIds: [],
+      organizationIds: [5],
+      favorite: true,
+    });
+  });
+
+  it("saves an uploaded logo at once and shows it in place of the placeholder", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Add logo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Upload a logo" });
+    const file = new File(["png"], "logo.png", { type: "image/png" });
+    await user.upload(within(dialog).getByTestId("image-upload-input"), file);
+
+    const logo = await screen.findByRole("img", { name: "Logo of Studio" });
+    expect(logo.getAttribute("src")).toBe("/api/organizations/5/image?v=3");
+    const upload = server.writes.find((write) => write.method === "PUT");
+    expect(upload?.url.pathname).toBe("/api/organizations/5/image");
+    expect(((upload?.body as FormData).get("image") as File).name).toBe("logo.png");
+    expect(screen.queryByRole("button", { name: "Add logo" })).toBeNull();
+  });
+
+  it("keeps the previous logo and says why under it when a logo change fails", async () => {
+    const user = userEvent.setup();
+    server.organization = organization({ imageRevision: 1 });
+    server.logoFailure = "Bad image";
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Change logo" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Upload a logo" });
+    await user.upload(
+      within(dialog).getByTestId("image-upload-input"),
+      new File(["png"], "logo.png", { type: "image/png" }),
+    );
+
+    expect(await screen.findByText("Couldn't change the logo: Bad image")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Logo of Studio" }).getAttribute("src")).toBe(
+      "/api/organizations/5/image?v=1",
+    );
+  });
+
+  it("opens the target's page after merging into it", async () => {
+    const user = userEvent.setup();
+    server.others = [organization({ id: 8, name: "Agency" })];
+    renderPage();
+    await chooseMore(user, "Merge into another organization…");
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "Studio"' });
+    await user.click(await within(dialog).findByRole("option", { name: /Agency/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    await waitFor(() => expect(location()).toBe("/organizations/8"));
+    expect(await screen.findByText('Merged into "Agency"')).toBeTruthy();
+    const merge = server.writes.find((write) => write.method === "POST");
+    expect(JSON.parse(String(merge?.body))).toEqual({ sourceIds: [5] });
+  });
+
+  it("opens the organizations list after deleting", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await chooseMore(user, "Delete");
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Studio"?' });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Organizations list")).toBeTruthy();
+    expect(location()).toBe("/organizations");
+    expect(screen.getByText('Deleted "Studio"')).toBeTruthy();
+    expect(server.writes.map((write) => write.method)).toEqual(["DELETE"]);
   });
 });
