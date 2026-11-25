@@ -1,5 +1,5 @@
 import { Film } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 
 import type { components } from "../api/gen/openapi";
@@ -103,7 +103,8 @@ export function CreditShelves({
 
 /**
  * Every video in one role, wrapping and read a page at a time as the end comes into view. A role
- * without videos draws nothing; one whose first read failed draws nothing too, unless `keepFailed`.
+ * without videos draws nothing; one whose first read failed draws nothing too, unless `keepFailed`,
+ * which also keeps the heading while that failed read is retried.
  */
 function RoleShelf({
   kind,
@@ -122,21 +123,33 @@ function RoleShelf({
   const backTo = `${location.pathname}${location.search}`;
   const videos = useSubjectVideos(kind, id, role);
   const { items, loading, loadingMore, error, hasMore, loadMore, retryLoadMore } = videos;
+  const [retrying, setRetrying] = useState(false);
   const more = useCallback(() => loadMore(), [loadMore]);
   const sentinel = useLoadMoreSentinel(
     hasMore && !loading && !loadingMore && error === null,
     more,
     noPreviewReset,
   );
-  if (loading) return null;
+  if (loading) {
+    if (!retrying) return null;
+    return (
+      <Shelf title={title}>
+        <LoadingState label={text.loading} layout="grid" size={0} count={6} />
+      </Shelf>
+    );
+  }
   if (items.length === 0) {
     if (!keepFailed || error === null) return null;
+    const retry = () => {
+      setRetrying(true);
+      videos.reload();
+    };
     return (
       <Shelf title={title}>
         <ErrorState
           title={text.videosFailed(error)}
           retryLabel={t.common.retry}
-          onRetry={videos.reload}
+          onRetry={retry}
         />
       </Shelf>
     );

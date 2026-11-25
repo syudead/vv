@@ -8,6 +8,7 @@ describe("routeOf", () => {
     expect(routeOf("/videos/12")).toEqual({ kind: "video", id: 12 });
     expect(routeOf("/people/3/faces")).toEqual({ kind: "person", id: 3 });
     expect(routeOf("/people")).toEqual({ kind: "people" });
+    expect(routeOf("/organizations/5")).toEqual({ kind: "organization", id: 5 });
     expect(routeOf("/smart-folders/8")).toEqual({ kind: "smartFolder", id: 8 });
     expect(routeOf("/settings/connections")).toEqual({ kind: "settings" });
     expect(routeOf("/history")).toEqual({ kind: "other" });
@@ -48,6 +49,9 @@ describe("contextLine", () => {
     expect(contextLine({ pathname: "/groups/5", search: "" }, { name: "京都" })).toBe(
       "Talking about 京都",
     );
+    expect(
+      contextLine({ pathname: "/organizations/5", search: "" }, { name: "Studio" }),
+    ).toBe("Talking about Studio");
     expect(contextLine({ pathname: "/", search: "" }, {})).toBe(
       "Talking about this screen",
     );

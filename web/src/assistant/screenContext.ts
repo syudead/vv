@@ -21,7 +21,7 @@ export interface AssistantScreen {
   smartFolderIds?: readonly number[];
   /** Selected items as the page's selection bar counts them. */
   count?: number;
-  /** The open video's title, or the group, smart folder, playlist or person the page shows. */
+  /** The open video's title, or the group, smart folder, playlist, person or organization shown. */
   name?: string;
 }
 
@@ -42,6 +42,7 @@ export function selectionScreen(
 const entityRoutes: readonly [RegExp, AssistantRoute["kind"]][] = [
   [/^\/videos\/(\d+)(?:\/|$)/, "video"],
   [/^\/people\/(\d+)(?:\/|$)/, "person"],
+  [/^\/organizations\/(\d+)(?:\/|$)/, "organization"],
   [/^\/playlists\/(\d+)(?:\/|$)/, "playlist"],
   [/^\/groups\/(\d+)(?:\/|$)/, "group"],
   [/^\/smart-folders\/(\d+)(?:\/|$)/, "smartFolder"],
@@ -123,6 +124,7 @@ export function hasSelection(screen: AssistantScreen): boolean {
 
 const namedRoutes: ReadonlySet<AssistantRoute["kind"]> = new Set([
   "person",
+  "organization",
   "playlist",
   "group",
   "smartFolder",

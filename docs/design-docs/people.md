@@ -451,8 +451,10 @@ under the grid.
 On the video page, each person in the work details row is a `PersonFace chip`
 and the name inside one link to `/people/:id`, named `Open {name}`, so the
 cast opens the person page instead of the filtered library; the chip sits on
-the name's line and keeps the row's height. Organizations keep their text links
-to the filtered library, and the fold after three names is unchanged.
+the name's line and keeps the row's height. Organizations keep text links,
+which open the organization page
+([organizations.md](organizations.md#the-video-page-opens-the-organization-page)),
+and the fold after three names is unchanged.
 
 Wherever a person is chosen, the face comes with the name: a picker's
 candidate rows lead with `PersonFace option` (the video details editor, the

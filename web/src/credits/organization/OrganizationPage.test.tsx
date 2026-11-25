@@ -29,6 +29,9 @@ const server = {
   videos: { maker: [] as number[], label: [] as number[] },
   /** Roles whose read fails. */
   failing: [] as string[],
+  /** Holds the next read of this role until `release` answers it. */
+  held: null as string | null,
+  release: () => {},
   requests: [] as URL[],
 };
 
@@ -63,12 +66,22 @@ beforeEach(() => {
   server.children = [];
   server.videos = { maker: [1], label: [] };
   server.failing = [];
+  server.held = null;
   server.requests = [];
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input) => {
       const url = new URL(String(input), "http://localhost");
       server.requests.push(url);
+      if (
+        server.held !== null &&
+        url.searchParams.get("organizationRole") === server.held
+      ) {
+        server.held = null;
+        return new Promise((resolve) => {
+          server.release = () => resolve(respond(url));
+        });
+      }
       return Promise.resolve(respond(url));
     }),
   );
@@ -183,6 +196,27 @@ describe("OrganizationPage", () => {
     expect(screen.getByRole("heading", { name: "Label", level: 2 })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Maker", level: 2 })).toBeTruthy();
     expect(failed.closest("section")?.querySelector("button")?.textContent).toBe("Retry");
+  });
+
+  it("keeps a failed role's heading while its retry is read, then shows the cards", async () => {
+    server.videos = { maker: [1], label: [2] };
+    server.failing = ["label"];
+    renderPage();
+    const failed = await screen.findByText(/Couldn't load videos/);
+
+    server.failing = [];
+    server.held = "label";
+    await userEvent.click(
+      within(failed.closest("section")!).getByRole("button", { name: "Retry" }),
+    );
+
+    const label = screen
+      .getByRole("heading", { name: "Label", level: 2 })
+      .closest("section")!;
+    expect(within(label).getByRole("status")).toBeTruthy();
+    server.release();
+    expect(await within(label).findByText("Video 2")).toBeTruthy();
+    expect(within(label).queryByRole("status")).toBeNull();
   });
 
   it("shows one empty state without shelves when the organization has no videos", async () => {
