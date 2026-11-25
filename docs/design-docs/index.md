@@ -56,6 +56,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Authentication and visibility](authentication.md)
 - [Paired library: reading another VVMDM](peer-library.md)
 - [Catalog organization and persistent identity](catalog-organization.md)
+- [Tag organizing: reading one tag and synonym operations](tag-organizing.md)
 - [People: profiles and faces](people.md)
 - [Names of people and organizations](credit-names.md)
 - [Face recognition](face-recognition.md)

@@ -288,6 +288,7 @@ no URL.
 | The account, sign-in and API tokens; plugin upload, approval and settings; network and proxy settings; media folders; watch history deletion; the face runtime download; onboarding | Their settings page, History, or Welcome | The feature's requirement keeps them on their own pages |
 | `getPluginProxySettings` | Settings, Network | Its URL may hold the proxy's user and password |
 | Pairing with another node and the peer's own calls (`applyPeerVocabulary`, `rankPeerRelated`, …) | Settings, Pairing | Pairing is a trust decision made with the other node's code; the peer's calls carry its credential ([peer-library.md](peer-library.md)) |
+| `promoteTagSynonym`, `moveTagSynonym`, `detachTagSynonym` | Tags | The tag page moves one synonym at a time; the synonym and merge rows cover the same names ([tag-organizing.md](tag-organizing.md)) |
 | `deleteVideo`, `clearPeople` | The video page; Settings, Danger zone | An irreversible delete stays on its page |
 | `uploadThumbnailImage`, `uploadPersonImage`, `uploadOrganizationImage`, `startThumbnailEditFromImage` | The video, person or organizations page | The server holds no such file; the fetch-apply rows cover plugin images |
 | Drag operations (`organize*`) | Library | They take drag tokens; the group, bundle and playlist rows make the same changes |

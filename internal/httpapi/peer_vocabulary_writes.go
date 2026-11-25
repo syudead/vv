@@ -286,6 +286,21 @@ func restoreBody(r *http.Request, raw []byte) {
 // renameTagOnPeer renames every link's tag of id's name before RenameTag renames id; it answers w and reports false
 // when the rename stops here. A name the rule refuses, or a tag that is not here, is left to the local rename.
 func (s *server) renameTagOnPeer(w http.ResponseWriter, r *http.Request, id int64, name string) bool {
+	return s.tagNameOnPeer(w, r, id, name, domain.VocabularyRename, func(ctx context.Context, current, normalized string) (send, ok bool) {
+		if current == normalized {
+			return false, true
+		}
+		return true, s.tagNameFree(w, ctx, normalized)
+	})
+}
+
+// tagNameOnPeer sends action, which gives every link's tag of id's canonical name the normalized name, once check
+// says to send it; check answers w itself when ok is false. It answers w and reports false when the change stops
+// here; a name the rule refuses, or a tag that is not here, is left to the local change.
+func (s *server) tagNameOnPeer(
+	w http.ResponseWriter, r *http.Request, id int64, name string, action domain.VocabularyAction,
+	check func(ctx context.Context, current, normalized string) (send, ok bool),
+) bool {
 	normalized, err := domain.NormalizeTagName(name)
 	if err != nil {
 		return true
@@ -300,14 +315,17 @@ func (s *server) renameTagOnPeer(w http.ResponseWriter, r *http.Request, id int6
 		return false
 	}
 	current, found := names[id]
-	if !found || current == normalized {
+	if !found {
 		return true
 	}
-	if !s.tagNameFree(w, r.Context(), normalized) || !s.renameFreeOnLinks(w, r, domain.VocabularyTag, current, normalized, 0) {
+	if send, ok := check(r.Context(), current, normalized); !ok || !send {
+		return ok
+	}
+	if !s.renameFreeOnLinks(w, r, domain.VocabularyTag, current, normalized, 0) {
 		return false
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
-		Kind: domain.VocabularyTag, Action: domain.VocabularyRename, Name: current, NewName: normalized,
+		Kind: domain.VocabularyTag, Action: action, Name: current, NewName: normalized,
 	})
 	return ok
 }

@@ -88,6 +88,13 @@ type Tags interface {
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
 
 	RemoveSynonym(ctx context.Context, tagID int64, name string) (domain.Tag, error)
+	// Tag reads one tag as ListTags lists it, answering domain.ErrTagNotFound when it is missing.
+	Tag(ctx context.Context, audience domain.Audience, id int64) (domain.Tag, error)
+	// PromoteSynonym, MoveSynonym and DetachSynonym answer domain.ErrTagSynonymNotFound when name is not a synonym
+	// of the source now, and change nothing on an error.
+	PromoteSynonym(ctx context.Context, id int64, name string) (domain.Tag, error)
+	MoveSynonym(ctx context.Context, sourceID int64, name string, targetID int64) (source, target domain.Tag, err error)
+	DetachSynonym(ctx context.Context, sourceID int64, name string) (source, created domain.Tag, err error)
 
 	AttachTagByID(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)
@@ -744,12 +751,17 @@ func requiresPostJSONBody(path string) bool {
 		return groupItemsBodyPath(strings.Split(suffix, "/"))
 	}
 	if id, ok := strings.CutPrefix(path, "/api/tags/"); ok {
-		rest, found := strings.CutSuffix(id, "/merge")
-		if found {
-			return rest != "" && !strings.Contains(rest, "/")
+		return tagBodyPath(id)
+	}
+	return false
+}
+
+// tagBodyPath reports whether {id}/{action}, after /api/tags/, is a tag action that takes a JSON body.
+func tagBodyPath(idAction string) bool {
+	for _, action := range []string{"/merge", "/synonyms", "/synonyms/promote", "/synonyms/move", "/synonyms/detach"} {
+		if rest, found := strings.CutSuffix(idAction, action); found && rest != "" && !strings.Contains(rest, "/") {
+			return true
 		}
-		rest, found = strings.CutSuffix(id, "/synonyms")
-		return found && rest != "" && !strings.Contains(rest, "/")
 	}
 	return false
 }
@@ -988,6 +1000,7 @@ const (
 	codeTagNameTaken                = gen.ErrorCodeTagNameTaken
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
 	codeTagNotTentative             = gen.ErrorCodeTagNotTentative
+	codeTagSynonymNotFound          = gen.ErrorCodeTagSynonymNotFound
 	codeProviderFailed              = gen.ErrorCodeProviderFailed
 	codePluginTooLarge              = gen.ErrorCodePluginTooLarge
 	codePluginChanged               = gen.ErrorCodePluginChanged
@@ -1022,6 +1035,7 @@ const (
 	reasonTagNameControlCharacters      = gen.ErrorReasonTagNameControlCharacters
 	reasonTagNameTooLong                = gen.ErrorReasonTagNameTooLong
 	reasonMergeSameTag                  = gen.ErrorReasonMergeSameTag
+	reasonMoveSameTag                   = gen.ErrorReasonMoveSameTag
 	reasonSearchTooLong                 = gen.ErrorReasonSearchTooLong
 	reasonTooManyTagFilters             = gen.ErrorReasonTooManyTagFilters
 	reasonTooManyVideos                 = gen.ErrorReasonTooManyVideos

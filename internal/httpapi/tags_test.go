@@ -112,6 +112,23 @@ func (f *fakeTags) RemoveSynonym(_ context.Context, tagID int64, name string) (d
 	return domain.Tag{ID: tagID, Name: "target", Synonyms: []string{}}, nil
 }
 
+// The tag page's reads and synonym operations are covered against the real store in tag_synonyms_test.go.
+func (f *fakeTags) Tag(context.Context, domain.Audience, int64) (domain.Tag, error) {
+	return domain.Tag{}, errors.New("not faked")
+}
+
+func (f *fakeTags) PromoteSynonym(context.Context, int64, string) (domain.Tag, error) {
+	return domain.Tag{}, errors.New("not faked")
+}
+
+func (f *fakeTags) MoveSynonym(context.Context, int64, string, int64) (domain.Tag, domain.Tag, error) {
+	return domain.Tag{}, domain.Tag{}, errors.New("not faked")
+}
+
+func (f *fakeTags) DetachSynonym(context.Context, int64, string) (domain.Tag, domain.Tag, error) {
+	return domain.Tag{}, domain.Tag{}, errors.New("not faked")
+}
+
 func (f *fakeTags) AttachTagByID(_ context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
 	f.operation, f.lastID, f.lastVideoIDs = "attach-by-id", tagID, videoIDs
 	if f.err != nil {

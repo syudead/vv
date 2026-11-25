@@ -60,7 +60,11 @@ func canonicalNames(ctx context.Context, db *sql.DB, query string, ids []int64) 
 func (s *TagStore) ApplyTagByName(ctx context.Context, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
 	return applyByName(ctx, s.sql, s.db, change, map[domain.VocabularyAction]byNameAction{
 		domain.VocabularyRename: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := renameTagByName(ctx, tx, change.Name, change.NewName)
+			outcome, err := renameTagByName(ctx, tx, change.Name, change.NewName, false)
+			return outcome, nil, err
+		},
+		domain.VocabularyPromote: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
+			outcome, err := renameTagByName(ctx, tx, change.Name, change.NewName, true)
 			return outcome, nil, err
 		},
 		domain.VocabularyDelete: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
@@ -114,7 +118,9 @@ func canonicalTagIDByName(ctx context.Context, tx *sql.Tx, name string) (int64, 
 	return lookup.tagID, true, nil
 }
 
-func renameTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (domain.VocabularyOutcome, error) {
+// renameTagByName gives the tag named name the canonical name newName. With swap, a synonym newName of that tag swaps
+// with name instead, since the nodes may hold different synonyms.
+func renameTagByName(ctx context.Context, tx *sql.Tx, name, newName string, swap bool) (domain.VocabularyOutcome, error) {
 	normalized, err := domain.NormalizeTagName(newName)
 	if err != nil {
 		return domain.VocabularyOutcome{}, err
@@ -130,6 +136,14 @@ func renameTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (dom
 			err = &domain.TagNameConflict{Tag: holder.ref()}
 		}
 		return domain.VocabularyOutcome{}, err
+	}
+	if swap {
+		switch err := checkHeldSynonym(ctx, tx, id, normalized); {
+		case err == nil:
+			return domain.VocabularyOutcome{Changed: true}, promoteSynonymInTx(ctx, tx, id, normalized)
+		case !errors.Is(err, domain.ErrTagSynonymNotFound):
+			return domain.VocabularyOutcome{}, err
+		}
 	}
 	changed, err := renameTagInTx(ctx, tx, id, normalized)
 	return domain.VocabularyOutcome{Changed: changed}, err
