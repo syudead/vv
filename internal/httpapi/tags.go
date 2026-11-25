@@ -161,6 +161,7 @@ func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	tag, err := s.tags.CreateTag(r.Context(), body.Name)
 	if err != nil {
 		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))

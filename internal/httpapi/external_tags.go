@@ -60,6 +60,7 @@ func (e *externalServer) RenameTag(w http.ResponseWriter, r *http.Request) {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer e.s.holdTagNames()()
 	tag, err := e.s.tags.RenameTag(r.Context(), body.Id, body.Name)
 	if err != nil {
 		e.writeTagError(w, err, "Could not rename the tag.")

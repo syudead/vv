@@ -235,7 +235,13 @@ removing a synonym, `move`, `detach`, delete, merge, reject and the batch
 actions, from the screen API or the external API) waits for the same lock. A
 `move` that comes first leaves the promote nothing to send, and a promote that
 comes first leaves the `move` a name that is no longer a synonym, so a promote
-never fails here after the links changed.
+never fails here after the links changed. Every write here that can give a tag
+a name waits for it too: creating a tag, the external API's rename, adding a
+tag to videos by name from the screen API or the external API, and picking
+onboarding interests. A rename checks that its new name is free here before it
+writes the links, and such a write between the check and the local write would
+take the name, so the local rename would fail after the links changed. Each of
+these holds the lock only for its local write, never while it waits on a link.
 
 | Rejected | Why |
 | --- | --- |
@@ -244,6 +250,7 @@ never fails here after the links changed.
 | A link rename that drops `name` | A video tagged only through a folder named `name` loses the tag on that link, and a repeated promote finds `name` gone and `newName` taken |
 | No lock, relying on each store transaction | The links' write and the local write are separate transactions, so two promotes of one tag can both pass the checks and leave the nodes with different canonical names |
 | Locking only promotes and renames | A `move` between the promote's check and its local write takes the synonym away, so the links keep the new canonical name while the local promote fails, and a repeated promote finds no synonym to promote |
+| Locking only the writes that take a name away | Creating a tag or tagging videos with the new name between a rename's check and its local write takes the name, so the links keep the new name while the local rename answers `409 tag_name_taken`, and repeating it fails the same way |
 | Sending `move` and `detach` to the links | Synonyms and tag creation are per node already |
 
 ### A remote id names no tag here

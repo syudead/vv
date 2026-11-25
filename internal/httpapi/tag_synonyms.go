@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -104,6 +105,11 @@ func (s *server) localTagID(w http.ResponseWriter, id int64) bool {
 func (s *server) holdTagNames() (unlock func()) {
 	s.tagNameWrites.Lock()
 	return s.tagNameWrites.Unlock
+}
+
+// namesNewTags reports whether inputs name a tag by name, which creates the tag when no tag holds the name.
+func namesNewTags(inputs []domain.TagInput) bool {
+	return slices.ContainsFunc(inputs, func(input domain.TagInput) bool { return input.ID == nil })
 }
 
 // promoteTagOnPeer makes name the canonical name of every link's tag of id's canonical name before PromoteSynonym
