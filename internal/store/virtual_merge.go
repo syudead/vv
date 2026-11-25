@@ -36,6 +36,10 @@ func (s *VirtualVideoStore) Merge(
 	if err != nil {
 		return domain.Video{}, err
 	}
+	tagged, err := keyHasTags(ctx, tx, from)
+	if err != nil {
+		return domain.Video{}, err
+	}
 	edited, rekeyedGroups, err := moveMergedUserData(ctx, tx, from, to, merged)
 	if err != nil {
 		return domain.Video{}, err
@@ -61,6 +65,9 @@ func (s *VirtualVideoStore) Merge(
 	c := changes{}
 	c.videosDeleted([]domain.DeletedVideo{{ID: virtualID, ContentKey: from}})
 	c.groupsChanged(append(rekeyedGroups, deletedGroups...))
+	if tagged {
+		c.tagsChanged()
+	}
 	if err := s.db.commitWith(ctx, tx, &c, append(events, targetEvents...)...); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot merge the virtual video: %w", err)
 	}

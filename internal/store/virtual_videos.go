@@ -264,6 +264,10 @@ func (s *VirtualVideoStore) Delete(ctx context.Context, videoID int64, contentVe
 	if err != nil {
 		return err
 	}
+	tagged, err := keyHasTags(ctx, tx, key)
+	if err != nil {
+		return err
+	}
 	groups, err := deleteVirtualVideo(ctx, tx, key)
 	if err != nil {
 		return err
@@ -271,10 +275,23 @@ func (s *VirtualVideoStore) Delete(ctx context.Context, videoID int64, contentVe
 	c := changes{}
 	c.videosDeleted([]domain.DeletedVideo{{ID: videoID, ContentKey: key}})
 	c.groupsChanged(groups)
+	if tagged {
+		c.tagsChanged()
+	}
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot delete the virtual video: %w", err)
 	}
 	return nil
+}
+
+// keyHasTags reports whether tags are attached under key, so removing the video from it changes the tag list's counts.
+func keyHasTags(ctx context.Context, tx *sql.Tx, key string) (bool, error) {
+	var tagged bool
+	if err := tx.QueryRowContext(ctx, `select exists(select 1 from video_tags where content_key = ?)`, key).
+		Scan(&tagged); err != nil {
+		return false, fmt.Errorf("cannot read the video's tags: %w", err)
+	}
+	return tagged, nil
 }
 
 // Delete the virtual video's row, its projection and the user data still under its key; returns the changed groups.

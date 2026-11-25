@@ -28,6 +28,7 @@ carries no rows; a screen that receives it re-reads what it shows.
 | Tag kind create, rename, delete, card-first; a tag's kind set or cleared | Yes |
 | A video's tag attached, detached, confirmed or rejected, by the owner, the external API, work-info apply, a group turned into a tag, or automatic tagging and its undo | Yes |
 | Tentative tags created by the external API or work-info apply | Yes |
+| A fileless video with tags deleted or merged into a file video | Yes |
 | Interests picked during setup that create, confirm or classify a tag | Yes |
 | A scan that changes folder names, so folder-derived counts | No |
 | A rolled-back write | No |
