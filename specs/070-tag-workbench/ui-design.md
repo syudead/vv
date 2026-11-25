@@ -172,6 +172,12 @@ are its synonyms. Text not listed here is today's.
   count, the kind's name as the `detail` (`No kind` without one, `Tentative ·`
   before it on a tentative tag) and the synonyms as the secondary names. The
   count's `title` reads `{n} videos`. Pressing the card opens the tag page.
+- **Tag only the paired VVMDM holds**: the list joins every node's tags by
+  name, so a tag with no entry here carries a remote id, which the tag page
+  cannot read. Its card shows `ItemRemoteMark` (`On {name}`) after the name,
+  and pressing it opens the library filtered by the tag, as today's row count
+  does, instead of the tag page. It keeps its check and the selection bar's
+  actions, which reach the link by name today.
 - **Selection**: checks, Shift ranges, a press on a card while anything is
   selected, and Escape work as on the library. Drawn boxes are left out: the
   cards fill the grid, so there is no empty area to start a drag from.
@@ -275,6 +281,8 @@ flowchart LR
 ```
 
 `Move to another tag…` is a `FormDialog` with today's merge-target field.
+Its candidates leave out tags only the paired VVMDM holds, because a move
+names this node's tag as its target and answers 404 for a remote id.
 `Make it a tag of its own` and `Remove this name` run at once: each can be put
 back from this page or the other tag's. Adding a name that is another tag asks
 with a `ConfirmDialog` carrying today's synonym merge warning.
