@@ -170,9 +170,14 @@ continues. Who corrects it depends on who found it:
 A merged PR that carries the marker and has no reconciled comment makes the
 selection run `plan-to-issues` before any further child is implemented. It
 rewrites, adds and closes children to match the revised Plan and marks the PR
-reconciled. Each implementation PR open when a reconcile ran was built on the
-earlier text: give it one more review fixer with the brief's "After a Plan
-revision" line before merging it. A fixer returns `DROPPED` for an open PR whose child that
+reconciled. An implementation PR whose head does not contain a marked PR's
+merge commit was built on the earlier text, whenever it was opened
+(`git merge-base --is-ancestor <merge commit> <PR head>` fails): before
+merging it, give it one more review fixer with the brief's "After a Plan
+revision" line. The fixer merges the base, so the test passes afterwards and
+a restart loses nothing. When that fixer returns `BLOCKED_ON: prerequisite`,
+the revision gave the child a dependency that is not done: hold the PR until
+that child is done, then run the fixer again. A fixer returns `DROPPED` for an open PR whose child that
 reconcile closed as not planned: close the PR without merging it and name it
 in the final report.
 

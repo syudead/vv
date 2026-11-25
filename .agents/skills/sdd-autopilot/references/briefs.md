@@ -177,10 +177,12 @@ Head: <sha>. Parent Issue: #<parent>.
 First: if the PR's Refs names neither #<parent> nor one of #<parent>'s native
 sub-issues, change nothing and return FOREIGN. If the child it Refs is closed
 as not planned, change nothing and return DROPPED with the child in REFS.
-<only when the orchestrator says a reconcile ran while this PR was open:
+<only when the PR head lacks a merged Plan correction, as loop.md says:
 "After a Plan revision: first merge origin/<base> into the head branch even
 without a conflict, then check the PR against the revised artifacts and its
-child Issue.">
+child Issue as they now read. If the child's `Depends on:` line now names a
+child that is not merged into <base>, push the merge, change nothing else and
+return BLOCKED with BLOCKED_ON: prerequisite naming it.">
 Handle this one round:
 - every check on the head that did not pass (failure, cancelled, timed_out,
   action_required, stale): read its log, find the root cause, fix it
