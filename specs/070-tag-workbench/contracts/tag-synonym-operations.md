@@ -1,11 +1,29 @@
-# Contract: Tag synonym operations
+# Contract: Tag read and synonym operations
 
 Source of truth: [api/openapi.yaml](../../../api/openapi.yaml), new operations
-`promoteTagSynonym`, `moveTagSynonym` and `detachTagSynonym`, and the changed
-`applyPeerVocabulary`. All three new operations are owner-only and change
-nothing on an error.
+`getTag`, `promoteTagSynonym`, `moveTagSynonym` and `detachTagSynonym`, and
+the changed `applyPeerVocabulary`. All four new operations are owner-only, and
+the three synonym operations change nothing on an error.
 
-The table shows the errors the three operations share.
+## `GET /api/tags/{id}`
+
+Returns tag `id` for the tag page, which opens from its URL without the list's
+loaded cards and re-reads its tag on the `tags` event.
+
+| Field | In | Type | Required | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | path | int64 | yes | The tag |
+
+**Response**: `200` with the `Tag` that `listTags` gives for the same tag
+(names, video count, tentative state, kind).
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 404 | `tag_not_found` | The tag is missing (deleted, or merged into another tag) or `id` is a remote id (at or above `2^40`); the tag page shows its gone state |
+
+## Synonym operations
+
+The table shows the errors the three synonym operations share.
 
 | Status | `code` | `reason` | When |
 | --- | --- | --- | --- |
@@ -84,7 +102,7 @@ another tag answers `409 tag_name_taken`.
 
 ## Client use
 
-`web/src/api/tags.ts` gains `promoteTagSynonym`, `moveTagSynonym` and
-`detachTagSynonym`, which refresh the shared tag cache after success like
+`web/src/api/tags.ts` gains `getTag`, which reads past the shared tag cache,
+and `promoteTagSynonym`, `moveTagSynonym` and `detachTagSynonym`, which refresh the shared tag cache after success like
 `mergeTag`, and add `tag_synonym_not_found` to the codes that refresh it on a
 stale answer.

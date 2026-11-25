@@ -9,9 +9,9 @@
 The tags screen becomes a grid of tag cards with the kind filter beside the
 title and a strip of what is left to tidy (tentative, no kind, unused), and
 each tag gets a page of its own (`/tags/:id`) where its names, kind and merge
-are organized. The screen API gains three synonym operations (make a synonym
-the canonical name, move a synonym to another tag, detach a synonym into a new
-tag), and a `tags` server event lets an open screen say the list changed
+are organized. The screen API gains a read of one tag for that page and three
+synonym operations (make a synonym the canonical name, move a synonym to
+another tag, detach a synonym into a new tag), and a `tags` server event lets an open screen say the list changed
 without moving it. The design system replaces `AdminTablePage` with a record
 card, a record editor skeleton and kind colours; the organizations screen moves
 onto the same pieces, and the list pieces other screens borrow from
@@ -60,6 +60,7 @@ page patterns; [api/openapi.yaml](../../api/openapi.yaml) for the screen API;
 | Scale | The tag list stays responsive with 5,000 tags: server pages of 100 and a row-virtualized card grid ([Tag list and tag page](#tag-list-and-tag-page)) |
 | Bulk limit | `MaxTagBatch` (20,000) stays the limit for bulk actions and merges |
 | Change notice | There is no tag event today; the screen reloads only after its own writes and on `peerItems` ([Change notice](#change-notice)) |
+| Reading one tag | The screen API has no read of one tag today; `listTags` searches names by substring ([Tag list and tag page](#tag-list-and-tag-page)) |
 | External API and MCP | Unchanged; the new operations are screen API only ([Synonym operations](#synonym-operations)) |
 
 ## Constitution Check
@@ -167,11 +168,14 @@ flowchart LR
 | Tags are cards: name, video count, kind colour, synonyms; a card is one fixed height | Table rows, as today | The maintainer's review: rows read as old and plain; cards of one fixed height still show about 24 tags at 1280×820 and keep virtualization simple |
 | Same | A list beside a detail pane (the first design) | Reviewed as an extension of today's screen; the pane crowds both the list and the tag's work |
 | One tag's work is a page of its own, `/tags/:id`, using the whole width | A side panel over the list | The list's own operations (selection bar, filters) cover the many-tag work; one tag's names, kind and merge need the room, and the page has a URL to return to |
-| Returning from the tag page restores the list's criteria from the URL and its scroll position, as returning from a video does in the library | Keeping the list mounted behind the page | Restoring the list from the URL already works for the library and needs no second screen state |
+| Opening a card holds an in-memory snapshot of the list (loaded cards, cursor, totals, scroll position) under its criteria, one at a time, as the library's `listSnapshot` does; Back restores it when the URL's criteria match, then runs the change check of [Change notice](#change-notice) | Restoring from the URL's criteria only | The criteria give the first page only; a card opened past it could not be scrolled back to without its loaded pages |
+| Same | Keeping the list mounted behind the page | The library already returns from a video this way and needs no second mounted screen |
+| A write on the tag page drops the snapshot, so Back reloads the list with the same criteria from the top | Restoring the snapshot and patching the written tag into it | A merge, detach or kind change can move cards across pages; the library drops its snapshot after a write for the same reason |
 | The kind filter sits beside the title as one segmented control with counts; tentative, no kind and unused show as a strip of three counts that each apply their filter | The filter popover of today | The counts are what the owner checks first ("how many are left"), and the review asked for the filters next to the header |
 | Search, the filters and sort stay in the URL as today (`q`, `tentative`, `unused`, `kind`, `sort`); `tab` is dropped because kinds and rejected names are pages | Keeping `tab` | Requirement 8 covers the criteria; separate pages have their own URLs |
 | The card grid keeps server pages of 100 and is virtualized by rows (`@tanstack/react-virtual`), with the column count taken from the grid's width | A wrapping grid that keeps every loaded card | The tag list froze with thousands of rows before it was virtualized ([library-ui.md](../../docs/design-docs/library-ui.md)); a fixed card height makes a row the unit |
 | Selecting cards follows the library's selection (check on hover, Shift for a range, the bottom selection bar); bulk selection stops at 20,000 before running, as today | A separate selection mode | One selection model across the app; requirement 2 keeps today's limit |
+| The tag page reads its tag with a new owner-only `GET /api/tags/{id}` (`getTag`) on open and on the `tags` event; `404 tag_not_found` is the gone state ([contracts/tag-synonym-operations.md](contracts/tag-synonym-operations.md)) | Taking the tag from the list's loaded cards, or from `listTags` with its name as `q` | The page opens from its URL without the list; a name search matches substrings and synonyms, and cannot tell a renamed tag from a deleted one |
 | The tag page re-reads its tag on the `tags` event when no own write is in flight, and shows the gone state when the tag no longer exists | A notice to refresh, as on the list | One tag's page has no positions to keep, so updating in place moves nothing |
 | A stale target (`tag_not_found`, `tag_synonym_not_found`) shows the reason, and the page or list reloads | Retrying | The Issue's edge case |
 
@@ -257,11 +261,13 @@ The graph shows the units and what each waits for.
 flowchart LR
   ops[Synonym operations API] --> page[Tag page]
   ev[Tags server event] --> list[Tag card list]
-  move[Shared list modules] --> list
-  ds[Record card, editor page, kind colours] --> list
+  move[Shared list modules] --> views[Kinds and rejected names pages]
+  ds[Record card, editor page, kind colours] --> views
+  views --> list
+  move --> list
+  ds --> list
   list --> page
   list --> bulk[Selected tag cards]
-  list --> views[Kinds and rejected names pages]
   move --> orgs[Organizations and AdminTablePage removal]
   ds --> orgs
   list --> orgs
@@ -271,9 +277,9 @@ flowchart LR
   orgs --> e2e
 ```
 
-### Make a synonym canonical, move it or detach it through the screen API
+### Read one tag and make a synonym canonical, move it or detach it through the screen API
 
-**Scope**: The three operations and the peer `promote` action in
+**Scope**: `getTag`, the three operations and the peer `promote` action in
 [contracts/tag-synonym-operations.md](contracts/tag-synonym-operations.md):
 domain rules, `TagStore` methods, handlers, `api/openapi.yaml` and
 `task generate`, and their wrappers in `web/src/api/tags.ts`. Adds
@@ -286,8 +292,9 @@ of [Synonym operations](#synonym-operations), linked from the index.
 after it, attachments unchanged for promote and move, none on a detached tag,
 and no change with `tag_synonym_not_found` or `tag_not_found` when the synonym
 or target is gone. A video-list test filters by a promoted, moved and detached
-name and gets the tag named in the table. Handler tests cover `move_same_tag`,
-a remote id answering 404, and on a paired pair of test servers that `promote`
+name and gets the tag named in the table. Handler tests cover `getTag` answering
+the `Tag` that `listTags` gives and `404 tag_not_found` for a missing or remote
+id, `move_same_tag`, a remote id answering 404, and on a paired pair of test servers that `promote`
 changes the canonical name on both and `move` only locally. `web/src/api`
 tests assert each wrapper's request.
 
@@ -344,17 +351,22 @@ columns and their narrow stack).
 **Scope**: `/tags` as a `ListPage` of tag cards: the kind filter with counts
 beside the title, the tidy-up strip (tentative, no kind, unused), search and
 sort in the top bar, their URL, create, the row-virtualized card grid, empty
-states, the change notice of [Change notice](#change-notice), links to the
-kinds and rejected names pages, and deletion of the old screen's files and
+states, the change notice of [Change notice](#change-notice), the snapshot
+kept for Back from a tag page, links to the kinds and rejected names pages,
+and deletion of the old screen's files and
 tests, including `web/src/testing/tagsPage.tsx`. Updates the tags part of
 [library-ui.md](../../docs/design-docs/library-ui.md).
 
 **Dependencies**: Send a tags server event when the tag list changes; Move the
 list pieces other screens use out of web/src/tags; Add the record card, the
-record editor page and kind colours to the design system
+record editor page and kind colours to the design system; Give tag kinds and
+rejected names pages of their own
 
 **Acceptance**: Component tests: criteria round-trip through the URL and are
-restored on reload and Back (acceptance 5); a tidy-up count applies its
+restored on reload and Back (acceptance 5); Back from a card opened past the
+first page restores the same loaded cards and scroll position without a
+request for them, and after a write on the tag page reloads with the same
+criteria; a tidy-up count applies its
 filter; an event whose re-read differs in a loaded card past the first page
 shows the notice and leaves the cards in place, one whose re-read matches
 shows nothing, and one during an own write is checked after it; the two empty
@@ -381,11 +393,12 @@ remove and add, the kind picker, merge into another tag, the row of the tag's
 videos with the link to the library, the gone state, in-place refresh on the
 `tags` event, and stale-target handling.
 
-**Dependencies**: Make a synonym canonical, move it or detach it through the
-screen API; Rebuild the tags list as kind-filtered tag cards
+**Dependencies**: Read one tag and make a synonym canonical, move it or detach
+it through the screen API; Rebuild the tags list as kind-filtered tag cards
 
 **Acceptance**: Component tests with a fake API assert each control's request
-and the page after it: make main shows the new name with the old one among the
+and the page after it: opening `/tags/:id` directly reads the tag with
+`getTag`, and a `404 tag_not_found` shows the gone state; make main shows the new name with the old one among the
 names; move removes the name; detach links to the new tag; merge returns to the
 list without the tag; a `tag_synonym_not_found` or `tag_not_found` answer
 shows the reason and reloads; an event re-reads the tag. A visual review of
@@ -395,12 +408,16 @@ the page's states.
 
 **Scope**: `/tags/kinds` (create, rename, delete, card-first, each kind's
 colour and its link to the filtered list) and `/tags/rejected` (list,
-forget), reached from the tags list's header.
+forget). They replace the current screen's Kinds and Rejected names tabs, which
+become links to them, so both stay reachable until the card list replaces that
+screen and keeps the links in its header.
 
-**Dependencies**: Rebuild the tags list as kind-filtered tag cards
+**Dependencies**: Move the list pieces other screens use out of web/src/tags;
+Add the record card, the record editor page and kind colours to the design
+system
 
-**Acceptance**: Component tests: deleting a kind leaves its tags with no kind
-in the list; forgetting a rejected name removes it from the page. A visual
+**Acceptance**: Component tests: the tags screen links to both pages; deleting
+a kind leaves its tags with no kind in the list; forgetting a rejected name removes it from the page. A visual
 review of both pages.
 
 ### Move organizations onto record cards and an organization page and remove AdminTablePage
