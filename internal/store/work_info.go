@@ -248,21 +248,25 @@ func checkCreditRefs(ctx context.Context, tx *sql.Tx, infos []domain.WorkInfo) (
 	return -1, nil
 }
 
-// Write only changed keys in input order, dropping the face appearances of removed performers and marking the
-// removed credits of automatic merges; the caller advances edit times.
+// Write only changed keys in input order, dropping the face appearances of removed performers, deleting the
+// provisional ones nothing uses any more and marking the removed credits of automatic merges; the caller advances
+// edit times.
 func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[string]domain.WorkInfo) ([]string, error) {
 	before, err := workInfoByUserKeys(ctx, tx, keys)
 	if err != nil {
 		return nil, err
 	}
 	var edited []string
+	var removed []int64
 	for _, key := range keys {
 		if before[key].Equal(final[key]) {
 			continue
 		}
-		if err := dropRemovedPerformerFaces(ctx, tx, key, before[key], final[key]); err != nil {
+		performers, err := dropRemovedPerformerFaces(ctx, tx, key, before[key], final[key])
+		if err != nil {
 			return nil, err
 		}
+		removed = append(removed, performers...)
 		if err := markOwnerChangedMergeCredits(ctx, tx, key, before[key], final[key]); err != nil {
 			return nil, err
 		}
@@ -270,6 +274,10 @@ func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[str
 			return nil, err
 		}
 		edited = append(edited, key)
+	}
+	// After every key is written, so a performer moved to another of the keys is still credited.
+	if err := deleteUnusedProvisionalPeople(ctx, tx, removed); err != nil {
+		return nil, err
 	}
 	return edited, nil
 }
@@ -562,7 +570,7 @@ func workInfoReads(entry func(string) *domain.WorkInfo) []workInfoRead {
 	}
 }
 
-// creditLinkRead also reads each person's image revision; organizations read 0. A person without a canonical name reads as provisional.
+// creditLinkRead also reads each person's image revision; organizations read 0. A person without names reads as provisional.
 func creditLinkRead(t creditTables, add func(key, role string, ref domain.CreditRef, revision int64)) workInfoRead {
 	revision := `0`
 	if t.kind == domain.CreditPerson {
@@ -570,7 +578,7 @@ func creditLinkRead(t creditTables, add func(key, role string, ref domain.Credit
 	}
 	return workInfoRead{
 		query: t.q(`select l.content_key, l.role, l.{id}, coalesce(n.name, ''), n.{id} is null, ` + revision + ` from {links} l
-			left join {names} n on n.{id} = l.{id} and n.canonical = 1
+			left join {names} n on n.{id} = l.{id} and n.position = 0
 			where l.content_key in (select value from json_each(?)) order by l.content_key, l.position`),
 		scan: func(rows *sql.Rows) error {
 			var key, role string

@@ -112,13 +112,15 @@ async function asTagsResponse(response: Response): Promise<Response> {
 }
 
 /**
- * Return empty tag kinds and credit searches here; LibraryTagKindFilter.test.tsx covers kind
- * filtering and LibrarySearchSuggestions.test.tsx the search suggestions.
+ * Return empty tag kinds, credit searches and smart folders here; LibraryTagKindFilter.test.tsx
+ * covers kind filtering, LibrarySearchSuggestions.test.tsx the search suggestions and
+ * FavoriteFolderBand.test.tsx the band of favorite folders.
  */
 function libraryFetch(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): typeof fetch {
   return (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
     if (path === "/api/tag-kinds") return Promise.resolve(json({ items: [] }));
+    if (path === "/api/smart-folders") return Promise.resolve(json({ smartFolders: [] }));
     if (path === "/api/people" || path === "/api/organizations") {
       return Promise.resolve(json({ items: [], total: 0, totalAll: 0 }));
     }
@@ -769,7 +771,7 @@ describe("LibraryPage", () => {
     );
   });
 
-  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
+  it("キーボードだけで検索欄 → × → ファイルで検索 → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
     const user = userEvent.setup();
     renderLibrary("/?q=abc&sort=addedDesc");
     await screen.findByRole("link", { name: "動画 1" });
@@ -780,6 +782,10 @@ describe("LibraryPage", () => {
     await user.tab();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Clear search" }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Search by image or video" }),
     );
     await user.tab();
     expect(document.activeElement).toBe(help);

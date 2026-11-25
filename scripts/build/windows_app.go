@@ -163,6 +163,14 @@ func extractFFmpeg(archive, destDir string) error {
 
 // extractZip copies the wanted entries, named below the archive's root directory, to their targets.
 func extractZip(archive string, want map[string]string) error {
+	return extractZipEntries(archive, want, func(name string) (string, bool) {
+		_, inner, ok := strings.Cut(name, "/")
+		return inner, ok
+	})
+}
+
+// extractZipEntries copies the entries whose name, as inner maps it, is wanted.
+func extractZipEntries(archive string, want map[string]string, innerName func(string) (string, bool)) error {
 	reader, err := zip.OpenReader(archive)
 	if err != nil {
 		return fmt.Errorf("%s を開けません: %w", filepath.Base(archive), err)
@@ -170,7 +178,7 @@ func extractZip(archive string, want map[string]string) error {
 	defer func() { _ = reader.Close() }()
 	found := map[string]bool{}
 	for _, entry := range reader.File {
-		_, inner, ok := strings.Cut(entry.Name, "/")
+		inner, ok := innerName(entry.Name)
 		target, wanted := want[inner]
 		if !ok || !wanted {
 			continue

@@ -6,6 +6,7 @@ import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import type { CreditChoice } from "../ui/CreditCommand";
 import { creditFace } from "./creditFace";
+import { matchedOtherName } from "./creditRows";
 import { creditDisplayName } from "./displayName";
 
 const candidateLimit = 8;
@@ -47,15 +48,12 @@ export function useCreditTargetSearch(kind: CreditKind, sourceId: number, value:
     .slice(0, candidateLimit);
   const folded = foldForMatch(value.trim());
   const options: CreditChoice[] = shown.map((credit) => {
-    const alias =
-      folded === "" || foldForMatch(credit.name).includes(folded)
-        ? undefined
-        : credit.aliases.find((item) => foldForMatch(item.name).includes(folded))?.name;
+    const other = matchedOtherName(credit, folded);
     return {
       id: String(credit.id),
       label: creditDisplayName(credit),
       leading: creditFace(kind, credit, "option"),
-      hint: alias === undefined ? undefined : t.credits.mergeDialog.aliasHint(alias),
+      hint: other === undefined ? undefined : t.credits.mergeDialog.otherNameHint(other),
       meta: t.credits.mergeDialog.videoCount(credit.videoCount),
     };
   });

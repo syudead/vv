@@ -50,7 +50,6 @@ var assistantArgumentSchemas = map[AssistantArgument]map[string]any{
 	AssistantArgRole: {"type": "string", "description": "The credit role of the people.",
 		"enum": []string{"performer", "director", "photographer", "streamer"}},
 	AssistantArgSynonym:    typed("string", "A tag synonym."),
-	AssistantArgAliases:    {"type": "array", "items": map[string]any{"type": "string"}, "description": "Aliases to add."},
 	AssistantArgCode:       typed("string", "A product code."),
 	AssistantArgURL:        typed("string", "A URL."),
 	AssistantArgDateKind:   {"type": "string", "enum": []string{"release", "recorded", "published"}},
@@ -67,7 +66,7 @@ var assistantArgumentSchemas = map[AssistantArgument]map[string]any{
 	AssistantArgFetchID:    typed("string", "The fetchId a fetch tool answered in this request."),
 	AssistantArgFields: {"type": "array", "items": map[string]any{"type": "string"},
 		"description": "The fetched fields to apply, such as title, tags, code, description, dates, cover, " +
-			"people, organizations, urls and externalIds for a video, or image, profile, aliases, " +
+			"people, organizations, urls and externalIds for a video, or image, profile, names, " +
 			"externalIds and links for a person."},
 	AssistantArgAtMs:        typed("integer", "The frame position in milliseconds; leave it out to edit the current thumbnail."),
 	AssistantArgInstruction: typed("string", "What to change in the image, in the owner's words."),
@@ -103,6 +102,16 @@ var assistantTargetSchema = map[string]any{
 	},
 }
 
+// assistantCreditNameRows take names as the list of a person's or organization's own names, not as names to look up.
+var assistantCreditNameRows = map[string]bool{
+	"createPerson": true, "updatePerson": true, "createOrganization": true, "updateOrganization": true,
+}
+
+var assistantCreditNamesSchema = map[string]any{
+	"type": "array", "items": map[string]any{"type": "string"},
+	"description": "Every name in order, the display name first. On an update it replaces the whole list.",
+}
+
 // AssistantRowParameters is the JSON Schema of a name-based row's tool arguments: its target when it has one, and
 // its arguments. A schema row takes its operation's own schema instead.
 func AssistantRowParameters(row AssistantAction) json.RawMessage {
@@ -114,6 +123,9 @@ func AssistantRowParameters(row AssistantAction) json.RawMessage {
 		if schema, ok := assistantArgumentSchemas[arg]; ok {
 			properties[string(arg)] = schema
 		}
+	}
+	if assistantCreditNameRows[row.ID] {
+		properties[string(AssistantArgNames)] = assistantCreditNamesSchema
 	}
 	encoded, _ := json.Marshal(map[string]any{"type": "object", "properties": properties}) // Plain maps always encode.
 	return encoded

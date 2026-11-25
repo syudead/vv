@@ -144,6 +144,27 @@ func TestExternalMergeTagsErrorsAndMissingSources(t *testing.T) {
 	}
 }
 
+func TestExternalTagEditsRequireIDs(t *testing.T) {
+	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
+	source := f.createTag(t, "ねこ")
+	before := f.screenTags(t)
+	invalid := wantExternalError{http.StatusBadRequest, extgen.ErrorCodeInvalidRequest, "", -1, 0}
+	for _, tc := range []struct {
+		name string
+		path string
+		body any
+	}{
+		{"targetId の無い統合", "/tags/merge", map[string]any{"sourceIds": []int64{source}}},
+		{"id の無い名前の変更", "/tags/rename", map[string]any{"name": "猫"}},
+		{"id が null の同義語の追加", "/tags/synonyms", map[string]any{"id": nil, "action": "add", "name": "猫"}},
+	} {
+		assertExternalError(t, tc.name, f.postExternalRec(t, tc.path, tc.body), invalid)
+	}
+	if after := f.screenTags(t); !bytes.Equal(before, after) {
+		t.Errorf("誤りの後に一覧が変わった:\n%s\n%s", before, after)
+	}
+}
+
 func TestMCPRenameTag(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	ctx := context.Background()

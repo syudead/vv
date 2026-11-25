@@ -20,6 +20,7 @@ import {
 import type {
   FolderListing,
   FolderSummary,
+  RootFolder,
   RootFolderListing,
   Video,
   VideoPage,
@@ -50,6 +51,10 @@ function summary(extra: Partial<FolderSummary>): FolderSummary {
     previews: [],
     ...extra,
   };
+}
+
+function rootFolder(extra: Partial<RootFolder>): RootFolder {
+  return { rootId: 3, name: "movies", rootPath: "/a/movies", previews: [], ...extra };
 }
 
 function previews(count: number) {
@@ -88,8 +93,8 @@ function json(body: unknown, status = 200): Response {
 
 const roots: RootFolderListing = {
   folders: [
-    summary({ rootId: 3, rootPath: "/a/movies", videoCount: 0, folderCount: 9 }),
-    summary({ rootId: 7, rootPath: "/b/movies", videoCount: 1, previews: previews(1) }),
+    rootFolder({ rootId: 3, rootPath: "/a/movies" }),
+    rootFolder({ rootId: 7, rootPath: "/b/movies", previews: previews(1) }),
   ],
 };
 
@@ -332,11 +337,12 @@ describe("FolderPage", () => {
   it("最上位に登録フォルダをパス付きで並べる", async () => {
     renderFolders("/folders");
     const a = await screen.findByRole("link", {
-      name: "movies, 0 videos, 9 folders, /a/movies",
+      name: "movies, /a/movies",
     });
-    const b = screen.getByRole("link", {
-      name: "movies, 1 video, 0 folders, /b/movies",
-    });
+    const b = screen.getByRole("link", { name: "movies, /b/movies" });
+    // The root card shows its recent thumbnails, not counts.
+    expect(b.querySelectorAll("img")).toHaveLength(1);
+    expect(b.textContent).not.toMatch(/video|folder/);
     expect(a.getAttribute("href")).toBe("/folders/3");
     expect(b.getAttribute("href")).toBe("/folders/7");
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Media folders 2");
@@ -345,14 +351,14 @@ describe("FolderPage", () => {
   it("長い名前と登録パスを省略しても全体を確認でき、ゲストにパスを出さない", () => {
     const name = "長い日本語のフォルダ名 and a long English folder name";
     const rootPath = "/media/long/registered/path/to/long-folder";
-    const folder = summary({ name, rootPath });
+    const folder = rootFolder({ name, rootPath });
     const { rerender } = render(
       <MemoryRouter>
         <RootFolderCard folder={folder} showPath />
       </MemoryRouter>,
     );
     const card = screen.getByRole("link", {
-      name: `${name}, 0 videos, 0 folders, ${rootPath}`,
+      name: `${name}, ${rootPath}`,
     });
     expect(card.querySelector("h3")?.getAttribute("title")).toBe(name);
     expect(card.querySelector("h3 span")?.className).toContain("line-clamp-2");
@@ -364,9 +370,7 @@ describe("FolderPage", () => {
         <RootFolderCard folder={folder} showPath={false} />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByRole("link", { name: `${name}, 0 videos, 0 folders` }),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name })).toBeDefined();
     expect(screen.queryByText(rootPath)).toBeNull();
   });
 
@@ -954,7 +958,7 @@ describe("FolderPage", () => {
     });
     renderFolders("/folders");
     await screen.findByRole("link", {
-      name: "movies, 0 videos, 9 folders, /a/movies",
+      name: "movies, /a/movies",
     });
     expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
 
@@ -1384,7 +1388,10 @@ describe("FolderPage", () => {
     ).toBe(true);
   });
   describe("ゲスト", () => {
-    function withoutRootPath({ rootPath: _, ...rest }: FolderSummary): FolderSummary {
+    function withoutRootPath<T extends { rootPath?: string }>({
+      rootPath: _,
+      ...rest
+    }: T) {
       return rest;
     }
 
@@ -1423,10 +1430,7 @@ describe("FolderPage", () => {
     it("最上位の登録フォルダにパスを添えず、所有者だけの API も /api/events も開かない", async () => {
       guestResponses();
       const { container } = renderFolders("/folders", "guest");
-      await screen.findByRole("link", { name: "movies, 0 videos, 9 folders" });
-      expect(
-        screen.getByRole("link", { name: "movies, 1 video, 0 folders" }),
-      ).toBeDefined();
+      expect(await screen.findAllByRole("link", { name: "movies" })).toHaveLength(2);
       expect(container.textContent).not.toContain("/a/movies");
       expect(requests).toEqual(["/api/folders"]);
       expect(FakeEventSource.instances).toHaveLength(0);

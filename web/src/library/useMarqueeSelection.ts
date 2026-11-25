@@ -46,21 +46,38 @@ export function useMarqueeSelection(options: Options) {
   useEffect(() => {
     const root = container.current;
     if (!enabled || root === null) return;
+    let cancel: (() => void) | null = null;
     const onDown = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" || event.button !== 0 || !event.isPrimary) return;
       if (!(event.target instanceof Element) || event.target.closest(startsElsewhere))
         return;
       // Keep the browser from selecting text or dragging images under the box.
       event.preventDefault();
-      trackBox(event, root, box, latest);
+      cancel?.();
+      cancel = trackBox(event, root, box, latest);
     };
     root.addEventListener("pointerdown", onDown);
-    return () => root.removeEventListener("pointerdown", onDown);
+    return () => {
+      root.removeEventListener("pointerdown", onDown);
+      cancel?.();
+    };
   }, [box, container, enabled]);
 }
 
 function pagePoint(x: number, y: number): Point {
   return { x: x + window.scrollX, y: y + window.scrollY };
+}
+
+/** A card in a sideways-scrolling row counts only where the row shows it; null when clipped away. */
+function visibleRect(card: HTMLElement): DOMRect | null {
+  const rect = card.getBoundingClientRect();
+  const row = card.parentElement?.closest("[data-scroll-row]");
+  if (row === null || row === undefined) return rect;
+  const clip = row.getBoundingClientRect();
+  const left = Math.max(rect.left, clip.left);
+  const right = Math.min(rect.right, clip.right);
+  if (right <= left) return null;
+  return new DOMRect(left, rect.top, right - left, rect.height);
 }
 
 /** Cards keep their place while a box is drawn, so measure again only when cards are added. */
@@ -69,9 +86,9 @@ function cardBoxes(root: HTMLElement, cached: Map<string, Box>): Map<string, Box
   if (cards.length === cached.size) return cached;
   const boxes = new Map<string, Box>();
   for (const card of cards) {
-    const rect = card.getBoundingClientRect();
+    const rect = visibleRect(card);
     const key = card.dataset.cardKey;
-    if (key === undefined) continue;
+    if (key === undefined || rect === null) continue;
     const start = pagePoint(rect.left, rect.top);
     boxes.set(key, {
       left: start.x,
@@ -108,7 +125,7 @@ function trackBox(
   root: HTMLElement,
   box: RefObject<HTMLElement | null>,
   latest: RefObject<Options>,
-) {
+): () => void {
   const origin = pagePoint(down.clientX, down.clientY);
   const before = latest.current.selection;
   const base = down.shiftKey || down.ctrlKey || down.metaKey ? before : emptySelection;
@@ -182,4 +199,5 @@ function trackBox(
   window.addEventListener("pointercancel", finish);
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("scroll", onScroll, true);
+  return finish;
 }

@@ -35,7 +35,7 @@ func (s *CreditStore) VideoFaceAppearances(ctx context.Context, videoID int64) (
 	rows, err := tx.QueryContext(ctx, `select a.id, a.person_id, coalesce(n.name, ''), n.person_id is null,
 		`+personImageRevision("a.person_id")+`, a.crop is not null, a.tracks
 		  from face_appearances a
-		  left join people_names n on n.person_id = a.person_id and n.canonical = 1
+		  left join people_names n on n.person_id = a.person_id and n.position = 0
 		 where a.content_key = ? and a.dropped = 0 and a.person_id is not null`, key)
 	if err != nil {
 		return domain.VideoFaceAppearances{}, fmt.Errorf("cannot read the face appearances of video %d: %w", videoID, err)

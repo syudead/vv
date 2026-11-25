@@ -1,4 +1,4 @@
-import type { Alias, ExternalId } from "../../../api/credits";
+import type { CreditName, ExternalId } from "../../../api/credits";
 import type {
   PersonPluginFetchedPerson,
   PersonPluginItem,
@@ -11,7 +11,7 @@ import { type PersonProfile, personFactGroups } from "../personFacts";
 /** The person a result is compared with; a lookup of a person the apply creates has no name or values. */
 export interface PersonCompareCurrent {
   name?: string;
-  aliases: readonly Alias[];
+  names: readonly CreditName[];
   externalIds: readonly ExternalId[];
   profile: PersonProfile;
   imageRevision?: number;
@@ -41,7 +41,7 @@ export type RowKind = "fill" | "replace" | "kept";
 
 export type RowItem = Exclude<
   PersonPluginItem,
-  "image" | "aliases" | "externalIds" | "profile.links"
+  "image" | "names" | "externalIds" | "profile.links"
 >;
 
 /** One row per profile field the result carries; the face and the lists are chosen apart. */
@@ -51,13 +51,13 @@ export interface CompareRow {
 }
 
 /**
- * What an apply takes: profile fields, the image chosen as the face, and the aliases, external
- * IDs and links it appends one by one.
+ * What an apply takes: profile fields, the image chosen as the face, and the names, external IDs
+ * and links it appends one by one.
  */
 export interface PersonSelection {
   items: RowItem[];
   image: number | null;
-  aliases: string[];
+  names: string[];
   externalIds: ExternalId[];
   links: string[];
 }
@@ -81,15 +81,6 @@ export function idKey(id: ExternalId): string {
   return `${id.source}\u0000${id.value}`;
 }
 
-/** The names an apply may add as aliases, as the server allows them: the fetched name, then the aliases. */
-export function aliasChoices(
-  fetched: PersonPluginFetchedPerson,
-  withName = true,
-): string[] {
-  const aliases = fetched.aliases.map((alias) => alias.name);
-  return [...new Set(withName ? [fetched.name, ...aliases] : aliases)];
-}
-
 /** A list's fetched values, split into those the apply would add and those the person has. */
 export interface ListChoices<T> {
   fresh: T[];
@@ -103,15 +94,15 @@ function split<T>(values: readonly T[], has: (value: T) => boolean): ListChoices
   };
 }
 
-/** A person the apply creates takes its name from the work, so the fetched name is no alias for it. */
-export function aliasList(
+/** The fetched names by spelling, the fetched display name first, as the apply appends them. */
+export function nameList(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
 ): ListChoices<string> {
+  const stored = new Set(current.names.map((entry) => entry.name));
   return split(
-    aliasChoices(fetched, current.name !== undefined),
-    (name) =>
-      name === current.name || current.aliases.some((alias) => alias.name === name),
+    fetched.names.map((entry) => entry.name),
+    (name) => stored.has(name),
   );
 }
 
@@ -188,7 +179,7 @@ export function initialSelection(
       current.imageRevision === undefined && faceChoices(current, fetched, replace) > 0
         ? 0
         : null,
-    aliases: aliasList(current, fetched).fresh,
+    names: nameList(current, fetched).fresh,
     externalIds: idList(current, fetched).fresh,
     links: linkList(current, fetched).fresh,
   };
@@ -198,7 +189,7 @@ export function selectionEmpty(selection: PersonSelection): boolean {
   return (
     selection.items.length === 0 &&
     selection.image === null &&
-    selection.aliases.length === 0 &&
+    selection.names.length === 0 &&
     selection.externalIds.length === 0 &&
     selection.links.length === 0
   );
@@ -207,14 +198,14 @@ export function selectionEmpty(selection: PersonSelection): boolean {
 /** The apply body's selection: the image joins the items when one is chosen. */
 export function selectionBody(selection: PersonSelection): {
   items: PersonPluginItem[];
-  aliases: string[];
+  names: string[];
   externalIds: ExternalId[];
   links: string[];
 } {
   return {
     items:
       selection.image === null ? [...selection.items] : [...selection.items, "image"],
-    aliases: [...selection.aliases],
+    names: [...selection.names],
     externalIds: [...selection.externalIds],
     links: [...selection.links],
   };
@@ -268,7 +259,7 @@ export function skippedPersonReason(
   const text = t.credits.personPage.pluginFetch.skipped;
   if (value.reason === "taken") return text.taken(value.holderName ?? "");
   if (value.reason === "too_many") {
-    if (value.item === "aliases") return text.tooManyAliases;
+    if (value.item === "names") return text.tooManyNames;
     if (value.item === "profile.links") return text.tooManyLinks;
     return text.tooManyIds;
   }

@@ -26,7 +26,7 @@ function scan(values: Partial<Scan> = {}): Scan {
   return {
     id: 2,
     origin: "manual",
-    status: state,
+    status: state === "paused" ? "running" : state,
     videos: { total: 0, settled: 0 },
     issues: { failed: 0, substituted: 0, revision: 0 },
     state,
@@ -239,6 +239,62 @@ describe("ScanStatusSection", () => {
       );
     },
   );
+
+  it("shows a scan requested during a pause as waiting, with both starts blocked", async () => {
+    const paused = scan({ id: 9, state: "paused", status: "finding", videos: undefined });
+    let started = false;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/scans" && init?.method === "POST") {
+        started = true;
+        return Promise.resolve(json(paused, 201));
+      }
+      return Promise.resolve(json(started ? paused : scan()));
+    });
+    renderSection();
+    const user = userEvent.setup();
+    const start = await screen.findByRole("button", { name: "Scan library" });
+    await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
+
+    await user.click(start);
+
+    expect(await screen.findByText("Waiting for resume")).toBeDefined();
+    expect(screen.getByText("Starts when background work resumes.")).toBeDefined();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    for (const name of ["Scan library", "Force rescan"]) {
+      const blocked = screen.getByRole("button", { name });
+      expect(blocked.hasAttribute("disabled")).toBe(true);
+      expect(blocked.getAttribute("aria-describedby")).toBe("scan-start-blocked");
+    }
+    expect(document.getElementById("scan-start-blocked")?.textContent).toBe(
+      "A scan is waiting for resume. You can start another when it finishes.",
+    );
+  });
+
+  it("keeps the counts of a scan the pause stopped and says it continues", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(
+              scan({
+                state: "paused",
+                status: "running",
+                videos: { total: 10, settled: 4 },
+              }),
+            ),
+      ),
+    );
+    renderSection();
+
+    expect(
+      await screen.findByText("Continues when background work resumes."),
+    ).toBeDefined();
+    expect(screen.getByText("Waiting for resume")).toBeDefined();
+    expect(screen.getByText("4 of 10 videos done")).toBeDefined();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("4");
+  });
 
   it("shows a failed start request and lets the owner try again", async () => {
     let attempts = 0;

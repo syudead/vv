@@ -8,7 +8,7 @@ import {
 } from "react";
 import { Link } from "react-router";
 
-import type { Person } from "../../api/credits";
+import { otherNames, type Person } from "../../api/credits";
 import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { personEditPath } from "../../lib/personEditPath";
@@ -101,9 +101,9 @@ export function PersonIdentity({
         >
           {creditDisplayName(person)}
         </h1>
-        {!person.provisional && person.aliases.length > 0 && (
+        {!person.provisional && person.names.length > 1 && (
           <p className="text-sm break-words text-muted-foreground">
-            {text.aliases(person.aliases.map((alias) => alias.name))}
+            {text.aliases(otherNames(person).map((entry) => entry.name))}
           </p>
         )}
       </div>

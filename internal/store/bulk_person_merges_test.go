@@ -84,4 +84,13 @@ func TestProvisionalMatchesTellAloneCoPerformersAndSimilarFaces(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("matches = %+v, want %+v", got, want)
 	}
+
+	// The editor lists the unnamed performers too; a person is never similar to themself.
+	got, err = f.db.VideoEdits().ProvisionalMatches(ctx, []int64{f.videoA, f.videoB}, []int64{f.target, f.provisional, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("matches with the unnamed performers listed = %+v, want %+v", got, want)
+	}
 }

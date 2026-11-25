@@ -55,11 +55,14 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function person(id: number, name: string, aliases: string[] = []) {
+/** others are the names after the display name; an empty name is a provisional person's. */
+function person(id: number, name: string, others: string[] = []) {
   return {
     id,
     name,
-    aliases: aliases.map((alias) => ({ name: alias })),
+    names: [name, ...others]
+      .filter((entry) => entry !== "")
+      .map((entry) => ({ name: entry })),
     externalIds: [],
     videoCount: 2,
     createdAt: "2026-09-01T00:00:00Z",
@@ -197,7 +200,7 @@ describe("VideoDetailsEditor", () => {
     expect(await screen.findByRole("textbox", { name: "Name" })).toBeDefined();
   });
 
-  it("候補は別名で当たった行に Alias を添え、一致する人がいても作成の行を出す", async () => {
+  it("候補は代表名の後の名前で当たった行にその名前を添え、一致する人がいても作成の行を出す", async () => {
     server.people.mockImplementation(() =>
       json({
         items: [person(2, "Bob"), person(4, "Robert", ["bobby"])],
@@ -211,7 +214,7 @@ describe("VideoDetailsEditor", () => {
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       "Bob2 videos",
-      "RobertAlias: bobby2 videos",
+      "RobertAlso known as bobby2 videos",
       'Create "bob"',
     ]);
     const url = server.people.mock.calls.at(-1)![0];

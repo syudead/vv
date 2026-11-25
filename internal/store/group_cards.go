@@ -145,14 +145,21 @@ func loadGroupCardTags(ctx context.Context, tx *sql.Tx, ids []int64, groups map[
 	}
 	selected := `select distinct ` + userKeyExpr("v") + ` from group_members m join videos v on v.id = m.video_id
 		where m.audience = 1 and v.content_key <> '' and m.group_id in (select value from json_each(?1))`
-	rows, err := tx.QueryContext(ctx, taggedUserKeysCTE(selected)+`, members as (
-		select m.group_id, `+userKeyExpr("v")+` as user_key, m.position from group_members m join videos v on v.id = m.video_id
-		where m.audience = 1 and v.content_key <> '' and m.group_id in (select value from json_each(?1)))
-		select m.group_id, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder), (select min(first.unconfirmed) from members fm join tagged first on first.content_key = fm.user_key
-		 where fm.group_id = m.group_id and first.tag_id = t.tag_id group by fm.position order by fm.position limit 1), `+tagKindColumns+`
-		from members m join tagged t on t.content_key = m.user_key
-		join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
-		join tags tg on tg.id = t.tag_id`+tagKindJoin+` group by m.group_id, t.tag_id`, string(encoded))
+	// Unconfirmed follows the first member carrying the tag; a window finds it in one pass instead of a per-tag rescan.
+	rows, err := tx.QueryContext(ctx, taggedUserKeysCTE(selected)+`, member_tags as (
+		select m.group_id, t.tag_id, t.manual, t.from_folder, t.unconfirmed, m.position,
+			min(m.position) over (partition by m.group_id, t.tag_id) as first_position
+		from group_members m join videos v on v.id = m.video_id
+		join tagged t on t.content_key = `+userKeyExpr("v")+`
+		where m.audience = 1 and v.content_key <> '' and m.group_id in (select value from json_each(?1))),
+		group_tags as (
+		select group_id, tag_id, max(manual) as manual, max(from_folder) as from_folder,
+			min(case when position = first_position then unconfirmed end) as unconfirmed
+		from member_tags group by group_id, tag_id)
+		select gt.group_id, gt.tag_id, tn.name, tg.tentative, gt.manual, gt.from_folder, gt.unconfirmed, `+tagKindColumns+`
+		from group_tags gt
+		join tag_names tn on tn.tag_id = gt.tag_id and tn.canonical = 1
+		join tags tg on tg.id = gt.tag_id`+tagKindJoin, string(encoded))
 	if err != nil {
 		return fmt.Errorf("cannot read group card tags: %w", err)
 	}

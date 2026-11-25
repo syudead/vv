@@ -288,3 +288,63 @@ func TestConfirmFaceCandidateOfAnUnnamedPersonWithAnExternalIDCannotBeUndone(t *
 		t.Errorf("confirmed = %+v, want Near holding the ID without an undo entry", confirmed)
 	}
 }
+
+// A pair no analysis or face image stored is offered from the faces themselves, as the merge dialog ranks them: here
+// the provisional person's faces match Named's faces while neither face image matches. Two named people are never
+// offered, and a dismissal and a confirmation of such a pair work as for a stored one.
+func TestFaceCandidatesOfferAPairTheFacesMatchWithoutAStoredRow(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	appearances := faceAppearances(t, f.db)
+	if _, err := f.db.sql.Exec(`update face_appearances set centroid = ? where id = ?`,
+		encodeFaceVector(faceNear(0, 5, 0.9)), appearances[1].id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.sql.Exec(`update person_face_vectors set vector = ? where person_id = ?`,
+		encodeFaceVector(faceBasis(9)), f.named); err != nil {
+		t.Fatal(err)
+	}
+	// Near's face image is Named's face, but both have names.
+	if _, err := f.db.sql.Exec(`update person_face_vectors set vector = ? where person_id = ?`,
+		encodeFaceVector(faceBasis(0)), f.near); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(faceCandidatePairs(t, f.db), [2]int64{f.provisional, f.named}) {
+		t.Fatalf("the pair is stored already: %v", faceCandidatePairs(t, f.db))
+	}
+	candidatesOf := func(id int64) []int64 {
+		t.Helper()
+		pairs, err := f.db.Credits().FaceCandidates(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return facePairPeople(pairs)
+	}
+	if got := candidatesOf(f.named); !slices.Equal(got, []int64{f.provisional}) {
+		t.Errorf("candidates of Named = %v, want only the provisional person %d", got, f.provisional)
+	}
+	if got := candidatesOf(f.provisional); !slices.Contains(got, f.named) {
+		t.Errorf("candidates of the provisional person = %v, want Named %d among them", got, f.named)
+	}
+
+	if err := f.db.Credits().DismissFaceCandidate(ctx, f.named, f.provisional); err != nil {
+		t.Fatal(err)
+	}
+	if got := candidatesOf(f.named); len(got) != 0 {
+		t.Errorf("candidates of Named after the dismissal = %v, want none", got)
+	}
+	if err := f.db.Credits().ReopenFaceCandidate(ctx, f.named, f.provisional); err != nil {
+		t.Fatal(err)
+	}
+	confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.named, f.provisional)
+	if err != nil || confirmed.Person.ID != f.named || personExists(t, f.db, f.provisional) {
+		t.Errorf("confirm = %+v, %v; want the provisional person merged into Named", confirmed, err)
+	}
+}
+
+func TestConfirmingAPairNeitherStoredNorOfferedIsNotFound(t *testing.T) {
+	f := newLinkedFixture(t)
+	if _, err := f.db.Credits().ConfirmFaceCandidate(context.Background(), f.named, f.near); !errors.Is(err, domain.ErrFaceCandidateNotFound) {
+		t.Errorf("confirm of two named people with no pair: err = %v, want ErrFaceCandidateNotFound", err)
+	}
+}

@@ -10,8 +10,8 @@ import (
 var assistantCompactFields = map[string][]string{
 	"listVideos":        {"id", "title", "durationMs", "addedAt", "favorite", "public", "virtual", "tags", "cardCredits"},
 	"listTags":          {"id", "name", "synonyms", "videoCount", "tentative", "kind"},
-	"listPeople":        {"id", "name", "aliases", "videoCount", "favorite", "provisional"},
-	"listOrganizations": {"id", "name", "aliases", "videoCount", "parent"},
+	"listPeople":        {"id", "name", "names", "videoCount", "favorite", "provisional"},
+	"listOrganizations": {"id", "name", "names", "videoCount", "parent"},
 }
 
 // AssistantCompactResult keeps the fields of each item a list read answers that the model works with, and writes a

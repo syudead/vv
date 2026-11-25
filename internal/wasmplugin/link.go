@@ -146,7 +146,8 @@ func readPage(ctx context.Context, s *httpSession, link string) (pageInfo, int) 
 	if err != nil {
 		reader = bytes.NewReader(resp.body)
 	}
-	body, err := io.ReadAll(reader)
+	// Conversion can expand the body, so bound the decoded text as well; metadata sits near the top.
+	body, err := io.ReadAll(io.LimitReader(reader, domain.WorkInfoPluginHTTPMaxBodyBytes))
 	if err != nil {
 		return pageInfo{}, resp.status
 	}

@@ -52,7 +52,7 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 	}}
 	fa, fb, b, uploads := workInfoNodes(t, runtime)
 	ctx := context.Background()
-	performer, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "早美れむ"})
+	performer, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf("早美れむ")})
 	if err != nil {
 		t.Fatal(err)
 	}

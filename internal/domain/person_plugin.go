@@ -111,8 +111,10 @@ type PersonCandidate struct {
 // FetchedPluginPerson keeps the plugin's values without the apply's validation; ExternalIDs starts with the
 // request's (source, id) unless the fetch went by link.
 type FetchedPluginPerson struct {
-	Name        string
-	Aliases     []Alias
+	Name string
+	// Names are the fetched name first, then the plugin's aliases, each spelling once and CreditNamesMaxCount in all;
+	// languages are validated by the apply.
+	Names       []CreditName
 	ExternalIDs []ExternalID
 	// ImageURLs are the first PersonPluginImagesMaxCount distinct valid image URLs in result order.
 	ImageURLs []string
@@ -166,7 +168,7 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 		ids = appendFetchedExternalIDs(ids, raw.Person.ExternalIDs)
 		return WorkInfoRunResult{Person: FetchedPluginPerson{
 			Name:         name,
-			Aliases:      parseFetchedAliases(raw.Person.Aliases),
+			Names:        parseFetchedNames(name, raw.Person.Aliases),
 			ExternalIDs:  ids,
 			ImageURLs:    parseFetchedImageURLs(raw.Person.Images, PersonPluginImagesMaxCount),
 			ImageReferer: fetchedImageURL(lenientString(raw.Person.ImageReferer)),
@@ -206,19 +208,19 @@ func parseFetchedImageURLs(raw json.RawMessage, limit int) []string {
 	return out
 }
 
-// parseFetchedAliases trims names, drops nameless and repeated names, and keeps the first CreditAliasesMaxCount;
-// languages are validated by the apply.
-func parseFetchedAliases(raw json.RawMessage) []Alias {
-	var out []Alias
+// parseFetchedNames folds the module's name and aliases into one list: name first, then the trimmed aliases, dropping
+// nameless and repeated spellings, CreditNamesMaxCount in all.
+func parseFetchedNames(name string, raw json.RawMessage) []CreditName {
+	out := []CreditName{{Name: name}}
 	for _, a := range lenientList[fetchedAliasJSON](raw) {
-		if len(out) == CreditAliasesMaxCount {
+		if len(out) == CreditNamesMaxCount {
 			break
 		}
 		name := fetchedText(a.Name)
-		if name == "" || slices.ContainsFunc(out, func(kept Alias) bool { return kept.Name == name }) {
+		if name == "" || slices.ContainsFunc(out, func(kept CreditName) bool { return kept.Name == name }) {
 			continue
 		}
-		out = append(out, Alias{Name: name, Language: fetchedText(a.Language)})
+		out = append(out, CreditName{Name: name, Language: fetchedText(a.Language)})
 	}
 	return out
 }

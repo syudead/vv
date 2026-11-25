@@ -8,7 +8,7 @@ import {
   test,
 } from "@playwright/test";
 
-// Inline smart-folder playback, search and guest visibility against the real server.
+// Playback from the band's favorite smart folder, search and guest visibility against the real server.
 
 interface MediaFolder {
   id: number;
@@ -160,6 +160,12 @@ test.describe.serial("home", () => {
     });
     expect(folder.status()).toBe(201);
     folderId = ((await folder.json()) as { id: number }).id;
+    // The home shows smart folders only in the band of favorites.
+    const favorited = await request.put("/api/favorites", {
+      headers: mutationHeaders,
+      data: { smartFolderIds: [folderId], favorite: true },
+    });
+    expect(favorited.ok()).toBe(true);
     await setProgress(request, inProgress, 0);
   });
 
@@ -177,7 +183,7 @@ test.describe.serial("home", () => {
     if (mediaFolder !== undefined) await removeOwnMediaFolder(request);
   });
 
-  test("inline folder previews start playback in one click", async ({ page }) => {
+  test("band folder previews start playback in one click", async ({ page }) => {
     await page.goto("/");
     await expect(folderCard(page)).toHaveCount(1);
     await expect(page.getByRole("region", { name: "Shelves" })).toHaveCount(0);

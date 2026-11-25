@@ -334,7 +334,7 @@
       "method": "POST",
       "path": "/api/peer/people/{id}/fetched-person",
       "summary": "Apply a person the peer fetched for a person of this node",
-      "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md.",
+      "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the names, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -344,28 +344,8 @@
         "properties": {
           "body": {
             "additionalProperties": false,
-            "description": "The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links.",
+            "description": "The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links.",
             "properties": {
-              "aliases": {
-                "items": {
-                  "additionalProperties": false,
-                  "description": "One person or organization alias.",
-                  "properties": {
-                    "language": {
-                      "description": "BCP 47 language tag; omitted when absent.",
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
               "externalIds": {
                 "items": {
                   "additionalProperties": false,
@@ -387,7 +367,7 @@
                 "type": "array"
               },
               "items": {
-                "description": "The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent.",
+                "description": "The items to write, each with a value above; names, externalIds and profile.links write all the values sent.",
                 "items": {
                   "description": "One applicable part of a fetched person; a profile item is one profile property.",
                   "enum": [
@@ -406,7 +386,7 @@
                     "profile.careerEndYear",
                     "profile.bio",
                     "profile.links",
-                    "aliases",
+                    "names",
                     "externalIds"
                   ],
                   "type": "string"
@@ -415,6 +395,27 @@
               },
               "name": {
                 "type": "string"
+              },
+              "names": {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "One name of a person or organization.",
+                  "properties": {
+                    "language": {
+                      "description": "BCP 47 language tag, on any entry; omitted when absent.",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1-200 code points after trimming; unique within the list.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "profile": {
                 "additionalProperties": false,
@@ -494,7 +495,7 @@
             },
             "required": [
               "name",
-              "aliases",
+              "names",
               "externalIds",
               "items"
             ],
@@ -907,8 +908,8 @@
       "operationId": "applyPeerVocabulary",
       "method": "POST",
       "path": "/api/peer/vocabulary",
-      "summary": "Rename, merge or delete a tag, person or organization by name",
-      "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.",
+      "summary": "Rename, merge or delete a tag, person or organization, or unname a person, by name",
+      "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -917,10 +918,12 @@
             "additionalProperties": false,
             "properties": {
               "action": {
+                "description": "`unname` empties a person's names, making it provisional; it takes kind `person` only",
                 "enum": [
                   "rename",
                   "merge",
-                  "delete"
+                  "delete",
+                  "unname"
                 ],
                 "type": "string"
               },
@@ -937,7 +940,7 @@
                 "type": "string"
               },
               "name": {
-                "description": "The current canonical name; required for rename and delete",
+                "description": "The current canonical name; required for rename, delete and unname",
                 "type": "string"
               },
               "newName": {
@@ -974,7 +977,7 @@
       "method": "POST",
       "path": "/api/people/{id}/plugin-fetches/{fetchId}/apply",
       "summary": "Apply selected items of a person fetch",
-      "description": "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.",
+      "description": "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen names, external IDs and links the person lacks, in the fetched order and up to 50, 20 and 100; a provisional person's first appended name becomes its display name; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases in the body, names, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -986,13 +989,6 @@
           "body": {
             "additionalProperties": false,
             "properties": {
-              "aliases": {
-                "description": "Names to append as aliases, each the fetched name or one of the fetched aliases.",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
               "externalIds": {
                 "description": "Fetched external IDs to append.",
                 "items": {
@@ -1020,7 +1016,7 @@
                 "type": "integer"
               },
               "items": {
-                "description": "Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below.",
+                "description": "Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below.",
                 "items": {
                   "description": "One applicable part of a fetched person; a profile item is one profile property.",
                   "enum": [
@@ -1039,7 +1035,7 @@
                     "profile.careerEndYear",
                     "profile.bio",
                     "profile.links",
-                    "aliases",
+                    "names",
                     "externalIds"
                   ],
                   "type": "string"
@@ -1048,6 +1044,13 @@
               },
               "links": {
                 "description": "Fetched profile links to append.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "names": {
+                "description": "Spellings to append, each the name of one of the result's names.",
                 "items": {
                   "type": "string"
                 },
@@ -2682,26 +2685,6 @@
             "additionalProperties": false,
             "description": "Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.",
             "properties": {
-              "aliases": {
-                "items": {
-                  "additionalProperties": false,
-                  "description": "One person or organization alias.",
-                  "properties": {
-                    "language": {
-                      "description": "BCP 47 language tag; omitted when absent.",
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
               "externalIds": {
                 "items": {
                   "additionalProperties": false,
@@ -2722,8 +2705,27 @@
                 },
                 "type": "array"
               },
-              "name": {
-                "type": "string"
+              "names": {
+                "description": "The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "One name of a person or organization.",
+                  "properties": {
+                    "language": {
+                      "description": "BCP 47 language tag, on any entry; omitted when absent.",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1-200 code points after trimming; unique within the list.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "organizationProfile": {
                 "additionalProperties": false,
@@ -2837,7 +2839,7 @@
               }
             },
             "required": [
-              "name"
+              "names"
             ],
             "type": "object"
           }
@@ -2871,26 +2873,6 @@
             "additionalProperties": false,
             "description": "Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.",
             "properties": {
-              "aliases": {
-                "items": {
-                  "additionalProperties": false,
-                  "description": "One person or organization alias.",
-                  "properties": {
-                    "language": {
-                      "description": "BCP 47 language tag; omitted when absent.",
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
               "externalIds": {
                 "items": {
                   "additionalProperties": false,
@@ -2911,8 +2893,27 @@
                 },
                 "type": "array"
               },
-              "name": {
-                "type": "string"
+              "names": {
+                "description": "The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "One name of a person or organization.",
+                  "properties": {
+                    "language": {
+                      "description": "BCP 47 language tag, on any entry; omitted when absent.",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1-200 code points after trimming; unique within the list.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "organizationProfile": {
                 "additionalProperties": false,
@@ -3026,7 +3027,7 @@
               }
             },
             "required": [
-              "name"
+              "names"
             ],
             "type": "object"
           }
@@ -4491,6 +4492,19 @@
       }
     },
     {
+      "operationId": "getBackgroundWork",
+      "method": "GET",
+      "path": "/api/background",
+      "summary": "Return the background work pause switch, the running work and the work left",
+      "description": "Answers whether background work (scans and scheduled jobs) is paused, the work running now and the work left per group. Counts leave out jobs of videos only under switched-off folders. Cache-Control is no-store; the background event of /api/events tells the screens to read it again.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "operationId": "getComfyUISettings",
       "method": "GET",
       "path": "/api/settings/comfyui",
@@ -5556,7 +5570,7 @@
       "method": "GET",
       "path": "/api/videos/{id}/frame",
       "summary": "Return a frame of the video",
-      "description": "Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.",
+      "description": "Owner-only. Extracts positionMs as PNG with the long edge capped at maxEdge px (2048 when left out), never enlarged, for framing a person's face from a video, which the page crops and sends as the person's face, and for an image search's matched frames. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.",
       "owner": true,
       "response": "image",
       "pathParams": [
@@ -5566,6 +5580,10 @@
         {
           "name": "positionMs",
           "explode": true
+        },
+        {
+          "name": "maxEdge",
+          "explode": true
         }
       ],
       "parameters": {
@@ -5574,6 +5592,12 @@
             "description": "Video ID",
             "format": "int64",
             "minimum": 1,
+            "type": "integer"
+          },
+          "maxEdge": {
+            "description": "The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request.",
+            "maximum": 2048,
+            "minimum": 64,
             "type": "integer"
           },
           "positionMs": {
@@ -6226,7 +6250,7 @@
       "method": "GET",
       "path": "/api/people/{id}/face-candidates",
       "summary": "List a person's face candidates",
-      "description": "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found.",
+      "description": "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, and the people the live ranking of listSimilarPeople puts at or over the recognizer's Candidate threshold when one of the two is provisional and no pair row exists, highest similarity first, each as the other person; confirming or dismissing such a person stores the pair first. Missing person returns 404 person_not_found.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -6655,7 +6679,7 @@
       "method": "GET",
       "path": "/api/library",
       "summary": "List library items (videos and groups)",
-      "description": "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Without filters, the owner's smart folders come first by name in every sort and count toward `limit` and `total`; guests get none. Sorting uses item values for the rest. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.",
+      "description": "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Items are videos and groups only; read smart folders with `listSmartFolders`. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.",
       "owner": true,
       "response": "json",
       "query": [
@@ -6918,7 +6942,7 @@
       "method": "GET",
       "path": "/api/organizations",
       "summary": "List organizations",
-      "description": "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.",
+      "description": "Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.",
       "owner": true,
       "response": "json",
       "query": [
@@ -6969,7 +6993,7 @@
             "type": "boolean"
           },
           "q": {
-            "description": "Normalized, trimmed query; nonempty queries substring-match names or aliases",
+            "description": "Normalized, trimmed query; nonempty queries substring-match any of the names",
             "maxLength": 100,
             "type": "string"
           },
@@ -7040,7 +7064,7 @@
       "method": "GET",
       "path": "/api/people",
       "summary": "List people",
-      "description": "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.",
+      "description": "Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.",
       "owner": true,
       "response": "json",
       "query": [
@@ -7091,7 +7115,7 @@
             "type": "boolean"
           },
           "q": {
-            "description": "Normalized, trimmed query; nonempty queries substring-match names or aliases",
+            "description": "Normalized, trimmed query; nonempty queries substring-match any of the names",
             "maxLength": 100,
             "type": "string"
           },
@@ -7254,7 +7278,7 @@
       "method": "GET",
       "path": "/api/folders",
       "summary": "List top-level registered media folders",
-      "description": "Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations.",
+      "description": "Lists the registered media folders the audience's folder scope includes, in natural name order, each with the thumbnails of its most recently added videos. Empty registered folders are included. Version bundles show only their effective representative. Guests see public videos only and the list omits roots without public-video locations.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -8313,7 +8337,7 @@
       "method": "POST",
       "path": "/api/peer/credit-matches",
       "summary": "Match fetched people or organizations against this node's",
-      "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.",
+      "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by any of the folded names, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -8386,7 +8410,7 @@
       "method": "POST",
       "path": "/api/video-edits/provisional-matches",
       "summary": "Tell which provisional performers of selected videos are which added people",
-      "description": "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.",
+      "description": "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out the person themself and a pair the owner dismissed; personIds may list the provisional performers themselves, so the editor can follow one face to another. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -8459,7 +8483,7 @@
       "method": "POST",
       "path": "/api/organizations/{id}/merge",
       "summary": "Merge sourceIds into organization id",
-      "description": "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.",
+      "description": "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -8517,7 +8541,7 @@
       "method": "POST",
       "path": "/api/people/{id}/merge",
       "summary": "Merge sourceIds into person id",
-      "description": "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.",
+      "description": "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -8700,7 +8724,7 @@
       "method": "POST",
       "path": "/api/people/{id}/appearances/move",
       "summary": "Move face appearances to another person",
-      "description": "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.",
+      "description": "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. A provisional id left with no credit and no face that is not dropped, and holding no external ID, is merged into targetId as a face_merge entry decided by the owner, which undoActivityId names; Undo takes that merge back before the reverse move. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -10357,6 +10381,19 @@
       ]
     },
     {
+      "operationId": "searchByImage",
+      "method": "POST",
+      "path": "/api/image-search",
+      "summary": "Search the library by an uploaded image or video",
+      "description": "Owner-only. Accepts exactly one multipart part, `file`: a PNG, JPEG or still WebP image of at most 64 MiB and 120 million pixels, kept in memory, or any other file read as a video of at most 4 GiB and 3 hours, kept in the data directory's search uploads only until the response. Returns the listed videos, version bundle members collapsed to the representative, whose search index holds the same footage, ordered by match rate, then matched section length, then the newer video, at most 50, with the count of listed file videos not indexed yet. Videos in switched-off media folders are not searched. One search runs at a time; another request waits. No `file` part or a second part returns 400 invalid_request; a file that is neither a readable image nor a video stream of at least one second 400 image_search_unreadable; a flat image or a video with fewer than three non-flat frames sampled once a second 400 image_search_uninformative; a video over 3 hours 400 image_search_too_long with limit in milliseconds; an image over 64 MiB or 120 million pixels or a video over 4 GiB 413 image_search_too_large with the exceeded limit. A cancelled request writes no response and ends any ffmpeg run. Nothing it was given is kept, whatever the outcome.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "operationId": "searchPeopleWithPlugin",
       "method": "POST",
       "path": "/api/work-info-plugins/{id}/person-search",
@@ -10453,6 +10490,38 @@
           "kind": "workInfoPlugin"
         }
       ]
+    },
+    {
+      "operationId": "setBackgroundPause",
+      "method": "PUT",
+      "path": "/api/background/pause",
+      "summary": "Pause or resume background work",
+      "description": "Saves the switch and applies it: true cancels the running jobs and holds new ones, false grants them again. The answer comes once the switch is saved and the running jobs are cancelled, without waiting for them to return. A request for the current state changes nothing and answers the same body. Concurrent requests are applied one at a time, and the last one decides the state. Requests that queue a job are still accepted while paused; their jobs wait for the resume.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "paused": {
+                "description": "The state to reach",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "paused"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      },
+      "body": true,
+      "bodyType": "application/json"
     },
     {
       "operationId": "setFolderGrouping",
@@ -11573,7 +11642,7 @@
       "method": "POST",
       "path": "/api/scans/rescan",
       "summary": "Start a force rescan",
-      "description": "Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.",
+      "description": "Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan, or a paused scan, returns 409 scan_in_progress, and while background work is paused the new rescan is answered in the state paused. No media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -11632,7 +11701,7 @@
       "method": "POST",
       "path": "/api/scans",
       "summary": "Start import",
-      "description": "Returns an existing active scan instead of starting another. Responds immediately while import runs in the background.",
+      "description": "Returns an existing active scan instead of starting another. Responds immediately while import runs in the background. While background work is paused, the new scan is answered in the state paused and runs after the resume.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -11780,7 +11849,7 @@
       "method": "GET",
       "path": "/api/events",
       "summary": "Stream import and video changes through Server-Sent Events",
-      "description": "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.",
+      "description": "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only.",
       "owner": true,
       "response": "media",
       "parameters": {
@@ -12487,7 +12556,7 @@
       "method": "PUT",
       "path": "/api/favorites",
       "summary": "Set or clear favorites on videos and groups",
-      "description": "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.",
+      "description": "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic. A request that names a video, group or smart folder emits the `smartFolder` event for every folder, because a folder rule can read favorites; a request naming only people emits no event. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -12749,7 +12818,7 @@
       "operationId": "updateOrganization",
       "method": "PATCH",
       "path": "/api/organizations/{id}",
-      "summary": "Update an organization's name, aliases and external IDs",
+      "summary": "Update an organization's names and external IDs",
       "description": "Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle.",
       "owner": true,
       "response": "json",
@@ -12760,31 +12829,8 @@
         "properties": {
           "body": {
             "additionalProperties": false,
-            "description": "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent.",
+            "description": "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request.",
             "properties": {
-              "aliases": {
-                "items": {
-                  "additionalProperties": false,
-                  "description": "One person or organization alias.",
-                  "properties": {
-                    "language": {
-                      "description": "BCP 47 language tag; omitted when absent.",
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "type": "object"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
               "externalIds": {
                 "items": {
                   "additionalProperties": false,
@@ -12809,7 +12855,33 @@
                 ]
               },
               "name": {
+                "description": "Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives.",
                 "type": "string"
+              },
+              "names": {
+                "description": "Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "One name of a person or organization.",
+                  "properties": {
+                    "language": {
+                      "description": "BCP 47 language tag, on any entry; omitted when absent.",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1-200 code points after trimming; unique within the list.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "organizationProfile": {
                 "additionalProperties": false,
@@ -13053,7 +13125,7 @@
       "operationId": "updatePerson",
       "method": "PATCH",
       "path": "/api/people/{id}",
-      "summary": "Update a person's name, aliases and external IDs",
+      "summary": "Update a person's names and external IDs",
       "description": "Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing person returns 404 person_not_found. parentId is forbidden (400 invalid_request).",
       "owner": true,
       "response": "json",
@@ -13064,31 +13136,8 @@
         "properties": {
           "body": {
             "additionalProperties": false,
-            "description": "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent.",
+            "description": "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request.",
             "properties": {
-              "aliases": {
-                "items": {
-                  "additionalProperties": false,
-                  "description": "One person or organization alias.",
-                  "properties": {
-                    "language": {
-                      "description": "BCP 47 language tag; omitted when absent.",
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "type": "object"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
               "externalIds": {
                 "items": {
                   "additionalProperties": false,
@@ -13113,7 +13162,33 @@
                 ]
               },
               "name": {
+                "description": "Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives.",
                 "type": "string"
+              },
+              "names": {
+                "description": "Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "One name of a person or organization.",
+                  "properties": {
+                    "language": {
+                      "description": "BCP 47 language tag, on any entry; omitted when absent.",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1-200 code points after trimming; unique within the list.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "organizationProfile": {
                 "additionalProperties": false,

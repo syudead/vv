@@ -41,17 +41,17 @@ export interface ReorderTexts {
 }
 
 /** Announce one-based positions in the current item order. */
-export function reorderAnnouncements<T extends { id: number }>(
+export function reorderAnnouncements<T extends { id: UniqueIdentifier }>(
   items: readonly T[],
   titleOf: (item: T) => string,
   texts: ReorderTexts,
 ): Announcements {
   const title = (dragId: UniqueIdentifier): string => {
-    const item = items.find((each) => each.id === Number(dragId));
+    const item = items.find((each) => String(each.id) === String(dragId));
     return item === undefined ? "" : titleOf(item);
   };
   const position = (dragId: UniqueIdentifier | undefined): number =>
-    items.findIndex((each) => each.id === Number(dragId)) + 1;
+    items.findIndex((each) => String(each.id) === String(dragId)) + 1;
   const count = items.length;
   return {
     onDragStart: ({ active }) =>
@@ -77,7 +77,7 @@ export interface SortableRow {
 }
 
 /** Only handles lift rows; apply runtime vertical positions through style. */
-export function useSortableRow(id: number): SortableRow {
+export function useSortableRow(id: UniqueIdentifier, disabled = false): SortableRow {
   const {
     attributes,
     listeners,
@@ -86,7 +86,7 @@ export function useSortableRow(id: number): SortableRow {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled });
   return {
     rowRef: setNodeRef,
     style:
@@ -102,9 +102,12 @@ export function useSortableRow(id: number): SortableRow {
 export function ReorderHandle({
   handle,
   label,
+  disabled = false,
 }: {
   handle: SortableRow["handle"];
   label: UiText;
+  /** Marked aria-disabled; the row's useSortableRow stops the drag itself. */
+  disabled?: boolean;
 }) {
   return (
     <Button
@@ -115,6 +118,7 @@ export function ReorderHandle({
       className="relative z-10 cursor-grab touch-none text-muted-foreground"
       {...handle.props}
       aria-label={label}
+      aria-disabled={disabled || undefined}
     >
       <GripVertical aria-hidden="true" />
     </Button>

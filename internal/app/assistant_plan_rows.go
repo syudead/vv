@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -266,20 +267,16 @@ func tagBatchKind(ctx context.Context, d *planDraft) (bool, error) {
 	return tagBatch(ctx, d)
 }
 
-func aliasInputs(aliases []string) []any {
-	out := make([]any, len(aliases))
-	for i, alias := range aliases {
-		out[i] = map[string]any{"name": alias}
+func creditNameInputs(names []string) []any {
+	out := make([]any, len(names))
+	for i, name := range names {
+		out[i] = map[string]any{"name": name}
 	}
 	return out
 }
 
-// creditFields sets the aliases and, for an organization, the parent named by parentName.
+// creditFields sets the parent named by parentName, for an organization.
 func creditFields(ctx context.Context, d *planDraft, organization bool) (bool, error) {
-	if len(d.args.Aliases) > 0 {
-		d.body("aliases", aliasInputs(d.args.Aliases))
-		d.literal(domain.AssistantArgAliases, d.args.Aliases)
-	}
 	if d.args.ParentName == "" {
 		return true, nil
 	}
@@ -297,21 +294,34 @@ func creditFields(ctx context.Context, d *planDraft, organization bool) (bool, e
 
 func createCredit(organization bool) planBuilder {
 	return func(ctx context.Context, d *planDraft) (bool, error) {
-		if ok, err := stringTo(domain.AssistantArgName, "name")(ctx, d); !ok || err != nil {
-			return false, err
+		if !d.need(len(d.args.Names) > 0) {
+			return false, nil
 		}
+		d.body("names", creditNameInputs(d.args.Names))
+		d.literal(domain.AssistantArgNames, d.args.Names)
 		return creditFields(ctx, d, organization)
 	}
 }
 
+// updateCredit sends newName as name and names as the whole list; with both, the request takes only names, so the
+// list's first entry is respelled.
 func updateCredit(organization bool) planBuilder {
 	return func(ctx context.Context, d *planDraft) (bool, error) {
 		renamed := d.args.NewName != nil && *d.args.NewName != ""
 		if renamed {
-			d.body("name", *d.args.NewName)
 			d.literal(domain.AssistantArgNewName, *d.args.NewName)
 		}
-		if !d.need(renamed || len(d.args.Aliases) > 0 || d.args.ParentName != "") {
+		switch names := slices.Clone(d.args.Names); {
+		case len(names) > 0:
+			if renamed {
+				names[0] = *d.args.NewName
+			}
+			d.body("names", creditNameInputs(names))
+			d.literal(domain.AssistantArgNames, names)
+		case renamed:
+			d.body("name", *d.args.NewName)
+		}
+		if !d.need(renamed || len(d.args.Names) > 0 || d.args.ParentName != "") {
 			return false, nil
 		}
 		return creditFields(ctx, d, organization)

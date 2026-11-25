@@ -29,6 +29,7 @@ func DatabasePath(dataDir string) string {
 type DB struct {
 	sql      *sql.DB
 	read     *sql.DB
+	cached   *statementCache
 	path     string
 	folderMu sync.Mutex
 	// refreshMu lets one reader refresh collection values while concurrent readers wait without a connection.
@@ -252,6 +253,9 @@ func collectDeletedVideos(rows *sql.Rows, err error) ([]domain.DeletedVideo, err
 	return deleted, rows.Err()
 }
 
+// readIdleConns covers a browser's six parallel requests with room for background readers.
+const readIdleConns = 16
+
 // The driver applies _pragma parameters to every connection.
 func dsn(path string, txLock string) string {
 	q := url.Values{}
@@ -286,7 +290,10 @@ func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 	// SQLite runs one writer at a time; queue writers in Go instead of in SQLite's busy wait, which also bounds the
 	// connections concurrent requests can open.
 	handle.SetMaxOpenConns(1)
-	db := &DB{sql: handle, read: read, path: path}
+	// database/sql keeps two idle connections by default, so a page's parallel reads reopened a SQLite
+	// connection, with its pragmas and schema load, for almost every request beyond two.
+	read.SetMaxIdleConns(readIdleConns)
+	db := &DB{sql: handle, read: read, cached: &statementCache{read: read}, path: path}
 	if err := db.Ping(ctx); err != nil {
 		_ = handle.Close()
 		_ = read.Close()
@@ -311,5 +318,5 @@ func (db *DB) Ping(ctx context.Context) error {
 }
 
 func (db *DB) Close() error {
-	return errors.Join(db.read.Close(), db.sql.Close())
+	return errors.Join(db.cached.close(), db.read.Close(), db.sql.Close())
 }

@@ -157,6 +157,41 @@ tasks:
       # Document discovery uses git ls-files, which the Go test cache does not track.
       - go test -count=1 ./scripts/sddguard
 
+  audit:
+    desc: Check npm and Go dependencies for known vulnerabilities (the Renovate routine runs it daily).
+    cmds:
+      - task: audit-npm
+      - task: audit-go
+      - task: audit-go-windows
+
+  audit-npm:
+    desc: Run npm audit on the web, tools and docs-site lockfiles.
+    # Lockfiles only, so no node_modules; every project reports before the task fails.
+    cmds:
+      - |
+        status=0
+        for dir in web tools docs-site; do
+          npm --prefix "$dir" audit --package-lock-only || status=1
+        done
+        exit $status
+
+  audit-go:
+    desc: Run govulncheck on the host build.
+    vars:
+      GOVULNCHECK:
+        sh: go -C tools tool -n govulncheck
+    cmds:
+      - '"{{.GOVULNCHECK}}" ./...'
+
+  # A separate task, so that CI still runs it when the host build has findings.
+  audit-go-windows:
+    desc: Run govulncheck on the Windows desktop build (VVMDM.exe).
+    vars:
+      GOVULNCHECK:
+        sh: go -C tools tool -n govulncheck
+    cmds:
+      - 'GOOS=windows CGO_ENABLED=0 "{{.GOVULNCHECK}}" -tags desktop ./...'
+
   fmt-check:
     desc: Check Go and Web formatting without changing files.
     cmds:

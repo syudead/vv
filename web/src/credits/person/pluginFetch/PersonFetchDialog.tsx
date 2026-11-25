@@ -63,9 +63,11 @@ function refusalText(refusal: LinkRefusal): string {
 
 /** The person's other names, one press from a search, since a site may list the person under any. */
 function OtherNames({ flow, person }: { flow: PersonFetchFlow; person: Person }) {
-  const names = [person.name, ...person.aliases.map((alias) => alias.name)].filter(
-    (name, index, all) => name !== flow.query.trim() && all.indexOf(name) === index,
-  );
+  const names = person.names
+    .map((entry) => entry.name)
+    .filter(
+      (name, index, all) => name !== flow.query.trim() && all.indexOf(name) === index,
+    );
   if (names.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1">

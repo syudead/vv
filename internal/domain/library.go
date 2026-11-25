@@ -113,12 +113,6 @@ func (q VideoQuery) ByName() bool {
 	return len(q.TagNames) > 0 || q.TagKindName != "" || q.PersonName != "" || q.OrganizationName != ""
 }
 
-// ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
-func (q VideoQuery) ListsSmartFolders() bool {
-	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		!q.HasCondition() && !q.ByName() && q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
-}
-
 type VideoPage struct {
 	Items []Video
 	// Total is independent of pagination.
@@ -160,7 +154,15 @@ const (
 	// ScanDone may still contain individual file failures.
 	ScanDone   ScanState = "done"
 	ScanFailed ScanState = "failed"
+	// ScanPaused is a scan a pause of background work stopped, or one requested during the pause; no scanner runs
+	// for it until the resume reopens it. At most one exists, and it is the latest scan.
+	ScanPaused ScanState = "paused"
 )
+
+// Open reports whether work of the scan remains: it runs, or waits for the resume of background work.
+func (s ScanState) Open() bool {
+	return s == ScanRunning || s == ScanPaused
+}
 
 type Scan struct {
 	ID    int64

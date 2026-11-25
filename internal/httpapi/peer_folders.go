@@ -13,16 +13,18 @@ import (
 
 // withPeerRoots adds every connected link's media-folder roots to local in name order, local first on equal
 // names and then the links in slot order; a link that does not answer is left out.
-func (s *server) withPeerRoots(r *http.Request, local []gen.FolderSummary) []gen.FolderSummary {
+func (s *server) withPeerRoots(r *http.Request, local []gen.RootFolder) []gen.RootFolder {
 	folders := local
 	for _, answer := range linkAnswers[gen.RootFolderListing](s, r, "/api/folders", url.Values{}) {
 		join := domain.VocabularyJoin{Slot: answer.slot}
 		for i := range answer.value.Folders {
-			rewriteRemoteFolderSummary(&answer.value.Folders[i], join)
+			folder := &answer.value.Folders[i]
+			folder.RootId = join.Remote(folder.RootId)
+			rewriteRemotePreviews(folder.Previews, join)
 		}
 		folders = append(folders, answer.value.Folders...)
 	}
-	slices.SortStableFunc(folders, func(a, b gen.FolderSummary) int {
+	slices.SortStableFunc(folders, func(a, b gen.RootFolder) int {
 		if order := domain.CompareNatural(a.Name, b.Name); order != 0 {
 			return order
 		}

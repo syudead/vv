@@ -188,13 +188,20 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
 	whole := `select distinct hits.group_id from hits where hits.n > 0 and hits.n = hits.total`
 	// Stored group values count every member, so a kind that drops some members must count the matched ones.
-	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds() {
-		whole = storedWholeGroupsSQL(spec, roots)
+	// Matched is read twice, by whole and by the video items, unless whole needs no match; materialize it then.
+	matchedAs := `matched as materialized`
+	switch {
+	case spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds():
+		whole, matchedAs = storedWholeGroupsSQL(spec, roots), `matched as`
+	case spec.storedCollections:
+		// The stored total is known, so grouping the matched members avoids a window over every member row.
+		whole = `select gm.group_id from gm join matched on matched.video_id = gm.video_id
+		group by gm.group_id having count(*) = ` + groupSQL.total
 	}
 	// SQLite 3.54 rejects a statement whose CTE references expand past a fixed size, materialized or not, so reference hits, matched and gm as few times as possible.
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
 	cte += `,
-	matched as (
+	` + matchedAs + ` (
 		select videos.id as video_id, chosen.path as path
 		from chosen join videos on videos.id = chosen.video_id` + where + `),
 	` + groupSQL.members + `,
@@ -243,7 +250,7 @@ func itemOrder(sort domain.VideoSort) listOrder {
 	return order
 }
 
-// ListLibrary reads counts, items, members and registered folders from one snapshot; callers validate audience permissions for filters.
+// ListLibrary reads videos and groups with their counts, members and registered folders from one snapshot; callers validate audience permissions for filters.
 func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
 	if err := s.db.RefreshCollectionValues(ctx); err != nil {
 		return domain.LibraryPage{}, err
@@ -258,20 +265,16 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
-	// Stored group values follow this node's switches, so an explicit folder scope computes its groups.
-	_, explicit := audience.ExcludedFolders()
-	spec.storedCollections = !explicit
-	list := listLibraryPageTx
-	// Guests do not see smart folders.
-	if audience.IsOwner() && q.ListsSmartFolders() {
-		list = listLibraryWithFolders
-	}
-	page, err := list(ctx, tx, spec)
+	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	roots, err := listMediaFolders(ctx, tx)
+	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
+	// Stored group values follow this node's switches; a peer's explicit scope usually lists the same folders, and
+	// computing every group for it instead made each merged page several times slower.
+	_, explicit := audience.ExcludedFolders()
+	spec.storedCollections = audience.ListsAsSwitches(roots)
+	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}

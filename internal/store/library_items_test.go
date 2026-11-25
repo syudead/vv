@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -410,6 +411,40 @@ func TestListLibraryRejectsCursorOfOtherSort(t *testing.T) {
 	_, err = db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortSizeAsc, Cursor: page.NextCursor, Limit: 1})
 	if !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("err = %v, want ErrInvalidCursor", err)
+	}
+}
+
+// The library lists videos and groups only, with or without favorites-only, and a cursor from the former folder section
+// answers like any cursor of another list.
+func TestListLibraryListsNoSmartFolders(t *testing.T) {
+	db, ids := itemsFixture(t)
+	solo := ids[fixturePath("/media/solo.mp4")]
+	root := newSmartFolder(t, db, "全部", domain.SmartRule{}, domain.SortTitleAsc, 0)
+	favoriteSmartFolder(t, db, root, 10)
+	favoriteSmartFolder(t, db, newSmartFolder(t, db, "子", domain.SmartRule{}, domain.SortTitleAsc, root), 10)
+	if _, err := db.sql.Exec(`insert into video_favorites (content_key, favorited_at)
+		select content_key, 20 from videos where id = ?`, solo); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		q    domain.VideoQuery
+		want []string
+	}{
+		{domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 2}, []string{"group:pair", "group:show", "solo", "x", "y"}},
+		{domain.VideoQuery{FavoriteOnly: true, Sort: domain.SortTitleAsc, Limit: 2}, []string{"solo"}},
+	} {
+		// libraryPages also checks that total counts exactly the listed items.
+		if got := itemNames(libraryPages(t, db, domain.AudienceOwner, tc.q)); !slices.Equal(got, tc.want) {
+			t.Errorf("%+v = %v, want %v", tc.q, got, tc.want)
+		}
+	}
+
+	folderCursor := packCursor(string(domain.SortTitleAsc), "folder", "0", strconv.FormatInt(root, 10), "全部")
+	_, err := db.Library().ListLibrary(context.Background(), domain.AudienceOwner,
+		domain.VideoQuery{Sort: domain.SortTitleAsc, Cursor: folderCursor, Limit: 2})
+	if !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Errorf("folder cursor: err = %v, want ErrInvalidCursor", err)
 	}
 }
 

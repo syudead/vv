@@ -94,7 +94,7 @@ describe("PersonPage", () => {
 
   it("titles a provisional person by their number and offers Name… in place of Edit", async () => {
     const user = userEvent.setup();
-    server.person = person({ ...profiled, name: "", provisional: true });
+    server.person = person({ ...profiled, name: "", provisional: true, names: [] });
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "#7" })).toBeTruthy();

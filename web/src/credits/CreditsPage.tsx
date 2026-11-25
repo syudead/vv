@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   type Credit,
   type CreditKind,
-  createCredit,
+  createNamedCredit,
   deleteCredit,
   isCreditGone,
   updateCredit,
@@ -253,7 +253,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     setCreateError(null);
     setCreatePending(true);
     try {
-      const created = await createCredit(kind, { name });
+      const created = await createNamedCredit(kind, name);
       applyLocal((current) =>
         current === undefined
           ? current
@@ -374,6 +374,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     if (details === null) return;
     const order = visibleRows;
     replaceLoaded(updated, details);
+    reparentLoaded(updated.id, updated);
     setDetails(null);
     if (shown(updated)) focusRow(updated.id, "synonyms");
     else focusAfterRemoval(order, updated.id);

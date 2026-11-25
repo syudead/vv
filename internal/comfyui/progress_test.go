@@ -3,6 +3,7 @@ package comfyui
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"image/color"
 	"net/http"
 	"net/http/httptest"
@@ -49,6 +50,22 @@ func TestProgressWatchKeepsLatestStepForEachJob(t *testing.T) {
 	w.record("run-1", domain.ImageEditProgress{Value: 4, Max: 4})
 	if got := c.Progress(domain.ImageEditJob{ID: "run-1"}); got != nil {
 		t.Fatalf("disconnected progress = %+v", got)
+	}
+}
+
+func TestProgressWatchEvictsOldestBeyondCap(t *testing.T) {
+	w := newProgressWatch()
+	for i := range maxTrackedProgress + 1 {
+		w.record(fmt.Sprintf("run-%d", i), domain.ImageEditProgress{Value: i, Max: 100})
+	}
+	if len(w.steps) != maxTrackedProgress {
+		t.Fatalf("tracked = %d, want %d", len(w.steps), maxTrackedProgress)
+	}
+	if _, ok := w.step("run-0"); ok {
+		t.Errorf("the oldest ID was kept")
+	}
+	if got, ok := w.step(fmt.Sprintf("run-%d", maxTrackedProgress)); !ok || got.Value != maxTrackedProgress {
+		t.Errorf("newest = %+v, %v", got, ok)
 	}
 }
 

@@ -6,7 +6,7 @@ import { CardGrid, type CardGridSize } from "./card-grid";
 
 export interface LoadingStateProps {
   label: string;
-  layout: "grid" | "table" | "grouped" | "cards";
+  layout: "grid" | "table" | "grouped" | "cards" | "rows";
   /** grid only; face draws circles with a line under them. */
   size?: CardGridSize;
   count?: number;
@@ -14,12 +14,14 @@ export interface LoadingStateProps {
 
 export function LoadingState({ label, layout, size = 1, count }: LoadingStateProps) {
   const keys = Array.from(
-    { length: count ?? (layout === "grouped" ? 3 : 8) },
+    { length: count ?? (layout === "grouped" || layout === "rows" ? 3 : 8) },
     (_, index) => index,
   );
   return (
     <div data-slot="loading-state" role="status" aria-label={label} aria-busy="true">
-      {layout === "grid" ? (
+      {layout === "rows" ? (
+        <ResultRowsSkeleton keys={keys} />
+      ) : layout === "grid" ? (
         <CardGrid size={size}>
           {keys.map((key) =>
             size === "face" ? (
@@ -78,6 +80,39 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** `ResultRow`s under one band heading: a ring, two text lines and three frames each. */
+function ResultRowsSkeleton({ keys }: { keys: number[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 py-1">
+        <Skeleton className="h-4 w-1/4" />
+        <Skeleton className="h-3 w-12" />
+      </div>
+      <div className="flex flex-col gap-3">
+        {keys.map((key) => (
+          <div
+            key={key}
+            className="flex flex-col gap-3 rounded-md border border-border bg-card p-3"
+          >
+            <div className="flex items-center gap-3">
+              <Skeleton className="size-12 shrink-0 rounded-full" />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+            <div className="flex gap-3 overflow-hidden">
+              {[0, 1, 2].map((frame) => (
+                <Skeleton key={frame} className="aspect-video w-related-thumb shrink-0" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

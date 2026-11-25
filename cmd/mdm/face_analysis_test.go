@@ -265,7 +265,7 @@ func TestAFaceImageMergesTheProvisionalPersonOfBothVideos(t *testing.T) {
 	} else if _, err := f.db.Credits().Merge(ctx, domain.CreditPerson, people[0], people[1:]); err != nil {
 		t.Fatal(err)
 	}
-	named, err := f.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "Named"})
+	named, err := f.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: []domain.CreditName{{Name: "Named"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

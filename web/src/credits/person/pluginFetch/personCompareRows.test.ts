@@ -10,7 +10,7 @@ import {
 
 const current: PersonCompareCurrent = {
   name: "Aoi",
-  aliases: [{ name: "Sora" }],
+  names: [{ name: "Aoi" }, { name: "Sora" }],
   externalIds: [{ source: "fanza", value: "a1" }],
   profile: { heightCm: 160, links: ["https://a.test"] },
   imageRevision: 2,
@@ -18,7 +18,12 @@ const current: PersonCompareCurrent = {
 
 const fetched = {
   name: "Aoi Sora",
-  aliases: [{ name: "Aoi" }, { name: "Sora" }, { name: "Aoichan" }],
+  names: [
+    { name: "Aoi Sora" },
+    { name: "Aoi" },
+    { name: "Sora", language: "ja" },
+    { name: "Aoichan" },
+  ],
   externalIds: [
     { source: "fanza", value: "a1" },
     { source: "fanza", value: "b2" },
@@ -38,7 +43,12 @@ describe("compareRows", () => {
   it("offers a different stored value for replacement and keeps an equal one", () => {
     const same = compareRows(
       current,
-      { name: "Aoi", aliases: [], externalIds: [], profile: { heightCm: 160 } },
+      {
+        name: "Aoi",
+        names: [{ name: "Aoi" }],
+        externalIds: [],
+        profile: { heightCm: 160 },
+      },
       true,
     );
 
@@ -54,11 +64,11 @@ describe("initialSelection", () => {
   it("selects filling fields and every value the lists would add, but no replacement or stored face", () => {
     const selection = initialSelection(current, fetched, true);
 
-    // The fetched name is an alias choice; names and IDs the person has are not.
+    // The fetched name is one of the names to add; names and IDs the person has are not.
     expect(selection).toEqual({
       items: ["profile.cup"],
       image: null,
-      aliases: ["Aoi Sora", "Aoichan"],
+      names: ["Aoi Sora", "Aoichan"],
       externalIds: [{ source: "fanza", value: "b2" }],
       links: ["https://b.test"],
     });
@@ -68,13 +78,13 @@ describe("initialSelection", () => {
     ]);
   });
 
-  it("starts a person without a face on the first image, and a created person without the fetched name", () => {
-    const created = { aliases: [], externalIds: [], profile: {} };
+  it("starts a provisional person without a face on the first image and every fetched name", () => {
+    const provisional = { names: [], externalIds: [], profile: {} };
 
-    const selection = initialSelection(created, fetched);
+    const selection = initialSelection(provisional, fetched);
 
     expect(selection.image).toBe(0);
-    expect(selection.aliases).toEqual(["Aoi", "Sora", "Aoichan"]);
+    expect(selection.names).toEqual(["Aoi Sora", "Aoi", "Sora", "Aoichan"]);
   });
 
   it("offers no image to fill a face the person has", () => {
@@ -84,10 +94,10 @@ describe("initialSelection", () => {
 
 describe("skippedPersonReason", () => {
   it("names the list whose limit each too_many value went over", () => {
-    const reason = (item: "aliases" | "externalIds" | "profile.links") =>
+    const reason = (item: "names" | "externalIds" | "profile.links") =>
       skippedPersonReason({ item, reason: "too_many" });
 
-    expect(reason("aliases")).toBe("over the limit for aliases");
+    expect(reason("names")).toBe("over the limit for names");
     expect(reason("externalIds")).toBe("over the limit for external IDs");
     expect(reason("profile.links")).toBe("over the limit for links");
   });

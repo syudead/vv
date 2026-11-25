@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { isAborted } from "../api/client";
+import { useBackgroundPaused } from "./BackgroundProvider";
 import { inProgress, useScan } from "./ScanProvider";
 import {
   hasNewFailure,
@@ -51,6 +52,9 @@ export function useScanNotice(): ScanNoticeContextValue {
 
 export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const scan = useScan();
+  // A result due while background work is paused is not shown; Scan status keeps it.
+  const paused = useBackgroundPaused();
+  const pausedRef = useRef(paused);
   const [session, setSession] = useState<ScanNoticeSession>(readScanNoticeSession);
   const [completionNoticePaused, setCompletionNoticePausedState] = useState(
     () => (session.completionNotice?.pausedRemainingMs ?? null) !== null,
@@ -75,6 +79,10 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     scanRef.current = scan.scan;
   }, [scan.scan]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   const dismiss = useCallback(
     (scanId: number) => {
@@ -164,13 +172,17 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+    if (paused) {
+      updateSession({ ...session, acknowledgedTerminalScanId: current.id });
+      return;
+    }
     const completionNotice: CompletionNotice = {
       scanId: current.id,
       expiresAt: Date.now() + completionNoticeDuration,
       pausedRemainingMs: null,
     };
     updateSession({ ...session, completionNotice });
-  }, [scan.scan, session, updateSession]);
+  }, [paused, scan.scan, session, updateSession]);
 
   // Remember manual-scan failures so later automatic scans do not announce carried-over failures as new.
   const manualFinished = scan.finished;
@@ -202,6 +214,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     const abort = new AbortController();
     const show = () => {
       if (abort.signal.aborted || dismissedRef.current === watchFinished.id) return;
+      if (pausedRef.current) return;
       if (scanRef.current?.id !== watchFinished.id) return;
       const currentSession = sessionRef.current;
       updateSession({

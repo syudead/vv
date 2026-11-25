@@ -157,11 +157,31 @@ export interface paths {
         };
         /**
          * List library items (videos and groups)
-         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Without filters, the owner's smart folders come first by name in every sort and count toward `limit` and `total`; guests get none. Sorting uses item values for the rest. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
+         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Items are videos and groups only; read smart folders with `listSmartFolders`. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
          */
         get: operations["listLibrary"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/image-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the library by an uploaded image or video
+         * @description Owner-only. Accepts exactly one multipart part, `file`: a PNG, JPEG or still WebP image of at most 64 MiB and 120 million pixels, kept in memory, or any other file read as a video of at most 4 GiB and 3 hours, kept in the data directory's search uploads only until the response. Returns the listed videos, version bundle members collapsed to the representative, whose search index holds the same footage, ordered by match rate, then matched section length, then the newer video, at most 50, with the count of listed file videos not indexed yet. Videos in switched-off media folders are not searched. One search runs at a time; another request waits. No `file` part or a second part returns 400 invalid_request; a file that is neither a readable image nor a video stream of at least one second 400 image_search_unreadable; a flat image or a video with fewer than three non-flat frames sampled once a second 400 image_search_uninformative; a video over 3 hours 400 image_search_too_long with limit in milliseconds; an image over 64 MiB or 120 million pixels or a video over 4 GiB 413 image_search_too_large with the exceeded limit. A cancelled request writes no response and ends any ffmpeg run. Nothing it was given is kept, whatever the outcome.
+         */
+        post: operations["searchByImage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -685,7 +705,7 @@ export interface paths {
         };
         /**
          * Return a frame of the video
-         * @description Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.
+         * @description Owner-only. Extracts positionMs as PNG with the long edge capped at maxEdge px (2048 when left out), never enlarged, for framing a person's face from a video, which the page crops and sends as the person's face, and for an image search's matched frames. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.
          */
         get: operations["getVideoFrame"];
         put?: never;
@@ -827,7 +847,7 @@ export interface paths {
         put?: never;
         /**
          * Start import
-         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background.
+         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background. While background work is paused, the new scan is answered in the state paused and runs after the resume.
          */
         post: operations["startScan"];
         delete?: never;
@@ -847,7 +867,7 @@ export interface paths {
         put?: never;
         /**
          * Start a force rescan
-         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
+         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan, or a paused scan, returns 409 scan_in_progress, and while background work is paused the new rescan is answered in the state paused. No media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
          */
         post: operations["startRescan"];
         delete?: never;
@@ -2020,8 +2040,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rename, merge or delete a tag, person or organization by name
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
+         * Rename, merge or delete a tag, person or organization, or unname a person, by name
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
          */
         post: operations["applyPeerVocabulary"];
         delete?: never;
@@ -2061,7 +2081,7 @@ export interface paths {
         put?: never;
         /**
          * Match fetched people or organizations against this node's
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by any of the folded names, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.
          */
         post: operations["matchPeerCredits"];
         delete?: never;
@@ -2101,7 +2121,7 @@ export interface paths {
         put?: never;
         /**
          * Apply a person the peer fetched for a person of this node
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md.
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the names, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md.
          */
         post: operations["applyPeerFetchedPerson"];
         delete?: never;
@@ -2685,7 +2705,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
+         * @description Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
          */
         get: operations["listPeople"];
         put?: never;
@@ -2726,7 +2746,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a person's name, aliases and external IDs
+         * Update a person's names and external IDs
          * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing person returns 404 person_not_found. parentId is forbidden (400 invalid_request).
          */
         patch: operations["updatePerson"];
@@ -2743,7 +2763,7 @@ export interface paths {
         put?: never;
         /**
          * Merge sourceIds into person id
-         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.
+         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.
          */
         post: operations["mergePeople"];
         delete?: never;
@@ -2789,7 +2809,7 @@ export interface paths {
         };
         /**
          * List a person's face candidates
-         * @description Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found.
+         * @description Owner-only. Open (not dismissed) face candidate pairs the person takes part in, and the people the live ranking of listSimilarPeople puts at or over the recognizer's Candidate threshold when one of the two is provisional and no pair row exists, highest similarity first, each as the other person; confirming or dismissing such a person stores the pair first. Missing person returns 404 person_not_found.
          */
         get: operations["listFaceCandidates"];
         put?: never;
@@ -2911,7 +2931,7 @@ export interface paths {
         put?: never;
         /**
          * Move face appearances to another person
-         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
+         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. A provisional id left with no credit and no face that is not dropped, and holding no external ID, is merged into targetId as a face_merge entry decided by the owner, which undoActivityId names; Undo takes that merge back before the reverse move. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
          */
         post: operations["moveFaceAppearances"];
         delete?: never;
@@ -3031,7 +3051,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected items of a person fetch
-         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
+         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen names, external IDs and links the person lacks, in the fetched order and up to 50, 20 and 100; a provisional person's first appended name becomes its display name; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases in the body, names, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
          */
         post: operations["applyPersonPluginFetch"];
         delete?: never;
@@ -3049,7 +3069,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.
+         * @description Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -3086,7 +3106,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update an organization's name, aliases and external IDs
+         * Update an organization's names and external IDs
          * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle.
          */
         patch: operations["updateOrganization"];
@@ -3131,7 +3151,7 @@ export interface paths {
         put?: never;
         /**
          * Merge sourceIds into organization id
-         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.
+         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.
          */
         post: operations["mergeOrganizations"];
         delete?: never;
@@ -3251,7 +3271,7 @@ export interface paths {
         put?: never;
         /**
          * Tell which provisional performers of selected videos are which added people
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out the person themself and a pair the owner dismissed; personIds may list the provisional performers themselves, so the editor can follow one face to another. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.
          */
         post: operations["matchProvisionalPeople"];
         delete?: never;
@@ -3330,7 +3350,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic. A request that names a video, group or smart folder emits the `smartFolder` event for every folder, because a folder rule can read favorites; a request naming only people emits no event. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -3742,7 +3762,7 @@ export interface paths {
         };
         /**
          * List top-level registered media folders
-         * @description Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations.
+         * @description Lists the registered media folders the audience's folder scope includes, in natural name order, each with the thumbnails of its most recently added videos. Empty registered folders are included. Version bundles show only their effective representative. Guests see public videos only and the list omits roots without public-video locations.
          */
         get: operations["listRootFolders"];
         put?: never;
@@ -4201,6 +4221,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/background": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the background work pause switch, the running work and the work left
+         * @description Answers whether background work (scans and scheduled jobs) is paused, the work running now and the work left per group. Counts leave out jobs of videos only under switched-off folders. Cache-Control is no-store; the background event of /api/events tells the screens to read it again.
+         */
+        get: operations["getBackgroundWork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/background/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pause or resume background work
+         * @description Saves the switch and applies it: true cancels the running jobs and holds new ones, false grants them again. The answer comes once the switch is saved and the running jobs are cancelled, without waiting for them to return. A request for the current state changes nothing and answers the same body. Concurrent requests are applied one at a time, and the last one decides the state. Requests that queue a job are still accepted while paused; their jobs wait for the resume.
+         */
+        put: operations["setBackgroundPause"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -4210,7 +4270,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4399,6 +4459,49 @@ export interface components {
         };
         UpdateAutoImportSettingsRequest: {
             enabled: boolean;
+        };
+        /** @description State of background work: scans and scheduled jobs */
+        BackgroundWork: {
+            /** @description The saved pause switch; false when it was never saved */
+            paused: boolean;
+            /** @description Work running now, oldest first. An entry remains after a pause until its job returns. */
+            running: components["schemas"]["BackgroundActivity"][];
+            /** @description One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill */
+            groups: components["schemas"]["BackgroundGroup"][];
+        };
+        /**
+         * @description What background work is shown as: a scan, or the jobs of one feature
+         * @enum {string}
+         */
+        BackgroundGroupName: "scan" | "import" | "auto_tag" | "face" | "version_judge" | "backfill";
+        /** @description One piece of background work running now */
+        BackgroundActivity: {
+            group: components["schemas"]["BackgroundGroupName"];
+            /** @description registering for a scan, otherwise the job kind */
+            kind: string;
+            video?: components["schemas"]["BackgroundVideo"];
+            /** @description The file being registered or read, when the work has a location */
+            fileName?: string;
+        };
+        /** @description The video running work is for; absent when the work names none or the owner's audience leaves it out */
+        BackgroundVideo: {
+            /** Format: int64 */
+            id: number;
+            title: string;
+        };
+        /** @description Background work left in one group */
+        BackgroundGroup: {
+            group: components["schemas"]["BackgroundGroupName"];
+            /** @description Files for scan, videos for import, jobs otherwise; 0 when nothing is left */
+            remaining: number;
+            /** @description scan only: a paused scan or held watch directories wait for the resume */
+            waiting?: boolean;
+            /** @description The group's feature is off and holds its jobs back, whether or not background work is paused */
+            featureOff?: boolean;
+        };
+        SetBackgroundPauseRequest: {
+            /** @description The state to reach */
+            paused: boolean;
         };
         /** @description Automatic duplicate-judging enablement */
         VersionJudgingSettings: {
@@ -4926,6 +5029,109 @@ export interface components {
             /** @description Video contentVersion held by the UI when the preview opened. */
             contentVersion: string;
         };
+        SearchByImageRequest: {
+            /**
+             * Format: binary
+             * @description The image or video to search by.
+             */
+            file: string;
+        };
+        ImageSearchResult: {
+            query: components["schemas"]["ImageSearchQuery"];
+            /** @description Every match-rate band of the query's kind, strongest first, whether or not a match is in it: strong 90 to 100 for both kinds, similar 81 to 89 for an image and 50 to 89 for a video. */
+            bands: components["schemas"]["ImageSearchBand"][];
+            /** @description Matching listed videos, best first; empty when nothing matches. The matches of one band are next to each other, and the bands appear in the order of bands. */
+            items: components["schemas"]["ImageSearchItem"][];
+            /** @description File videos visible to the owner, version bundle members included, that have no current search index and so were not searched. */
+            unindexedCount: number;
+        };
+        ImageSearchQuery: {
+            /**
+             * @description How the file was read.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /**
+             * Format: int64
+             * @description The query video's duration; video queries only.
+             */
+            durationMs?: number;
+        };
+        ImageSearchItem: {
+            video: components["schemas"]["Video"];
+            match: components["schemas"]["ImageSearchMatch"];
+        };
+        /**
+         * @description A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+         * @enum {string}
+         */
+        ImageSearchBandId: "strong" | "similar";
+        ImageSearchBand: {
+            id: components["schemas"]["ImageSearchBandId"];
+            /** @description The lowest whole-percent rate the band holds. */
+            minPercent: number;
+            /** @description The highest whole-percent rate the band holds. */
+            maxPercent: number;
+        };
+        ImageSearchMatchFrame: {
+            /**
+             * Format: int64
+             * @description The frame's time on videoId's timeline.
+             */
+            positionMs: number;
+            /**
+             * Format: double
+             * @description (63 - hash distance) / 63 of this frame.
+             */
+            rate: number;
+        };
+        ImageSearchMatch: {
+            /**
+             * Format: int64
+             * @description The video the match was found in: video.id or one of its versions; playback opens this id.
+             */
+            videoId: number;
+            /**
+             * Format: double
+             * @description For an image, (63 - hash distance) / 63; for a video, the share of matching index entries in the overlap.
+             */
+            rate: number;
+            /**
+             * @description frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
+             * @enum {string}
+             */
+            kind: "frame" | "whole" | "partial";
+            /**
+             * Format: int64
+             * @description Where playback starts: the matched frame, or the first matching entry of the matched section.
+             */
+            positionMs: number;
+            /**
+             * Format: int64
+             * @description Start of the matched section on videoId's timeline; video queries only.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description End of the matched section on videoId's timeline; video queries only.
+             */
+            endMs?: number;
+            /**
+             * Format: int64
+             * @description Start of the matched section on the query's timeline; video queries only.
+             */
+            queryStartMs?: number;
+            /**
+             * Format: int64
+             * @description End of the matched section on the query's timeline; video queries only.
+             */
+            queryEndMs?: number;
+            band: components["schemas"]["ImageSearchBandId"];
+            /** @description Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query, ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty. */
+            frames: components["schemas"]["ImageSearchMatchFrame"][];
+            /** @description The matched frames found before the limit of 12. */
+            frameCount: number;
+        };
         UploadPersonImageRequest: {
             /**
              * Format: binary
@@ -5103,9 +5309,10 @@ export interface components {
         };
         /** @description A person as the plugin returned it, after VV's limits. */
         PersonPluginFetchedPerson: {
+            /** @description The fetched display name. */
             name: string;
-            /** @description First 50 distinct names; languages are checked by the apply. */
-            aliases: components["schemas"]["Alias"][];
+            /** @description The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply. */
+            names: components["schemas"]["CreditName"][];
             /** @description The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs. */
             externalIds: components["schemas"]["ExternalId"][];
             /** @description Plugin-provided profile values that pass validation; omitted when none. */
@@ -5130,14 +5337,14 @@ export interface components {
          * @description One applicable part of a fetched person; a profile item is one profile property.
          * @enum {string}
          */
-        PersonPluginItem: "image" | "profile.gender" | "profile.birthDate" | "profile.deathDate" | "profile.birthplace" | "profile.heightCm" | "profile.bustCm" | "profile.waistCm" | "profile.hipsCm" | "profile.cup" | "profile.bloodType" | "profile.careerStartYear" | "profile.careerEndYear" | "profile.bio" | "profile.links" | "aliases" | "externalIds";
+        PersonPluginItem: "image" | "profile.gender" | "profile.birthDate" | "profile.deathDate" | "profile.birthplace" | "profile.heightCm" | "profile.bustCm" | "profile.waistCm" | "profile.hipsCm" | "profile.cup" | "profile.bloodType" | "profile.careerStartYear" | "profile.careerEndYear" | "profile.bio" | "profile.links" | "names" | "externalIds";
         ApplyPersonPluginFetchRequest: {
-            /** @description Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below. */
+            /** @description Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below. */
             items: components["schemas"]["PersonPluginItem"][];
             /** @description The kept image that image applies; required with image. */
             imageIndex?: number;
-            /** @description Names to append as aliases, each the fetched name or one of the fetched aliases. */
-            aliases?: string[];
+            /** @description Spellings to append, each the name of one of the result's names. */
+            names?: string[];
             /** @description Fetched external IDs to append. */
             externalIds?: components["schemas"]["ExternalId"][];
             /** @description Fetched profile links to append. */
@@ -5150,7 +5357,7 @@ export interface components {
         SkippedPersonReason: "invalid" | "too_many" | "taken";
         SkippedPersonValue: {
             item: components["schemas"]["PersonPluginItem"];
-            /** @description Value shown in the comparison: the profile value, the alias, or source: value. */
+            /** @description Value shown in the comparison: the profile value, the name, or source: value. */
             value: string;
             reason: components["schemas"]["SkippedPersonReason"];
             /** @description Name of the person holding the external ID; only for taken. */
@@ -5158,7 +5365,7 @@ export interface components {
         };
         PersonPluginFetchApplied: {
             person: components["schemas"]["Person"];
-            /** @description Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order. */
+            /** @description Skipped values: profile items in property order, then names, then external IDs, each in fetched order. */
             skipped: components["schemas"]["SkippedPersonValue"][];
         };
         WorkInfoSearchResult: {
@@ -5681,10 +5888,11 @@ export interface components {
             /** @description True for a person without a canonical name, whose name is then ""; always false for an organization. */
             provisional: boolean;
         };
-        /** @description One person or organization alias. */
-        Alias: {
+        /** @description One name of a person or organization. */
+        CreditName: {
+            /** @description 1-200 code points after trimming; unique within the list. */
             name: string;
-            /** @description BCP 47 language tag; omitted when absent. */
+            /** @description BCP 47 language tag, on any entry; omitted when absent. */
             language?: string;
         };
         /** @description One identifier from an external source. */
@@ -5796,11 +6004,12 @@ export interface components {
         Person: {
             /** Format: int64 */
             id: number;
+            /** @description The display name, the first of names; "" for a provisional person. */
             name: string;
-            /** @description True while the person has no canonical name; name is then "". Setting a name makes the person ordinary. */
+            /** @description True while the person has no names; name is then "" and names []. Setting a name makes the person ordinary. */
             provisional: boolean;
-            /** @description Natural-name order. */
-            aliases: components["schemas"]["Alias"][];
+            /** @description Every name in the owner's order, the display name first; at most 50. */
+            names: components["schemas"]["CreditName"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
             profile: components["schemas"]["PersonProfile"];
@@ -5888,9 +6097,10 @@ export interface components {
         Organization: {
             /** Format: int64 */
             id: number;
+            /** @description The display name, the first of names. */
             name: string;
-            /** @description Natural-name order. */
-            aliases: components["schemas"]["Alias"][];
+            /** @description Every name in the owner's order, the display name first; at least 1 and at most 50. */
+            names: components["schemas"]["CreditName"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
             profile: components["schemas"]["OrganizationProfile"];
@@ -5938,8 +6148,8 @@ export interface components {
         };
         /** @description Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only. */
         CreditInput: {
-            name: string;
-            aliases?: components["schemas"]["Alias"][];
+            /** @description The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization. */
+            names: components["schemas"]["CreditName"][];
             externalIds?: components["schemas"]["ExternalId"][];
             /**
              * Format: int64
@@ -5951,10 +6161,12 @@ export interface components {
             /** @description Organization-only profile; sending it for a person returns 400 invalid_request. */
             organizationProfile?: components["schemas"]["OrganizationProfile"];
         };
-        /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
+        /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request. */
         CreditPatch: {
+            /** @description Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives. */
             name?: string;
-            aliases?: components["schemas"]["Alias"][] | null;
+            /** @description Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names. */
+            names?: components["schemas"]["CreditName"][] | null;
             externalIds?: components["schemas"]["ExternalId"][] | null;
             /**
              * Format: int64
@@ -6091,6 +6303,11 @@ export interface components {
             person: components["schemas"]["Person"];
             /** @description Works whose performer credit of the moved-from person was removed because the target already held one. */
             restoreCredits: components["schemas"]["FaceMoveCredit"][];
+            /**
+             * Format: int64
+             * @description Present when the move left the moved-from person provisional, with no credit and no face, so it was merged into the target: the face_merge entry whose undo brings that person back, before the reverse move.
+             */
+            undoActivityId?: number;
         };
         FaceMoveCredit: {
             /** @description An opaque key of the work. */
@@ -6530,7 +6747,7 @@ export interface components {
             /** @description The item's value under the request's sort as the cursor encodes it; null sorts last. */
             sortValue: string | null;
         };
-        /** @description One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode, for the owner only; fetch card values with listSmartFolderCards. */
+        /** @description One library item containing exactly one of video, group or smartFolder according to kind. GET /api/library no longer returns a smartFolder item; the kind remains only for compatibility with paired nodes on older releases, whose folder-led first page the merged list leaves out. */
         LibraryItem: {
             /** @enum {string} */
             kind: "video" | "group" | "smartFolder";
@@ -7030,9 +7247,19 @@ export interface components {
             /** @description Direct child folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
+        RootFolder: {
+            /** Format: int64 */
+            rootId: number;
+            /** @description Display name: the final absolute-path segment of the registered folder. */
+            name: string;
+            /** @description Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name. */
+            rootPath?: string;
+            /** @description Thumbnails of up to four videos anywhere below the folder, most recently added first. */
+            previews: components["schemas"]["FolderPreview"][];
+        };
         RootFolderListing: {
             /** @description Registered media folders in natural-name order. */
-            folders: components["schemas"]["FolderSummary"][];
+            folders: components["schemas"]["RootFolder"][];
         };
         /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo. */
         Video: {
@@ -7872,10 +8099,10 @@ export interface components {
             settledAt?: string;
             activity?: components["schemas"]["ScanActivity"];
             /**
-             * @description Traversal state, used to refresh listings and determine whether another import can start.
+             * @description Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
              * @enum {string}
              */
-            state: "running" | "done" | "failed";
+            state: "running" | "paused" | "done" | "failed";
             /** @description Free-text scan failure reason; the UI builds its explanation from errorCode and errorPath instead of displaying this text. */
             error?: string;
             errorCode?: components["schemas"]["ScanErrorCode"];
@@ -8523,13 +8750,13 @@ export interface components {
             externalIds: components["schemas"]["ExternalId"][];
             profile?: components["schemas"]["OrganizationProfile"];
         };
-        /** @description The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links. */
+        /** @description The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links. */
         PeerFetchedPluginPerson: {
             name: string;
-            aliases: components["schemas"]["Alias"][];
+            names: components["schemas"]["CreditName"][];
             externalIds: components["schemas"]["ExternalId"][];
             profile?: components["schemas"]["PersonProfile"];
-            /** @description The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent. */
+            /** @description The items to write, each with a value above; names, externalIds and profile.links write all the values sent. */
             items: components["schemas"]["PersonPluginItem"][];
         };
         PeerFetchedWorkInfoApplied: {
@@ -8540,9 +8767,12 @@ export interface components {
         PeerVocabularyRequest: {
             /** @enum {string} */
             kind: "tag" | "person" | "organization";
-            /** @enum {string} */
-            action: "rename" | "merge" | "delete";
-            /** @description The current canonical name; required for rename and delete */
+            /**
+             * @description `unname` empties a person's names, making it provisional; it takes kind `person` only
+             * @enum {string}
+             */
+            action: "rename" | "merge" | "delete" | "unname";
+            /** @description The current canonical name; required for rename, delete and unname */
             name?: string;
             /** @description Required for rename */
             newName?: string;
@@ -8627,7 +8857,7 @@ export interface components {
             reason?: components["schemas"]["ErrorReason"];
             /** @description Reason limit, included only for reasons whose contract specifies a limit. */
             limit?: number;
-            /** @description JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken. */
+            /** @description JSON property path using dots and array indices, such as names[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken. */
             field?: string;
             /** @description Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required. */
             tagName?: string;
@@ -8656,7 +8886,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed" | "image_search_unreadable" | "image_search_uninformative" | "image_search_too_long" | "image_search_too_large";
     };
     responses: {
         /** @description Resource not found */
@@ -8697,6 +8927,15 @@ export interface components {
         };
         /** @description Plugin module exceeds limit */
         PluginTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Uploaded image search file exceeds a limit (reason image_search_too_large, limit) */
+        ImageSearchTooLarge: {
             headers: {
                 [name: string]: unknown;
             };
@@ -8838,7 +9077,7 @@ export interface components {
         FaceCandidateOtherId: number;
         /** @description Organization ID */
         OrganizationId: number;
-        /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
+        /** @description Normalized, trimmed query; nonempty queries substring-match any of the names */
         CreditQuery: string;
         /** @description Sort order */
         CreditSort: components["schemas"]["CreditSort"];
@@ -9208,6 +9447,33 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    searchByImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["SearchByImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Matching videos */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageSearchResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["ImageSearchTooLarge"];
         };
     };
     getVideo: {
@@ -9581,6 +9847,8 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "video/mp4": string;
+                    "video/webm": string;
                     "application/octet-stream": string;
                 };
             };
@@ -9809,6 +10077,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unknown `size` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /** @description Video missing or thumbnail not generated */
             404: {
@@ -10125,6 +10402,8 @@ export interface operations {
         parameters: {
             query: {
                 positionMs: number;
+                /** @description The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request. */
+                maxEdge?: number;
             };
             header?: never;
             path: {
@@ -10374,7 +10653,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description A manual scan or force rescan is running (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
+            /** @description A manual scan or force rescan is running or paused (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -13317,7 +13596,7 @@ export interface operations {
     listPeople: {
         parameters: {
             query?: {
-                /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
+                /** @description Normalized, trimmed query; nonempty queries substring-match any of the names */
                 q?: components["parameters"]["CreditQuery"];
                 /** @description Sort order */
                 sort?: components["parameters"]["CreditSort"];
@@ -13974,7 +14253,7 @@ export interface operations {
     listOrganizations: {
         parameters: {
             query?: {
-                /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
+                /** @description Normalized, trimmed query; nonempty queries substring-match any of the names */
                 q?: components["parameters"]["CreditQuery"];
                 /** @description Sort order */
                 sort?: components["parameters"]["CreditSort"];
@@ -15155,7 +15434,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Registered-folder summaries */
+            /** @description Registered media folders */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -16025,6 +16304,52 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getBackgroundWork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Background work status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundWork"];
+                };
+            };
+        };
+    };
+    setBackgroundPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBackgroundPauseRequest"];
+            };
+        };
+        responses: {
+            /** @description Background work status after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundWork"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     streamEvents: {

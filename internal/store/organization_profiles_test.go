@@ -13,7 +13,7 @@ import (
 func TestUpdateOrganizationProfileReplacesOnlyPatchedFields(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	org := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Name: "Studio",
+	org := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Names: namesOf("Studio"),
 		OrganizationProfile: domain.OrganizationProfile{
 			FoundedDate: "1990-04", Location: "東京", Bio: "a", Links: []string{"https://a.example", "https://b.example"},
 		}})
@@ -75,9 +75,9 @@ func TestListOrganizationsFavoriteOnly(t *testing.T) {
 func TestMergeOrganizationsFillsProfileLogoAndFavoriteFromSources(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	target := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Name: "T",
+	target := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Names: namesOf("T"),
 		OrganizationProfile: domain.OrganizationProfile{Location: "kept"}})
-	source := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Name: "S",
+	source := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Names: namesOf("S"),
 		OrganizationProfile: domain.OrganizationProfile{Location: "lost", Bio: "filled"}})
 	if _, err := db.Credits().SetCreditImage(ctx, domain.CreditOrganization, source.ID, face("logo")); err != nil {
 		t.Fatal(err)

@@ -44,9 +44,60 @@ export interface BulkDraft {
   public?: boolean;
   /** The owner's choice per unnamed performer: the target key to merge into, or null to keep apart. */
   merges: ReadonlyMap<number, string | null>;
+  /** Names typed for unnamed people picked by face, given to them on Apply. */
+  names: ReadonlyMap<number, string>;
 }
 
-export const emptyDraft: BulkDraft = { fields: new Map(), dates: {}, merges: new Map() };
+export const emptyDraft: BulkDraft = {
+  fields: new Map(),
+  dates: {},
+  merges: new Map(),
+  names: new Map(),
+};
+
+/** Records the name an unnamed person picked by face takes on Apply. */
+export function nameOnApply(draft: BulkDraft, personId: number, name: string): BulkDraft {
+  const names = new Map(draft.names);
+  names.set(personId, name);
+  return { ...draft, names };
+}
+
+/** The names to give on Apply, for the people the draft still adds in a person role. */
+export function namesToApply(draft: BulkDraft): { id: number; name: string }[] {
+  return [...draft.names]
+    .filter(([id]) => addsPerson(draft, id))
+    .map(([id, name]) => ({ id, name }));
+}
+
+/** Whether a person role of the draft adds the person, picked or by pressing their present value. */
+export function addsPerson(draft: BulkDraft, personId: number): boolean {
+  const key = creditKey(personId);
+  return [...draft.fields].some(
+    ([field, value]) =>
+      field.startsWith("person:") &&
+      (value.choices.get(key) === "add" || value.picked.some((item) => item.key === key)),
+  );
+}
+
+/** A present value's label, or the name the draft gives the person on Apply. */
+export function withNamesOnApply(
+  present: ReadonlyMap<FieldId, readonly PresentValue[]>,
+  names: ReadonlyMap<number, string>,
+): Map<FieldId, PresentValue[]> {
+  const out = new Map<FieldId, PresentValue[]>();
+  for (const [field, values] of present) {
+    out.set(
+      field,
+      values.map((value) => {
+        const name = field.startsWith("person:")
+          ? names.get(idOfKey(value.key))
+          : undefined;
+        return name === undefined ? value : { ...value, label: name };
+      }),
+    );
+  }
+  return out;
+}
 
 const emptyField: FieldDraft = { choices: new Map(), picked: [] };
 

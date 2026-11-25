@@ -7,6 +7,7 @@ import type { t } from "../i18n";
 export type SettingsPageSlug = keyof typeof t.settings.pages;
 
 export type SettingsSectionId =
+  | "background-work"
   | "scan-status"
   | "auto-import-state"
   | "media-folders"
@@ -35,7 +36,7 @@ export interface SettingsPageEntry {
 export const settingsPages: readonly SettingsPageEntry[] = [
   {
     slug: "scan",
-    sections: ["scan-status", "auto-import-state"],
+    sections: ["background-work", "scan-status", "auto-import-state"],
     anchors: ["scan-status"],
   },
   {

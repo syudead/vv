@@ -38,7 +38,12 @@ export function useMergeState(
   const mergeTo = summary === undefined ? [] : mergeTargets(draft, summary);
   const candidates = summary === undefined ? [] : mergeCandidates(draft, summary);
   const shown = mergeTo.length > 0 && candidates.length > 0;
-  const matches = useProvisionalMatches(targets, targetKey, targetIds(mergeTo), shown);
+  // The candidates' own faces are compared too, so one face can lead to another's target.
+  const compared = [
+    ...targetIds(mergeTo),
+    ...candidates.map((candidate) => candidate.id),
+  ];
+  const matches = useProvisionalMatches(targets, targetKey, compared, shown);
   const merges =
     matches === undefined
       ? new Map<number, string>()

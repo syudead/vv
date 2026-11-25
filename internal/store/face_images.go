@@ -194,7 +194,7 @@ func provisionalFaceVectors(ctx context.Context, tx *sql.Tx, recognizer domain.F
 	[]domain.FacePersonVector, error,
 ) {
 	ids, err := queryInt64s(ctx, tx, `select p.id from people p where p.id <> ?1
-		and not exists (select 1 from people_names n where n.person_id = p.id and n.canonical = 1)
+		and not exists (select 1 from people_names n where n.person_id = p.id and n.position = 0)
 		and not exists (select 1 from face_candidates c where c.dismissed = 1
 			and (c.provisional_id = p.id and c.person_id = ?1 or c.provisional_id = ?1 and c.person_id = p.id))`,
 		personID)

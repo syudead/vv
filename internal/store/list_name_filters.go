@@ -59,9 +59,9 @@ func (f listFilters) narrow(spec listSpec) listSpec {
 	return spec
 }
 
-// creditNameCondition matches a credit column against every entity whose canonical name is the argument.
+// creditNameCondition matches a credit column against every entity whose display name is the argument.
 func creditNameCondition(column, namesTable, idColumn string) string {
-	return column + ` in (select ` + idColumn + ` from ` + namesTable + ` where name = ? and canonical = 1)`
+	return column + ` in (select ` + idColumn + ` from ` + namesTable + ` where name = ? and position = 0)`
 }
 
 // NameFilters is q with its tag, kind, person and organization IDs replaced by their canonical names, so the
@@ -88,8 +88,8 @@ func (s *LibraryStore) NameFilters(ctx context.Context, q domain.VideoQuery) (na
 		out   *string
 	}{
 		{q.TagKindID, `select name from tag_kinds where id = ?`, &named.TagKindName},
-		{q.Person, `select name from people_names where person_id = ? and canonical = 1`, &named.PersonName},
-		{q.Organization, `select name from organization_names where organization_id = ? and canonical = 1`, &named.OrganizationName},
+		{q.Person, `select name from people_names where person_id = ? and position = 0`, &named.PersonName},
+		{q.Organization, `select name from organization_names where organization_id = ? and position = 0`, &named.OrganizationName},
 	} {
 		if lookup.id == 0 {
 			continue
@@ -120,8 +120,8 @@ func (s *LibraryStore) VocabularyJoin(ctx context.Context) (domain.VocabularyJoi
 	}{
 		{`select name, min(tag_id) from tag_names where canonical = 1 group by name`, &join.Tags},
 		{`select name, min(id) from tag_kinds group by name`, &join.TagKinds},
-		{`select name, min(person_id) from people_names where canonical = 1 group by name`, &join.People},
-		{`select name, min(organization_id) from organization_names where canonical = 1 group by name`, &join.Organizations},
+		{`select name, min(person_id) from people_names where position = 0 group by name`, &join.People},
+		{`select name, min(organization_id) from organization_names where position = 0 group by name`, &join.Organizations},
 	} {
 		if *read.out, err = readNameIDs(ctx, tx, read.query); err != nil {
 			return domain.VocabularyJoin{}, err

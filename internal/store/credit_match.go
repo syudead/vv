@@ -55,7 +55,7 @@ func matchCredits(ctx context.Context, tx *sql.Tx, t creditTables, entries []dom
 			linked = append(linked, holders[i][0])
 		}
 	}
-	names, err := canonicalCreditNames(ctx, tx, t, linked)
+	names, err := creditDisplayNames(ctx, tx, t, linked)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func matchCredits(ctx context.Context, tx *sql.Tx, t creditTables, entries []dom
 		case 0:
 			matches[i] = domain.CreditMatch{State: domain.CreditMatchNew}
 		case 1:
-			// Only a person can lack a canonical name, which makes it provisional.
+			// Only a person can lack names, which makes it provisional.
 			name, named := names[found[0]]
 			ref := &domain.CreditRef{ID: found[0], Name: name, Provisional: !named}
 			matches[i] = domain.CreditMatch{State: domain.CreditMatchExisting, Credit: ref}
@@ -146,7 +146,7 @@ func foldedNameHolderMap(ctx context.Context, tx *sql.Tx, t creditTables, keys [
 	return holders, nil
 }
 
-func canonicalCreditNames(ctx context.Context, tx *sql.Tx, t creditTables, ids []int64) (map[int64]string, error) {
+func creditDisplayNames(ctx context.Context, tx *sql.Tx, t creditTables, ids []int64) (map[int64]string, error) {
 	names := make(map[int64]string, len(ids))
 	if len(ids) == 0 {
 		return names, nil
@@ -156,7 +156,7 @@ func canonicalCreditNames(ctx context.Context, tx *sql.Tx, t creditTables, ids [
 		return nil, fmt.Errorf("cannot encode %s ids: %w", t.kind, err)
 	}
 	err = eachCreditRow(ctx, tx, t.q(`select {id}, name, '' from {names}
-		 where canonical = 1 and {id} in (select value from json_each(?))`),
+		 where position = 0 and {id} in (select value from json_each(?))`),
 		string(encoded), func(id int64, name, _ string) { names[id] = name })
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the names of %s entities: %w", t.kind, err)

@@ -153,7 +153,9 @@ does not wait for a confirmation.
 
 Closing asks only when an import is busy: a scan running, or a job `queued` or
 `running` (`app.Scans.Busy`). Live transcoding does not resume, so it is not
-counted.
+counted. While background work is paused, jobs are not counted: they wait for
+the owner's resume, so closing interrupts nothing they do
+([background-pause.md](background-pause.md#pause-state)).
 
 ```mermaid
 flowchart LR

@@ -422,13 +422,6 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
-// Alias One person or organization alias.
-type Alias struct {
-	// Language BCP 47 language tag; omitted when absent.
-	Language *string `json:"language,omitempty"`
-	Name     string  `json:"name"`
-}
-
 // CreditDeleteRequest defines model for CreditDeleteRequest.
 type CreditDeleteRequest struct {
 	// Ids 1-20,000 IDs to delete; otherwise work_info_too_many with field ids.
@@ -449,11 +442,12 @@ type CreditIdRef struct {
 	Id int64 `json:"id"`
 }
 
-// CreditInput Person or organization creation body; parentId is organization-only and profile person-only.
+// CreditInput Person or organization creation body; parentId is organization-only and profile person-only. name and aliases are unknown properties and return 400 invalid_request.
 type CreditInput struct {
-	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
-	Name        string        `json:"name"`
+
+	// Names The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization.
+	Names []CreditName `json:"names"`
 
 	// ParentId Parent organization ID; sending it for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
@@ -471,6 +465,15 @@ type CreditMergeRequest struct {
 	TargetId int64 `json:"targetId"`
 }
 
+// CreditName One name of a person or organization.
+type CreditName struct {
+	// Language BCP 47 language tag, on any entry; omitted when absent.
+	Language *string `json:"language,omitempty"`
+
+	// Name 1-200 code points after trimming; unique within the list.
+	Name string `json:"name"`
+}
+
 // CreditRef Reference to one person or organization; name is its current name, "" for a provisional person.
 type CreditRef struct {
 	Id   int64  `json:"id"`
@@ -485,12 +488,16 @@ type CreditSort string
 
 // CreditUpdateRequest Update body: id is required; omitted properties remain unchanged. Lists are replaced entirely and null clears them; organization-only parentId null removes the parent.
 type CreditUpdateRequest struct {
-	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 
 	// Id Entity to update.
-	Id   int64   `json:"id"`
+	Id int64 `json:"id"`
+
+	// Name Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives. Sending it with names returns 400 invalid_request.
 	Name *string `json:"name,omitempty"`
+
+	// Names Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names.
+	Names *[]CreditName `json:"names,omitempty"`
 
 	// ParentId Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
@@ -504,7 +511,7 @@ type Error struct {
 	// Code Machine-readable error code.
 	Code ErrorCode `json:"code"`
 
-	// Field Property path using JSON names and array indices, such as people[0].person.id, aliases[2].language, externalIds[1] or parentId. For bulk work-info updates, relative to the item workInfo; present only for work_info_*, person_not_found, organization_not_found or external_id_taken.
+	// Field Property path using JSON names and array indices, such as people[0].person.id, names[2].language, externalIds[1] or parentId. For bulk work-info updates, relative to the item workInfo; present only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
 	// Index Zero-based position in tags for tag-name errors, items for display-name/thumbnail/work-info operations, or videos otherwise.
@@ -631,14 +638,17 @@ type ExternalVideoTag struct {
 
 // Organization One organization; same fields as Person plus its parent.
 type Organization struct {
-	// Aliases Natural-name order; [] when empty.
-	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// ExternalIds Ordered by (source, value); [] when empty.
 	ExternalIds []ExternalId `json:"externalIds"`
 	Id          int64        `json:"id"`
-	Name        string       `json:"name"`
+
+	// Name The display name, the first of names.
+	Name string `json:"name"`
+
+	// Names Every name in the owner's order, the display name first; at least 1 and at most 50.
+	Names []CreditName `json:"names"`
 
 	// Parent Parent organization as CreditRef; null for a root.
 	Parent *struct {
@@ -675,19 +685,22 @@ type OrganizationMergeResponse struct {
 
 // Person One person.
 type Person struct {
-	// Aliases Natural-name order; [] when empty.
-	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// ExternalIds Ordered by (source, value); [] when empty.
 	ExternalIds []ExternalId `json:"externalIds"`
 	Id          int64        `json:"id"`
-	Name        string       `json:"name"`
+
+	// Name The display name, the first of names; "" for a provisional person.
+	Name string `json:"name"`
+
+	// Names Every name in the owner's order, the display name first; at most 50.
+	Names []CreditName `json:"names"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
 
-	// Provisional True while the person has no canonical name; name is then "". Setting a name makes the person ordinary.
+	// Provisional True while the person has no names; name is then "" and names []. Setting a name makes the person ordinary.
 	Provisional bool `json:"provisional"`
 
 	// VideoCount Visible videos linked to this person in any role.
@@ -1271,7 +1284,7 @@ type Unauthenticated = Error
 
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
-	// Q Trim and normalize the query, then substring-match names or aliases when nonempty.
+	// Q Trim and normalize the query, then substring-match any of the names when nonempty.
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Sort Sort order
@@ -1292,7 +1305,7 @@ type ListOrganizationsParams struct {
 
 // ListPeopleParams defines parameters for ListPeople.
 type ListPeopleParams struct {
-	// Q Trim and normalize the query, then substring-match names or aliases when nonempty.
+	// Q Trim and normalize the query, then substring-match any of the names when nonempty.
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Sort Sort order

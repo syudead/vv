@@ -64,3 +64,26 @@ func TestFolderLocationsSearchThePathRange(t *testing.T) {
 		t.Errorf("plan does not search %s:\n%s", index, strings.Join(plan, "\n"))
 	}
 }
+
+// A large folder stops at the newest matches of the added-at index; a small one reads only its path range, so an
+// empty or sparse root never walks the whole library.
+func TestRecentFolderPreviewsPlans(t *testing.T) {
+	db := migratedDB(t)
+	walk, args := recentFolderPreviewsQuery(domain.AudienceOwner, fixturePath("/media"), false)
+	plan := queryPlan(t, db, walk, args...)
+	// Only the bundle representative subquery may sort; the outer query reads the index in order.
+	if len(plan) == 0 || plan[0] != "SCAN videos USING INDEX videos_added_at_desc_idx" {
+		t.Errorf("large folder plan does not walk videos_added_at_desc_idx first:\n%s", strings.Join(plan, "\n"))
+	}
+
+	byRange, args := recentFolderPreviewsQuery(domain.AudienceOwner, fixturePath("/media"), true)
+	plan = queryPlan(t, db, byRange, args...)
+	if len(plan) == 0 || plan[0] != "SEARCH videos USING INTEGER PRIMARY KEY (rowid=?)" {
+		t.Errorf("small folder plan does not look up the range's videos by id:\n%s", strings.Join(plan, "\n"))
+	}
+	for _, step := range plan {
+		if strings.HasPrefix(step, "SCAN videos") || strings.HasPrefix(step, "SCAN l") {
+			t.Errorf("small folder plan scans a whole table: %q\n%s", step, strings.Join(plan, "\n"))
+		}
+	}
+}

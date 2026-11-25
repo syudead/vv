@@ -31,7 +31,7 @@ export function person(overrides: Partial<Person> = {}): Person {
     id: 7,
     name: "Aoi",
     provisional: false,
-    aliases: [],
+    names: [{ name: "Aoi" }],
     externalIds: [],
     profile: {},
     favorite: false,
@@ -69,7 +69,11 @@ export const server = {
   sent: [] as Sent[],
   plugins: [] as WorkInfoPlugin[],
   candidates: [] as PersonPluginCandidate[],
-  fetched: { name: "Aoi", aliases: [], externalIds: [] } as PersonPluginFetchedPerson,
+  fetched: {
+    name: "Aoi",
+    names: [{ name: "Aoi" }],
+    externalIds: [],
+  } as PersonPluginFetchedPerson,
   /** Links the plugin handles; with only the plugin sent, the server picks from these when no ID is stored. */
   handledLinks: [] as string[],
   /** When set, the next apply answers that the result is out of date. */
@@ -91,6 +95,8 @@ export const server = {
   searchable: [] as Person[],
   /** When set, a move answers that a face is no longer the person's. */
   moveGone: false,
+  /** When set, a move from the shown person answers that it emptied and merged the person into the target. */
+  moveMerged: false,
   /** How many similar-people reads fail before they succeed again. */
   similarFailures: 0,
   /** How many candidate reads fail before they succeed again. */
@@ -208,6 +214,7 @@ function faceRoute(method: string, url: URL): Response | null {
         ? {
             person: person({ id: 9, name: "Mio" }),
             restoreCredits: [{ workKey: "work-5", position: 1 }],
+            ...(server.moveMerged ? { undoActivityId: 31 } : {}),
           }
         : { person: person(), restoreCredits: [] },
     );
@@ -315,7 +322,7 @@ export function installPersonServer() {
     server.sent = [];
     server.plugins = [];
     server.candidates = [];
-    server.fetched = { name: "Aoi", aliases: [], externalIds: [] };
+    server.fetched = { name: "Aoi", names: [{ name: "Aoi" }], externalIds: [] };
     server.handledLinks = [];
     server.staleApply = false;
     server.applied = null;
@@ -329,6 +336,7 @@ export function installPersonServer() {
     server.candidateFailures = 0;
     server.similarFailures = 0;
     server.moveGone = false;
+    server.moveMerged = false;
     server.imageRefusal = null;
     server.searchable = [];
     server.faceRecognition = true;

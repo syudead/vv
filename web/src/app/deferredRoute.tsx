@@ -84,3 +84,26 @@ export async function deferredRoute(
     return null;
   };
 }
+
+/** Wait this long after load: the page's first list request and render leave idle gaps a download would fill. */
+const prefetchDelayMs = 3000;
+
+/** Fetch a page's code after the current page has settled, so its first visit does not wait for the download. */
+export function prefetchWhenIdle(load: () => Promise<unknown>, idle = afterSettled) {
+  idle(() => {
+    load().catch(() => undefined);
+  });
+}
+
+function afterSettled(callback: () => void) {
+  const start = () =>
+    window.setTimeout(() => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(callback, { timeout: prefetchDelayMs });
+      } else {
+        callback();
+      }
+    }, prefetchDelayMs);
+  if (document.readyState === "complete") start();
+  else window.addEventListener("load", start, { once: true });
+}

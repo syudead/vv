@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"testing"
 
@@ -101,13 +100,6 @@ func TestNamingAProvisionalPersonMakesItOrdinary(t *testing.T) {
 	if !kept.Provisional || kept.Name != "" || kept.Profile.HeightCm == nil || *kept.Profile.HeightCm != 160 {
 		t.Errorf("名前なしのプロフィール変更のあと = %+v", kept)
 	}
-	aliases := []domain.Alias{{Name: "Alias"}}
-	_, err = db.Credits().Update(ctx, domain.CreditPerson, id, domain.CreditPatch{Aliases: &aliases})
-	var invalid *domain.InvalidWorkInfoError
-	if !errors.As(err, &invalid) || invalid.Field != "name" || invalid.Problem != domain.WorkInfoEmpty {
-		t.Errorf("名前なしの別名: err = %v", err)
-	}
-
 	name := "Alice"
 	named, err := db.Credits().Update(ctx, domain.CreditPerson, id, domain.CreditPatch{Name: &name})
 	if err != nil {
@@ -134,8 +126,8 @@ func TestMergeIntoAProvisionalPersonTakesTheFirstNamedSourcesName(t *testing.T) 
 	if got.Provisional || got.Name != "Alice" {
 		t.Errorf("まとめたあとの名前 = %q (provisional %v), want Alice", got.Name, got.Provisional)
 	}
-	if want := []string{"Ally", "Bob"}; !slices.Equal(aliasNames(got), want) {
-		t.Errorf("別名 = %v, want %v", aliasNames(got), want)
+	if want := []domain.CreditName{{Name: "Alice"}, {Name: "Ally"}, {Name: "Bob"}}; !slices.Equal(got.Names, want) {
+		t.Errorf("Names = %v, want %v", got.Names, want)
 	}
 }
 

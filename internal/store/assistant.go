@@ -527,10 +527,10 @@ var assistantLabelNames = map[domain.AssistantLabelKind]string{
 		and tag_id in (select value from json_each(?))`,
 	domain.AssistantLabelTagKind: `select id, name from tag_kinds where id in (select value from json_each(?))`,
 	domain.AssistantLabelPerson: `select p.id, coalesce(n.name, '') from people p
-		left join people_names n on n.person_id = p.id and n.canonical = 1
+		left join people_names n on n.person_id = p.id and n.position = 0
 		where p.id in (select value from json_each(?))`,
 	domain.AssistantLabelOrganization: `select o.id, coalesce(n.name, '') from organizations o
-		left join organization_names n on n.organization_id = o.id and n.canonical = 1
+		left join organization_names n on n.organization_id = o.id and n.position = 0
 		where o.id in (select value from json_each(?))`,
 	domain.AssistantLabelPlaylist:    `select id, name from playlists where id in (select value from json_each(?))`,
 	domain.AssistantLabelGroup:       `select id, name from groups where id in (select value from json_each(?))`,

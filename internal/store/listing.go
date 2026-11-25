@@ -116,7 +116,7 @@ type listSpec struct {
 	conditions domain.VideoConditions
 	// tagKindNameID is the kind a kind name resolved to, ANDed with tagKindID; zero disables it.
 	tagKindNameID int64
-	// personName and organizationName match every entity with that canonical name; personRole applies to both
+	// personName and organizationName match every entity with that display name; personRole applies to both
 	// person filters.
 	personName, organizationName string
 	// matchNothing empties the list, for a name filter that resolved to no entity.

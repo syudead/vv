@@ -49,6 +49,9 @@ const dataDirPerm os.FileMode = 0o755
 // Keep thumbnails under MDM_DATA_DIR rather than exposing another setting.
 const thumbnailsDirName = "thumbnails"
 
+// searchUploadsDirName holds image search video queries only while their request lasts.
+const searchUploadsDirName = "search-uploads"
+
 // Config is immutable after startup; the database path is fixed at DataDir/mdm.db.
 type Config struct {
 	Addr     string
@@ -212,6 +215,10 @@ func formatPrefixes(prefixes []netip.Prefix) string {
 // Keep artifacts together to simplify backup and deletion.
 func (c Config) ThumbnailsDir() string {
 	return filepath.Join(c.DataDir, thumbnailsDirName)
+}
+
+func (c Config) SearchUploadsDir() string {
+	return filepath.Join(c.DataDir, searchUploadsDirName)
 }
 
 func checkReadableDir(path string) error {

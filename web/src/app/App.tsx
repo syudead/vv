@@ -3,9 +3,9 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
 import { useAudience } from "../auth/audience";
 import AuthGate from "../auth/AuthGate";
+import { IMAGE_SEARCH_PATH } from "../library/imageSearch/imageSearchEntry";
 import { LIBRARY_PATH } from "../library/libraryPath";
 import LibraryPage from "../library/LibraryPage";
-import VideoPage from "../player/VideoPage";
 import AssistantPanel from "../assistant/AssistantPanel";
 import { AssistantProvider } from "../assistant/AssistantProvider";
 import AppShell from "../shell/AppShell";
@@ -13,6 +13,8 @@ import PeerNotice, { usePeerNoticeShown } from "../shell/PeerNotice";
 import { PeerProvider } from "../shell/PeerProvider";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
+import BackgroundPausedIndicator from "../shell/BackgroundPausedIndicator";
+import { BackgroundProvider } from "../shell/BackgroundProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -21,9 +23,18 @@ import { isPersonEditPath } from "../lib/personEditPath";
 import { isVideoEditPath } from "../lib/videoEditPath";
 import { OnboardingGate } from "../onboarding/OnboardingGate";
 import { ONBOARDING_PATH } from "../onboarding/onboardingRoute";
-import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
+import {
+  deferredRoute,
+  matchesBelowPath,
+  matchesExactPath,
+  prefetchWhenIdle,
+} from "./deferredRoute";
 import LibraryRedirect from "./LibraryRedirect";
 const FolderPage = await deferredRoute(() => import("../folders/FolderPage"), "/folders");
+const ImageSearchPage = await deferredRoute(
+  () => import("../library/imageSearch/ImageSearchPage"),
+  IMAGE_SEARCH_PATH,
+);
 const SettingsPage = await deferredRoute(
   () => import("../settings/SettingsPage"),
   "/settings",
@@ -65,9 +76,13 @@ const PlaylistPage = await deferredRoute(
   (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
 const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/groups");
+const SmartFolderListPage = await deferredRoute(
+  () => import("../smartFolders/SmartFolderListPage"),
+  (pathname) => matchesExactPath(pathname, "/smart-folders"),
+);
 const SmartFolderPage = await deferredRoute(
   () => import("../smartFolders/SmartFolderPage"),
-  "/smart-folders",
+  (pathname) => matchesBelowPath(pathname, "/smart-folders"),
 );
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
@@ -85,6 +100,14 @@ const ReviewPage = await deferredRoute(
   () => import("../assistant/ReviewPage"),
   "/assistant/reviews",
 );
+// The player carries video.js, about 60% of what every page used to load before its first request; other
+// pages fetch it once idle so opening a video stays immediate.
+const loadVideoPage = () => import("../player/VideoPage");
+const VideoPage = await deferredRoute(
+  loadVideoPage,
+  (pathname) => matchesBelowPath(pathname, "/videos") && !isVideoEditPath(pathname),
+);
+prefetchWhenIdle(loadVideoPage);
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
   isVideoEditPath,
@@ -120,6 +143,7 @@ function AppRoutes() {
   return (
     <ToastProvider placement={scanPlacement}>
       {owner && <ScanProgressIndicator />}
+      {owner && <BackgroundPausedIndicator />}
       {/* 所有者の段階が done でない間は、どの経路も /welcome へ置き換える
           （docs/design-docs/home.md）。 */}
       <OnboardingGate>
@@ -130,6 +154,14 @@ function AppRoutes() {
             element={
               <ShellPage>
                 <LibraryPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path={IMAGE_SEARCH_PATH}
+            element={
+              <ShellPage>
+                <ImageSearchPage />
               </ShellPage>
             }
           />
@@ -228,6 +260,14 @@ function AppRoutes() {
             }
           />
           <Route
+            path="/smart-folders"
+            element={
+              <ShellPage>
+                <SmartFolderListPage />
+              </ShellPage>
+            }
+          />
+          <Route
             path="/smart-folders/:id"
             element={
               <ShellPage>
@@ -291,13 +331,15 @@ function LibraryApp() {
   return (
     <TooltipProvider>
       <ScanProvider>
-        <ScanNoticeProvider>
-          <PeerProvider>
-            <AssistantProvider>
-              <AppRoutes />
-            </AssistantProvider>
-          </PeerProvider>
-        </ScanNoticeProvider>
+        <BackgroundProvider>
+          <ScanNoticeProvider>
+            <PeerProvider>
+              <AssistantProvider>
+                <AppRoutes />
+              </AssistantProvider>
+            </PeerProvider>
+          </ScanNoticeProvider>
+        </BackgroundProvider>
       </ScanProvider>
     </TooltipProvider>
   );

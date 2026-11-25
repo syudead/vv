@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { ProvisionalMatch } from "../../api/videoEdits";
 import { remoteIdOffset } from "../../lib/remoteId";
-import { cycleValue, emptyDraft, pickValue } from "./draft";
+import { cycleValue, emptyDraft, nameOnApply, pickValue } from "./draft";
 import {
   buildMerges,
   cycleMerge,
   effectiveMerges,
   type MergeCandidate,
   type MergeTarget,
+  mergeCandidates,
   mergeTargets,
   suggestMerges,
 } from "./merges";
@@ -58,6 +59,36 @@ describe("suggestMerges", () => {
       [alice],
     );
     expect(suggested).toEqual(new Map());
+  });
+
+  it("gives a face the target of another unnamed performer with the same face", () => {
+    // 1 is a video's only unnamed performer; 2 shares a video with 3 and has 1's face, and 4 has 2's face.
+    const suggested = suggestMerges(
+      [candidate(1), candidate(2), candidate(3), candidate(4)],
+      [
+        match(1, { alone: true, similarTo: [2] }),
+        match(2, { coPerformers: [3], similarTo: [1, 4] }),
+        match(3, { coPerformers: [2] }),
+        match(4, { similarTo: [2] }),
+      ],
+      [bob],
+    );
+    expect(suggested).toEqual(
+      new Map([
+        [1, "new:1"],
+        [2, "new:1"],
+        [4, "new:1"],
+      ]),
+    );
+  });
+
+  it("keeps a face apart from the target its co-performer already goes to", () => {
+    const suggested = suggestMerges(
+      [candidate(1), candidate(2)],
+      [match(1, { similarTo: [7] }), match(2, { coPerformers: [1], similarTo: [1] })],
+      [alice],
+    );
+    expect(suggested).toEqual(new Map([[1, "c7"]]));
   });
 });
 
@@ -128,5 +159,33 @@ describe("mergeTargets", () => {
       [],
     );
     expect(mergeTargets(draft, summary)).toEqual([{ key: "c8", label: "Local", id: 8 }]);
+  });
+});
+
+describe("unnamed people named on Apply", () => {
+  const summary = {
+    total: 2,
+    public: 0,
+    tags: [],
+    organizations: [],
+    dates: [],
+    people: [7, 8].map((id) => ({
+      role: "performer" as const,
+      person: { id, name: "", provisional: true },
+      count: 1,
+    })),
+  };
+
+  it("makes a person picked by face with a typed name a target, not a candidate", () => {
+    let draft = cycleValue(
+      emptyDraft,
+      "person:performer",
+      { key: "c7", label: "#7", count: 1, removable: 1 },
+      2,
+    );
+    expect(mergeTargets(draft, summary)).toEqual([]);
+    draft = nameOnApply(draft, 7, "Mio");
+    expect(mergeTargets(draft, summary)).toEqual([{ key: "c7", label: "Mio", id: 7 }]);
+    expect(mergeCandidates(draft, summary).map((item) => item.id)).toEqual([8]);
   });
 });

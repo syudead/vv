@@ -991,7 +991,7 @@ func TestSessionLedgerRevokeBeforeServeRefusesRequest(t *testing.T) {
 	if req.revoked() {
 		t.Fatal("載せただけで打ち切られた")
 	}
-	ledger.revoke("token")
+	ledger.revokeSession("token")
 	if !req.revoked() {
 		t.Fatal("打ち切りが届かない")
 	}
@@ -1000,6 +1000,21 @@ func TestSessionLedgerRevokeBeforeServeRefusesRequest(t *testing.T) {
 	}
 	if _, ok := ledger.serve(ctx, req, time.Now().Add(time.Hour)); ok {
 		t.Fatal("打ち切られた要求で応答を始められた")
+	}
+}
+
+// A logout cookie value is attacker-chosen, so it must not reach peer or API-token requests by naming their key.
+func TestSessionLedgerRevokeSessionReachesOnlySessionRequests(t *testing.T) {
+	ledger := newSessionLedger(time.Hour, slog.Default())
+	_, peer, releasePeer := ledger.openWith(context.Background(), httptest.NewRecorder(), peerLedgerKey, nil)
+	defer releasePeer()
+	_, token, releaseToken := ledger.openWith(context.Background(), httptest.NewRecorder(), apiTokenLedgerKey(1), nil)
+	defer releaseToken()
+
+	ledger.revokeSession(peerLedgerKey)
+	ledger.revokeSession(apiTokenLedgerKey(1))
+	if peer.revoked() || token.revoked() {
+		t.Fatalf("Cookie の値で別の資格の要求が打ち切られた: peer = %v, api token = %v", peer.revoked(), token.revoked())
 	}
 }
 

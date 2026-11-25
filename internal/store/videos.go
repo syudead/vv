@@ -102,7 +102,9 @@ func (s *IngestStore) GetVideo(ctx context.Context, id int64) (domain.Video, err
 
 // GetVideo returns domain.ErrNotFound for both hidden and missing videos.
 func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error) {
-	return getVideo(ctx, s.db.sql, audience, id)
+	// Reads by id serve every thumbnail and stream request, so they run on the read pool with cached statements
+	// instead of queueing on the single writer connection.
+	return getVideo(ctx, s.db.cached, audience, id)
 }
 
 type videoQueryer interface {
@@ -242,7 +244,7 @@ func (s *LibraryStore) ContentKeyReferenced(ctx context.Context, key string) (bo
 
 func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, error) {
 	var referenced int
-	if err := q.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ?)`, key).
+	if err := q.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ? and content_key <> '')`, key).
 		Scan(&referenced); err != nil {
 		return false, fmt.Errorf("cannot check references to the content key: %w", err)
 	}

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -36,6 +37,14 @@ type AutoImportStore interface {
 	SaveAutoImport(ctx context.Context, enabled bool) error
 }
 
+// HeldWatchStore keeps the dirty directories held through a background pause, so a restart during the pause keeps
+// them. See docs/design-docs/background-pause.md.
+type HeldWatchStore interface {
+	HeldWatchDirectories(ctx context.Context) ([]domain.DirtyDirectory, error)
+	HoldWatchDirectories(ctx context.Context, dirs []domain.DirtyDirectory) error
+	ReleaseWatchDirectories(ctx context.Context, dirs []domain.DirtyDirectory) error
+}
+
 // Return the newest mtime in scope, or zero for absent/empty directories.
 type ChangeProbe func(dir domain.DirtyDirectory) (time.Time, error)
 
@@ -61,6 +70,10 @@ type AutoImportOptions struct {
 	Folders ActivityFolderStore
 	Watcher FolderWatcher
 	Scans   WatchScans
+	// Nil keeps the dirty set in memory only.
+	Held HeldWatchStore
+	// Paused starts with watch scans held for a background pause saved before the restart.
+	Paused bool
 	// Nil skips settling probes and imports after the quiet period.
 	Probe ChangeProbe
 	// Nil uses real time.
@@ -74,10 +87,11 @@ type AutoImportOptions struct {
 	StopWait time.Duration
 }
 
-// AutoImport batches changed directories into one watcher scan after settling; startup and enabling
-// never initiate a scan.
+// AutoImport batches changed directories into one watcher scan after settling; startup and enabling never initiate
+// a scan of their own, and startup only reads directories held through a pause.
 type AutoImport struct {
 	store    AutoImportStore
+	held     HeldWatchStore
 	folders  ActivityFolderStore
 	watcher  FolderWatcher
 	scans    WatchScans
@@ -93,6 +107,9 @@ type AutoImport struct {
 	// Change enabled/stopped/holding before crossing startMu so earlier starts are superseded and
 	// later starts abort; acquire startMu before mu.
 	startMu sync.Mutex
+	// Serialize held-row writes with the dirty-set decisions behind them, so rows follow the set in order; acquire
+	// heldMu after startMu and before mu.
+	heldMu sync.Mutex
 	// Serialize generation checks with Arm/Disarm so an old generation cannot replace newer watches.
 	armMu sync.Mutex
 
@@ -111,13 +128,19 @@ type AutoImport struct {
 	dirty     []domain.DirtyDirectory
 	dirtyKeys map[domain.DirtyDirectory]struct{}
 	inflight  []domain.DirtyDirectory
-	timer     ClockTimer
-	timerSeq  int
+	// settling holds the batch taken from the dirty set while its settle probes run, so a pause can write it.
+	settling []domain.DirtyDirectory
+	timer    ClockTimer
+	timerSeq int
 	// rerun records scheduling requests received while batching.
 	batching bool
 	rerun    bool
-	// A nonzero count blocks scan starts during folder changes.
+	// A nonzero count blocks scan starts during folder changes and a background pause.
 	holding int
+	// pauseHold records that a background pause owns one unit of holding, during which the dirty set is mirrored to
+	// heldKeys, the directories with a held row.
+	pauseHold bool
+	heldKeys  map[domain.DirtyDirectory]struct{}
 	// Detect scans finishing during a start decision.
 	finishes int
 	// A manual scan clears only losses reported before it started; newer losses may concern
@@ -130,6 +153,7 @@ type AutoImport struct {
 func NewAutoImport(opts AutoImportOptions) *AutoImport {
 	a := &AutoImport{
 		store:   opts.Store,
+		held:    opts.Held,
 		folders: opts.Folders,
 		watcher: opts.Watcher,
 		scans:   opts.Scans,
@@ -140,6 +164,9 @@ func NewAutoImport(opts AutoImportOptions) *AutoImport {
 		logger:  opts.Logger,
 		enabled: true,
 		state:   domain.FolderWatchOff,
+	}
+	if opts.Paused {
+		a.holding, a.pauseHold = 1, true
 	}
 	if a.clock == nil {
 		a.clock = systemClock{}
@@ -160,8 +187,8 @@ func NewAutoImport(opts AutoImportOptions) *AutoImport {
 	return a
 }
 
-// Start arms asynchronously from saved settings without scanning; ctx must outlive later watcher
-// scans.
+// Start arms asynchronously from saved settings and loads the directories held through a pause into the dirty set;
+// it starts no other scan. ctx must outlive later watcher scans.
 func (a *AutoImport) Start(ctx context.Context) error {
 	enabled, err := a.store.AutoImport(ctx)
 	if err != nil {
@@ -169,15 +196,147 @@ func (a *AutoImport) Start(ctx context.Context) error {
 	}
 	a.setMu.Lock()
 	defer a.setMu.Unlock()
+	a.restoreHeld(ctx, enabled)
 	a.mu.Lock()
 	a.ctx = ctx
 	a.started = true
 	a.enabled = enabled
+	if enabled && a.holding == 0 && len(a.dirty) > 0 {
+		a.scheduleLocked(a.quiet)
+	}
 	a.mu.Unlock()
 	if enabled {
 		a.arm(ctx)
 	}
 	return nil
+}
+
+// restoreHeld loads the held rows into the dirty set, or deletes them when automatic import is off. A read failure
+// is logged so that the watches still arm.
+func (a *AutoImport) restoreHeld(ctx context.Context, enabled bool) {
+	if a.held == nil {
+		return
+	}
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
+	dirs, err := a.held.HeldWatchDirectories(ctx)
+	if err != nil {
+		a.logger.Warn("could not read the directories held through a pause", slog.Any("error", err))
+		return
+	}
+	if !enabled {
+		a.releaseHeld(ctx, dirs)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.addDirtyLocked(dirs...)
+	for _, dir := range dirs {
+		a.markHeldLocked(dir)
+	}
+}
+
+// PauseBackground holds watch-scan starts for a pause of background work and supersedes a running batch, whose
+// directories return to the dirty set; the whole set is then written to the held rows. A write failure is logged
+// and retried with the next change, so that the pause still reaches the scans.
+func (a *AutoImport) PauseBackground(ctx context.Context) error {
+	a.mu.Lock()
+	if a.pauseHold {
+		a.mu.Unlock()
+		return nil
+	}
+	a.pauseHold = true
+	a.mu.Unlock()
+	batch := a.holdStarts(ctx)
+	a.mu.Lock()
+	a.requeueLocked(batch)
+	a.mu.Unlock()
+	a.persistHeld(ctx)
+	return nil
+}
+
+// ResumeBackground releases the pause's hold and schedules the dirty set; the batch that takes it deletes its rows.
+func (a *AutoImport) ResumeBackground(context.Context) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.pauseHold {
+		return nil
+	}
+	a.pauseHold = false
+	a.holding--
+	if a.enabled && a.started && !a.stopped && len(a.dirty) > 0 {
+		a.scheduleLocked(a.quiet)
+	}
+	return nil
+}
+
+// persistHeld writes the dirty directories that have no held row yet while a pause holds starts.
+func (a *AutoImport) persistHeld(ctx context.Context) {
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
+	a.mu.Lock()
+	pending := a.holdPendingLocked()
+	a.mu.Unlock()
+	a.writeHeld(ctx, pending)
+}
+
+// holdPendingLocked marks, before the write, the dirty and settling directories without a row, so that a batch taking them in the
+// meantime releases them after the write. The caller holds heldMu.
+func (a *AutoImport) holdPendingLocked() []domain.DirtyDirectory {
+	if !a.pauseHold || a.held == nil {
+		return nil
+	}
+	var pending []domain.DirtyDirectory
+	for _, dir := range slices.Concat(a.dirty, a.settling) {
+		if _, ok := a.heldKeys[dir]; !ok {
+			a.markHeldLocked(dir)
+			pending = append(pending, dir)
+		}
+	}
+	return pending
+}
+
+func (a *AutoImport) markHeldLocked(dir domain.DirtyDirectory) {
+	if a.heldKeys == nil {
+		a.heldKeys = map[domain.DirtyDirectory]struct{}{}
+	}
+	a.heldKeys[dir] = struct{}{}
+}
+
+// unholdLocked removes the directories with a held row from heldKeys and returns them for releaseHeld; the caller
+// holds heldMu.
+func (a *AutoImport) unholdLocked(dirs []domain.DirtyDirectory) []domain.DirtyDirectory {
+	var held []domain.DirtyDirectory
+	for _, dir := range dirs {
+		if _, ok := a.heldKeys[dir]; ok {
+			delete(a.heldKeys, dir)
+			held = append(held, dir)
+		}
+	}
+	return held
+}
+
+// writeHeld runs under heldMu; a failed write unmarks the directories so that the next change retries them.
+func (a *AutoImport) writeHeld(ctx context.Context, dirs []domain.DirtyDirectory) {
+	if len(dirs) == 0 {
+		return
+	}
+	if err := a.held.HoldWatchDirectories(ctx, dirs); err != nil {
+		a.logger.Warn("could not save the directories held through a pause", slog.Any("error", err))
+		a.mu.Lock()
+		a.unholdLocked(dirs)
+		a.mu.Unlock()
+	}
+}
+
+// releaseHeld runs under heldMu; a row left by a failed delete is read once more after a restart.
+func (a *AutoImport) releaseHeld(ctx context.Context, dirs []domain.DirtyDirectory) {
+	if len(dirs) == 0 || a.held == nil {
+		return
+	}
+	if err := a.held.ReleaseWatchDirectories(ctx, dirs); err != nil {
+		a.logger.Warn("could not delete the directories held through a pause", slog.Any("error", err))
+	}
 }
 
 // Stop prevents later starts and bounds watch teardown; active scans stop through their own
@@ -303,9 +462,11 @@ func (a *AutoImport) SetEnabled(ctx context.Context, enabled bool) (domain.AutoI
 		}
 		return domain.AutoImportStatus{}, err
 	}
+	a.heldMu.Lock()
 	a.mu.Lock()
 	a.enabled = enabled
 	a.problem = nil
+	var released []domain.DirtyDirectory
 	if !enabled {
 		a.holding--
 		a.state = domain.FolderWatchOff
@@ -313,8 +474,11 @@ func (a *AutoImport) SetEnabled(ctx context.Context, enabled bool) (domain.AutoI
 		a.inflight = nil
 		a.cancelTimerLocked()
 		a.armGen++
+		released = a.unholdLocked(slices.Collect(maps.Keys(a.heldKeys)))
 	}
 	a.mu.Unlock()
+	a.releaseHeld(ctx, released)
+	a.heldMu.Unlock()
 	if enabled {
 		a.arm(context.WithoutCancel(ctx))
 	} else {
@@ -352,14 +516,21 @@ func (a *AutoImport) FoldersChanged(ctx context.Context) {
 	}
 }
 
+// Changed adds a reported directory to the dirty set; during a pause it is also written to the held rows.
 func (a *AutoImport) Changed(dir domain.DirtyDirectory) {
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if !a.enabled || !a.started || a.stopped {
+		a.mu.Unlock()
 		return
 	}
 	a.addDirtyLocked(dir)
 	a.scheduleLocked(a.quiet)
+	pending := a.holdPendingLocked()
+	ctx := a.ctx
+	a.mu.Unlock()
+	a.writeHeld(ctx, pending)
 }
 
 func (a *AutoImport) WatchProblem(problem domain.FolderWatchProblem) {
@@ -410,6 +581,7 @@ func (a *AutoImport) armTree(ctx context.Context, gen int) {
 	for _, folder := range folders {
 		roots = append(roots, folder.Path)
 	}
+	a.dropOutside(ctx, gen, roots)
 	// Check generation while serializing Arm/Disarm; stale generations must not alter newer watches.
 	a.armMu.Lock()
 	defer a.armMu.Unlock()
@@ -450,6 +622,33 @@ func (a *AutoImport) armTree(ctx context.Context, gen int) {
 	} else {
 		a.state = domain.FolderWatchActive
 	}
+}
+
+// dropOutside removes from the dirty set, and from the held rows, the directories outside every registered folder,
+// such as those of a folder deleted while they waited.
+func (a *AutoImport) dropOutside(ctx context.Context, gen int, roots []string) {
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
+	a.mu.Lock()
+	if gen != a.armGen {
+		a.mu.Unlock()
+		return
+	}
+	var kept, dropped []domain.DirtyDirectory
+	for _, dir := range a.dirty {
+		if slices.ContainsFunc(roots, func(root string) bool { return domain.PathWithinRoot(root, dir.Path) }) {
+			kept = append(kept, dir)
+		} else {
+			dropped = append(dropped, dir)
+		}
+	}
+	if len(dropped) > 0 {
+		a.takeDirtyLocked()
+		a.addDirtyLocked(kept...)
+	}
+	released := a.unholdLocked(dropped)
+	a.mu.Unlock()
+	a.releaseHeld(ctx, released)
 }
 
 // Caller holds armMu; disabled/stopped stale generations disarm, while replacement generations
@@ -517,31 +716,19 @@ func (a *AutoImport) scheduleLocked(d time.Duration) {
 
 // Only settled directories enter the next watcher scan; retain changing directories.
 func (a *AutoImport) fire(seq int) {
+	taken, finishes, ok := a.takeBatch(seq)
+	if !ok {
+		return
+	}
 	a.mu.Lock()
-	if seq != a.timerSeq || a.stopped || !a.enabled || a.ctx == nil {
-		a.mu.Unlock()
-		return
-	}
-	a.timer = nil
-	if a.batching {
-		a.rerun = true
-		a.mu.Unlock()
-		return
-	}
-	if a.holding > 0 || a.inflight != nil || len(a.dirty) == 0 {
-		// ScanFinished and FoldersChanged reschedule remaining work.
-		a.mu.Unlock()
-		return
-	}
-	a.batching = true
-	taken := domain.NormalizeDirtyDirectories(a.takeDirtyLocked())
 	ctx := a.ctx
-	finishes := a.finishes
 	a.mu.Unlock()
 
 	settled, unsettled, wait := a.settledSplit(taken)
 
 	a.mu.Lock()
+	// The settled directories stay visible to a pause until start moves them on.
+	a.settling = settled
 	if a.enabled && !a.stopped {
 		a.addDirtyLocked(unsettled...)
 		if len(unsettled) > 0 {
@@ -563,6 +750,40 @@ func (a *AutoImport) fire(seq int) {
 		}
 	}
 	a.mu.Unlock()
+	// Retry the rows of directories the batch returned to the dirty set after a pause whose write failed.
+	a.persistHeld(ctx)
+}
+
+// takeBatch takes the dirty set for the timer seq and deletes the held rows of the directories it takes.
+func (a *AutoImport) takeBatch(seq int) (taken []domain.DirtyDirectory, finishes int, ok bool) {
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
+	a.mu.Lock()
+	if seq != a.timerSeq || a.stopped || !a.enabled || a.ctx == nil {
+		a.mu.Unlock()
+		return nil, 0, false
+	}
+	a.timer = nil
+	if a.batching {
+		a.rerun = true
+		a.mu.Unlock()
+		return nil, 0, false
+	}
+	if a.holding > 0 || a.inflight != nil || len(a.dirty) == 0 {
+		// ScanFinished, FoldersChanged and ResumeBackground reschedule remaining work.
+		a.mu.Unlock()
+		return nil, 0, false
+	}
+	a.batching = true
+	raw := a.takeDirtyLocked()
+	released := a.unholdLocked(raw)
+	taken = domain.NormalizeDirtyDirectories(raw)
+	a.settling = taken
+	ctx := a.ctx
+	finishes = a.finishes
+	a.mu.Unlock()
+	a.releaseHeld(ctx, released)
+	return taken, finishes, true
 }
 
 // Serialize status check and scan start under startMu so disabling, shutdown, or folder changes
@@ -570,19 +791,9 @@ func (a *AutoImport) fire(seq int) {
 func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory, finishes int) {
 	a.startMu.Lock()
 	defer a.startMu.Unlock()
-	a.mu.Lock()
-	if a.stopped || !a.enabled {
-		a.mu.Unlock()
+	if !a.claimSettled(ctx, settled) {
 		return
 	}
-	if a.holding > 0 {
-		// FoldersChanged will reschedule after the active change finishes.
-		a.addDirtyLocked(settled...)
-		a.mu.Unlock()
-		return
-	}
-	a.inflight = settled
-	a.mu.Unlock()
 
 	_, started, err := a.scans.StartWatchScan(ctx, settled)
 	if err == nil && started {
@@ -606,6 +817,30 @@ func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory,
 	default:
 		// ScanFinished reschedules once the other scan ends.
 	}
+}
+
+// claimSettled moves the settled directories out of the settling set: back to the dirty set while starts are held,
+// or into inflight with the held rows a pause wrote during the probes deleted. It reports whether the scan may start.
+func (a *AutoImport) claimSettled(ctx context.Context, settled []domain.DirtyDirectory) bool {
+	a.heldMu.Lock()
+	defer a.heldMu.Unlock()
+	a.mu.Lock()
+	a.settling = nil
+	if a.stopped || !a.enabled {
+		a.mu.Unlock()
+		return false
+	}
+	if a.holding > 0 {
+		// FoldersChanged and ResumeBackground reschedule after the hold ends.
+		a.addDirtyLocked(settled...)
+		a.mu.Unlock()
+		return false
+	}
+	a.inflight = settled
+	released := a.unholdLocked(settled)
+	a.mu.Unlock()
+	a.releaseHeld(ctx, released)
+	return true
 }
 
 // Unreadable directories count as settled so the scanner can record their actual access failure.

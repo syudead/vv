@@ -123,7 +123,7 @@ func faceCastPerformers(ctx context.Context, tx *sql.Tx, userKey string) ([]doma
 		return nil, fmt.Errorf("cannot build content keys: %w", err)
 	}
 	rows, err := tx.QueryContext(ctx, `select w.person_id,
-		not exists (select 1 from people_names n where n.person_id = w.person_id and n.canonical = 1),
+		not exists (select 1 from people_names n where n.person_id = w.person_id and n.position = 0),
 		exists (select 1 from face_appearances a where a.person_id = w.person_id and a.dropped = 0
 			and a.content_key in (select value from json_each(?2)))
 		from video_work_people w where w.content_key = ?1 and w.role = ?3 order by w.position`,

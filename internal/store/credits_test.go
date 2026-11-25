@@ -20,18 +20,27 @@ func createCredit(t *testing.T, db *DB, kind domain.CreditKind, input domain.Cre
 	return credit
 }
 
-func createPerson(t *testing.T, db *DB, name string, aliases ...string) domain.Credit {
+// namesOf is the list of name followed by others; an empty name leaves it out, for a provisional person.
+func namesOf(name string, others ...domain.CreditName) []domain.CreditName {
+	names := []domain.CreditName{}
+	if name != "" {
+		names = append(names, domain.CreditName{Name: name})
+	}
+	return append(names, others...)
+}
+
+func createPerson(t *testing.T, db *DB, name string, others ...string) domain.Credit {
 	t.Helper()
-	input := domain.CreditInput{Name: name}
-	for _, alias := range aliases {
-		input.Aliases = append(input.Aliases, domain.Alias{Name: alias})
+	input := domain.CreditInput{Names: namesOf(name)}
+	for _, other := range others {
+		input.Names = append(input.Names, domain.CreditName{Name: other})
 	}
 	return createCredit(t, db, domain.CreditPerson, input)
 }
 
 func createOrganization(t *testing.T, db *DB, name string, parent *domain.Credit) domain.Credit {
 	t.Helper()
-	input := domain.CreditInput{Name: name}
+	input := domain.CreditInput{Names: namesOf(name)}
 	if parent != nil {
 		input.ParentID = &parent.ID
 	}
@@ -116,14 +125,6 @@ func tableRows(t *testing.T, db *DB, table string) []string {
 	return all
 }
 
-func aliasNames(credit domain.Credit) []string {
-	names := []string{}
-	for _, alias := range credit.Aliases {
-		names = append(names, alias.Name)
-	}
-	return names
-}
-
 func TestCreditsWithTheSameNameAreDifferentPeople(t *testing.T) {
 	db := migratedDB(t)
 	a := createPerson(t, db, "山田花子")
@@ -158,7 +159,7 @@ func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 	if len(first.Items) != 2 || first.Total != 3 || first.TotalAll != 4 || first.NextCursor == "" {
 		t.Fatalf("1 ページ目 = %d 件、total %d、totalAll %d、nextCursor %q", len(first.Items), first.Total, first.TotalAll, first.NextCursor)
 	}
-	if first.Items[0].Name != "人物000" || len(first.Items[0].Aliases) != 1 {
+	if first.Items[0].Name != "人物000" || len(first.Items[0].Names) != 2 {
 		t.Errorf("先頭 = %+v", first.Items[0])
 	}
 	query.Cursor = first.NextCursor
@@ -226,8 +227,10 @@ func TestCreateCreditStoresEverythingAndGetReadsIt(t *testing.T) {
 	db := migratedDB(t)
 	root := createOrganization(t, db, "親会社", nil)
 	org := createCredit(t, db, domain.CreditOrganization, domain.CreditInput{
-		Name:        " メーカーB ",
-		Aliases:     []domain.Alias{{Name: "Maker B", Language: "en"}, {Name: "めーかーB"}, {Name: "Maker 10"}, {Name: "Maker 9"}},
+		Names: []domain.CreditName{
+			{Name: " メーカーB ", Language: "ja"}, {Name: "Maker B", Language: "en"}, {Name: "めーかーB"},
+			{Name: "Maker 10"}, {Name: "Maker 9"},
+		},
 		ExternalIDs: []domain.ExternalID{{Source: "z", Value: "1"}, {Source: "a", Value: "2"}},
 		ParentID:    &root.ID,
 	})
@@ -241,11 +244,13 @@ func TestCreateCreditStoresEverythingAndGetReadsIt(t *testing.T) {
 	if got.Name != "メーカーB" || got.Parent == nil || *got.Parent != (domain.CreditRef{ID: root.ID, Name: "親会社"}) {
 		t.Errorf("名前と親 = %q, %+v", got.Name, got.Parent)
 	}
-	if want := []string{"Maker 9", "Maker 10", "Maker B", "めーかーB"}; !reflect.DeepEqual(aliasNames(got), want) {
-		t.Errorf("別名 = %v, want %v", aliasNames(got), want)
+	// The list reads back in the sent order, with the display name's language.
+	want := []domain.CreditName{
+		{Name: "メーカーB", Language: "ja"}, {Name: "Maker B", Language: "en"}, {Name: "めーかーB"},
+		{Name: "Maker 10"}, {Name: "Maker 9"},
 	}
-	if got.Aliases[2].Language != "en" {
-		t.Errorf("別名の言語 = %+v", got.Aliases)
+	if !reflect.DeepEqual(got.Names, want) {
+		t.Errorf("Names = %+v, want %+v", got.Names, want)
 	}
 	if want := []domain.ExternalID{{Source: "a", Value: "2"}, {Source: "z", Value: "1"}}; !reflect.DeepEqual(got.ExternalIDs, want) {
 		t.Errorf("外部 ID = %v", got.ExternalIDs)
@@ -255,12 +260,12 @@ func TestCreateCreditStoresEverythingAndGetReadsIt(t *testing.T) {
 	}
 
 	missing := int64(9999)
-	_, err = db.Credits().Create(context.Background(), domain.CreditOrganization, domain.CreditInput{Name: "X", ParentID: &missing})
+	_, err = db.Credits().Create(context.Background(), domain.CreditOrganization, domain.CreditInput{Names: namesOf("X"), ParentID: &missing})
 	var notFound *domain.CreditNotFoundError
 	if !errors.As(err, &notFound) || notFound.Field != "parentId" || notFound.ID != missing {
 		t.Errorf("無い親: err = %v", err)
 	}
-	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "P", ParentID: &missing})
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("P"), ParentID: &missing})
 	if person.Parent != nil {
 		t.Errorf("人物に親がある: %+v", person.Parent)
 	}
@@ -270,7 +275,8 @@ func TestUpdateCreditReplacesOnlyTheGivenFields(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "山田花子", Aliases: []domain.Alias{{Name: "Hanako"}}, ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "1"}},
+		Names:       []domain.CreditName{{Name: "山田花子", Language: "ja"}, {Name: "Hanako"}},
+		ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "1"}},
 	})
 
 	name := "山田 花子"
@@ -278,49 +284,85 @@ func TestUpdateCreditReplacesOnlyTheGivenFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if renamed.Name != name || !reflect.DeepEqual(renamed.Aliases, person.Aliases) || !reflect.DeepEqual(renamed.ExternalIDs, person.ExternalIDs) {
+	if want := []domain.CreditName{{Name: name, Language: "ja"}, {Name: "Hanako"}}; renamed.Name != name ||
+		!reflect.DeepEqual(renamed.Names, want) || !reflect.DeepEqual(renamed.ExternalIDs, person.ExternalIDs) {
 		t.Fatalf("名前だけの更新 = %+v", renamed)
 	}
 
-	aliases := []domain.Alias{{Name: "山田花子"}, {Name: "Yamada", Language: "en"}}
-	replaced, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Aliases: &aliases})
+	names := []domain.CreditName{{Name: "Yamada", Language: "en"}, {Name: "山田 花子", Language: "ja"}, {Name: "山田花子"}}
+	replaced, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Names: &names})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"Yamada", "山田花子"}; !reflect.DeepEqual(aliasNames(replaced), want) {
-		t.Fatalf("別名の置き換え = %v", aliasNames(replaced))
+	if replaced.Name != "Yamada" || !reflect.DeepEqual(replaced.Names, names) {
+		t.Fatalf("一覧の置き換え = %+v", replaced)
 	}
 
-	same, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Name: &name, Aliases: &aliases})
+	same, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Names: &names})
 	if err != nil || !reflect.DeepEqual(same, replaced) {
 		t.Fatalf("変えない更新 = %+v, %v", same, err)
 	}
 
-	clash := "Yamada"
+	clash := "山田花子"
 	_, err = db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Name: &clash})
 	var invalid *domain.InvalidWorkInfoError
 	if !errors.As(err, &invalid) || invalid.Field != "name" || invalid.Problem != domain.WorkInfoDuplicate {
-		t.Errorf("別名と同じ名前: err = %v", err)
+		t.Errorf("一覧の別の行と同じ名前: err = %v", err)
 	}
 
 	cleared, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{
-		Aliases: new([]domain.Alias), ExternalIDs: new([]domain.ExternalID),
+		Names: new([]domain.CreditName), ExternalIDs: new([]domain.ExternalID),
 	})
-	if err != nil || len(cleared.Aliases) != 0 || len(cleared.ExternalIDs) != 0 {
+	if err != nil || !cleared.Provisional || cleared.Name != "" || len(cleared.Names) != 0 || len(cleared.ExternalIDs) != 0 {
 		t.Fatalf("一覧を空にする更新 = %+v, %v", cleared, err)
 	}
 	if _, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID+100, domain.CreditPatch{Name: &name}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("無い人物: err = %v", err)
 	}
+
+	org := createOrganization(t, db, "O", nil)
+	_, err = db.Credits().Update(ctx, domain.CreditOrganization, org.ID, domain.CreditPatch{Names: new([]domain.CreditName)})
+	if !errors.As(err, &invalid) || *invalid != (domain.InvalidWorkInfoError{Field: "names", Problem: domain.WorkInfoEmpty}) {
+		t.Errorf("団体の一覧を空にする: err = %v", err)
+	}
 }
 
+// A list migrated with more than the limit survives patches that do not send names, and a names patch is counted.
+func TestUpdateCreditCountsNamesOnlyWhenTheyAreSent(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	person := createPerson(t, db, "名前0")
+	for i := 1; i <= domain.CreditNamesMaxCount; i++ {
+		execAll(t, db, fmt.Sprintf(`insert into people_names (person_id, name, position) values (%d, '名前%d', %d)`,
+			person.ID, i, i))
+	}
+	stored, err := db.Credits().Get(ctx, domain.CreditPerson, person.ID)
+	if err != nil || len(stored.Names) != domain.CreditNamesMaxCount+1 {
+		t.Fatalf("Get = %d names, %v", len(stored.Names), err)
+	}
+	profile := domain.PersonProfilePatch{Fields: []domain.PersonProfileField{domain.ProfileBirthplace}, Values: domain.PersonProfile{Birthplace: "Tokyo"}}
+	if _, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Profile: &profile}); err != nil {
+		t.Errorf("プロフィールだけの更新: err = %v", err)
+	}
+	name := "新しい名前"
+	renamed, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Name: &name})
+	if err != nil || renamed.Name != name || len(renamed.Names) != domain.CreditNamesMaxCount+1 {
+		t.Errorf("name の更新 = %q (%d), %v", renamed.Name, len(renamed.Names), err)
+	}
+	names := renamed.Names
+	_, err = db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Names: &names})
+	var invalid *domain.InvalidWorkInfoError
+	if !errors.As(err, &invalid) || *invalid != (domain.InvalidWorkInfoError{Field: "names", Problem: domain.WorkInfoTooMany, Limit: 50}) {
+		t.Errorf("51 件の names: err = %v", err)
+	}
+}
 func TestExternalIDHeldByAnotherPersonIsRefused(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	holder := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "A", ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "42"}}})
+	holder := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("A"), ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "42"}}})
 	other := createPerson(t, db, "B")
 	// External-ID uniqueness is per kind, so an organization may share a person's external ID.
-	createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Name: "O", ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "42"}}})
+	createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Names: namesOf("O"), ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "42"}}})
 
 	taken := []domain.ExternalID{{Source: "", Value: ""}, {Source: "ex", Value: "1"}, {Source: " ex ", Value: "42"}}
 	check := func(what string, err error) {
@@ -332,7 +374,7 @@ func TestExternalIDHeldByAnotherPersonIsRefused(t *testing.T) {
 		}
 	}
 	before := creditRows(t, db)
-	_, err := db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "C", ExternalIDs: taken})
+	_, err := db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf("C"), ExternalIDs: taken})
 	check("Create", err)
 	_, err = db.Credits().Update(ctx, domain.CreditPerson, other.ID, domain.CreditPatch{ExternalIDs: &taken})
 	check("Update", err)
@@ -348,7 +390,7 @@ func TestExternalIDHeldByAnotherPersonIsRefused(t *testing.T) {
 func TestLookupCreditByExternalID(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "A", ExternalIDs: []domain.ExternalID{{Source: "example", Value: "42"}}})
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("A"), ExternalIDs: []domain.ExternalID{{Source: "example", Value: "42"}}})
 	got, err := db.Credits().Lookup(ctx, domain.CreditPerson, "example", "42")
 	if err != nil || got.ID != person.ID {
 		t.Fatalf("Lookup = %+v, %v", got, err)
@@ -364,17 +406,18 @@ func TestLookupCreditByExternalID(t *testing.T) {
 func TestMergeCreditsMovesLinksNamesAndExternalIDs(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T", Aliases: []domain.Alias{{Name: "共通"}}})
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("T", domain.CreditName{Name: "共通"})})
 	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
-		Name: "S", Aliases: []domain.Alias{{Name: "共通"}, {Name: "Sの別名", Language: "ja"}},
+		Names:       namesOf("S", domain.CreditName{Name: "共通"}, domain.CreditName{Name: "Sの別名", Language: "ja"}),
 		ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "1"}},
 	})
+	second := createPerson(t, db, "U", "S", "Uの別名")
 	other := createPerson(t, db, "X")
 	linkPeople(t, db, "k0", "performer", source.ID, other.ID)
 	linkPeople(t, db, "k1", "performer", target.ID, other.ID, source.ID)
 	linkPeople(t, db, "k1", "director", other.ID, source.ID)
 
-	outcome, err := db.Credits().Merge(ctx, domain.CreditPerson, target.ID, []int64{source.ID, 9999, source.ID})
+	outcome, err := db.Credits().Merge(ctx, domain.CreditPerson, target.ID, []int64{source.ID, 9999, second.ID, source.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,8 +428,12 @@ func TestMergeCreditsMovesLinksNamesAndExternalIDs(t *testing.T) {
 	if merged.ID != target.ID || merged.Name != "T" {
 		t.Fatalf("統合先 = %+v", merged)
 	}
-	if want := []string{"S", "Sの別名", "共通"}; !reflect.DeepEqual(aliasNames(merged), want) {
-		t.Errorf("別名 = %v, want %v", aliasNames(merged), want)
+	// The target's list stays first, then each source's in source order, each spelling once.
+	want := []domain.CreditName{
+		{Name: "T"}, {Name: "共通"}, {Name: "S"}, {Name: "Sの別名", Language: "ja"}, {Name: "U"}, {Name: "Uの別名"},
+	}
+	if !reflect.DeepEqual(merged.Names, want) {
+		t.Errorf("Names = %+v, want %+v", merged.Names, want)
 	}
 	if !reflect.DeepEqual(merged.ExternalIDs, []domain.ExternalID{{Source: "ex", Value: "1"}}) {
 		t.Errorf("外部 ID = %v", merged.ExternalIDs)
@@ -442,18 +489,18 @@ func TestMergeCreditsRefusalsChangeNothing(t *testing.T) {
 	child := createOrganization(t, db, "C", &parent)
 
 	target := createPerson(t, db, "T")
-	targetAliases := make([]domain.Alias, 30)
-	for i := range targetAliases {
-		targetAliases[i] = domain.Alias{Name: fmt.Sprintf("T%d", i)}
+	targetNames := namesOf("T")
+	for i := range 29 {
+		targetNames = append(targetNames, domain.CreditName{Name: fmt.Sprintf("T%d", i)})
 	}
-	if _, err := db.Credits().Update(ctx, domain.CreditPerson, target.ID, domain.CreditPatch{Aliases: &targetAliases}); err != nil {
+	if _, err := db.Credits().Update(ctx, domain.CreditPerson, target.ID, domain.CreditPatch{Names: &targetNames}); err != nil {
 		t.Fatal(err)
 	}
-	sourceAliases := make([]domain.Alias, 25)
-	for i := range sourceAliases {
-		sourceAliases[i] = domain.Alias{Name: fmt.Sprintf("S%d", i)}
+	sourceNames := make([]domain.CreditName, 20)
+	for i := range sourceNames {
+		sourceNames[i] = domain.CreditName{Name: fmt.Sprintf("S%d", i)}
 	}
-	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S", Aliases: sourceAliases})
+	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S", sourceNames...)})
 	linkPeople(t, db, "k0", "performer", source.ID, target.ID)
 
 	before := creditRows(t, db)
@@ -462,8 +509,8 @@ func TestMergeCreditsRefusalsChangeNothing(t *testing.T) {
 	}
 	_, err := db.Credits().Merge(ctx, domain.CreditPerson, target.ID, []int64{source.ID})
 	var invalid *domain.InvalidWorkInfoError
-	if !errors.As(err, &invalid) || *invalid != (domain.InvalidWorkInfoError{Field: "aliases", Problem: domain.WorkInfoTooMany, Limit: 50}) {
-		t.Errorf("別名が 50 を超える統合: err = %v", err)
+	if !errors.As(err, &invalid) || *invalid != (domain.InvalidWorkInfoError{Field: "names", Problem: domain.WorkInfoTooMany, Limit: 50}) {
+		t.Errorf("名前が 51 件になる統合: err = %v", err)
 	}
 	if after := creditRows(t, db); !reflect.DeepEqual(before, after) {
 		t.Errorf("拒んだ統合が行を変えた:\nbefore %v\nafter  %v", before, after)

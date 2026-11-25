@@ -129,7 +129,10 @@ types (`IngestStore`, `LibraryStore`, `TagStore`, `CreditStore`, `AuthStore`,
 …). Each business operation belongs to exactly one role, so calling it through
 the wrong role does not compile. No role calls another role's public methods; work that
 spans roles runs in one transaction through package-private helpers. SQL never
-leaves `internal/store`.
+leaves `internal/store`. Writes go through one writer connection; reads that
+every request makes (the session, the peer credential and links, a video by
+id) use the read pool with prepared statements kept per query text, so they
+neither queue behind a write nor parse their SQL again.
 
 **Events after commit.** The store publishes a domain event only after its
 transaction commits, never from one that rolled back. Publishers do not know
@@ -140,14 +143,15 @@ worker or a scan.
 **One owner for opening files.** `internal/mediafs` alone decides whether a
 file may be opened: inside a registered media folder, after resolving symbolic
 links, and a regular file. Streaming, live transcoding, subtitles, opening in
-the default app, the directory picker, the import stages, the backfills and
-face analysis all go through it, and a location that fails the check is
+the default app, the directory picker, the import stages, the backfills, the
+search index's keyframe read (`frame_index`) and face analysis all go through it, and a location that fails the check is
 answered like a missing file.
 
 **One owner for generated files.** `internal/artifacts` alone places, publishes,
 opens and removes thumbnails, seek sprites and hover previews. A file becomes
 visible only when complete (it is generated under `.tmp` and renamed into
 place), and it is removed only when the last video referencing its content goes.
+It also holds image search uploads, each removed when its request ends.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
 public flags, favorites, playlist items, groups and their items, smart
@@ -231,8 +235,10 @@ and stops when its context ends.
 | `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md) |
 | `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One scheduler that grants every ingest stage from shared CPU slots and per-disk read slots over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [job-scheduling.md](docs/design-docs/job-scheduling.md), [Queue workers](#queue-workers) |
+| `internal/app` (`BackgroundPause`), `internal/jobs` (`Hold`, `Release`) | The owner's switch that pauses and resumes the scheduled jobs and the scans, saved across restarts | [background-pause.md](docs/design-docs/background-pause.md) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
+| `internal/app` (`ImageSearch`), `internal/store` (`video_search_index`), `internal/media`, `internal/artifacts` (`SearchUploads`) | Image search: a keyframe hash index per content, matching an uploaded image or video against it in memory under the owner's audience, and holding a video query under `MDM_DATA_DIR/search-uploads` only for its request | [image-search.md](docs/design-docs/image-search.md) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |
 | `internal/store` | SQLite schema, migrations, role types, search keys | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [authentication.md](docs/design-docs/authentication.md), [i18n.md](docs/design-docs/i18n.md) |

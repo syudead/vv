@@ -50,6 +50,7 @@ func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.Dele
 	for _, statement := range []string{
 		`delete from video_successions where new_key in (select value from json_each(?))`,
 		`delete from video_fingerprints where content_key in (select value from json_each(?))`,
+		`delete from video_search_index where content_key in (select value from json_each(?))`,
 		`delete from video_version_candidates where key_a in (select value from json_each(?1))
 		    or key_b in (select value from json_each(?1))`,
 	} {

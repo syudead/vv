@@ -828,6 +828,36 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for BackgroundGroupName.
+const (
+	BackgroundGroupNameAutoTag      BackgroundGroupName = "auto_tag"
+	BackgroundGroupNameBackfill     BackgroundGroupName = "backfill"
+	BackgroundGroupNameFace         BackgroundGroupName = "face"
+	BackgroundGroupNameImport       BackgroundGroupName = "import"
+	BackgroundGroupNameScan         BackgroundGroupName = "scan"
+	BackgroundGroupNameVersionJudge BackgroundGroupName = "version_judge"
+)
+
+// Valid indicates whether the value is a known member of the BackgroundGroupName enum.
+func (e BackgroundGroupName) Valid() bool {
+	switch e {
+	case BackgroundGroupNameAutoTag:
+		return true
+	case BackgroundGroupNameBackfill:
+		return true
+	case BackgroundGroupNameFace:
+		return true
+	case BackgroundGroupNameImport:
+		return true
+	case BackgroundGroupNameScan:
+		return true
+	case BackgroundGroupNameVersionJudge:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckResultReason.
 const (
 	CheckResultReasonGenerationModelMissing      CheckResultReason = "generation_model_missing"
@@ -1218,6 +1248,10 @@ const (
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
+	ErrorReasonImageSearchTooLarge           ErrorReason = "image_search_too_large"
+	ErrorReasonImageSearchTooLong            ErrorReason = "image_search_too_long"
+	ErrorReasonImageSearchUninformative      ErrorReason = "image_search_uninformative"
+	ErrorReasonImageSearchUnreadable         ErrorReason = "image_search_unreadable"
 	ErrorReasonInsufficientCredits           ErrorReason = "insufficient_credits"
 	ErrorReasonInvalidAddress                ErrorReason = "invalid_address"
 	ErrorReasonInvalidCode                   ErrorReason = "invalid_code"
@@ -1374,6 +1408,14 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonGroupTargetNotFound:
 		return true
 	case ErrorReasonGuestFilterNotAllowed:
+		return true
+	case ErrorReasonImageSearchTooLarge:
+		return true
+	case ErrorReasonImageSearchTooLong:
+		return true
+	case ErrorReasonImageSearchUninformative:
+		return true
+	case ErrorReasonImageSearchUnreadable:
 		return true
 	case ErrorReasonInsufficientCredits:
 		return true
@@ -1752,6 +1794,63 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for ImageSearchBandId.
+const (
+	Similar ImageSearchBandId = "similar"
+	Strong  ImageSearchBandId = "strong"
+)
+
+// Valid indicates whether the value is a known member of the ImageSearchBandId enum.
+func (e ImageSearchBandId) Valid() bool {
+	switch e {
+	case Similar:
+		return true
+	case Strong:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSearchMatchKind.
+const (
+	ImageSearchMatchKindFrame   ImageSearchMatchKind = "frame"
+	ImageSearchMatchKindPartial ImageSearchMatchKind = "partial"
+	ImageSearchMatchKindWhole   ImageSearchMatchKind = "whole"
+)
+
+// Valid indicates whether the value is a known member of the ImageSearchMatchKind enum.
+func (e ImageSearchMatchKind) Valid() bool {
+	switch e {
+	case ImageSearchMatchKindFrame:
+		return true
+	case ImageSearchMatchKindPartial:
+		return true
+	case ImageSearchMatchKindWhole:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSearchQueryKind.
+const (
+	ImageSearchQueryKindImage ImageSearchQueryKind = "image"
+	ImageSearchQueryKindVideo ImageSearchQueryKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the ImageSearchQueryKind enum.
+func (e ImageSearchQueryKind) Valid() bool {
+	switch e {
+	case ImageSearchQueryKindImage:
+		return true
+	case ImageSearchQueryKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LibraryGroupWatchState.
 const (
 	LibraryGroupWatchStateInProgress LibraryGroupWatchState = "inProgress"
@@ -2039,6 +2138,7 @@ const (
 	PeerVocabularyRequestActionDelete PeerVocabularyRequestAction = "delete"
 	PeerVocabularyRequestActionMerge  PeerVocabularyRequestAction = "merge"
 	PeerVocabularyRequestActionRename PeerVocabularyRequestAction = "rename"
+	PeerVocabularyRequestActionUnname PeerVocabularyRequestAction = "unname"
 )
 
 // Valid indicates whether the value is a known member of the PeerVocabularyRequestAction enum.
@@ -2049,6 +2149,8 @@ func (e PeerVocabularyRequestAction) Valid() bool {
 	case PeerVocabularyRequestActionMerge:
 		return true
 	case PeerVocabularyRequestActionRename:
+		return true
+	case PeerVocabularyRequestActionUnname:
 		return true
 	default:
 		return false
@@ -2078,9 +2180,9 @@ func (e PeerVocabularyRequestKind) Valid() bool {
 
 // Defines values for PersonPluginItem.
 const (
-	PersonPluginItemAliases                PersonPluginItem = "aliases"
 	PersonPluginItemExternalIds            PersonPluginItem = "externalIds"
 	PersonPluginItemImage                  PersonPluginItem = "image"
+	PersonPluginItemNames                  PersonPluginItem = "names"
 	PersonPluginItemProfileBio             PersonPluginItem = "profile.bio"
 	PersonPluginItemProfileBirthDate       PersonPluginItem = "profile.birthDate"
 	PersonPluginItemProfileBirthplace      PersonPluginItem = "profile.birthplace"
@@ -2100,11 +2202,11 @@ const (
 // Valid indicates whether the value is a known member of the PersonPluginItem enum.
 func (e PersonPluginItem) Valid() bool {
 	switch e {
-	case PersonPluginItemAliases:
-		return true
 	case PersonPluginItemExternalIds:
 		return true
 	case PersonPluginItemImage:
+		return true
+	case PersonPluginItemNames:
 		return true
 	case PersonPluginItemProfileBio:
 		return true
@@ -2275,6 +2377,7 @@ func (e ScanOrigin) Valid() bool {
 const (
 	ScanStateDone    ScanState = "done"
 	ScanStateFailed  ScanState = "failed"
+	ScanStatePaused  ScanState = "paused"
 	ScanStateRunning ScanState = "running"
 )
 
@@ -2284,6 +2387,8 @@ func (e ScanState) Valid() bool {
 	case ScanStateDone:
 		return true
 	case ScanStateFailed:
+		return true
+	case ScanStatePaused:
 		return true
 	case ScanStateRunning:
 		return true
@@ -4066,29 +4171,22 @@ type AddTagSynonymRequest struct {
 	Name       string `json:"name"`
 }
 
-// Alias One person or organization alias.
-type Alias struct {
-	// Language BCP 47 language tag; omitted when absent.
-	Language *string `json:"language,omitempty"`
-	Name     string  `json:"name"`
-}
-
 // ApplyPersonPluginFetchRequest defines model for ApplyPersonPluginFetchRequest.
 type ApplyPersonPluginFetchRequest struct {
-	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
-	Aliases *[]string `json:"aliases,omitempty"`
-
 	// ExternalIds Fetched external IDs to append.
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 
 	// ImageIndex The kept image that image applies; required with image.
 	ImageIndex *int `json:"imageIndex,omitempty"`
 
-	// Items Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below.
+	// Items Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
 
 	// Links Fetched profile links to append.
 	Links *[]string `json:"links,omitempty"`
+
+	// Names Spellings to append, each the name of one of the result's names.
+	Names *[]string `json:"names,omitempty"`
 }
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
@@ -4650,6 +4748,57 @@ type AutoTaggingSettings struct {
 	Threshold float64 `json:"threshold"`
 }
 
+// BackgroundActivity One piece of background work running now
+type BackgroundActivity struct {
+	// FileName The file being registered or read, when the work has a location
+	FileName *string `json:"fileName,omitempty"`
+
+	// Group What background work is shown as: a scan, or the jobs of one feature
+	Group BackgroundGroupName `json:"group"`
+
+	// Kind registering for a scan, otherwise the job kind
+	Kind string `json:"kind"`
+
+	// Video The video running work is for; absent when the work names none or the owner's audience leaves it out
+	Video *BackgroundVideo `json:"video,omitempty"`
+}
+
+// BackgroundGroup Background work left in one group
+type BackgroundGroup struct {
+	// FeatureOff The group's feature is off and holds its jobs back, whether or not background work is paused
+	FeatureOff *bool `json:"featureOff,omitempty"`
+
+	// Group What background work is shown as: a scan, or the jobs of one feature
+	Group BackgroundGroupName `json:"group"`
+
+	// Remaining Files for scan, videos for import, jobs otherwise; 0 when nothing is left
+	Remaining int `json:"remaining"`
+
+	// Waiting scan only: a paused scan or held watch directories wait for the resume
+	Waiting *bool `json:"waiting,omitempty"`
+}
+
+// BackgroundGroupName What background work is shown as: a scan, or the jobs of one feature
+type BackgroundGroupName string
+
+// BackgroundVideo The video running work is for; absent when the work names none or the owner's audience leaves it out
+type BackgroundVideo struct {
+	Id    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+// BackgroundWork State of background work: scans and scheduled jobs
+type BackgroundWork struct {
+	// Groups One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill
+	Groups []BackgroundGroup `json:"groups"`
+
+	// Paused The saved pause switch; false when it was never saved
+	Paused bool `json:"paused"`
+
+	// Running Work running now, oldest first. An entry remains after a pause until its job returns.
+	Running []BackgroundActivity `json:"running"`
+}
+
 // CheckResult Connection check result; unavailable providers also return 200.
 type CheckResult struct {
 	Available bool `json:"available"`
@@ -4760,9 +4909,10 @@ type CreditIdRef struct {
 
 // CreditInput Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only.
 type CreditInput struct {
-	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
-	Name        string        `json:"name"`
+
+	// Names The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization.
+	Names []CreditName `json:"names"`
 
 	// OrganizationProfile Organization-only profile; sending it for a person returns 400 invalid_request.
 	OrganizationProfile *OrganizationProfile `json:"organizationProfile,omitempty"`
@@ -4780,11 +4930,24 @@ type CreditMergeRequest struct {
 	SourceIds []int64 `json:"sourceIds"`
 }
 
-// CreditPatch Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent.
+// CreditName One name of a person or organization.
+type CreditName struct {
+	// Language BCP 47 language tag, on any entry; omitted when absent.
+	Language *string `json:"language,omitempty"`
+
+	// Name 1-200 code points after trimming; unique within the list.
+	Name string `json:"name"`
+}
+
+// CreditPatch Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request.
 type CreditPatch struct {
-	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
-	Name        *string       `json:"name,omitempty"`
+
+	// Name Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives.
+	Name *string `json:"name,omitempty"`
+
+	// Names Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names.
+	Names *[]CreditName `json:"names,omitempty"`
 
 	// OrganizationProfile Organization-only; sending it for a person returns 400 invalid_request. A profile that changes nothing writes nothing.
 	OrganizationProfile *OrganizationProfilePatch `json:"organizationProfile,omitempty"`
@@ -4864,7 +5027,7 @@ type Error struct {
 	// Code Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
 	Code ErrorCode `json:"code"`
 
-	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
+	// Field JSON property path using dots and array indices, such as names[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
 	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed.
@@ -4963,6 +5126,9 @@ type FaceAppearanceMove struct {
 
 	// RestoreCredits Works whose performer credit of the moved-from person was removed because the target already held one.
 	RestoreCredits []FaceMoveCredit `json:"restoreCredits"`
+
+	// UndoActivityId Present when the move left the moved-from person provisional, with no credit and no face, so it was merged into the target: the face_merge entry whose undo brings that person back, before the reverse move.
+	UndoActivityId *int64 `json:"undoActivityId,omitempty"`
 }
 
 // FaceAppearanceMoveRequest defines model for FaceAppearanceMoveRequest.
@@ -5373,6 +5539,102 @@ type Health struct {
 // HealthStatus ok: storage reachable; degraded: process alive without storage connectivity
 type HealthStatus string
 
+// ImageSearchBand defines model for ImageSearchBand.
+type ImageSearchBand struct {
+	// Id A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+	Id ImageSearchBandId `json:"id"`
+
+	// MaxPercent The highest whole-percent rate the band holds.
+	MaxPercent int `json:"maxPercent"`
+
+	// MinPercent The lowest whole-percent rate the band holds.
+	MinPercent int `json:"minPercent"`
+}
+
+// ImageSearchBandId A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+type ImageSearchBandId string
+
+// ImageSearchItem defines model for ImageSearchItem.
+type ImageSearchItem struct {
+	Match ImageSearchMatch `json:"match"`
+
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	Video Video `json:"video"`
+}
+
+// ImageSearchMatch defines model for ImageSearchMatch.
+type ImageSearchMatch struct {
+	// Band A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up.
+	Band ImageSearchBandId `json:"band"`
+
+	// EndMs End of the matched section on videoId's timeline; video queries only.
+	EndMs *int64 `json:"endMs,omitempty"`
+
+	// FrameCount The matched frames found before the limit of 12.
+	FrameCount int `json:"frameCount"`
+
+	// Frames Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query, ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty.
+	Frames []ImageSearchMatchFrame `json:"frames"`
+
+	// Kind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
+	Kind ImageSearchMatchKind `json:"kind"`
+
+	// PositionMs Where playback starts: the matched frame, or the first matching entry of the matched section.
+	PositionMs int64 `json:"positionMs"`
+
+	// QueryEndMs End of the matched section on the query's timeline; video queries only.
+	QueryEndMs *int64 `json:"queryEndMs,omitempty"`
+
+	// QueryStartMs Start of the matched section on the query's timeline; video queries only.
+	QueryStartMs *int64 `json:"queryStartMs,omitempty"`
+
+	// Rate For an image, (63 - hash distance) / 63; for a video, the share of matching index entries in the overlap.
+	Rate float64 `json:"rate"`
+
+	// StartMs Start of the matched section on videoId's timeline; video queries only.
+	StartMs *int64 `json:"startMs,omitempty"`
+
+	// VideoId The video the match was found in: video.id or one of its versions; playback opens this id.
+	VideoId int64 `json:"videoId"`
+}
+
+// ImageSearchMatchKind frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial.
+type ImageSearchMatchKind string
+
+// ImageSearchMatchFrame defines model for ImageSearchMatchFrame.
+type ImageSearchMatchFrame struct {
+	// PositionMs The frame's time on videoId's timeline.
+	PositionMs int64 `json:"positionMs"`
+
+	// Rate (63 - hash distance) / 63 of this frame.
+	Rate float64 `json:"rate"`
+}
+
+// ImageSearchQuery defines model for ImageSearchQuery.
+type ImageSearchQuery struct {
+	// DurationMs The query video's duration; video queries only.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Kind How the file was read.
+	Kind ImageSearchQueryKind `json:"kind"`
+}
+
+// ImageSearchQueryKind How the file was read.
+type ImageSearchQueryKind string
+
+// ImageSearchResult defines model for ImageSearchResult.
+type ImageSearchResult struct {
+	// Bands Every match-rate band of the query's kind, strongest first, whether or not a match is in it: strong 90 to 100 for both kinds, similar 81 to 89 for an image and 50 to 89 for a video.
+	Bands []ImageSearchBand `json:"bands"`
+
+	// Items Matching listed videos, best first; empty when nothing matches. The matches of one band are next to each other, and the bands appear in the order of bands.
+	Items []ImageSearchItem `json:"items"`
+	Query ImageSearchQuery  `json:"query"`
+
+	// UnindexedCount File videos visible to the owner, version bundle members included, that have no current search index and so were not searched.
+	UnindexedCount int `json:"unindexedCount"`
+}
+
 // Interest defines model for Interest.
 type Interest struct {
 	// HasFolder An ordinary root smart folder already matches this interest tag.
@@ -5456,7 +5718,7 @@ type LibraryGroup struct {
 // LibraryGroupWatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
 type LibraryGroupWatchState string
 
-// LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode, for the owner only; fetch card values with listSmartFolderCards.
+// LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. GET /api/library no longer returns a smartFolder item; the kind remains only for compatibility with paired nodes on older releases, whose folder-led first page the merged list leaves out.
 type LibraryItem struct {
 	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup   `json:"group,omitempty"`
@@ -6021,8 +6283,6 @@ type OnboardingStep string
 
 // Organization One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization.
 type Organization struct {
-	// Aliases Natural-name order.
-	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// ExternalIds Ordered by (source, value).
@@ -6034,7 +6294,12 @@ type Organization struct {
 
 	// ImageRevision Present only while the organization has a logo; changes with every change of it.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
-	Name          string               `json:"name"`
+
+	// Name The display name, the first of names.
+	Name string `json:"name"`
+
+	// Names Every name in the owner's order, the display name first; at least 1 and at most 50.
+	Names []CreditName `json:"names"`
 
 	// Parent Parent organization; omitted for roots.
 	Parent *CreditRef `json:"parent,omitempty"`
@@ -6275,14 +6540,14 @@ type PeerFetchedPerson struct {
 	Role WorkPersonRole `json:"role"`
 }
 
-// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links.
+// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links.
 type PeerFetchedPluginPerson struct {
-	Aliases     []Alias      `json:"aliases"`
 	ExternalIds []ExternalId `json:"externalIds"`
 
-	// Items The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent.
+	// Items The items to write, each with a value above; names, externalIds and profile.links write all the values sent.
 	Items []PersonPluginItem `json:"items"`
 	Name  string             `json:"name"`
+	Names []CreditName       `json:"names"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -6509,13 +6774,14 @@ type PeerState struct {
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
 type PeerVocabularyRequest struct {
+	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only
 	Action PeerVocabularyRequestAction `json:"action"`
 
 	// Into The merge destination, created when absent; required for merge
 	Into *string                   `json:"into,omitempty"`
 	Kind PeerVocabularyRequestKind `json:"kind"`
 
-	// Name The current canonical name; required for rename and delete
+	// Name The current canonical name; required for rename, delete and unname
 	Name *string `json:"name,omitempty"`
 
 	// NewName Required for rename
@@ -6525,7 +6791,7 @@ type PeerVocabularyRequest struct {
 	Sources *[]string `json:"sources,omitempty"`
 }
 
-// PeerVocabularyRequestAction defines model for PeerVocabularyRequest.Action.
+// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only
 type PeerVocabularyRequestAction string
 
 // PeerVocabularyRequestKind defines model for PeerVocabularyRequest.Kind.
@@ -6551,8 +6817,6 @@ type PeopleCleared struct {
 
 // Person One person.
 type Person struct {
-	// Aliases Natural-name order.
-	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// ExternalIds Ordered by (source, value).
@@ -6564,12 +6828,17 @@ type Person struct {
 
 	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
-	Name          string               `json:"name"`
+
+	// Name The display name, the first of names; "" for a provisional person.
+	Name string `json:"name"`
+
+	// Names Every name in the owner's order, the display name first; at most 50.
+	Names []CreditName `json:"names"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
 
-	// Provisional True while the person has no canonical name; name is then "". Setting a name makes the person ordinary.
+	// Provisional True while the person has no names; name is then "" and names []. Setting a name makes the person ordinary.
 	Provisional bool `json:"provisional"`
 
 	// VideoCount Visible videos linked to this person in any role.
@@ -6638,7 +6907,7 @@ type PersonPluginFetchApplied struct {
 	// Person One person.
 	Person Person `json:"person"`
 
-	// Skipped Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order.
+	// Skipped Skipped values: profile items in property order, then names, then external IDs, each in fetched order.
 	Skipped []SkippedPersonValue `json:"skipped"`
 }
 
@@ -6657,15 +6926,17 @@ type PersonPluginFetchRequest struct {
 
 // PersonPluginFetchedPerson A person as the plugin returned it, after VV's limits.
 type PersonPluginFetchedPerson struct {
-	// Aliases First 50 distinct names; languages are checked by the apply.
-	Aliases []Alias `json:"aliases"`
-
 	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs.
 	ExternalIds []ExternalId `json:"externalIds"`
 
 	// ImageCount How many images VV kept, in the plugin's order; served by index.
-	ImageCount *int   `json:"imageCount,omitempty"`
-	Name       string `json:"name"`
+	ImageCount *int `json:"imageCount,omitempty"`
+
+	// Name The fetched display name.
+	Name string `json:"name"`
+
+	// Names The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply.
+	Names []CreditName `json:"names"`
 
 	// Profile Plugin-provided profile values that pass validation; omitted when none.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -7055,10 +7326,23 @@ type RenameTagRequest struct {
 // RescanScope What a force rescan reads again: every media folder, one media folder or one video.
 type RescanScope string
 
+// RootFolder defines model for RootFolder.
+type RootFolder struct {
+	// Name Display name: the final absolute-path segment of the registered folder.
+	Name string `json:"name"`
+
+	// Previews Thumbnails of up to four videos anywhere below the folder, most recently added first.
+	Previews []FolderPreview `json:"previews"`
+	RootId   int64           `json:"rootId"`
+
+	// RootPath Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name.
+	RootPath *string `json:"rootPath,omitempty"`
+}
+
 // RootFolderListing defines model for RootFolderListing.
 type RootFolderListing struct {
 	// Folders Registered media folders in natural-name order.
-	Folders []FolderSummary `json:"folders"`
+	Folders []RootFolder `json:"folders"`
 }
 
 // RunThumbnailEditRequest defines model for RunThumbnailEditRequest.
@@ -7100,7 +7384,7 @@ type Scan struct {
 	// SettledAt Timestamp when all target videos settled; returned only for done or partial status.
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 
-	// State Traversal state, used to refresh listings and determine whether another import can start.
+	// State Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
 	State ScanState `json:"state"`
 
 	// Status User-visible import status, first matching rule: failed for traversal failure; finding while counting; running while traversal or pending work remains; partial for failed issues; otherwise done.
@@ -7113,7 +7397,7 @@ type Scan struct {
 // ScanOrigin Import initiator; watch means a folder-watcher import limited to changed folders.
 type ScanOrigin string
 
-// ScanState Traversal state, used to refresh listings and determine whether another import can start.
+// ScanState Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does.
 type ScanState string
 
 // ScanActivity Current import activity, the most recently started when concurrent; omitted from Scan when idle. The SPA derives user-facing text from kind.
@@ -7216,6 +7500,12 @@ type ScanVideos struct {
 	Total int `json:"total"`
 }
 
+// SearchByImageRequest defines model for SearchByImageRequest.
+type SearchByImageRequest struct {
+	// File The image or video to search by.
+	File openapi_types.File `json:"file"`
+}
+
 // SeekThumbnailSprite Seek-thumbnail sprite layout; cells beyond frameCount on the final sheet are black and must not be addressed by clients.
 type SeekThumbnailSprite struct {
 	// Columns Columns per sheet.
@@ -7238,6 +7528,12 @@ type SeekThumbnailSprite struct {
 
 	// Sheets Versioned sheet URLs in index order.
 	Sheets []string `json:"sheets"`
+}
+
+// SetBackgroundPauseRequest defines model for SetBackgroundPauseRequest.
+type SetBackgroundPauseRequest struct {
+	// Paused The state to reach
+	Paused bool `json:"paused"`
 }
 
 // SetMediaFolderEnabledRequest defines model for SetMediaFolderEnabledRequest.
@@ -7302,7 +7598,7 @@ type SkippedPersonValue struct {
 	// Reason Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
 	Reason SkippedPersonReason `json:"reason"`
 
-	// Value Value shown in the comparison: the profile value, the alias, or source: value.
+	// Value Value shown in the comparison: the profile value, the name, or source: value.
 	Value string `json:"value"`
 }
 
@@ -9333,6 +9629,9 @@ type Conflict = Error
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
 
+// ImageSearchTooLarge defines model for ImageSearchTooLarge.
+type ImageSearchTooLarge = Error
+
 // InvalidRequest defines model for InvalidRequest.
 type InvalidRequest = Error
 
@@ -9606,7 +9905,7 @@ type DeleteMediaFolderParams struct {
 
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
-	// Q Normalized, trimmed query; nonempty queries substring-match names or aliases
+	// Q Normalized, trimmed query; nonempty queries substring-match any of the names
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Sort Sort order
@@ -9633,7 +9932,7 @@ type GetOrganizationImageParams struct {
 
 // ListPeopleParams defines parameters for ListPeople.
 type ListPeopleParams struct {
-	// Q Normalized, trimmed query; nonempty queries substring-match names or aliases
+	// Q Normalized, trimmed query; nonempty queries substring-match any of the names
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Sort Sort order
@@ -9889,6 +10188,9 @@ type GetVideoParams struct {
 // GetVideoFrameParams defines parameters for GetVideoFrame.
 type GetVideoFrameParams struct {
 	PositionMs int64 `form:"positionMs" json:"positionMs"`
+
+	// MaxEdge The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request.
+	MaxEdge *int `form:"maxEdge,omitempty" json:"maxEdge,omitempty"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -10040,6 +10342,9 @@ type SetupAccountJSONRequestBody = SetupRequest
 // StartAutoTaggingJSONRequestBody defines body for StartAutoTagging for application/json ContentType.
 type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
 
+// SetBackgroundPauseJSONRequestBody defines body for SetBackgroundPause for application/json ContentType.
+type SetBackgroundPauseJSONRequestBody = SetBackgroundPauseRequest
+
 // DeleteCollectionsJSONRequestBody defines body for DeleteCollections for application/json ContentType.
 type DeleteCollectionsJSONRequestBody = CollectionsDeleteRequest
 
@@ -10066,6 +10371,9 @@ type RemoveGroupItemsJSONRequestBody = GroupItemRemove
 
 // MoveGroupItemJSONRequestBody defines body for MoveGroupItem for application/json ContentType.
 type MoveGroupItemJSONRequestBody = GroupItemMove
+
+// SearchByImageMultipartRequestBody defines body for SearchByImage for multipart/form-data ContentType.
+type SearchByImageMultipartRequestBody = SearchByImageRequest
 
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
@@ -10426,6 +10734,12 @@ type ServerInterface interface {
 	// StartAutoTagging Queue library videos for classification
 	// (POST /api/auto-tagging/runs)
 	StartAutoTagging(w http.ResponseWriter, r *http.Request)
+	// GetBackgroundWork Return the background work pause switch, the running work and the work left
+	// (GET /api/background)
+	GetBackgroundWork(w http.ResponseWriter, r *http.Request)
+	// SetBackgroundPause Pause or resume background work
+	// (PUT /api/background/pause)
+	SetBackgroundPause(w http.ResponseWriter, r *http.Request)
 	// DeleteCollections Dissolve groups and delete smart folders in bulk
 	// (POST /api/collections/delete)
 	DeleteCollections(w http.ResponseWriter, r *http.Request)
@@ -10492,6 +10806,9 @@ type ServerInterface interface {
 	// GetHealth Return health and build information
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// SearchByImage Search the library by an uploaded image or video
+	// (POST /api/image-search)
+	SearchByImage(w http.ResponseWriter, r *http.Request)
 	// ListLibrary List library items (videos and groups)
 	// (GET /api/library)
 	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
@@ -10537,7 +10854,7 @@ type ServerInterface interface {
 	// GetOrganization Return an organization
 	// (GET /api/organizations/{id})
 	GetOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
-	// UpdateOrganization Update an organization's name, aliases and external IDs
+	// UpdateOrganization Update an organization's names and external IDs
 	// (PATCH /api/organizations/{id})
 	UpdateOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
 	// DeleteOrganizationImage Remove an organization's logo
@@ -10627,7 +10944,7 @@ type ServerInterface interface {
 	// ApplyPeerFetchedWorkInfo Apply work information the peer fetched for a video of this node
 	// (POST /api/peer/videos/{id}/fetched-work-info)
 	ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
-	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization by name
+	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization, or unname a person, by name
 	// (POST /api/peer/vocabulary)
 	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
 	// ClearPeople Delete every person and all face data
@@ -10645,7 +10962,7 @@ type ServerInterface interface {
 	// GetPerson Return a person
 	// (GET /api/people/{id})
 	GetPerson(w http.ResponseWriter, r *http.Request, id PersonId)
-	// UpdatePerson Update a person's name, aliases and external IDs
+	// UpdatePerson Update a person's names and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
 	// ListPersonAppearances List a person's face appearances
@@ -11823,6 +12140,34 @@ func (siw *ServerInterfaceWrapper) StartAutoTagging(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetBackgroundWork operation middleware
+func (siw *ServerInterfaceWrapper) GetBackgroundWork(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBackgroundWork(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetBackgroundPause operation middleware
+func (siw *ServerInterfaceWrapper) SetBackgroundPause(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetBackgroundPause(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteCollections operation middleware
 func (siw *ServerInterfaceWrapper) DeleteCollections(w http.ResponseWriter, r *http.Request) {
 
@@ -12757,6 +13102,20 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchByImage operation middleware
+func (siw *ServerInterfaceWrapper) SearchByImage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchByImage(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17208,6 +17567,19 @@ func (siw *ServerInterfaceWrapper) GetVideoFrame(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "maxEdge" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxEdge", r.URL.Query(), &params.MaxEdge, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxEdge"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxEdge", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetVideoFrame(w, r, id, params)
 	}))
@@ -18945,6 +19317,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/account", wrapper.UpdateAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/image-search", wrapper.SearchByImage)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}", wrapper.DeleteVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/virtual-videos", wrapper.CreateVirtualVideo)
@@ -19186,6 +19559,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/background", wrapper.GetBackgroundWork)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/background/pause", wrapper.SetBackgroundPause)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
 
 	return m

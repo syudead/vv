@@ -44,7 +44,6 @@ type AssistantArguments struct {
 	OrganizationNames []string `json:"organizationNames,omitempty"`
 	Role              string   `json:"role,omitempty"`
 	Synonym           string   `json:"synonym,omitempty"`
-	Aliases           []string `json:"aliases,omitempty"`
 	Code              string   `json:"code,omitempty"`
 	URL               string   `json:"url,omitempty"`
 	DateKind          string   `json:"dateKind,omitempty"`

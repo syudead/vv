@@ -13,20 +13,21 @@ sample text and data with the screen's own, keeping the structure.
 
 ## Choosing the skeleton
 
-| The screen                                                  | Skeleton         | Item               | Example block              |
-| ----------------------------------------------------------- | ---------------- | ------------------ | -------------------------- |
-| Lists many items the viewer browses, filters and selects    | `ListPage`       | `list-page`        | `list-page-example`        |
-| Manages records in rows with bulk actions                   | `AdminTablePage` | `admin-table-page` | `admin-table-page-example` |
-| Changes settings, one value per row                         | `SettingsPage`   | `settings-page`    | `settings-page-example`    |
-| Shows one record to read, with its parts and full messages  | `RecordPage`     | `record-page`      | `record-page-example`      |
-| Shows one item to view, with its facts beside it            | `DetailPage`     | `detail-page`      | `detail-page-example`      |
-| Exists only to submit one form (sign-in, first setup)       | `CenteredForm`   | `centered-form`    | `centered-form-example`    |
-| Asks for a few values without leaving the current screen    | `FormDialog`     | `form-dialog`      | `form-dialog-example`      |
-| Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
-| Works on one image that needs the whole window              | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
-| Fills in many values saved together, on a screen of its own | `FormPage`       | `form-page`        | `form-page-example`        |
-| Shows one subject's profile beside the items it is on       | `ProfilePage`    | `profile-page`     | `profile-page-example`     |
-| Walks through fixed steps one at a time (the first setup)   | `StepsPage`      | `steps-page`       | `steps-page-example`       |
+| The screen                                                  | Skeleton           | Item                 | Example block                |
+| ----------------------------------------------------------- | ------------------ | -------------------- | ---------------------------- |
+| Lists many items the viewer browses, filters and selects    | `ListPage`         | `list-page`          | `list-page-example`          |
+| Manages records in rows with bulk actions                   | `AdminTablePage`   | `admin-table-page`   | `admin-table-page-example`   |
+| Changes settings, one value per row                         | `SettingsPage`     | `settings-page`      | `settings-page-example`      |
+| Shows one record to read, with its parts and full messages  | `RecordPage`       | `record-page`        | `record-page-example`        |
+| Shows one item to view, with its facts beside it            | `DetailPage`       | `detail-page`        | `detail-page-example`        |
+| Exists only to submit one form (sign-in, first setup)       | `CenteredForm`     | `centered-form`      | `centered-form-example`      |
+| Asks for a few values without leaving the current screen    | `FormDialog`       | `form-dialog`        | `form-dialog-example`        |
+| Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`    | `confirm-dialog`     | `confirm-dialog-example`     |
+| Works on one image that needs the whole window              | `EditorDialog`     | `editor-dialog`      | `editor-dialog-example`      |
+| Fills in many values saved together, on a screen of its own | `FormPage`         | `form-page`          | `form-page-example`          |
+| Shows one subject's profile beside the items it is on       | `ProfilePage`      | `profile-page`       | `profile-page-example`       |
+| Shows a query beside the results it found, closest first    | `QueryResultsPage` | `query-results-page` | `query-results-page-example` |
+| Walks through fixed steps one at a time (the first setup)   | `StepsPage`        | `steps-page`         | `steps-page-example`         |
 
 The states of a list or table are shown in `list-states-example`.
 
@@ -421,6 +422,41 @@ own reached from an action. `ListPage`'s `aside` is a right-hand column read
 after the body, and `DetailPage` is outside the shell with its media edge to
 edge.
 
+## Query results page
+
+Item `query-results-page`. `QueryResultsPage` is a shell page at library
+density for a query and the results it found, such as an image search: the
+`header`, then the `query` column and the results, with `p-3` (`p-4` from
+`sm`) around them.
+
+| Width      | Layout                                                                                                                                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| From `lg`  | Two columns `gap-6` apart: `query` `query-aside` wide at the start, stuck under the top bar and scrolling inside itself when taller than the viewport; the results take the rest |
+| Below `lg` | One column: `query` full width above the results. With `queryCollapsed` it is one bar that sticks under the top bar; expanded, it scrolls with the page                          |
+
+Without a `query` the results take the full width. When the query is a file,
+the whole panel, its collapsed bar included, takes a dropped file to search
+again ([ImageUploadDialog](components.md#imageuploaddialog) has the drop
+rules).
+
+| Slot             | Put in it                                                                                                                                                                                            | Never                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `header`         | A `PageHeader` with the title and a `ghost` `sm` back button with `ArrowLeft` as `leading`                                                                                                           | A count or actions; they belong to the panel |
+| `query`          | The query's panel on a `card` with a `border` line, `rounded-md`, `p-3`: its preview (no taller than `query-preview-max`, `query-preview-max-sm` below `lg`), what it is, its status and its actions | The results or their filters                 |
+| `queryLabel`     | The column's name for screen readers                                                                                                                                                                 |                                              |
+| `queryCollapsed` | `true` while the panel below `lg` is its one-line bar                                                                                                                                                | `true` from `lg`; it has no effect there     |
+| children         | A status line, then one `ResultBand` per band of `ResultRow`s, strongest first; or one state block                                                                                                   | A page-wide spinner                          |
+
+`ResultBand` holds the rows of one band: an `h2` (`text-sm font-semibold`)
+with its `detail` after a `·` in `text-xs` muted and its `count` at the
+line's end, then its rows `gap-3` apart; bands stand `gap-6` apart, so the gap
+above a heading is wider than the gap between rows. Headings do not stick.
+
+Use it when the viewer compares the results with the query they brought, so
+the query stays in view while the results scroll. `ListPage`'s `aside` is a
+right-hand column read after the body, and `ProfilePage` puts its subject
+above the items. Example block `query-results-page-example`.
+
 ## Steps page
 
 Item `steps-page`. `StepsPage` is a page of its own outside the shell for
@@ -457,11 +493,12 @@ must be taken in order and the screen is nothing else; one form is a
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns. `variant="divided"` is a column of figures: one row per fact, the term at the left in `text-xs` muted on one line, the value at the right end in `text-xs font-mono tabular-nums`, `py-2` with a hairline under every row. `columns={2}` splits a long `grid` list into two equal lists side by side from `md`, the first half left, `gap-x-10` apart                                                                                                                                                                                                                                                                                                                                     |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, or `card-face` for face cards, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `Shelf`        | `shelf`         | A `PageHeader` (`h2`) with a count over a `CardGrid` of every item of one kind, which wraps and loads more with a `LoadMoreRow`; use it for a few kinds of items on one page, one after another                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `Shelf`        | `shelf`         | A `PageHeader` (`h2`) with a count and `actions` at the right end of the heading row, over a `CardGrid` of every item of one kind, which wraps and loads more with a `LoadMoreRow`; use it for a few kinds of items on one page, one after another. `layout="row"` lays the cards out in one line instead (see below)                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`, with an optional `detail` after a `·` in `text-xs` muted on the same line) that stick under the top bar while their group scrolls; each row `py-2` on the page background with no card, no line and no horizontal padding, `gap-2` between a heading and its rows, and groups `gap-6` apart                                                                                                                                                                                                                                                                                                                                                                                |
 | `CardList`     | `card-list`     | One-line cards stacked `gap-2` apart, each on `muted` with a `border` line, `rounded-lg`, `px-4`, at least `activity-card` high, in one of four tones (`default`, `primary`, `destructive`, `warning`); an icon, a title truncated first, a `badge` never truncated, a `detail` pushed right and truncated after the title, then a time column at least `activity-time` wide that never wraps and an actions column of fixed width; below `lg` two lines with a short time after the detail. A card with `members` starts with a `ghost` `icon-sm` expand button and, while expanded, shows its member rows inside its border under one `border-t`, inset to the title column, with their actions in the card's actions column |
 | `JumpList`     | `jump-list`     | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s; from `lg` a vertical list of full-width, left-aligned `sm` toggles in the muted colour under an `h2` (`text-sm font-semibold`) with an optional `action` after a last divider, and below `lg` one horizontally scrolling line of outlined `sm` chips with the heading for screen readers only and no `action`                                                                                                                                                                                                                                                                                                                                 |
 | `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`; `stickyHeaderTop` sticks the column header that many px from the top, under an admin table page's stuck band                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `ResultRow`    | `result-row`    | One candidate of a query's results on `card` with a `border` line and `rounded-md`: a header line `p-3` (`mark`, then the `title` truncated first with its `badge`, the `meta` line in `text-xs` muted under it, then `actions` and a `ghost` `icon-sm` expand button) and a body `p-3` under one `border-t`, shown while the caller's `expanded` is true                                                                                                                                                                                                                                                                                                                                                                      |
 | `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions; stuck to the bottom of the page, or in place of an admin table page's header (`placement="header"`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 - `Toolbar`: put the search in `search`, filter triggers as children, view
@@ -479,6 +516,17 @@ control }`: inline, the controls stand without a visible name, so each needs
     `compact` for its popover form (the sort's two radio columns, with
     `compactLabelled` when that form has its own legend) and `hideBelowSm`
     when it means nothing in one column (card size).
+- `Shelf` with `layout="row"`: each child is one card, `card-0` wide at every
+  zoom, in one line `gap-3` apart that scrolls sideways within the body's width
+  (swipe, trackpad, Shift+wheel, the scrollbar, Tab) instead of wrapping, with
+  no arrow buttons; the body's edge cuts the card that does not fit, so a cut
+  card says more follow. Use it for a few highlighted items above a list, such
+  as the home's favorite smart folders, with a `Separator` after it and a
+  `ghost` `sm` link in `actions` to the page of every item; a list of every
+  item of a kind keeps the wrapping `CardGrid`. A state block, such as an
+  `ErrorState`, goes in the grid layout, under the same heading and actions.
+  Box selection skips the part of a card the row clips. Example block
+  `shelf-example`.
 - `GroupedList`: pass a `label`, then one `GroupedListGroup` per heading
   (`heading`, and `detail` for the muted second part, such as the date after a
   day's name) with its rows as `GroupedListItem`s. A row lays its children
@@ -527,6 +575,15 @@ control }`: inline, the controls stand without a visible name, so each needs
   `Button`; below `lg` the screen offers it elsewhere, such as a `More` menu.
   The pressed chip is scrolled into view in the strip. Use it for jumping
   within one long list; a calendar would draw empty days.
+- `ResultRow`: put it in a `ResultBand` of a `QueryResultsPage`. Pass a
+  `RateRing` as `mark`, the candidate's name as `title`, at most one `soft`
+  `Badge` as `badge`, its figures as `meta` (give its text element
+  `truncate`), its `sm` actions with their names at every width, and the body,
+  such as a strip of matched frames. Pass `expanded`, `onExpandedChange` and
+  `toggleLabel` with the button's `tooltip` and the `name` read aloud for the
+  current state, as `CardListItem` `members` does. At most one row of the
+  page has a `default` action, the best candidate's. Records whose state is
+  read first are `CardList`.
 - `PageSection`: put rows directly inside; do not add padding or borders to a
   row. Free text goes in one `<p>`, which becomes one padded row.
 - `SelectionBar`: use `ghost` `sm` buttons with a visible name at every width,
@@ -541,13 +598,13 @@ control }`: inline, the controls stand without a visible name, so each needs
 Every list, table and section shows its data or exactly one of these blocks,
 in the body slot of its skeleton, so the header and the toolbar never move.
 
-| State            | Block                            | Shows                                                                                                                                                        |
-| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards (face circles with `size="face"`), `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
-| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                         |
-| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                     |
-| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                 |
-| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                       |
+| State            | Block                            | Shows                                                                                                                                                                                                     |
+| ---------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards (face circles with `size="face"`), `table` rows, `grouped` rows under a heading, `cards` of a `CardList`, `rows` of `ResultRow`s under a band heading |
+| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                                                                      |
+| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                                                                  |
+| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                                                              |
+| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                                                                    |
 
 ```mermaid
 stateDiagram-v2

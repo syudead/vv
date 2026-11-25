@@ -4,15 +4,17 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AutoTaggingSettings } from "../api/client";
+import { PausedBackground } from "../testing/background";
 import AutoTaggingSection, { parseThreshold } from "./AutoTaggingSection";
 
 /** Render inside a router because the description links to Connections. */
-function renderSection() {
-  return render(
+function renderSection({ paused = false }: { paused?: boolean } = {}) {
+  const tree = (
     <MemoryRouter>
       <AutoTaggingSection />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  return render(paused ? <PausedBackground>{tree}</PausedBackground> : tree);
 }
 
 const toast = vi.fn();
@@ -104,6 +106,14 @@ describe("AutoTaggingSection", () => {
     expect(screen.queryByLabelText("Ollama URL")).toBeNull();
     expect(screen.getByText("Waiting 0 · Tagging 0 · Done 3 · Failed 1")).toBeTruthy();
     expect(screen.getByText("model 'clef' not found")).toBeTruthy();
+  });
+
+  it("says the queued videos wait for the resume while background work is paused", async () => {
+    current = settings({ queue: { queued: 5, running: 0, done: 3, failed: 0 } });
+    renderSection({ paused: true });
+    expect(
+      await screen.findByText("Waiting for resume 5 · Tagging 0 · Done 3 · Failed 0"),
+    ).toBeTruthy();
   });
 
   it("hides the queue and the run buttons while auto-tagging is off", async () => {

@@ -16,8 +16,8 @@ const facePairCondition = `((provisional_id = ?1 and person_id = ?2) or (provisi
 
 const openFacePairCondition = `dismissed = 0 and ` + facePairCondition
 
-// FaceCandidates lists the open pairs the person takes part in, highest similarity first, as the other person of
-// each; a missing person returns domain.ErrNotFound.
+// FaceCandidates lists the open pairs the person takes part in, and the pairs the live ranking offers that no row
+// holds yet, highest similarity first, as the other person of each; a missing person returns domain.ErrNotFound.
 func (s *CreditStore) FaceCandidates(ctx context.Context, personID int64) ([]domain.FacePair, error) {
 	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -31,7 +31,7 @@ func (s *CreditStore) FaceCandidates(ctx context.Context, personID int64) ([]dom
 		`+personImageRevision("o.id")+`, c.similarity
 		  from face_candidates c
 		  join people o on o.id = case when c.provisional_id = ?1 then c.person_id else c.provisional_id end
-		  left join people_names n on n.person_id = o.id and n.canonical = 1
+		  left join people_names n on n.person_id = o.id and n.position = 0
 		 where c.dismissed = 0 and (c.provisional_id = ?1 or c.person_id = ?1)
 		 order by c.similarity desc, o.id`, personID)
 	if err != nil {
@@ -49,7 +49,8 @@ func (s *CreditStore) FaceCandidates(ctx context.Context, personID int64) ([]dom
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the face candidates of person %d: %w", personID, err)
 	}
-	return out, nil
+	_ = rows.Close()
+	return withLiveFacePairs(ctx, tx, personID, out)
 }
 
 // requirePerson returns domain.ErrNotFound when no person has the id.
@@ -74,6 +75,10 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 		return domain.FaceCandidateConfirmation{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	now := time.Now()
+	if err := ensureLiveFacePair(ctx, tx, personID, otherID, now); err != nil {
+		return domain.FaceCandidateConfirmation{}, err
+	}
 
 	sourceID, targetID, err := openFacePairDirection(ctx, tx, personID, otherID)
 	if err != nil {
@@ -86,7 +91,7 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 	c := &changes{}
 	var result domain.FaceCandidateConfirmation
 	var events []domain.Event
-	result.Person, events, result.UndoActivityID, err = mergeByOwner(ctx, tx, c, source, targetID, time.Now())
+	result.Person, events, result.UndoActivityID, err = mergeByOwner(ctx, tx, c, source, targetID, now)
 	if err != nil {
 		return domain.FaceCandidateConfirmation{}, err
 	}
@@ -112,12 +117,12 @@ func mergeByOwner(ctx context.Context, tx *sql.Tx, c *changes, source domain.Cre
 }
 
 // openFacePairDirection returns the open pair's people as (source, target): the person the owner confirms from stays,
-// unless only the other one has a canonical name, so a named person is never merged into one without a name.
+// unless only the other one has names, so a named person is never merged into one without a name.
 func openFacePairDirection(ctx context.Context, tx *sql.Tx, personID, otherID int64) (int64, int64, error) {
 	var personNamed, otherNamed bool
 	err := tx.QueryRowContext(ctx, `select
-		exists (select 1 from people_names n where n.person_id = ?1 and n.canonical = 1),
-		exists (select 1 from people_names n where n.person_id = ?2 and n.canonical = 1)
+		exists (select 1 from people_names n where n.person_id = ?1 and n.position = 0),
+		exists (select 1 from people_names n where n.person_id = ?2 and n.position = 0)
 		  from face_candidates where `+openFacePairCondition+`
 		 limit 1`, personID, otherID).
 		Scan(&personNamed, &otherNamed)
@@ -150,7 +155,17 @@ func (s *CreditStore) setFaceCandidateDismissed(ctx context.Context, personID, o
 	if !dismissed {
 		action = "reopen"
 	}
-	res, err := s.sql.ExecContext(ctx, `update face_candidates set dismissed = ?3
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if dismissed {
+		if err := ensureLiveFacePair(ctx, tx, personID, otherID, time.Now()); err != nil {
+			return err
+		}
+	}
+	res, err := tx.ExecContext(ctx, `update face_candidates set dismissed = ?3
 		 where dismissed = 1 - ?3 and `+facePairCondition, personID, otherID, dismissed)
 	if err != nil {
 		return fmt.Errorf("cannot %s the face candidate of people %d and %d: %w", action, personID, otherID, err)
@@ -162,5 +177,5 @@ func (s *CreditStore) setFaceCandidateDismissed(ctx context.Context, personID, o
 	if n == 0 {
 		return domain.ErrFaceCandidateNotFound
 	}
-	return nil
+	return tx.Commit()
 }
