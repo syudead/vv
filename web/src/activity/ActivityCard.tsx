@@ -25,6 +25,7 @@ import type {
 import { personImagePath } from "../api/credits";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { PersonFace } from "../ui/PersonFace";
 import { CardListItem } from "../ui/patterns/card-list";
 import { Badge } from "../ui/shadcn/badge";
@@ -45,6 +46,7 @@ import {
   type EntryResult,
   entryOperations,
   entryResult,
+  markName,
   entryTime,
   faceLinkName,
   type OpenAction,
@@ -87,10 +89,11 @@ export interface MarkIconProps {
 
 export function MarkIcon({ mark, warning = false, small = false }: MarkIconProps) {
   const { icon: Icon, className } = markIcon[mark];
+  const paused = useBackgroundPaused();
   return (
     <Icon
       role="img"
-      aria-label={t.activity.statusIcon[mark]}
+      aria-label={markName(mark, paused)}
       className={cn(
         "shrink-0",
         small ? "size-4" : "size-5",
@@ -98,6 +101,11 @@ export function MarkIcon({ mark, warning = false, small = false }: MarkIconProps
       )}
     />
   );
+}
+
+/** The status icon's name as text, beside the icon on the detail page. */
+export function MarkName({ mark }: { mark: StatusMark }) {
+  return markName(mark, useBackgroundPaused());
 }
 
 export function StatusIcon({ entry, small }: { entry: EntryFields; small?: boolean }) {
@@ -190,9 +198,10 @@ export function ResultWithProgress({
 }
 
 function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
+  const paused = useBackgroundPaused();
   return (
     <ResultWithProgress
-      result={entryResult(entry, now)}
+      result={entryResult(entry, now, paused)}
       progress={entry.status === "running" ? entry.progress : undefined}
     />
   );

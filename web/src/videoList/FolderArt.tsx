@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type { FolderPreview } from "../api/client";
+import { useNearViewport } from "../hooks/useNearViewport";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { type PreviewCoordinator, usePreviewChanges } from "./usePreviewCoordination";
@@ -156,6 +157,8 @@ export default function FolderArt({
   // A refreshed shorter cover list can leave the old position out of range.
   const [front, setFront] = useState<number | null>(null);
   const playingId = useRef<number | null>(null);
+  // Sheets load once the card comes near the screen, as VideoThumbnailImage does.
+  const [artRef, near] = useNearViewport<HTMLDivElement>();
 
   const putBack = useCallback(() => {
     setFront(null);
@@ -196,6 +199,7 @@ export default function FolderArt({
 
   return (
     <div
+      ref={artRef}
       aria-hidden="true"
       data-folder-art=""
       onPointerMove={onPointerMove}
@@ -240,7 +244,7 @@ export default function FolderArt({
                 </div>
               ) : (
                 <img
-                  src={preview.thumbnailUrl}
+                  src={near ? preview.thumbnailUrl : undefined}
                   alt=""
                   loading="lazy"
                   decoding="async"

@@ -74,7 +74,7 @@ import {
   loadedVideoIds,
   missingParent,
 } from "./pageRules";
-import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
+import { SmartFolderCard, SmartFolderFavorite, SmartFolderRow } from "./SmartFolderCard";
 import SmartFolderMenu, { type SmartFolderMenuDialog } from "./SmartFolderMenu";
 import {
   parseSmartFolderId,
@@ -418,6 +418,9 @@ function SmartFolderHeader({
         }
         actions={
           <>
+            {owner && (
+              <SmartFolderFavorite folder={folder} read={folder} variant="page" />
+            )}
             {folder.openVideoId !== undefined && (
               <PlayLink
                 to={videoInSmartFolderPath(folder.openVideoId, folder.id)}

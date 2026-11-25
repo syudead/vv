@@ -130,18 +130,18 @@ func TestRefusedCreditMergeRewritesNoRule(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	target := createPerson(t, db, "T")
-	targetAliases := make([]domain.Alias, 30)
+	targetAliases := make([]domain.CreditName, 30)
 	for i := range targetAliases {
-		targetAliases[i] = domain.Alias{Name: fmt.Sprintf("T%d", i)}
+		targetAliases[i] = domain.CreditName{Name: fmt.Sprintf("T%d", i)}
 	}
-	if _, err := db.Credits().Update(ctx, domain.CreditPerson, target.ID, domain.CreditPatch{Aliases: &targetAliases}); err != nil {
+	if _, err := db.Credits().Update(ctx, domain.CreditPerson, target.ID, domain.CreditPatch{Names: &targetAliases}); err != nil {
 		t.Fatal(err)
 	}
-	sourceAliases := make([]domain.Alias, 25)
+	sourceAliases := make([]domain.CreditName, 25)
 	for i := range sourceAliases {
-		sourceAliases[i] = domain.Alias{Name: fmt.Sprintf("S%d", i)}
+		sourceAliases[i] = domain.CreditName{Name: fmt.Sprintf("S%d", i)}
 	}
-	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S", Aliases: sourceAliases})
+	source := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("S", sourceAliases...)})
 	folder := createRuleFolder(t, db, "S", domain.SmartRule{Person: source.ID})
 	original := smartRuleJSON(t, db.sql, folder.ID)
 
@@ -149,7 +149,7 @@ func TestRefusedCreditMergeRewritesNoRule(t *testing.T) {
 	_, err := db.Credits().Merge(ctx, domain.CreditPerson, target.ID, []int64{source.ID})
 	var invalid *domain.InvalidWorkInfoError
 	if !errors.As(err, &invalid) {
-		t.Fatalf("Merge error = %v, want the alias limit", err)
+		t.Fatalf("Merge error = %v, want the name limit", err)
 	}
 	if got := smartRuleJSON(t, db.sql, folder.ID); got != original {
 		t.Errorf("rule after the refused merge = %s, want %s", got, original)

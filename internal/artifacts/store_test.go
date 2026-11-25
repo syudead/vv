@@ -793,6 +793,27 @@ func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 	}
 }
 
+func TestPublishThumbnailKeepsThePreviousPosterWhenTheThumbnailFails(t *testing.T) {
+	store := New(t.TempDir())
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("old"), []byte("old poster"))); err != nil {
+		t.Fatal(err)
+	}
+	// A non-empty directory at the thumbnail's place makes only the thumbnail's rename fail.
+	thumbnail, _ := store.thumbnailPath(key)
+	if err := os.Remove(thumbnail); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(thumbnail, "blocker"), []byte("x"))
+
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("new"), []byte("new poster"))); err == nil {
+		t.Fatal("publication succeeded although the thumbnail could not be published")
+	}
+	posterPath, _ := store.posterPath(key)
+	if data, err := os.ReadFile(posterPath); err != nil || string(data) != "old poster" {
+		t.Fatalf("poster = %q, %v; want the previous poster", data, err)
+	}
+}
+
 // A poster is published, restored and removed with its thumbnail, and never outlives it.
 func TestPosterGoesWithItsThumbnail(t *testing.T) {
 	store := New(t.TempDir())

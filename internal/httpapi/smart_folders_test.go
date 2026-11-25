@@ -284,20 +284,10 @@ func TestSmartFolderCardsStatuses(t *testing.T) {
 	}
 }
 
-func TestSmartFoldersInLibraryFavoritesAndPlaylists(t *testing.T) {
+func TestSmartFoldersInFavoritesAndPlaylists(t *testing.T) {
 	f := newLibraryFixture(t)
 	folder := f.createSmartFolder(t, map[string]any{"name": "全部", "rule": map[string]any{}})
 	f.createSmartFolder(t, map[string]any{"name": "子", "rule": map[string]any{}, "parentId": folder.Id})
-
-	var items []gen.SmartFolderSummary
-	for _, item := range decode[gen.LibraryPage](t, f.env.get("/api/library", f.owner)).Items {
-		if item.Kind == gen.LibraryItemKindSmartFolder {
-			items = append(items, *item.SmartFolder)
-		}
-	}
-	if len(items) != 1 || items[0].Id != folder.Id || items[0].Favorite == nil || *items[0].Favorite {
-		t.Errorf("ライブラリのフォルダ = %+v", items)
-	}
 
 	rec := f.groupRequest(http.MethodPut, "/api/favorites",
 		groupJSON(map[string]any{"smartFolderIds": []int64{folder.Id, 999999}, "favorite": true}), f.owner)

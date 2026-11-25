@@ -170,7 +170,8 @@ func TestStartRescanRejectsAMissingTarget(t *testing.T) {
 	}
 }
 
-// A restart continues the interrupted rescan: same scope, the same forced videos, and its carried issues.
+// A restart continues the interrupted rescan: same scope, the same forced videos and read locations, and its carried
+// issues; the interrupted scan keeps no read location.
 func TestResumeScanContinuesAnInterruptedFolderRescan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -181,6 +182,9 @@ func TestResumeScanContinuesAnInterruptedFolderRescan(t *testing.T) {
 		Kind: domain.RescanFolder, FolderID: mediaFolderID(t, db, fixturePath("/media")),
 	})
 	if err := db.Scans().MarkForced(ctx, interrupted.ID, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ScanIndex().MarkLocationRead(ctx, interrupted.ID, fixturePath("/media/a.mp4")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Scans().FailInterruptedScans(ctx); err != nil {
@@ -197,6 +201,13 @@ func TestResumeScanContinuesAnInterruptedFolderRescan(t *testing.T) {
 	forced, err := db.Scans().ForcedVideos(ctx, resumed.ID)
 	if err != nil || !slices.Equal(forced, []int64{ids[0]}) {
 		t.Fatalf("ForcedVideos = %v, err %v, want [%d]", forced, err, ids[0])
+	}
+	read, err := db.ScanIndex().ReadLocations(ctx, resumed.ID)
+	if want := []string{fixturePath("/media/a.mp4")}; err != nil || !slices.Equal(read, want) {
+		t.Fatalf("ReadLocations = %v, err %v, want %v", read, err, want)
+	}
+	if left, err := db.ScanIndex().ReadLocations(ctx, interrupted.ID); err != nil || len(left) != 0 {
+		t.Fatalf("the interrupted scan's read locations = %v, err %v, want none", left, err)
 	}
 	if got, want := currentIssuePaths(t, db), []string{fixturePath("/other/y.mp4")}; !slices.Equal(got, want) {
 		t.Fatalf("再開後の問題 = %v, want %v", got, want)

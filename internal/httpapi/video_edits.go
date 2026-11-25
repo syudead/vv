@@ -59,7 +59,8 @@ func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 // private. The local part is applied before the links' parts, and stays when one fails.
 func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoEditRequest
-	if !s.readJSONBody(w, r, &body) {
+	// merges alone may list 100 × 20000 IDs, beyond the default body limit.
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
 		return
 	}
 	if !validVideoTargetCounts(body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs) {

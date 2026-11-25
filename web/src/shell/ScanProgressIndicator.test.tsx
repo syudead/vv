@@ -21,7 +21,8 @@ function json(body: unknown, status = 200) {
 
 function scan(values: Partial<Scan> = {}): Scan {
   const state = values.state ?? "running";
-  const status: Scan["status"] = values.status ?? state;
+  const status: Scan["status"] =
+    values.status ?? (state === "paused" ? "running" : state);
   return {
     id: 1,
     origin: "manual",

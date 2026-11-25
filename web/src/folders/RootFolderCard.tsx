@@ -2,7 +2,7 @@ import { Folder } from "lucide-react";
 import { memo, useId } from "react";
 import { Link } from "react-router";
 
-import type { FolderSummary } from "../api/client";
+import type { RootFolder } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { isRemoteId } from "../lib/remoteId";
 import FolderArt from "../videoList/FolderArt";
@@ -10,27 +10,23 @@ import { ItemRemoteMark } from "../videoList/RemoteItemMark";
 import { folderUrl } from "./folderPath";
 
 /** Guest responses omit absolute paths, so omit the path from their label. */
-function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
-  const label = t.folders.card.label(folder.name, folder.videoCount, folder.folderCount);
+function folderLabel(folder: RootFolder, withPath: boolean): UiText {
   return withPath && folder.rootPath !== undefined
-    ? t.folders.card.labelWithPath(label, folder.rootPath)
-    : label;
+    ? t.folders.card.labelWithPath(folder.name, folder.rootPath)
+    : t.folders.card.rootLabel(folder.name);
 }
 
-/** The media folder list keeps its own bordered card; showPath distinguishes roots by their paths. */
-function RootFolderCard({
-  folder,
-  showPath,
-}: {
-  folder: FolderSummary;
-  showPath: boolean;
-}) {
+/**
+ * The media folder list keeps its own bordered card with the root's recent thumbnails; showPath distinguishes roots
+ * by their paths.
+ */
+function RootFolderCard({ folder, showPath }: { folder: RootFolder; showPath: boolean }) {
   const remote = isRemoteId(folder.rootId);
   const remoteId = useId();
   return (
-    <article data-folder-path={folder.path} className="flex min-w-0 flex-col">
+    <article data-folder-path="" className="flex min-w-0 flex-col">
       <Link
-        to={folderUrl({ rootId: folder.rootId, path: folder.path })}
+        to={folderUrl({ rootId: folder.rootId, path: "" })}
         aria-label={folderLabel(folder, showPath)}
         aria-describedby={remote ? remoteId : undefined}
         className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card text-card-foreground transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
@@ -54,11 +50,6 @@ function RootFolderCard({
             />
             <span className="line-clamp-2 min-w-0 break-all">{folder.name}</span>
           </h3>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {t.folders.card.videos(folder.videoCount)}
-            {" · "}
-            {t.folders.card.folders(folder.folderCount)}
-          </p>
           {showPath && folder.rootPath !== undefined && (
             // Truncate the beginning: path suffixes distinguish roots with the same name.
             <p

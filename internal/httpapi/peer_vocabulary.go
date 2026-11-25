@@ -210,7 +210,7 @@ var peopleMerge = creditMerge[gen.Person]{
 	entry: func(person gen.Person) domain.VocabularyEntry[gen.Person] {
 		entry := domain.VocabularyEntry[gen.Person]{
 			ID: person.Id, Name: person.Name, Provisional: person.Provisional, Count: person.VideoCount,
-			CreatedAt: person.CreatedAt.Unix(), Names: creditNames(person.Name, person.Aliases),
+			CreatedAt: person.CreatedAt.Unix(), Names: creditNames(person.Names),
 		}
 		if person.Profile.BirthDate != nil {
 			entry.BirthKey, _ = domain.BirthKey(*person.Profile.BirthDate)
@@ -234,7 +234,7 @@ var organizationsMerge = creditMerge[gen.Organization]{
 	entry: func(organization gen.Organization) domain.VocabularyEntry[gen.Organization] {
 		return domain.VocabularyEntry[gen.Organization]{
 			ID: organization.Id, Name: organization.Name, Count: organization.VideoCount,
-			CreatedAt: organization.CreatedAt.Unix(), Names: creditNames(organization.Name, organization.Aliases),
+			CreatedAt: organization.CreatedAt.Unix(), Names: creditNames(organization.Names),
 		}
 	},
 	rewrite: rewriteRemoteOrganizationEntity,
@@ -248,10 +248,10 @@ var organizationsMerge = creditMerge[gen.Organization]{
 	},
 }
 
-func creditNames(name string, aliases []gen.Alias) []string {
-	names := []string{name}
-	for _, alias := range aliases {
-		names = append(names, alias.Name)
+func creditNames(entries []gen.CreditName) []string {
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name)
 	}
 	return names
 }

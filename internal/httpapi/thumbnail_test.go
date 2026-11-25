@@ -239,6 +239,17 @@ func TestLargeThumbnailServesThePoster(t *testing.T) {
 	}
 }
 
+func TestThumbnailRejectsUnknownSize(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=bogus")
+	assertErrorCode(t, rec, http.StatusBadRequest, gen.ErrorCodeInvalidRequest)
+}
+
 func TestLargeThumbnailWithoutPosterServesTheThumbnail(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{

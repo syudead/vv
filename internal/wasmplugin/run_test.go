@@ -355,6 +355,29 @@ func TestRunRecordsBeforeReleasingTheSlot(t *testing.T) {
 	wantEchoWorks(t, rt, module)
 }
 
+// paddingSection is a custom section carrying n zero bytes of data.
+func paddingSection(n int) []byte {
+	body := append([]byte{3, 'p', 'a', 'd'}, make([]byte, n)...)
+	return append(binary.AppendUvarint([]byte{0x00}, uint64(len(body))), body...)
+}
+
+func TestRunRefusesModulesOverInspectionBounds(t *testing.T) {
+	rt := newTestRuntime(t)
+	tables := goodSpec()
+	tables.tables = [][]byte{maxTable(domain.WorkInfoPluginTableMaxElements + 1)}
+	cases := map[string][]byte{
+		"oversized table":  tables.bytes(),
+		"oversized module": append(probeModule(t), paddingSection(domain.WorkInfoPluginModuleMaxBytes)...),
+	}
+	for name, module := range cases {
+		_, _, err := rt.Run(context.Background(), name, module, fetch(), domain.WorkInfoRunNetwork{}, nil)
+		wantFailure(t, err, domain.WorkInfoRunFailed)
+		if _, ok := rt.run.cache[name]; ok {
+			t.Errorf("%s: the module was compiled", name)
+		}
+	}
+}
+
 // Compilation failure must preserve the previous execution log because no module started.
 func TestRunDoesNotRecordARunWhoseModuleDidNotCompile(t *testing.T) {
 	rt := newTestRuntime(t)

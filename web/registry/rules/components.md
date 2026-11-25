@@ -424,7 +424,10 @@ a virtual video, which has no file, shows `VirtualMark` there instead of a durat
 `VideoThumbnailMark` in a top corner for the selection check (`top-start`) and
 a person's `FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame
 when the video cannot play. A virtual video has no progress, notice or hover
-preview. `selected` rings the frame in `primary`.
+preview. `selected` rings the frame in `primary`. `VideoThumbnailImage` sets
+its `src` only once the frame comes within a viewport of the screen
+(`useNearViewport`), so a page of cards loads only the images it shows; pass
+the URL as `src` and add no loading of your own.
 
 A video card's credits sit in a `VideoThumbnailLayer`, a frame-sized layer
 laid over the thumbnail from outside the card's link, so the face links in it
@@ -497,6 +500,21 @@ such as whose spans it holds.
 Do not use it for a progress or a position in the video; those are the
 player's bar and `VideoThumbnailProgress`.
 
+### RateRing
+
+Item `rate-ring`. A `size-12` ring whose arc is `value` of 100, from the top
+and clockwise, with the whole percent inside in `text-sm font-semibold
+tabular-nums` and its `%` sign in `text-2xs`, so `100%` stays inside the
+ring's opening; the value is clamped to 0–100 and rounded to the nearest whole
+percent, so the arc and the number always agree. `tone="primary"` draws the
+arc in `primary`, `tone="muted"` in `muted-foreground`, both on a `muted`
+track and at the same size, so rings line up down a column of rows.
+
+It is not a control: it takes no focus, has no hover state and never animates,
+and it always has its number inside, so it is not read as a loading ring or a
+button. Put it in a `ResultRow`'s `mark`. Do not use it for progress; that is
+`Progress`.
+
 ### ImageUploadDialog
 
 Item `image-upload-dialog`. Every control that takes an image file opens
@@ -504,6 +522,8 @@ Item `image-upload-dialog`. Every control that takes an image file opens
 holds one dashed drop zone, which also opens the file picker when clicked,
 takes an image pasted anywhere in it, and has only `Cancel` in its footer. Its
 `description` names the accepted types and size and what happens next.
+`zone` and `zoneHint` replace the zone's image wording when the control takes
+other files too, as the library's search by image or video does.
 
 `onFile` takes the file and returns `null` to go on, closing the dialog and
 opening the next step (a preview or a framing dialog), or a reason that the
@@ -511,7 +531,14 @@ dialog shows in an `Alert` while it stays open. Check types and sizes there,
 so a dropped or pasted file is refused as a chosen one is.
 
 Do not take files dropped or pasted on the page itself, or add a hidden file
-input of your own beside a menu item.
+input of your own beside a menu item. The exceptions are the owner's library
+search field, which takes a file dropped on it or pasted into it while focused
+(`SearchBox` with `fileSearch`), and on `/image-search` the query panel, which
+takes a dropped file as its `Choose another file…` does. Both use
+`useFileIntake`: while a file is dragged into the window each target's frame
+turns dashed `primary` with `Drop here to search by this file`, and the one
+under the pointer is solid with a `primary-soft` fill. A drop anywhere else is
+refused, so the browser does not open the file in its place.
 
 ### TentativeMark
 

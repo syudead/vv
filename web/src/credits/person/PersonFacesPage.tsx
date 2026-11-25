@@ -212,6 +212,13 @@ function FacesShown({
     await moveFaceAppearances(target.id, appearanceIds, person.id, restore);
   }
 
+  async function undoMerge(activityId: number) {
+    if (!undone.current.has(activityId)) {
+      await undoActivity(activityId);
+      undone.current.add(activityId);
+    }
+  }
+
   const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;
   return (
     <RecordPage
@@ -293,7 +300,13 @@ function FacesShown({
             <PersonAppearances
               person={person}
               appearances={appearances}
-              actions={{ split: splitAppearances, undoSplit, undoMove, onGone: markGone }}
+              actions={{
+                split: splitAppearances,
+                undoSplit,
+                undoMove,
+                undoMerge,
+                onGone: markGone,
+              }}
             />
           </PageSection>
         </TabsContent>

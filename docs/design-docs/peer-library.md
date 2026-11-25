@@ -83,6 +83,7 @@ Its folder scope is the reader's switches for that link, sent in
 | `domain.CheckNewLink` holds the limit and the same-node refusal, and `PeerStore.AddLink` checks it again over the links its transaction reads | Two pairings at once cannot pass the limit or read one node twice |
 | A link refused after the other node answered asks that node to drop the grant it gave (`DELETE /api/peer/pairings/{nodeId}`) | The node id is known only from the answer, and a grant nobody holds would block that node's next pairing |
 | HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it, and the Settings page calls an unpinned certificate untrusted rather than changed | A public certificate rotates every 90 days; a self-signed one is pinned once |
+| The client keeps one keep-alive transport per pin and response-header timeout, with up to 16 idle connections to a node | A page proxies dozens of thumbnails at once; a new connection per request, and a TLS handshake for an HTTPS node, was paid on every one |
 | A forwarded answer keeps its type only for media, subtitles, images, JSON and plain text, and always carries `nosniff` and a sandbox CSP; any other type downloads | The answer is served from this node's origin, where a page from the peer would act with the owner's session |
 
 | Rejected | Why |
@@ -226,8 +227,9 @@ headers passed through, since the browser has no session on the peer.
 
 The video, library, folder-root and smart-folder lists, the watch history and
 the related videos merge the local part and one part per link, in slot order.
-The parts of one page are requested concurrently, so a page waits for its
-slowest link within the 10 s response timeout instead of the sum of the links.
+The local part and the links' parts of one page are read concurrently, so a
+page waits for its slowest side within the 10 s response timeout instead of the
+sum of the sides.
 One composite cursor (prefix `m2.`) holds a cursor, a done flag and a skipped
 flag for each side by slot; a cursor of the one-peer form (`m1.`) is refused as
 `invalid_cursor` like any cursor of another list, which restarts the list. A
@@ -302,9 +304,11 @@ on the screens; their lists merge every node's entries in memory with summed
 counts. The connected links are read at once and joined in slot order, so a
 remote-only entry carries the offset of the first link that holds it.
 
-A rename, merge or deletion of a tag, person or organization on the reader
-first checks that every link is `connected`, and otherwise answers `409` with
-reason `peer_unreachable` and the first such link's name in `Error.peer`. It
+A rename, merge or deletion of a tag, person or organization, or emptying a
+named person's names (the `unname` action,
+[credit-names.md](credit-names.md#paired-nodes-share-the-display-name-only)),
+on the reader first checks that every link is `connected`, and otherwise
+answers `409` with reason `peer_unreachable` and the first such link's name in `Error.peer`. It
 then checks the conflict here and, for a rename, in every link's list, so a
 new name a link holds is refused with that link's name before any node
 changes and the same rename succeeds once the name is free. It then writes

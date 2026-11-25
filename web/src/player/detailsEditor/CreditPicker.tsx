@@ -10,6 +10,7 @@ import {
   type Person,
 } from "../../api/credits";
 import { creditFace } from "../../credits/creditFace";
+import { matchedOtherName } from "../../credits/creditRows";
 import { errorText, t, type UiText } from "../../i18n";
 import { foldForMatch } from "../../lib/foldForMatch";
 import CreditCommand, { type CreditChoice } from "../../ui/CreditCommand";
@@ -30,15 +31,7 @@ export interface UnsavedName {
 }
 
 function matchesExactly(credit: Credit, folded: string): boolean {
-  return (
-    foldForMatch(credit.name) === folded ||
-    credit.aliases.some((alias) => foldForMatch(alias.name) === folded)
-  );
-}
-
-function aliasHint(credit: Credit, folded: string): string | undefined {
-  if (folded === "" || foldForMatch(credit.name).includes(folded)) return undefined;
-  return credit.aliases.find((alias) => foldForMatch(alias.name).includes(folded))?.name;
+  return credit.names.some((entry) => foldForMatch(entry.name) === folded);
 }
 
 /** Show eight candidates, but resolve exact matches without a limit before creating on Enter. Keep prior rows while loading and abort obsolete requests. */
@@ -130,12 +123,12 @@ export default function CreditPicker({
       ariaLabel: t.player.detailsEditor.newChip(entry.name),
     })),
     ...[...exact, ...rest].map((credit) => {
-      const alias = aliasHint(credit, folded);
+      const other = matchedOtherName(credit, folded);
       return {
         id: String(credit.id),
         label: credit.name,
         leading: creditFace(kind, credit, "option"),
-        hint: alias === undefined ? undefined : t.player.detailsEditor.alias(alias),
+        hint: other === undefined ? undefined : t.player.detailsEditor.otherName(other),
         meta: t.player.detailsEditor.videoCount(credit.videoCount),
       };
     }),

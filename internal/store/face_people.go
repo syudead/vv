@@ -67,23 +67,38 @@ func moveFaceVector(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) e
 }
 
 // dropRemovedPerformerFaces drops the video's appearances of every performer a work-information write removes, so
-// a face link the owner removed is never made again.
-func dropRemovedPerformerFaces(ctx context.Context, tx *sql.Tx, userKey string, before, after domain.WorkInfo) error {
+// a face link the owner removed is never made again, and returns the removed performers.
+func dropRemovedPerformerFaces(ctx context.Context, tx *sql.Tx, userKey string, before, after domain.WorkInfo) (
+	[]int64, error,
+) {
 	kept := map[int64]bool{}
 	for _, p := range after.People {
 		if p.Role == domain.PersonPerformer {
 			kept[p.Person.ID] = true
 		}
 	}
+	var removed []int64
 	for _, p := range before.People {
 		if p.Role != domain.PersonPerformer || kept[p.Person.ID] {
 			continue
 		}
+		removed = append(removed, p.Person.ID)
 		if _, err := tx.ExecContext(ctx, `update face_appearances set dropped = 1
 			where person_id = ?1 and dropped = 0 and (content_key = ?2 or content_key in (
 				select m.content_key from video_bundles b join video_bundle_members m on m.bundle_id = b.id
 				 where b.user_key = ?2))`, p.Person.ID, userKey); err != nil {
-			return fmt.Errorf("cannot drop the face appearances of person %d: %w", p.Person.ID, err)
+			return nil, fmt.Errorf("cannot drop the face appearances of person %d: %w", p.Person.ID, err)
+		}
+	}
+	return removed, nil
+}
+
+// deleteUnusedProvisionalPeople deletes each of the people that is still provisional and that nothing uses any more,
+// such as an unnamed performer the owner removed from the only video that showed them.
+func deleteUnusedProvisionalPeople(ctx context.Context, tx *sql.Tx, personIDs []int64) error {
+	for _, id := range personIDs {
+		if _, err := deleteIfUnusedProvisional(ctx, tx, id); err != nil {
+			return err
 		}
 	}
 	return nil

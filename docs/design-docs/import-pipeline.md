@@ -29,7 +29,9 @@ unfinished jobs. A manual scan starts a fresh issue list; an automatic scan
 retains problems outside the directories it rereads, and a force rescan of one
 media folder or one video retains those outside its scope. Resuming an
 interrupted scan also carries its video set and preparation issues, and a
-resumed force rescan keeps its scope. Import finishes when
+resumed force rescan keeps its scope. A scan a pause stopped keeps its own
+row, set, issues and counters, and the resume reopens it
+([background pause](background-pause.md#scans)). Import finishes when
 discovery is closed and the set has no remaining preparation jobs.
 
 ## Recovery and reporting

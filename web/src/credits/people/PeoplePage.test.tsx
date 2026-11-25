@@ -20,7 +20,7 @@ function person(id: number, overrides: Partial<Person> = {}): Person {
     id,
     name: `Person ${String(id)}`,
     provisional: false,
-    aliases: [],
+    names: [{ name: `Person ${String(id)}` }],
     externalIds: [],
     profile: {},
     favorite: false,
@@ -266,6 +266,6 @@ describe("PeoplePage", () => {
 
     expect(await screen.findByText("Person page")).toBeTruthy();
     const created = server.sent.find((request) => request.method === "POST");
-    expect(created?.body).toEqual({ name: "Mio" });
+    expect(created?.body).toEqual({ names: [{ name: "Mio" }] });
   });
 });

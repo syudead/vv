@@ -13,9 +13,11 @@ import { FormPageDialogExample, FormPageExample } from "./blocks/form-page-examp
 import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
+import { QueryResultsPageExample } from "./blocks/query-results-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { RecordPageExample } from "./blocks/record-page-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
+import { ShelfExample } from "./blocks/shelf-example";
 import { SidePanelExample } from "./blocks/side-panel-example";
 import { StepsPageExample } from "./blocks/steps-page-example";
 
@@ -54,7 +56,8 @@ function Pattern({
           <Code key={item}>{item}</Code>
         ))}
       </h3>
-      <div className="overflow-hidden rounded-lg border border-border bg-background">
+      {/* clip, not hidden, so a skeleton's sticky column sticks to the viewport as on its screen; min-w-0 keeps a wide example inside the grid */}
+      <div className="min-w-0 overflow-clip rounded-lg border border-border bg-background">
         {children}
       </div>
     </section>
@@ -215,6 +218,25 @@ export default function Patterns() {
         items={["profile-page", "profile-page-example", "shelf", "person-face"]}
       >
         <ProfilePageExample />
+      </Pattern>
+      <Pattern
+        id="query-results-page"
+        name={p.names.queryResultsPage}
+        items={[
+          "query-results-page",
+          "result-row",
+          "rate-ring",
+          "query-results-page-example",
+        ]}
+      >
+        <QueryResultsPageExample />
+      </Pattern>
+      <Pattern
+        id="shelf"
+        name={p.names.shelf}
+        items={["shelf", "card-grid", "separator", "shelf-example"]}
+      >
+        <ShelfExample />
       </Pattern>
       <Pattern
         id="face-grid"

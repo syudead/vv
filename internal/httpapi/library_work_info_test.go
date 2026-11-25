@@ -17,11 +17,11 @@ func creditFilterFixture(t *testing.T) (f *libraryFixture, person, organization 
 	f = newLibraryFixture(t)
 	ctx := context.Background()
 	db := f.env.db
-	hanako, err := db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "山田花子"})
+	hanako, err := db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Names: namesOf("山田花子")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	maker, err := db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Name: "メーカーA"})
+	maker, err := db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf("メーカーA")})
 	if err != nil {
 		t.Fatal(err)
 	}

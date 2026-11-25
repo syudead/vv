@@ -2,6 +2,7 @@ import {
   Activity,
   Building2,
   Folder,
+  FolderSearch,
   History,
   House,
   Layers,
@@ -16,6 +17,8 @@ import { t, type UiText } from "../i18n";
 export interface NavEntry {
   id: string;
   label: UiText;
+  /** A shorter label for the 56px rail square; the link keeps `label` as its accessible name. */
+  railLabel?: UiText;
   icon: LucideIcon;
   to: string;
   matchDescendants?: boolean;
@@ -34,6 +37,15 @@ export function navEntries(): readonly NavEntry[] {
       icon: Folder,
       to: "/folders",
       matchDescendants: true,
+    },
+    {
+      id: "smartFolders",
+      label: t.shell.nav.smartFolders,
+      railLabel: t.shell.nav.smartFoldersShort,
+      icon: FolderSearch,
+      to: "/smart-folders",
+      matchDescendants: true,
+      ownerOnly: true,
     },
     {
       id: "history",

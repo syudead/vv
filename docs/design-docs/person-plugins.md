@@ -15,7 +15,7 @@ flowchart LR
   manifest[vv.plugin manifest] --> kind{kind}
   kind -->|work| work[work-info request and response]
   kind -->|person| person[search by name, fetch by source and id or by url]
-  person --> limits[VVMDM limits: 50 candidates, 50 aliases, 20 IDs]
+  person --> limits[VVMDM limits: 50 candidates, 50 names, 20 IDs]
   limits --> image[up to 10 images fetched like the cover]
 ```
 
@@ -175,9 +175,12 @@ tracking parameters itself.
 
 `POST /api/people/{id}/plugin-fetches/{fetchId}/apply` takes what the owner
 selected: `items`, with `image` and one `profile.<field>` per profile field
-other than links, and the lists `aliases`, `externalIds` and `links`, each
-value one the result carries. An alias may be the fetched name, since a site
-often lists the person under a name the owner does not have yet. The rule is
+other than links, and the lists `names`, `externalIds` and `links`, each
+value one the result carries. The result's `names` holds the fetched name
+first and then the module's aliases, each spelling once and 50 in all, so the
+apply treats every fetched name alike: a site often lists the person under a
+name the owner does not have yet, whichever of the two the module put it in.
+An `aliases` list or item is `400 invalid_request`. The rule is
 [`Select`](../../internal/domain/person_plugin_apply.go), and a selection
 naming a list as an item, or a value the result lacks, is
 `400 invalid_request`. The apply rechecks the plugin's approval, digest and
@@ -189,7 +192,7 @@ fetch.
 | --- | --- |
 | A profile field | Writes the fetched value, replacing a stored one |
 | `image` | The image at the request's `imageIndex` becomes the face after the commit, replacing a stored one |
-| `aliases` | Appends the chosen aliases the person does not have; those over 50 are skipped as `too_many` |
+| `names` | Appends the chosen names the person does not have at the end of the list, in the fetched order; those over 50 are skipped as `too_many`. On a provisional person the first appended name becomes the display name |
 | `externalIds` | Appends the chosen IDs the person does not have; those over 20 are skipped as `too_many`, and an ID another person holds is skipped as `taken` with that person's name |
 | `links` | Appends the chosen links the person does not have; those over 100 are skipped as `too_many` |
 
@@ -208,7 +211,9 @@ a row the owner checked.
 | --- | --- |
 | Fill only, never replace | The owner could not correct a wrong or outdated value from the site without retyping it |
 | Replacing aliases, external IDs and links | A list replaced by a site's would drop names, IDs and links the owner added |
-| One checkbox per list | A site's list often holds one wrong alias or link, and the owner could only take or leave all of them |
+| One checkbox per list | A site's list often holds one wrong name or link, and the owner could only take or leave all of them |
+| `name` and `aliases` kept apart in the result and the apply | The apply accepted "the name or one of the aliases", a distinction the one ordered list of names removes ([credit-names.md](credit-names.md)) |
+| Renaming the module's `aliases` output | Every published module would break; VVMDM folds `name` and `aliases` when it keeps the result |
 | Merge the person holding a `taken` ID | A wrong ID on a site would merge two people the owner keeps apart |
 
 ## The settings page lists each kind in its own section
@@ -240,7 +245,7 @@ with the person's name, after the server answers
 `409 person_external_id_missing`, or when the owner presses `Search by name`,
 which the plugin step and a comparison fetched by a stored key offer; a chosen
 candidate's `source` and `id` are then sent with the fetch. Under the field,
-the person's name and aliases each search at a press, since a site may list the
+each of the person's names searches at a press, since a site may list the
 person under any of them. Every comparison has `Back` to the plugin step, and
 to the matches after a name search, so another plugin or candidate is one step
 away. The response of the apply replaces the page's person
@@ -265,9 +270,9 @@ is in the order the owner decides:
 | Part | Content | Starts |
 | --- | --- | --- |
 | `Face` | The person's face, or `No change` without one, then each fetched image, as one radio group | On the stored face; on the first image for a person without one |
-| `Fills empty fields` | The fetched value of each empty profile field, and aliases or external IDs the person does not have | Checked |
+| `Fills empty fields` | The fetched value of each empty profile field, and names or external IDs the person does not have | Checked |
 | `Differs from now` | A stored profile value, struck through when checked, an arrow and the fetched one | Unchecked |
-| `Adds to lists` | Aliases, the fetched name among them, external IDs and links the person does not have, each a toggle, and a count of those the person has | Pressed |
+| `Adds to lists` | Names, the fetched name among them, external IDs and links the person does not have, each a toggle, and a count of those the person has | Pressed |
 | `Same as now (N)` | Values equal to the stored ones, folded, without checkboxes | Folded |
 
 `Fills empty fields`, `Differs from now` and `Adds to lists` each have

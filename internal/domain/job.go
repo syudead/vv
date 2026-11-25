@@ -35,6 +35,11 @@ const (
 	// is out of date, and then finish.
 	JobQueueKeyframes JobKind = "queue_keyframes"
 	JobQueueMediaInfo JobKind = "queue_media_info"
+	// JobFrameIndex reads one video's keyframes into its content's search index, outside import tracking.
+	JobFrameIndex JobKind = "frame_index"
+	// JobQueueFrameIndex queues one JobFrameIndex job per content without a current-version search index, and then
+	// finishes.
+	JobQueueFrameIndex JobKind = "queue_frame_index"
 	// JobVirtualThumbnails publishes each virtual video's missing thumbnail file from its stored image.
 	JobVirtualThumbnails JobKind = "virtual_thumbnails"
 )
@@ -55,6 +60,10 @@ const (
 )
 
 var ErrNoJob = errors.New("no job to process")
+
+// ErrJobNotRunning reports that a claimed job is no longer running, so recording its outcome cannot succeed and
+// retrying cannot help; another operation already settled it.
+var ErrJobNotRunning = errors.New("the job is no longer running")
 
 type Job struct {
 	ID         int64
@@ -106,10 +115,10 @@ var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, J
 
 // StartupJobKinds are the jobs every start queues once, in the backfill class, with no subject. See
 // docs/design-docs/process-lifecycle.md.
-var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobVirtualThumbnails}
+var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobQueueFrameIndex, JobVirtualThumbnails}
 
-// BackfillJobKinds only refresh stored results: StartupJobKinds and the jobs they queue.
-var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo}, StartupJobKinds...)
+// BackfillJobKinds only refresh stored results: StartupJobKinds, the jobs they queue and the search index.
+var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo, JobFrameIndex}, StartupJobKinds...)
 
 // ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
 // processed.

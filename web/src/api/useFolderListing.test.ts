@@ -94,6 +94,27 @@ describe("useFolderListing の取り直し", () => {
     expect(result.current.data).toEqual(listing("new"));
     expect(result.current.loading).toBe(false);
   });
+
+  it("ignores a superseded folder's response that settles after the switch", async () => {
+    const pending: ((value: FolderListing) => void)[] = [];
+    getFolder.mockImplementation((folder: FolderRef) =>
+      folder.path === "a"
+        ? new Promise<FolderListing>((resolve) => {
+            pending.push(resolve);
+          })
+        : Promise.resolve(listing(folder.path)),
+    );
+    const { result, rerender } = renderHook(
+      ({ folder }: { folder: FolderRef }) => useFolderListing(folder),
+      { initialProps: { folder: { rootId: 1, path: "a" } } },
+    );
+    await waitFor(() => expect(pending).toHaveLength(1));
+    rerender({ folder: { rootId: 1, path: "b" } });
+    await waitFor(() => expect(result.current.data).toEqual(listing("b")));
+
+    await act(async () => pending[0]?.(listing("a")));
+    expect(result.current.data).toEqual(listing("b"));
+  });
 });
 
 describe("useFolderListing と mediaFolders", () => {

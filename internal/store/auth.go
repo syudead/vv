@@ -214,7 +214,7 @@ func (s *AuthStore) Session(ctx context.Context, sessionToken string, now time.T
 		expiresAt int64
 		current   bool
 	)
-	err := s.sql.QueryRowContext(ctx, `
+	err := s.cached.QueryRowContext(ctx, `
 		select s.expires_at, a.version is not null and a.version = s.account_version
 		  from sessions s
 		  left join account a on a.id = ?

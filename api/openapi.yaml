@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`). Its folder scope is `X-VV-Peer-Excluded-Folders`, this node's ids of the folders the reader switched off, comma-separated, and none when the header is absent; this node's own switches never apply to it, and a value that is not a list of positive ids returns `400 invalid_request`. Such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; its sorts and `favorite=true` use the peer's own favorites and play history. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While this node reads others, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied by name on every read VVMDM in slot order first and then here: a new name any node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while any read VVMDM is not connected the change returns `409 conflict` with `peer_unreachable` and changes nothing. `Error.peer` names the read VVMDM that is not connected, whose connection fails or that refuses; the read VVMDMs before it stay changed. A failure here after the read VVMDMs applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`). Its folder scope is `X-VV-Peer-Excluded-Folders`, this node's ids of the folders the reader switched off, comma-separated, and none when the header is absent; this node's own switches never apply to it, and a value that is not a list of positive ids returns `400 invalid_request`. Such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; its sorts and `favorite=true` use the peer's own favorites and play history. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While this node reads others, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied by name on every read VVMDM in slot order first and then here: a new name any node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while any read VVMDM is not connected the change returns `409 conflict` with `peer_unreachable` and changes nothing. `Error.peer` names the read VVMDM that is not connected, whose connection fails or that refuses; the read VVMDMs before it stay changed. A failure here after the read VVMDMs applied the change is returned as is, and repeating the request completes it. Synonyms, the names after the display name, tag kinds, the tentative state, rejected names, images and links stay with each node."
 servers:
   - url: /
     description: "Served by the application"
@@ -292,7 +292,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List library items (videos and groups)"
-      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Without filters, the owner's smart folders come first by name in every sort and count toward `limit` and `total`; guests get none. Sorting uses item values for the rest. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
+      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Items are videos and groups only; read smart folders with `listSmartFolders`. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
       parameters:
         - name: query
           in: query
@@ -363,6 +363,31 @@ paths:
                 $ref: "#/components/schemas/LibraryPage"
         "400":
           $ref: "#/components/responses/InvalidRequest"
+
+  /api/image-search:
+    post:
+      operationId: searchByImage
+      summary: "Search the library by an uploaded image or video"
+      description: "Owner-only. Accepts exactly one multipart part, `file`: a PNG, JPEG or still WebP image of at most 64 MiB and 120 million pixels, kept in memory, or any other file read as a video of at most 4 GiB and 3 hours, kept in the data directory's search uploads only until the response. Returns the listed videos, version bundle members collapsed to the representative, whose search index holds the same footage, ordered by match rate, then matched section length, then the newer video, at most 50, with the count of listed file videos not indexed yet. Videos in switched-off media folders are not searched. One search runs at a time; another request waits. No `file` part or a second part returns 400 invalid_request; a file that is neither a readable image nor a video stream of at least one second 400 image_search_unreadable; a flat image or a video with fewer than three non-flat frames sampled once a second 400 image_search_uninformative; a video over 3 hours 400 image_search_too_long with limit in milliseconds; an image over 64 MiB or 120 million pixels or a video over 4 GiB 413 image_search_too_large with the exceeded limit. A cancelled request writes no response and ends any ffmpeg run. Nothing it was given is kept, whatever the outcome."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/SearchByImageRequest"
+      responses:
+        "200":
+          description: "Matching videos"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSearchResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/ImageSearchTooLarge"
 
   /api/videos/{id}:
     get:
@@ -681,6 +706,14 @@ paths:
               schema:
                 type: string
           content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            video/webm:
+              schema:
+                type: string
+                format: binary
             application/octet-stream:
               schema:
                 type: string
@@ -909,6 +942,12 @@ paths:
                 format: binary
         "304":
           description: "`If-None-Match` matches `ETag`"
+        "400":
+          description: "Unknown `size`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "Video missing or thumbnail not generated"
 
@@ -1187,7 +1226,7 @@ paths:
     get:
       operationId: getVideoFrame
       summary: "Return a frame of the video"
-      description: "Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable."
+      description: "Owner-only. Extracts positionMs as PNG with the long edge capped at maxEdge px (2048 when left out), never enlarged, for framing a person's face from a video, which the page crops and sends as the person's face, and for an image search's matched frames. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable."
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - name: positionMs
@@ -1197,6 +1236,14 @@ paths:
             type: integer
             format: int64
             minimum: 0
+        - name: maxEdge
+          in: query
+          required: false
+          description: "The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request."
+          schema:
+            type: integer
+            minimum: 64
+            maximum: 2048
       responses:
         "200":
           description: "The frame"
@@ -1361,7 +1408,7 @@ paths:
     post:
       operationId: startScan
       summary: "Start import"
-      description: "Returns an existing active scan instead of starting another. Responds immediately while import runs in the background."
+      description: "Returns an existing active scan instead of starting another. Responds immediately while import runs in the background. While background work is paused, the new scan is answered in the state paused and runs after the resume."
       requestBody:
         required: true
         content:
@@ -1390,7 +1437,7 @@ paths:
     post:
       operationId: startRescan
       summary: "Start a force rescan"
-      description: "Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background."
+      description: "Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan, or a paused scan, returns 409 scan_in_progress, and while background work is paused the new rescan is answered in the state paused. No media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background."
       requestBody:
         required: true
         content:
@@ -1411,7 +1458,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: "A manual scan or force rescan is running (scan_in_progress), or no media folder is configured (media_folders_not_configured)"
+          description: "A manual scan or force rescan is running or paused (scan_in_progress), or no media folder is configured (media_folders_not_configured)"
           content:
             application/json:
               schema:
@@ -2861,8 +2908,8 @@ paths:
   /api/peer/vocabulary:
     post:
       operationId: applyPeerVocabulary
-      summary: "Rename, merge or delete a tag, person or organization by name"
-      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error."
+      summary: "Rename, merge or delete a tag, person or organization, or unname a person, by name"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error."
       requestBody:
         required: true
         content:
@@ -2907,7 +2954,7 @@ paths:
     post:
       operationId: matchPeerCredits
       summary: "Match fetched people or organizations against this node's"
-      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md."
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by any of the folded names, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md."
       requestBody:
         required: true
         content:
@@ -2955,7 +3002,7 @@ paths:
     post:
       operationId: applyPeerFetchedPerson
       summary: "Apply a person the peer fetched for a person of this node"
-      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md."
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the names, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -3880,7 +3927,7 @@ paths:
     get:
       operationId: listPeople
       summary: "List people"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts."
+      description: "Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -3954,7 +4001,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updatePerson
-      summary: "Update a person's name, aliases and external IDs"
+      summary: "Update a person's names and external IDs"
       description: "Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing person returns 404 person_not_found. parentId is forbidden (400 invalid_request)."
       parameters:
         - $ref: "#/components/parameters/PersonId"
@@ -3997,7 +4044,7 @@ paths:
     post:
       operationId: mergePeople
       summary: "Merge sourceIds into person id"
-      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 person_not_found. Errors change nothing."
+      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 person_not_found. Errors change nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -4093,7 +4140,7 @@ paths:
     get:
       operationId: listFaceCandidates
       summary: "List a person's face candidates"
-      description: "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found."
+      description: "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, and the people the live ranking of listSimilarPeople puts at or over the recognizer's Candidate threshold when one of the two is provisional and no pair row exists, highest similarity first, each as the other person; confirming or dismissing such a person stores the pair first. Missing person returns 404 person_not_found."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       responses:
@@ -4245,7 +4292,7 @@ paths:
     post:
       operationId: moveFaceAppearances
       summary: "Move face appearances to another person"
-      description: "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none."
+      description: "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. A provisional id left with no credit and no face that is not dropped, and holding no external ID, is merged into targetId as a face_merge entry decided by the owner, which undoActivityId names; Undo takes that merge back before the reverse move. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -4415,7 +4462,7 @@ paths:
     post:
       operationId: applyPersonPluginFetch
       summary: "Apply selected items of a person fetch"
-      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
+      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen names, external IDs and links the person lacks, in the fetched order and up to 50, 20 and 100; a provisional person's first appended name becomes its display name; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases in the body, names, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -4445,7 +4492,7 @@ paths:
     get:
       operationId: listOrganizations
       summary: "List organizations"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request."
+      description: "Owner-only. q substring-matches any of the names, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite keeps favorite organizations; provisional returns 400 invalid_request."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -4506,7 +4553,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateOrganization
-      summary: "Update an organization's name, aliases and external IDs"
+      summary: "Update an organization's names and external IDs"
       description: "Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle."
       parameters:
         - $ref: "#/components/parameters/OrganizationId"
@@ -4618,7 +4665,7 @@ paths:
     post:
       operationId: mergeOrganizations
       summary: "Merge sourceIds into organization id"
-      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing."
+      description: "Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; appends each source's names after the destination's, in sourceIds order and each spelling once; exceeding the merged limits of 50 names or 20 external IDs returns work_info_too_many with field names or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing."
       parameters:
         - $ref: "#/components/parameters/OrganizationId"
       requestBody:
@@ -4766,7 +4813,7 @@ paths:
     post:
       operationId: matchProvisionalPeople
       summary: "Tell which provisional performers of selected videos are which added people"
-      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md."
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out the person themself and a pair the owner dismissed; personIds may list the provisional performers themselves, so the editor can follow one face to another. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md."
       requestBody:
         required: true
         content:
@@ -4868,7 +4915,7 @@ paths:
     put:
       operationId: updateFavorites
       summary: "Set or clear favorites on videos and groups"
-      description: "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not."
+      description: "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic. A request that names a video, group or smart folder emits the `smartFolder` event for every folder, because a folder rule can read favorites; a request naming only people emits no event. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not."
       requestBody:
         required: true
         content:
@@ -5482,10 +5529,10 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List top-level registered media folders"
-      description: "Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations."
+      description: "Lists the registered media folders the audience's folder scope includes, in natural name order, each with the thumbnails of its most recently added videos. Empty registered folders are included. Version bundles show only their effective representative. Guests see public videos only and the list omits roots without public-video locations."
       responses:
         "200":
-          description: "Registered-folder summaries"
+          description: "Registered media folders"
           content:
             application/json:
               schema:
@@ -6379,6 +6426,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/background:
+    get:
+      operationId: getBackgroundWork
+      summary: "Return the background work pause switch, the running work and the work left"
+      description: "Answers whether background work (scans and scheduled jobs) is paused, the work running now and the work left per group. Counts leave out jobs of videos only under switched-off folders. Cache-Control is no-store; the background event of /api/events tells the screens to read it again."
+      responses:
+        "200":
+          description: "Background work status"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackgroundWork"
+
+  /api/background/pause:
+    put:
+      operationId: setBackgroundPause
+      summary: "Pause or resume background work"
+      description: "Saves the switch and applies it: true cancels the running jobs and holds new ones, false grants them again. The answer comes once the switch is saved and the running jobs are cancelled, without waiting for them to return. A request for the current state changes nothing and answers the same body. Concurrent requests are applied one at a time, and the last one decides the state. Requests that queue a job are still accepted while paused; their jobs wait for the resume."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetBackgroundPauseRequest"
+      responses:
+        "200":
+          description: "Background work status after the change"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackgroundWork"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/events:
     get:
       operationId: streamEvents
@@ -6386,7 +6469,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Stream import and video changes through Server-Sent Events"
-      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only."
+      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only."
       responses:
         "200":
           description: "Event stream"
@@ -6732,7 +6815,7 @@ components:
     CreditQuery:
       name: q
       in: query
-      description: "Normalized, trimmed query; nonempty queries substring-match names or aliases"
+      description: "Normalized, trimmed query; nonempty queries substring-match any of the names"
       schema:
         type: string
         maxLength: 100
@@ -6821,6 +6904,12 @@ components:
             $ref: "#/components/schemas/Error"
     PluginTooLarge:
       description: "Plugin module exceeds limit"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ImageSearchTooLarge:
+      description: "Uploaded image search file exceeds a limit (reason image_search_too_large, limit)"
       content:
         application/json:
           schema:
@@ -7177,6 +7266,88 @@ components:
       properties:
         enabled:
           type: boolean
+
+    BackgroundWork:
+      type: object
+      required: [paused, running, groups]
+      additionalProperties: false
+      description: "State of background work: scans and scheduled jobs"
+      properties:
+        paused:
+          type: boolean
+          description: "The saved pause switch; false when it was never saved"
+        running:
+          type: array
+          description: "Work running now, oldest first. An entry remains after a pause until its job returns."
+          items:
+            $ref: "#/components/schemas/BackgroundActivity"
+        groups:
+          type: array
+          description: "One entry per group, always in the order scan, import, auto_tag, face, version_judge, backfill"
+          items:
+            $ref: "#/components/schemas/BackgroundGroup"
+
+    BackgroundGroupName:
+      type: string
+      enum: [scan, import, auto_tag, face, version_judge, backfill]
+      description: "What background work is shown as: a scan, or the jobs of one feature"
+
+    BackgroundActivity:
+      type: object
+      required: [group, kind]
+      additionalProperties: false
+      description: "One piece of background work running now"
+      properties:
+        group:
+          $ref: "#/components/schemas/BackgroundGroupName"
+        kind:
+          type: string
+          description: "registering for a scan, otherwise the job kind"
+        video:
+          $ref: "#/components/schemas/BackgroundVideo"
+        fileName:
+          type: string
+          description: "The file being registered or read, when the work has a location"
+
+    BackgroundVideo:
+      type: object
+      required: [id, title]
+      additionalProperties: false
+      description: "The video running work is for; absent when the work names none or the owner's audience leaves it out"
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+
+    BackgroundGroup:
+      type: object
+      required: [group, remaining]
+      additionalProperties: false
+      description: "Background work left in one group"
+      properties:
+        group:
+          $ref: "#/components/schemas/BackgroundGroupName"
+        remaining:
+          type: integer
+          minimum: 0
+          description: "Files for scan, videos for import, jobs otherwise; 0 when nothing is left"
+        waiting:
+          type: boolean
+          description: "scan only: a paused scan or held watch directories wait for the resume"
+        featureOff:
+          type: boolean
+          description: "The group's feature is off and holds its jobs back, whether or not background work is paused"
+
+    SetBackgroundPauseRequest:
+      type: object
+      required: [paused]
+      additionalProperties: false
+      properties:
+        paused:
+          type: boolean
+          description: "The state to reach"
 
     VersionJudgingSettings:
       type: object
@@ -8124,6 +8295,161 @@ components:
           maxLength: 64
           description: "Video contentVersion held by the UI when the preview opened."
 
+    SearchByImageRequest:
+      type: object
+      additionalProperties: false
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: "The image or video to search by."
+
+    ImageSearchResult:
+      type: object
+      additionalProperties: false
+      required: [query, bands, items, unindexedCount]
+      properties:
+        query:
+          $ref: "#/components/schemas/ImageSearchQuery"
+        bands:
+          type: array
+          description: "Every match-rate band of the query's kind, strongest first, whether or not a match is in it: strong 90 to 100 for both kinds, similar 81 to 89 for an image and 50 to 89 for a video."
+          items:
+            $ref: "#/components/schemas/ImageSearchBand"
+        items:
+          type: array
+          maxItems: 50
+          description: "Matching listed videos, best first; empty when nothing matches. The matches of one band are next to each other, and the bands appear in the order of bands."
+          items:
+            $ref: "#/components/schemas/ImageSearchItem"
+        unindexedCount:
+          type: integer
+          minimum: 0
+          description: "File videos visible to the owner, version bundle members included, that have no current search index and so were not searched."
+
+    ImageSearchQuery:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [image, video]
+          description: "How the file was read."
+        durationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "The query video's duration; video queries only."
+
+    ImageSearchItem:
+      type: object
+      additionalProperties: false
+      required: [video, match]
+      properties:
+        video:
+          $ref: "#/components/schemas/Video"
+        match:
+          $ref: "#/components/schemas/ImageSearchMatch"
+
+    ImageSearchBandId:
+      type: string
+      enum: [strong, similar]
+      description: "A match-rate band; a match is in the band that holds its rate rounded to the nearest whole percent, halves up."
+
+    ImageSearchBand:
+      type: object
+      additionalProperties: false
+      required: [id, minPercent, maxPercent]
+      properties:
+        id:
+          $ref: "#/components/schemas/ImageSearchBandId"
+        minPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "The lowest whole-percent rate the band holds."
+        maxPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "The highest whole-percent rate the band holds."
+
+    ImageSearchMatchFrame:
+      type: object
+      additionalProperties: false
+      required: [positionMs, rate]
+      properties:
+        positionMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "The frame's time on videoId's timeline."
+        rate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: "(63 - hash distance) / 63 of this frame."
+
+    ImageSearchMatch:
+      type: object
+      additionalProperties: false
+      required: [videoId, rate, kind, positionMs, band, frames, frameCount]
+      properties:
+        videoId:
+          type: integer
+          format: int64
+          description: "The video the match was found in: video.id or one of its versions; playback opens this id."
+        rate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: "For an image, (63 - hash distance) / 63; for a video, the share of matching index entries in the overlap."
+        kind:
+          type: string
+          enum: [frame, whole, partial]
+          description: "frame for an image query; whole when the matched section covers at least 90% of both videos, otherwise partial."
+        positionMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Where playback starts: the matched frame, or the first matching entry of the matched section."
+        startMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Start of the matched section on videoId's timeline; video queries only."
+        endMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "End of the matched section on videoId's timeline; video queries only."
+        queryStartMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Start of the matched section on the query's timeline; video queries only."
+        queryEndMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "End of the matched section on the query's timeline; video queries only."
+        band:
+          $ref: "#/components/schemas/ImageSearchBandId"
+        frames:
+          type: array
+          maxItems: 12
+          description: "Image query: the matched frames of videoId, one per run of consecutive index entries within 12 bits of the query, ordered by rate, then the earlier time; frames[0] has the match's rate and positionMs. Video query: empty."
+          items:
+            $ref: "#/components/schemas/ImageSearchMatchFrame"
+        frameCount:
+          type: integer
+          minimum: 0
+          description: "The matched frames found before the limit of 12."
+
     UploadPersonImageRequest:
       type: object
       additionalProperties: false
@@ -8439,17 +8765,18 @@ components:
 
     PersonPluginFetchedPerson:
       type: object
-      required: [name, aliases, externalIds]
+      required: [name, names, externalIds]
       additionalProperties: false
       description: "A person as the plugin returned it, after VV's limits."
       properties:
         name:
           type: string
-        aliases:
+          description: "The fetched display name."
+        names:
           type: array
-          description: "First 50 distinct names; languages are checked by the apply."
+          description: "The fetched name first, then the plugin's aliases, each spelling once, 50 in all; languages are checked by the apply."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs."
@@ -8501,7 +8828,7 @@ components:
         - profile.careerEndYear
         - profile.bio
         - profile.links
-        - aliases
+        - names
         - externalIds
 
     ApplyPersonPluginFetchRequest:
@@ -8511,16 +8838,16 @@ components:
       properties:
         items:
           type: array
-          description: "Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below."
+          description: "Profile fields other than links, and image, each with a value in the result; names, external IDs and links are chosen one by one below."
           items:
             $ref: "#/components/schemas/PersonPluginItem"
         imageIndex:
           type: integer
           minimum: 0
           description: "The kept image that image applies; required with image."
-        aliases:
+        names:
           type: array
-          description: "Names to append as aliases, each the fetched name or one of the fetched aliases."
+          description: "Spellings to append, each the name of one of the result's names."
           items:
             type: string
         externalIds:
@@ -8548,7 +8875,7 @@ components:
           $ref: "#/components/schemas/PersonPluginItem"
         value:
           type: string
-          description: "Value shown in the comparison: the profile value, the alias, or source: value."
+          description: "Value shown in the comparison: the profile value, the name, or source: value."
         reason:
           $ref: "#/components/schemas/SkippedPersonReason"
         holderName:
@@ -8564,7 +8891,7 @@ components:
           $ref: "#/components/schemas/Person"
         skipped:
           type: array
-          description: "Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order."
+          description: "Skipped values: profile items in property order, then names, then external IDs, each in fetched order."
           items:
             $ref: "#/components/schemas/SkippedPersonValue"
 
@@ -9588,17 +9915,18 @@ components:
           type: boolean
           description: "True for a person without a canonical name, whose name is then \"\"; always false for an organization."
 
-    Alias:
+    CreditName:
       type: object
       required: [name]
       additionalProperties: false
-      description: "One person or organization alias."
+      description: "One name of a person or organization."
       properties:
         name:
           type: string
+          description: "1-200 code points after trimming; unique within the list."
         language:
           type: string
-          description: "BCP 47 language tag; omitted when absent."
+          description: "BCP 47 language tag, on any entry; omitted when absent."
 
     ExternalId:
       type: object
@@ -9806,7 +10134,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, provisional, aliases, externalIds, profile, favorite, videoCount, createdAt]
+      required: [id, name, provisional, names, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -9815,14 +10143,15 @@ components:
           format: int64
         name:
           type: string
+          description: "The display name, the first of names; \"\" for a provisional person."
         provisional:
           type: boolean
-          description: "True while the person has no canonical name; name is then \"\". Setting a name makes the person ordinary."
-        aliases:
+          description: "True while the person has no names; name is then \"\" and names []. Setting a name makes the person ordinary."
+        names:
           type: array
-          description: "Natural-name order."
+          description: "Every name in the owner's order, the display name first; at most 50."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "Ordered by (source, value)."
@@ -9946,7 +10275,7 @@ components:
 
     Organization:
       type: object
-      required: [id, name, aliases, externalIds, profile, favorite, videoCount, createdAt]
+      required: [id, name, names, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization."
       properties:
@@ -9955,11 +10284,12 @@ components:
           format: int64
         name:
           type: string
-        aliases:
+          description: "The display name, the first of names."
+        names:
           type: array
-          description: "Natural-name order."
+          description: "Every name in the owner's order, the display name first; at least 1 and at most 50."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           description: "Ordered by (source, value)."
@@ -10032,16 +10362,15 @@ components:
 
     CreditInput:
       type: object
-      required: [name]
+      required: [names]
       additionalProperties: false
       description: "Person or organization creation body; parentId and organizationProfile are organization-only and profile person-only."
       properties:
-        name:
-          type: string
-        aliases:
+        names:
           type: array
+          description: "The names in order, the display name first; at most 50. [] creates a provisional person and returns 400 work_info_empty with field names for an organization."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           items:
@@ -10060,14 +10389,16 @@ components:
     CreditPatch:
       type: object
       additionalProperties: false
-      description: "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent."
+      description: "Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. name and names together return 400 invalid_request."
       properties:
         name:
           type: string
-        aliases:
+          description: "Respells the display name, keeping its language and the other names; on a provisional person it becomes the only name. A spelling another entry holds returns 400 work_info_duplicate with field name. The list is not counted, so a stored list over 50 names survives."
+        names:
           type: [array, "null"]
+          description: "Replaces the whole list, the display name first; null is []. Over 50 entries return 400 work_info_too_many with field names. A person's empty list makes it provisional; an organization's returns 400 work_info_empty with field names."
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: [array, "null"]
           items:
@@ -10343,6 +10674,10 @@ components:
           description: "Works whose performer credit of the moved-from person was removed because the target already held one."
           items:
             $ref: "#/components/schemas/FaceMoveCredit"
+        undoActivityId:
+          type: integer
+          format: int64
+          description: "Present when the move left the moved-from person provisional, with no credit and no face, so it was merged into the target: the face_merge entry whose undo brings that person back, before the reverse move."
 
     FaceMoveCredit:
       type: object
@@ -11341,7 +11676,7 @@ components:
       type: object
       required: [kind]
       additionalProperties: false
-      description: "One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode, for the owner only; fetch card values with listSmartFolderCards."
+      description: "One library item containing exactly one of video, group or smartFolder according to kind. GET /api/library no longer returns a smartFolder item; the kind remains only for compatibility with paired nodes on older releases, whose folder-led first page the merged list leaves out."
       properties:
         kind:
           type: string
@@ -12192,6 +12527,27 @@ components:
           items:
             $ref: "#/components/schemas/FolderSummary"
 
+    RootFolder:
+      type: object
+      required: [rootId, name, previews]
+      additionalProperties: false
+      properties:
+        rootId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: "Display name: the final absolute-path segment of the registered folder."
+        rootPath:
+          type: string
+          description: "Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name."
+        previews:
+          type: array
+          maxItems: 4
+          description: "Thumbnails of up to four videos anywhere below the folder, most recently added first."
+          items:
+            $ref: "#/components/schemas/FolderPreview"
+
     RootFolderListing:
       type: object
       required: [folders]
@@ -12201,7 +12557,7 @@ components:
           type: array
           description: "Registered media folders in natural-name order."
           items:
-            $ref: "#/components/schemas/FolderSummary"
+            $ref: "#/components/schemas/RootFolder"
 
     Video:
       type: object
@@ -13457,8 +13813,8 @@ components:
           $ref: "#/components/schemas/ScanActivity"
         state:
           type: string
-          description: "Traversal state, used to refresh listings and determine whether another import can start."
-          enum: [running, done, failed]
+          description: "Traversal state, used to refresh listings and determine whether another import can start. paused: background work is paused, and the scan was stopped by the pause or requested during it; no file is read until the owner resumes, and it blocks another start as running does."
+          enum: [running, paused, done, failed]
         error:
           type: string
           description: "Free-text scan failure reason; the UI builds its explanation from errorCode and errorPath instead of displaying this text."
@@ -14675,16 +15031,16 @@ components:
           $ref: "#/components/schemas/OrganizationProfile"
     PeerFetchedPluginPerson:
       type: object
-      required: [name, aliases, externalIds, items]
+      required: [name, names, externalIds, items]
       additionalProperties: false
-      description: "The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links."
+      description: "The person the peer's owner chose from a fetch, narrowed to the chosen names, external IDs and links."
       properties:
         name:
           type: string
-        aliases:
+        names:
           type: array
           items:
-            $ref: "#/components/schemas/Alias"
+            $ref: "#/components/schemas/CreditName"
         externalIds:
           type: array
           items:
@@ -14693,7 +15049,7 @@ components:
           $ref: "#/components/schemas/PersonProfile"
         items:
           type: array
-          description: "The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent."
+          description: "The items to write, each with a value above; names, externalIds and profile.links write all the values sent."
           items:
             $ref: "#/components/schemas/PersonPluginItem"
 
@@ -14722,10 +15078,11 @@ components:
           enum: [tag, person, organization]
         action:
           type: string
-          enum: [rename, merge, delete]
+          enum: [rename, merge, delete, unname]
+          description: "`unname` empties a person's names, making it provisional; it takes kind `person` only"
         name:
           type: string
-          description: "The current canonical name; required for rename and delete"
+          description: "The current canonical name; required for rename, delete and unname"
         newName:
           type: string
           description: "Required for rename"
@@ -14944,7 +15301,7 @@ components:
           description: "Reason limit, included only for reasons whose contract specifies a limit."
         field:
           type: string
-          description: "JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken."
+          description: "JSON property path using dots and array indices, such as names[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken."
         tagName:
           type: string
           description: "Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required."
@@ -15104,3 +15461,7 @@ components:
         - organization_name_taken
         - certificate_untrusted
         - fingerprint_changed
+        - image_search_unreadable
+        - image_search_uninformative
+        - image_search_too_long
+        - image_search_too_large

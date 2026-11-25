@@ -29,6 +29,7 @@ type faceAppearanceCredits struct {
 	crop    []byte
 	person  domain.Credit
 	taken   []domain.FaceMoveCredit
+	undoID  int64
 	err     error
 	calls   []appearanceCall
 }
@@ -52,7 +53,7 @@ func (c *faceAppearanceCredits) MoveFaceAppearances(
 	_ context.Context, personID int64, appearanceIDs []int64, targetID int64, restore []domain.FaceMoveCredit,
 ) (domain.FaceMove, error) {
 	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs, target: targetID, restore: restore})
-	return domain.FaceMove{Person: c.person, Restore: c.taken}, c.err
+	return domain.FaceMove{Person: c.person, Restore: c.taken, UndoActivityID: c.undoID}, c.err
 }
 
 func (c *faceAppearanceCredits) SimilarPeople(_ context.Context, personID int64, appearanceIDs []int64, limit int) ([]domain.SimilarPerson, error) {
@@ -210,13 +211,15 @@ func TestMoveFaceAppearancesPassesTheTarget(t *testing.T) {
 	target := "/api/people/5/appearances/move"
 
 	credits.taken = []domain.FaceMoveCredit{{UserKey: "work-a", Position: 1}}
+	credits.undoID = 31
 	rec := f.owned(http.MethodPost, target, `{"appearanceIds":[7,3],"targetId":9,"restoreCredits":[{"workKey":"work-b","position":2}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != 9 ||
-		!reflect.DeepEqual(got.RestoreCredits, []gen.FaceMoveCredit{{WorkKey: "work-a", Position: 1}}) {
-		t.Errorf("body = %+v, want the target 9 with the credit to restore", got)
+		!reflect.DeepEqual(got.RestoreCredits, []gen.FaceMoveCredit{{WorkKey: "work-a", Position: 1}}) ||
+		got.UndoActivityId == nil || *got.UndoActivityId != 31 {
+		t.Errorf("body = %+v, want the target 9 with the credit to restore and merge 31 to undo", got)
 	}
 	want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}, target: 9,
 		restore: []domain.FaceMoveCredit{{UserKey: "work-b", Position: 2}}}}

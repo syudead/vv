@@ -9,7 +9,7 @@ const bioPerson: Person = {
   id: 7,
   name: "Aoi",
   provisional: false,
-  aliases: [],
+  names: [{ name: "Aoi" }],
   externalIds: [],
   profile: { bio: "A long biography." },
   favorite: false,

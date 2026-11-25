@@ -15,6 +15,7 @@ import {
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, formatTime, t } from "../i18n";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { inProgress } from "../shell/ScanProvider";
 import { audioCodecName } from "../player/MediaInfoGroups";
 import { VideoThumbnail, videoLinkLabel } from "../player/RelatedVideos";
@@ -434,11 +435,16 @@ function PairRow({
   );
 }
 
-function judgementState(judgement: VersionCandidateJudgement, judging: boolean): string {
+function judgementState(
+  judgement: VersionCandidateJudgement,
+  judging: boolean,
+  paused: boolean,
+): string {
   const state = t.versions.judgement.state;
   switch (judgement.state) {
     case "waiting":
-      return judging ? state.waiting : t.versions.judgement.judgingOff;
+      if (!judging) return t.versions.judgement.judgingOff;
+      return paused ? t.shell.background.waitingForResume : state.waiting;
     case "failed": {
       const failed = state.failed(judgement.error ?? "");
       return judgement.retryAt === undefined
@@ -475,7 +481,7 @@ function JudgementPanel({
 }) {
   const [open, setOpen] = useState(false);
   const j = t.versions.judgement;
-  const headline = judgementState(judgement, judging);
+  const headline = judgementState(judgement, judging, useBackgroundPaused());
   const evidence = rejudgeable.has(judgement.state) ? judgement.evidence : undefined;
   return (
     <section

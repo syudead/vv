@@ -82,3 +82,14 @@ func (a Audience) ListsFolder(folder MediaFolder) bool {
 	}
 	return !slices.Contains(ids, folder.ID)
 }
+
+// ListsAsSwitches reports whether the scope lists exactly the folders this node's switches list, so values stored
+// under the switches also hold for it; ids of folders this node does not have change nothing.
+func (a Audience) ListsAsSwitches(folders []MediaFolder) bool {
+	for _, folder := range folders {
+		if a.ListsFolder(folder) != folder.Enabled {
+			return false
+		}
+	}
+	return true
+}

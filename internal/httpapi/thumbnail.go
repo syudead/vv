@@ -13,6 +13,10 @@ import (
 func (s *server) GetVideoThumbnail(
 	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoThumbnailParams,
 ) {
+	if params.Size != nil && !params.Size.Valid() {
+		s.invalidRequest(w, "size must be large.")
+		return
+	}
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return

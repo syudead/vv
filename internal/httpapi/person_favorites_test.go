@@ -26,8 +26,8 @@ func (f *creditFixture) personList(t *testing.T, target string) gen.PersonList {
 
 func TestPersonFavoritesSetFilterAndClear(t *testing.T) {
 	f := newCreditFixture(t)
-	liked := f.createPerson(t, map[string]any{"name": "好き"})
-	f.createPerson(t, map[string]any{"name": "ほか"})
+	liked := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "好き"}}})
+	f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "ほか"}}})
 	if liked.Favorite {
 		t.Fatal("作ったばかりの人物の favorite = true")
 	}
@@ -53,7 +53,7 @@ func TestPersonFavoritesSetFilterAndClear(t *testing.T) {
 
 func TestPersonFavoritesRefusals(t *testing.T) {
 	f := newCreditFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "人"})
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "人"}}})
 	assertUnauthenticated(t, "ゲストの favorite=true", f.env.get("/api/people?favorite=true"))
 	assertUnauthenticated(t, "ゲストの personIds",
 		f.request(http.MethodPut, "/api/favorites", jsonBody(map[string]any{"personIds": []int64{person.Id}, "favorite": true})))

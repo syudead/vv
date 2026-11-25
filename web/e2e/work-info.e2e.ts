@@ -71,9 +71,12 @@ async function runScan(request: APIRequestContext) {
 async function createCredit(
   request: APIRequestContext,
   kind: "people" | "organizations",
-  data: { name: string },
+  name: string,
 ): Promise<Credit> {
-  const response = await request.post(`/api/${kind}`, { headers: mutationHeaders, data });
+  const response = await request.post(`/api/${kind}`, {
+    headers: mutationHeaders,
+    data: { names: [{ name }] },
+  });
   expect(response.status()).toBe(201);
   return (await response.json()) as Credit;
 }
@@ -184,7 +187,7 @@ test.describe.serial("work information", () => {
       videos.set(cleared.title, cleared);
     }
 
-    people.set(haruka, await createCredit(request, "people", { name: haruka }));
+    people.set(haruka, await createCredit(request, "people", haruka));
   });
 
   test.afterAll(async ({ request }) => {
@@ -202,7 +205,7 @@ test.describe.serial("work information", () => {
   }) => {
     const b = video("作品動画B");
     const longName = `作品e2e長い名前${run}${"あ".repeat(120)}`;
-    const long = await createCredit(request, "people", { name: longName });
+    const long = await createCredit(request, "people", longName);
     const paragraph = "長い説明の一文です。".repeat(30);
     const description = [
       paragraph,

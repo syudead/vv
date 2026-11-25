@@ -29,7 +29,7 @@ export type Step = "find" | "compare" | "result";
 const EMPTY_SELECTION: PersonSelection = {
   items: [],
   image: null,
-  aliases: [],
+  names: [],
   externalIds: [],
   links: [],
 };

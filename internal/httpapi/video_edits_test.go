@@ -184,6 +184,26 @@ func TestApplyVideoEditsPassesMergesAndReportsTheirResult(t *testing.T) {
 	}
 }
 
+// Schema-valid merges can exceed the default JSON limit, so leading whitespace past it must still decode.
+func TestApplyVideoEditsAcceptsABodyBeyondTheDefaultLimit(t *testing.T) {
+	called := false
+	srv := &server{
+		videoEdits: videoEditsFunc(func(context.Context, []int64, domain.VideoEdit) (domain.VideoEditResult, error) {
+			called = true
+			return domain.VideoEditResult{}, nil
+		}),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	body := strings.Repeat(" ", jsonBodyLimit) + `{"videoIds":[7],"merges":[{"into":9,"sourceIds":[3]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/video-edits", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ApplyVideoEdits(rec, req)
+	if rec.Code != http.StatusOK || !called {
+		t.Fatalf("status = %d, applied = %v: %s", rec.Code, called, rec.Body)
+	}
+}
+
 func TestApplyVideoEditsRefusesAMergeOfThePeersPerson(t *testing.T) {
 	srv := &server{
 		videoEdits: videoEditsFunc(func(context.Context, []int64, domain.VideoEdit) (domain.VideoEditResult, error) {

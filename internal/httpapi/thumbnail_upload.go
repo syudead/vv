@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -113,8 +114,9 @@ func (s *server) readThumbnailUpload(w http.ResponseWriter, r *http.Request) ([]
 		s.invalidRequest(w, "image is required.")
 		return nil, "", false
 	}
-	if contentVersion == nil {
-		s.invalidRequest(w, "contentVersion is required.")
+	// An empty version can match no video, so it is malformed input rather than a stale one.
+	if len(contentVersion) == 0 {
+		s.invalidRequest(w, "contentVersion is required and cannot be empty.")
 		return nil, "", false
 	}
 	return image, string(contentVersion), true
@@ -152,12 +154,20 @@ func readUploadPart(part io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// thumbnailTooLargeMessage names the limit that was exceeded: the pixel count, or a byte limit that differs between
+// uploads and edit references.
+func thumbnailTooLargeMessage(limit int) string {
+	if limit == domain.ThumbnailUploadMaxPixels {
+		return fmt.Sprintf("The image must be at most %d megapixels.", limit/1_000_000)
+	}
+	return fmt.Sprintf("The image must be at most %d MiB.", limit>>20)
+}
+
 func (s *server) thumbnailUploadError(w http.ResponseWriter, err error) {
 	var tooLarge *domain.ThumbnailUploadTooLargeError
 	switch {
 	case errors.As(err, &tooLarge):
-		s.invalidRequestLimit(w, reasonThumbnailUploadTooLarge, tooLarge.Limit,
-			"The image must be at most 64 MiB and 120 megapixels.")
+		s.invalidRequestLimit(w, reasonThumbnailUploadTooLarge, tooLarge.Limit, thumbnailTooLargeMessage(tooLarge.Limit))
 	case errors.Is(err, domain.ErrThumbnailUploadInvalid):
 		s.invalidRequestReason(w, reasonThumbnailUploadInvalid, "The image must be a readable PNG, JPEG or still WebP.")
 	case errors.Is(err, domain.ErrContentChanged):

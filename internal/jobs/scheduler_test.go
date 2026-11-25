@@ -37,7 +37,11 @@ type fakeQueue struct {
 	claimRecords []domain.JobClaim
 	completed    []domain.Job
 	failures     []jobFailure
-	observe      func(string)
+	// completeFailures makes CompleteClaimedJob fail this many times before it records the completion.
+	completeFailures int
+	// completeErr makes every CompleteClaimedJob fail with this error.
+	completeErr error
+	observe     func(string)
 	// runAfter holds a kind's jobs back until that time, as a retry delay does.
 	runAfter time.Time
 	// claimDelay passes after each claim answers, so time moves on between a turn's claims and its lookup.
@@ -134,6 +138,16 @@ func (q *fakeQueue) claimCount() int {
 
 func (q *fakeQueue) CompleteClaimedJob(_ context.Context, job domain.Job) error {
 	q.mu.Lock()
+	if q.completeErr != nil {
+		err := q.completeErr
+		q.mu.Unlock()
+		return err
+	}
+	if q.completeFailures > 0 {
+		q.completeFailures--
+		q.mu.Unlock()
+		return errors.New("transient completion failure")
+	}
 	q.completed = append(q.completed, job)
 	q.mu.Unlock()
 	if q.observe != nil {
@@ -304,20 +318,29 @@ func twoDisks() *fakeDisks {
 // Call only inside a synctest bubble. A scheduler that cannot stop makes the bubble fail instead of consuming a
 // wall-clock timeout. Without folders, the test folders sit on one rotational disk.
 func startScheduler(opts Options) (*Scheduler, func()) {
+	scheduler := newTestScheduler(opts)
+	return scheduler, runScheduler(scheduler)
+}
+
+func newTestScheduler(opts Options) *Scheduler {
 	if opts.Folders == nil {
 		opts.Folders = twoFolders
 	}
 	if opts.Disks == nil {
 		opts.Disks = oneDisk(domain.DiskRotational).resolve
 	}
+	return NewScheduler(opts)
+}
+
+// runScheduler runs the scheduler until the returned stop is called; call it only inside a synctest bubble.
+func runScheduler(scheduler *Scheduler) (stop func()) {
 	ctx, cancel := context.WithCancel(context.Background())
-	scheduler := NewScheduler(opts)
 	finished := make(chan struct{})
 	go func() {
 		scheduler.Run(ctx)
 		close(finished)
 	}()
-	return scheduler, func() { cancel(); <-finished }
+	return func() { cancel(); <-finished }
 }
 
 func TestSchedulerGrantsCPUOnlyJobWhileReadSlotsAreFull(t *testing.T) {
@@ -645,6 +668,54 @@ func TestSchedulerRetriesClaimFailure(t *testing.T) {
 	})
 }
 
+// A transient storage failure while recording completion must not leave the job running; the scheduler retries.
+func TestSchedulerRetriesCompletionRecording(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		job := domain.Job{ID: 9, Kind: domain.JobProbe}
+		queue := newFakeQueue(job)
+		queue.completeFailures = 2
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1,
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+		})
+		defer stop()
+		synctest.Wait()
+		if got := queue.completedIDs(); len(got) != 0 {
+			t.Fatalf("completed before the retries = %v", got)
+		}
+		// The first retry waits one second and the second two.
+		time.Sleep(3 * time.Second)
+		synctest.Wait()
+		if got, want := queue.completedIDs(), []int64{job.ID}; !slices.Equal(got, want) {
+			t.Fatalf("after the retries: completed=%v, want %v", got, want)
+		}
+	})
+}
+
+// A job another operation already settled is not retried, so the scheduler does not spin on it.
+func TestSchedulerStopsRetryingASettledJob(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		job := domain.Job{ID: 10, Kind: domain.JobProbe}
+		queue := newFakeQueue(job)
+		queue.completeErr = domain.ErrJobNotRunning
+		var finished atomic.Int32
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1,
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+			Finished: func(domain.Job) { finished.Add(1) },
+		})
+		defer stop()
+		synctest.Wait()
+		// Finished runs only after recordOutcome returns, so a retry loop blocked on its timer would leave it at zero.
+		if got := finished.Load(); got != 1 {
+			t.Fatalf("finished calls before stop = %d, want 1", got)
+		}
+		if got := queue.completedIDs(); len(got) != 0 {
+			t.Fatalf("completed = %v, want none", got)
+		}
+	})
+}
+
 func TestSchedulerStopsWithoutWaitingForRetry(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue()
@@ -727,7 +798,7 @@ func TestSchedulerProcessResult(t *testing.T) {
 					return tc.handlerErr
 				}}
 			}
-			NewScheduler(opts).process(ctx, job)
+			NewScheduler(opts).process(ctx, ctx, job)
 			if !slices.Equal(calls, tc.calls) {
 				t.Fatalf("calls = %v, want %v", calls, tc.calls)
 			}
@@ -1226,6 +1297,46 @@ func TestSchedulerGrantsOtherDisksWhileAFolderLookupDoesNotAnswer(t *testing.T) 
 		synctest.Wait()
 		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
 			t.Fatalf("running after the lookup answers = %v, want %v", got, want)
+		}
+	})
+}
+
+// hangingFolders is the test folders whose first library lookup for one folder blocks until its context ends.
+type hangingFolders struct {
+	fakeFolders
+	blocked int64
+	hung    *atomic.Bool
+}
+
+func (f hangingFolders) HasLocationsUnder(ctx context.Context, folderID int64) (bool, error) {
+	if folderID == f.blocked && !f.hung.Swap(true) {
+		<-ctx.Done()
+		return false, ctx.Err()
+	}
+	return f.fakeFolders.HasLocationsUnder(ctx, folderID)
+}
+
+func TestSchedulerRechecksAFolderWhoseLookupNeverAnswers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		folders := hangingFolders{fakeFolders: twoFolders, blocked: rootA, hung: &atomic.Bool{}}
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: twoDisks().resolve, Folders: folders,
+		})
+		defer stop()
+		time.Sleep(DiskResolveTimeout)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2}; !slices.Equal(got, want) {
+			t.Fatalf("running while the lookup for folder a hangs = %v, want %v", got, want)
+		}
+		time.Sleep(RootRecheckInterval)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running after the recheck = %v, want %v", got, want)
 		}
 	})
 }

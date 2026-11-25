@@ -87,7 +87,7 @@ function person(id: number, name: string) {
   return {
     id,
     name,
-    aliases: [],
+    names: [{ name }],
     externalIds: [],
     videoCount: 1,
     createdAt: "2026-09-01T00:00:00Z",
@@ -276,7 +276,7 @@ describe("VideoPage work information", () => {
       await screen.findByRole("heading", { level: 1, name: "New title" }),
     ).toBeDefined();
     expect(server.createPerson).toHaveBeenCalledTimes(1);
-    expect(server.createPerson).toHaveBeenCalledWith({ name: "Carol" });
+    expect(server.createPerson).toHaveBeenCalledWith({ names: [{ name: "Carol" }] });
     expect(puts()).toHaveLength(1);
     expect(server.details).toHaveBeenCalledWith({
       displayName: "New title",

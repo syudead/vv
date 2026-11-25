@@ -23,14 +23,14 @@ func (s *TagStore) TagNames(ctx context.Context, ids []int64) (map[int64]string,
 		 where canonical = 1 and tag_id in (select value from json_each(?))`, ids)
 }
 
-// Names are the canonical names of the existing entries of kind among ids; a provisional person has none.
+// Names are the display names of the existing entries of kind among ids; a provisional person has none.
 func (s *CreditStore) Names(ctx context.Context, kind domain.CreditKind, ids []int64) (map[int64]string, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
 		return nil, err
 	}
 	return canonicalNames(ctx, s.read, t.q(`select {id}, name from {names}
-		 where canonical = 1 and {id} in (select value from json_each(?))`), ids)
+		 where position = 0 and {id} in (select value from json_each(?))`), ids)
 }
 
 func canonicalNames(ctx context.Context, db *sql.DB, query string, ids []int64) (map[int64]string, error) {
@@ -186,7 +186,7 @@ func idsByName(names []string, resolve func(string) (int64, bool, error)) (ids [
 	return ids, skipped, nil
 }
 
-// ApplyByName applies change to the entry of kind with each canonical name in one transaction; a name several
+// ApplyByName applies change to the entry of kind with each display name in one transaction; a name several
 // entries hold names the lowest id, as the join of the paired lists does. A new name another entry holds is a
 // *domain.CreditNameConflict.
 func (s *CreditStore) ApplyByName(ctx context.Context, kind domain.CreditKind, change domain.VocabularyChange) (
@@ -207,18 +207,21 @@ func (s *CreditStore) ApplyByName(ctx context.Context, kind domain.CreditKind, c
 		domain.VocabularyMerge: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
 			return mergeCreditsByName(ctx, tx, t, change.Into, change.Sources)
 		},
+		domain.VocabularyUnname: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
+			return unnameCreditByName(ctx, tx, t, change.Name)
+		},
 	})
 }
 
-// creditIDByName is the lowest id of kind whose canonical name is name after normalization.
+// creditIDByName is the lowest id of kind whose display name is name after normalization.
 func creditIDByName(ctx context.Context, tx *sql.Tx, t creditTables, name string) (int64, bool, error) {
-	normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: name})
+	normalized, err := domain.NormalizeCreditName(name)
 	if err != nil {
 		return 0, false, nil
 	}
 	var id int64
-	err = tx.QueryRowContext(ctx, t.q(`select min({id}) from {names} where name = ? and canonical = 1 having count(*) > 0`),
-		normalized.Name).Scan(&id)
+	err = tx.QueryRowContext(ctx, t.q(`select min({id}) from {names} where name = ? and position = 0 having count(*) > 0`),
+		normalized).Scan(&id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return 0, false, nil
@@ -231,7 +234,7 @@ func creditIDByName(ctx context.Context, tx *sql.Tx, t creditTables, name string
 func renameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name, newName string) (
 	domain.VocabularyOutcome, []domain.Event, error,
 ) {
-	normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: newName})
+	normalized, err := domain.NormalizeCreditName(newName)
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}
@@ -240,16 +243,33 @@ func renameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name, n
 		return domain.VocabularyOutcome{}, nil, err
 	}
 	// The caller renames its own entry next, so a new name held here is refused even when name is absent.
-	holder, taken, err := creditIDByName(ctx, tx, t, normalized.Name)
+	holder, taken, err := creditIDByName(ctx, tx, t, normalized)
 	switch {
 	case err != nil:
 		return domain.VocabularyOutcome{}, nil, err
 	case taken && (!found || holder != id):
-		return domain.VocabularyOutcome{}, nil, &domain.CreditNameConflict{Kind: t.kind, Name: normalized.Name}
+		return domain.VocabularyOutcome{}, nil, &domain.CreditNameConflict{Kind: t.kind, Name: normalized}
 	case !found:
 		return domain.VocabularyOutcome{}, nil, nil
 	}
-	current, updated, changes, err := updateCreditInTx(ctx, tx, t, id, domain.CreditPatch{Name: &normalized.Name})
+	return patchCreditByName(ctx, tx, t, id, domain.CreditPatch{Name: &normalized})
+}
+
+// unnameCreditByName empties the names of the entry of name, which the domain rule allows for a person only.
+func unnameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name string) (
+	domain.VocabularyOutcome, []domain.Event, error,
+) {
+	id, found, err := creditIDByName(ctx, tx, t, name)
+	if err != nil || !found {
+		return domain.VocabularyOutcome{}, nil, err
+	}
+	return patchCreditByName(ctx, tx, t, id, domain.CreditPatch{Names: &[]domain.CreditName{}})
+}
+
+func patchCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, id int64, patch domain.CreditPatch) (
+	domain.VocabularyOutcome, []domain.Event, error,
+) {
+	current, updated, changes, err := updateCreditInTx(ctx, tx, t, id, patch)
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}
@@ -272,7 +292,7 @@ func deleteCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name st
 func mergeCreditsByName(ctx context.Context, tx *sql.Tx, t creditTables, into string, sources []string) (
 	domain.VocabularyOutcome, []domain.Event, error,
 ) {
-	normalized, err := domain.NormalizeCredit(domain.CreditInput{Name: into})
+	normalized, err := domain.NormalizeCreditName(into)
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}
@@ -280,12 +300,13 @@ func mergeCreditsByName(ctx context.Context, tx *sql.Tx, t creditTables, into st
 	if err != nil || len(ids) == 0 {
 		return domain.VocabularyOutcome{Skipped: skipped}, nil, err
 	}
-	target, found, err := creditIDByName(ctx, tx, t, normalized.Name)
+	target, found, err := creditIDByName(ctx, tx, t, normalized)
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}
 	if !found {
-		if target, err = insertCredit(ctx, tx, t, normalized, nil); err != nil {
+		input := domain.CreditInput{Names: []domain.CreditName{{Name: normalized}}}
+		if target, err = insertCredit(ctx, tx, t, input, nil); err != nil {
 			return domain.VocabularyOutcome{}, nil, err
 		}
 	}

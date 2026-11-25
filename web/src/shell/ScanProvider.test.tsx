@@ -15,7 +15,11 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function scan(id: number, state: Scan["state"], values: Partial<Scan> = {}): Scan {
+function scan(
+  id: number,
+  state: Exclude<Scan["state"], "paused">,
+  values: Partial<Scan> = {},
+): Scan {
   return {
     id,
     origin: "manual",
@@ -697,8 +701,11 @@ describe("ScanProvider", () => {
         </OwnerAudience>,
       );
     }
-    const watch = (id: number, state: Scan["state"], values: Partial<Scan> = {}) =>
-      scan(id, state, { origin: "watch", ...values });
+    const watch = (
+      id: number,
+      state: Exclude<Scan["state"], "paused">,
+      values: Partial<Scan> = {},
+    ) => scan(id, state, { origin: "watch", ...values });
 
     it("走っているあいだは実行中にせず、終わりは手動の完了と別に知らせる", async () => {
       mount();

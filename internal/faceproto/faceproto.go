@@ -145,8 +145,7 @@ func decodeBody(kind byte, d *decoder) (Message, error) {
 	case kindHello:
 		return Hello{Version: d.u16(), Detector: d.str(), Recognizer: d.str(), Dim: d.u16()}, nil
 	case kindDetectRequest:
-		w, h := int(d.u32()), int(d.u32())
-		return DetectRequest{Width: w, Height: h, Pix: d.bytes(int64(w) * int64(h) * 3)}, nil
+		return decodeDetectRequest(d), nil
 	case kindEmbedRequest:
 		return EmbedRequest{Pix: d.bytes(AlignedSide * AlignedSide * 3)}, nil
 	case kindDetections:
@@ -157,6 +156,20 @@ func decodeBody(kind byte, d *decoder) (Message, error) {
 		return Error{Message: d.str()}, nil
 	}
 	return nil, fmt.Errorf("unknown face message kind %d", kind)
+}
+
+// The frame size must be positive and match the remaining bytes, so a size whose product overflows
+// cannot pair a small Pix with a large Width and Height.
+func decodeDetectRequest(d *decoder) DetectRequest {
+	w, h := uint64(d.u32()), uint64(d.u32())
+	if d.err != nil {
+		return DetectRequest{}
+	}
+	if w == 0 || h == 0 || w > uint64(len(d.b))/3/h {
+		d.fail(fmt.Errorf("frame %dx%d does not fit %d bytes", w, h, len(d.b)))
+		return DetectRequest{}
+	}
+	return DetectRequest{Width: int(w), Height: int(h), Pix: d.bytes(int64(w * h * 3))}
 }
 
 func (m Hello) encode(w *bytes.Buffer) {

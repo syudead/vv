@@ -32,6 +32,7 @@ function context(
     startError: null,
     starting: false,
     running: scan?.state === "running",
+    waiting: scan?.state === "paused",
     canStart: true,
     noMediaFolders: false,
     start: () => undefined,

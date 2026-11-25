@@ -12,7 +12,7 @@ import (
 
 func TestPersonProfileRoundTripsOnTheScreenAPI(t *testing.T) {
 	f := newCreditFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "山田花子", "profile": map[string]any{
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "山田花子"}}, "profile": map[string]any{
 		"gender": "female", "birthDate": "1990-05", "heightCm": 160, "cup": "c", "bio": "一行目\n二行目",
 		"links": []string{"https://a.example"},
 	}})
@@ -34,7 +34,7 @@ func TestPersonProfileRoundTripsOnTheScreenAPI(t *testing.T) {
 	}
 
 	var bare map[string]json.RawMessage
-	if err := json.Unmarshal(f.owned(http.MethodPost, "/api/people", `{"name":"空"}`).Body.Bytes(), &bare); err != nil ||
+	if err := json.Unmarshal(f.owned(http.MethodPost, "/api/people", `{"names":[{"name":"空"}]}`).Body.Bytes(), &bare); err != nil ||
 		string(bare["profile"]) != "{}" {
 		t.Errorf("profile の無い人物の profile = %s, %v", bare["profile"], err)
 	}
@@ -42,15 +42,15 @@ func TestPersonProfileRoundTripsOnTheScreenAPI(t *testing.T) {
 
 func TestPersonProfileErrorsOnTheScreenAPI(t *testing.T) {
 	f := newCreditFixture(t)
-	person := f.createPerson(t, map[string]any{"name": "山田"})
-	organization := f.createOrganization(t, map[string]any{"name": "会社"})
+	person := f.createPerson(t, map[string]any{"names": []map[string]string{{"name": "山田"}}})
+	organization := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "会社"}}})
 	invalidRequest := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
 	cases := []struct {
 		label, method, target, body string
 		want                        wantError
 		field                       string
 	}{
-		{"団体の作成に profile", http.MethodPost, "/api/organizations", `{"name":"団","profile":{}}`, invalidRequest, ""},
+		{"団体の作成に profile", http.MethodPost, "/api/organizations", `{"names":[{"name":"団"}],"profile":{}}`, invalidRequest, ""},
 		{"団体の書き換えに profile", http.MethodPatch, creditPath("/api/organizations", organization.Id, ""), `{"profile":{"bio":null}}`, invalidRequest, ""},
 		{"profile が null", http.MethodPatch, creditPath("/api/people", person.Id, ""), `{"profile":null}`, invalidRequest, ""},
 		{
@@ -66,7 +66,7 @@ func TestPersonProfileErrorsOnTheScreenAPI(t *testing.T) {
 
 func TestPersonProfileRoundTripsOnTheExternalAPI(t *testing.T) {
 	f := newExternalOverridesFixture(t)
-	created := f.post(t, "/api/v1/people", map[string]any{"name": "山田花子", "profile": map[string]any{
+	created := f.post(t, "/api/v1/people", map[string]any{"names": []map[string]string{{"name": "山田花子"}}, "profile": map[string]any{
 		"bloodType": "ab", "careerStartYear": 2010, "bio": "紹介",
 	}})
 	if created.Code != http.StatusOK {
@@ -93,7 +93,7 @@ func TestPersonProfileRoundTripsOnTheExternalAPI(t *testing.T) {
 		t.Errorf("書き換えた profile = %s, want %s", updated.Body, jsonBody(want))
 	}
 
-	organization := f.post(t, "/api/v1/organizations", map[string]any{"name": "会社", "profile": map[string]any{}})
+	organization := f.post(t, "/api/v1/organizations", map[string]any{"names": []map[string]string{{"name": "会社"}}, "profile": map[string]any{}})
 	assertExternalError(t, "団体の profile", organization, wantExternalError{
 		status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1,
 	})

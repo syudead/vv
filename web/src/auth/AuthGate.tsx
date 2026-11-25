@@ -29,6 +29,8 @@ export function routePath(pathname: string): string {
 /** Expects a pathname normalized by routePath. */
 function ownerOnlyPath(pathname: string): boolean {
   return (
+    // A folder page below it checks its own folder for a guest.
+    pathname === "/smart-folders" ||
     [
       "/settings",
       "/tags",

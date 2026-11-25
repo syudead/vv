@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,5 +247,22 @@ func TestSetMediaFolderEnabledRejectsAMissingValue(t *testing.T) {
 		if folders.operation != "" {
 			t.Fatalf("%s switched the folder", body)
 		}
+	}
+}
+
+// A body past the limit must name the limit, not report a truncated value as unparsable JSON.
+func TestReadJSONBodyReportsTheLimitOfAnOversizedBody(t *testing.T) {
+	srv := &server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	body := strings.Repeat(" ", jsonBodyLimit) + `{}`
+	req := httptest.NewRequest(http.MethodPost, "/api/media-folders", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	var target map[string]any
+	if srv.readJSONBody(rec, req, &target) {
+		t.Fatal("accepted a body over the limit")
+	}
+	got := decode[gen.Error](t, rec)
+	if want := fmt.Sprintf("at most %d bytes", jsonBodyLimit); rec.Code != http.StatusBadRequest || !strings.Contains(got.Message, want) {
+		t.Errorf("status = %d, message = %q, want 400 naming %q", rec.Code, got.Message, want)
 	}
 }

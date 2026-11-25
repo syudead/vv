@@ -438,7 +438,9 @@ func versionJudgingEnabled(ctx context.Context, q rowQueryer) (bool, error) {
 	return found && value == strconv.FormatBool(true), nil
 }
 
-// SaveVersionJudgingEnabled opens activities for eligible waiting candidates when enabled; disabling preserves them for later resumption.
+// SaveVersionJudgingEnabled opens activities for eligible waiting candidates when enabled; disabling preserves them for
+// later resumption. A save publishes domain.BackgroundChanged, since the switch decides the version_judge group's
+// featureOff.
 func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled bool) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -457,6 +459,7 @@ func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled b
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return fmt.Errorf("cannot save setting %s: %w", versionJudgingEnabledKey, err)
 	}
+	s.db.publishEvents(domain.BackgroundChanged{})
 	return nil
 }
 

@@ -294,6 +294,19 @@
       ]
     },
     {
+      "name": "rate-ring",
+      "type": "registry:ui",
+      "title": "RateRing",
+      "description": "vv component: a size-12 ring whose arc is a rate of 100 with the whole percent inside, in primary or muted-foreground on a muted track; not a control.",
+      "docs": "Usage rules: web/registry/rules/components.md#ratering (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/RateRing.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",
@@ -694,6 +707,10 @@
         {
           "path": "src/ui/VideoThumbnail.tsx",
           "type": "registry:ui"
+        },
+        {
+          "path": "src/hooks/useNearViewport.ts",
+          "type": "registry:hook"
         }
       ]
     },
@@ -975,7 +992,7 @@
       "name": "shelf",
       "type": "registry:ui",
       "title": "Shelf",
-      "description": "Section: a heading with a count over a wrapping grid of every card of one kind.",
+      "description": "Section: a heading with a count and actions over a wrapping grid of every card of one kind, or over one line of card-0 cards that scrolls sideways.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -1006,6 +1023,10 @@
       "files": [
         {
           "path": "src/ui/patterns/card-list.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/patterns/expand-toggle.tsx",
           "type": "registry:ui"
         }
       ]
@@ -1318,6 +1339,62 @@
         {
           "path": "src/ui/patterns/profile-page.tsx",
           "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "query-results-page",
+      "type": "registry:ui",
+      "title": "QueryResultsPage",
+      "description": "Page skeleton for a query beside the results it found: the header, then from lg the query column query-aside wide at the start, stuck under the top bar, and the results; one column below lg. Holds ResultBand, a band of rows under an h2 with a detail and a count.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#query-results-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/query-results-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "result-row",
+      "type": "registry:ui",
+      "title": "ResultRow",
+      "description": "Section: one candidate of a query's results on card with a border line: a header line (mark, title, badge, meta, actions, expand button) and a body shown while the caller's expanded is true. Uses collapsible, button and tooltip.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/result-row.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/patterns/expand-toggle.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "query-results-page-example",
+      "type": "registry:block",
+      "title": "Query results page example",
+      "description": "A working query results page: an image query's panel beside two bands of result rows, each with a rate ring, a title, a meta line, Play and a strip of frames.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#query-results-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/query-results-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "shelf-example",
+      "type": "registry:block",
+      "title": "Shelf example",
+      "description": "A row shelf of a few highlighted cards with its count and a quiet link to all of them, a hairline, then a wrapping shelf of every card.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/shelf-example.tsx",
+          "type": "registry:component"
         }
       ]
     },

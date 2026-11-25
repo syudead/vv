@@ -216,6 +216,26 @@ func TestExplicitExcludedFoldersReplaceTheSwitches(t *testing.T) {
 	}
 }
 
+// An explicit scope that lists the folders the switches list reads the stored group cards; another computes them.
+func TestExplicitScopeReadsStoredGroupsOnlyWhenItMatchesTheSwitches(t *testing.T) {
+	f := switchedOffFolderFixture(t)
+	group := createGroup(t, f.db, "both", domain.GroupAdd{VideoIDs: []int64{f.shown, f.outID}})
+	read := func(excluded int64) *domain.LibraryGroup {
+		t.Helper()
+		page, err := f.db.Library().ListLibrary(context.Background(), owner.WithExcludedFolders([]int64{excluded}), domain.VideoQuery{Limit: 10})
+		if err != nil || len(page.Items) != 1 || page.Items[0].Group == nil || page.Items[0].Group.ID != group {
+			t.Fatalf("items = %+v, %v, want the group", page.Items, err)
+		}
+		return page.Items[0].Group
+	}
+	if stored := read(f.offID); stored.Card == nil || !slices.Equal(stored.Card.VideoIDs, []int64{f.shown}) {
+		t.Errorf("scope matching the switches = %+v, want the stored card of [%d]", stored, f.shown)
+	}
+	if computed := read(f.onID); computed.Card != nil || !slices.Equal(memberIDs(*computed), []int64{f.outID}) {
+		t.Errorf("scope differing from the switches = %+v, want computed members [%d]", computed, f.outID)
+	}
+}
+
 // A peer's explicit scope also sets the vocabulary counts: this node's switched-off folder still counts for it.
 func TestExplicitExcludedFoldersCountTheVocabulary(t *testing.T) {
 	f := switchedOffFolderFixture(t)

@@ -42,6 +42,28 @@ type fakeIndex struct {
 	forceJobs    []jobCall
 	marked       []forcedMark
 	calls        []string
+	// read holds the locations MarkLocationRead recorded, which ReadLocations returns for the same scan.
+	read []readMark
+}
+
+type readMark struct {
+	scanID int64
+	path   string
+}
+
+func (f *fakeIndex) MarkLocationRead(_ context.Context, scanID int64, path string) error {
+	f.read = append(f.read, readMark{scanID: scanID, path: path})
+	return nil
+}
+
+func (f *fakeIndex) ReadLocations(_ context.Context, scanID int64) ([]string, error) {
+	var paths []string
+	for _, mark := range f.read {
+		if mark.scanID == scanID {
+			paths = append(paths, mark.path)
+		}
+	}
+	return paths, nil
 }
 
 type forcedMark struct {

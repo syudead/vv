@@ -16,7 +16,7 @@ import (
 const faceLinkPersonJoin = `
 	left join face_appearances a on a.id = l.appearance_id
 	left join people p on p.id = case when a.id is null then l.person_id else a.person_id end
-	left join people_names n on n.person_id = p.id and n.canonical = 1`
+	left join people_names n on n.person_id = p.id and n.position = 0`
 
 func attachActivityFaceLinks(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
 	index, encoded := activityEntryIDs(entries, func(entry domain.ActivityEntry) bool {
@@ -256,26 +256,45 @@ func removeFacePerformer(ctx context.Context, tx *sql.Tx, userKey string, person
 	return true, renumberCreditLinks(ctx, tx, creditTablesByKind[domain.CreditPerson], []creditLinkList{list})
 }
 
-// deleteUnusedProvisionalPerson deletes the person, with its face data, while it is still provisional and credited
-// nowhere.
+// deleteUnusedProvisionalPerson deletes the person, with its face data, while unusedProvisionalPerson holds.
 func deleteUnusedProvisionalPerson(ctx context.Context, tx *sql.Tx, c *changes, personID int64) error {
-	var unused bool
-	if err := tx.QueryRowContext(ctx, `select
-		not exists (select 1 from people_names where person_id = ?1 and canonical = 1)
-		and not exists (select 1 from video_work_people where person_id = ?1)`, personID).Scan(&unused); err != nil {
-		return fmt.Errorf("cannot read the credits of person %d: %w", personID, err)
+	deleted, err := deleteIfUnusedProvisional(ctx, tx, personID)
+	if deleted {
+		c.matchesChanged()
+	}
+	return err
+}
+
+// deleteIfUnusedProvisional deletes the person, with its face data, while unusedProvisionalPerson holds, and reports
+// whether it did.
+func deleteIfUnusedProvisional(ctx context.Context, tx *sql.Tx, personID int64) (bool, error) {
+	unused, err := unusedProvisionalPerson(ctx, tx, personID)
+	if err != nil {
+		return false, err
 	}
 	if !unused {
-		return nil
+		return false, nil
 	}
 	if err := deletePersonFaceData(ctx, tx, personID); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `delete from people where id = ?`, personID); err != nil {
-		return fmt.Errorf("cannot delete person %d: %w", personID, err)
+		return false, fmt.Errorf("cannot delete person %d: %w", personID, err)
 	}
-	c.matchesChanged()
-	return nil
+	return true, nil
+}
+
+// unusedProvisionalPerson reports whether the person is still provisional, credited nowhere and linked by no
+// appearance that is not dropped.
+func unusedProvisionalPerson(ctx context.Context, tx *sql.Tx, personID int64) (bool, error) {
+	var unused bool
+	if err := tx.QueryRowContext(ctx, `select
+		not exists (select 1 from people_names where person_id = ?1 and position = 0)
+		and not exists (select 1 from video_work_people where person_id = ?1)
+		and not exists (select 1 from face_appearances where person_id = ?1 and dropped = 0)`, personID).Scan(&unused); err != nil {
+		return false, fmt.Errorf("cannot read the credits of person %d: %w", personID, err)
+	}
+	return unused, nil
 }
 
 // recordFaceLinkUndo writes the owner's undo entry, naming the person when one link was asked for, and marks the

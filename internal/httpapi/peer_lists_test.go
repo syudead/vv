@@ -137,6 +137,27 @@ func TestMergedVideoListPagesBothNodesOnce(t *testing.T) {
 	}
 }
 
+// Neither node leads its library with smart folders, so the merged page holds the videos alone.
+func TestMergedLibraryListsNoSmartFolders(t *testing.T) {
+	_, _, a, b, _ := mergedNodesWith(t, func(db *store.DB, opts *Options) { opts.SmartFolders = db.SmartFolders() })
+	createSmartFolder(t, a, `{"name":"a の全部","rule":{}}`)
+	createSmartFolder(t, b, `{"name":"b の全部","rule":{}}`)
+
+	for _, query := range []string{"", "&favorite=true"} {
+		rec := b.owner(http.MethodGet, "/api/library?limit=100"+query, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("library%s: status = %d: %s", query, rec.Code, rec.Body)
+		}
+		library := decode[gen.LibraryPage](t, rec)
+		if slices.ContainsFunc(library.Items, func(item gen.LibraryItem) bool { return item.Kind == gen.LibraryItemKindSmartFolder }) {
+			t.Errorf("library%s holds a smart folder: %+v", query, library.Items)
+		}
+		if library.Total != len(library.Items) {
+			t.Errorf("library%s: total = %d, want the %d items", query, library.Total, len(library.Items))
+		}
+	}
+}
+
 func TestMergedLibrarySumsTotalsAndKeepsTheGuestsAudience(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 
@@ -174,6 +195,15 @@ func TestMergedLibrarySumsTotalsAndKeepsTheGuestsAudience(t *testing.T) {
 		}
 		assertGuestVideo(t, "guest library", video)
 	}
+}
+
+// The local part is read beside the link's, and its failure fails the page instead of leaving that side out.
+func TestMergedLibraryAnswersTheLocalPartsError(t *testing.T) {
+	_, _, b, _ := mergedNodes(t)
+	cursor := domain.MergedCursor{Sides: map[int64]domain.SideCursor{0: {Cursor: "broken"}, 1: {}}}.Encode()
+	rec := b.owner(http.MethodGet, "/api/library?limit=2&cursor="+url.QueryEscape(cursor), "")
+	assertErrorBody(t, "broken local cursor", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonInvalidCursor})
 }
 
 func TestMergedListSendsALocalTagToThePeerByName(t *testing.T) {
@@ -240,9 +270,6 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 	var ids []int64
 	for _, root := range roots.Folders {
 		ids = append(ids, root.RootId)
-		if domain.IsRemoteID(root.RootId) && root.Grouping != nil {
-			t.Errorf("remote root %d carries its grouping", root.RootId)
-		}
 	}
 	remoteRoot := domain.RemoteID(1, fa.rootID)
 	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.RemoteID(1, fa.otherID)} {

@@ -48,7 +48,7 @@ func addScanVideosWithRemainingJobs(ctx context.Context, q queryExecer) error {
 func refreshScanSettled(ctx context.Context, q queryExecer, now int64) error {
 	if _, err := q.ExecContext(ctx, `update scans
 		set settled_at = case
-			when state <> 'running' and not exists (
+			when state not in ('running', 'paused') and not exists (
 				select 1 from scan_videos sv join jobs j on j.video_id = sv.video_id
 				where sv.scan_id = scans.id and `+remainingJobCondition("j")+`)
 			then coalesce(settled_at, ?)

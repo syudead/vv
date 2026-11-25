@@ -66,6 +66,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `c
 `combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `dialog-list` (a list in a dialog that scrolls past ten lines), `menu`,
 `detail-aside`, `detail-aside-wide`, `editor-aside`, `editor-aside-wide`, `form-page-aside`, `list-aside`, `list-aside-max`,
 `profile-aside`, `profile-aside-max`,
+`query-aside` (a query results page's query column), `query-preview-max` and `query-preview-max-sm` (its preview's greatest height from `lg` and below),
 `settings-nav`, `settings-nav-max`, `assistant-panel` (a side panel's width),
 `assistant-composer` (its field's four lines), `related-thumb`, `facts-column` (the
 right column of a two-column video page panel), `replace-preview` (the preview
@@ -81,7 +82,7 @@ video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value. A value no step can name becomes a named utility in
 `tokens.css` (`grid-cols-term`, `grid-cols-list-aside`, `grid-cols-form-page`, `grid-cols-settings-page`,
-`grid-cols-profile-page`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`).
+`grid-cols-profile-page`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`, `bottom-indicator`).
 Ratios are `aspect-video`, `aspect-square` and `aspect-portrait` (2:3, the
 person page's face).
 `style` carries only values known at run time (a position, a ratio, a measured

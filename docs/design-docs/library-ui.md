@@ -89,6 +89,21 @@ restoration in virtual coordinates. Pages load 60 items
 ([`PAGE_SIZE`](../../web/src/api/client.ts)), so the DOM holds only what the
 user loaded. **Revisit only after measuring what is slow.**
 
+A loaded page still mounts every card, so a thumbnail sets its `src` only once
+its frame comes within one viewport of the screen
+([`useNearViewport`](../../web/src/hooks/useNearViewport.ts)), the margin at
+which the list asks for its next page. Native `loading="lazy"` starts more than
+a screen earlier, so a page of 60 group cards requested all 240 cover sheets
+and, on a repeat visit, spent about 200 ms of the first commit setting their
+sources from the memory cache; a 1440×900 window now asks for about 110.
+
+Every page but the library is loaded with its route
+([`deferredRoute`](../../web/src/app/deferredRoute.tsx)). The video page, which
+carries video.js, was the exception and made up about 40% of the code every
+page read before its first request; other pages now fetch it three seconds
+after they finish loading, once idle, so opening a video stays immediate
+without the download competing with the first screen.
+
 The tag admin list (`/tags`) is the measured exception: with thousands of tags,
 opening, search and scrolling froze, so it draws only the rows near the
 viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
@@ -201,7 +216,7 @@ header (or, while rows are selected, the selection bar) and tabs stick under
 the top bar, and the table's column header sticks right under them. The
 organizations page is an `AdminTablePage` with the same header and column
 header, without the filter, tabs, checkbox column and selection bar, and a
-details dialog (aliases, external IDs and the parent) in place of the synonyms
+details dialog (the names list, external IDs and the parent) in place of the synonyms
 dialog. The people page is a `ListPage` of face cards with the search, the
 favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the
@@ -289,7 +304,7 @@ active filters show as chips above the list:
 
 The `Person` and `Organization` pickers list the 20 with the most videos before
 any typing, so a person without a name, shown as `#<id>` with their face, can
-be picked; typing matches names and aliases, and `#<id>` finds that one.
+be picked; typing matches any of their names, and `#<id>` finds that one.
 
 Applied tags, kinds, people and organizations also show as chips in the
 `Filtering by` row, and an id the server or the loaded lists no longer hold
@@ -333,6 +348,156 @@ assistant` as chips that can only be removed. The smart folder page shows
 them on its condition lines, and the owner's smart folder card shows the
 folder's own ones as chips after its tags.
 
+### Image search
+
+The owner's library search field (on `/` and `/image-search`) also searches by a file: its
+`Search by image or video` button, before the syntax help, opens
+`ImageUploadDialog` with image-and-video wording, and the chosen file starts a
+search ([image-search.md](image-search.md) has the matching rules). A file
+dropped on the field, or pasted into the focused field, starts a search too;
+a paste of text only types it. While a file is dragged into the window, the
+field's frame turns dashed `primary` with the placeholder `Drop here to search
+by this file`, and over the field it is solid with a `primary-soft` fill and
+the `ScanSearch` icon. On `/image-search` the query panel takes a dropped
+file too (see the query panel below). A file dropped anywhere else on the
+page is refused without opening it and starts nothing. Folder, group and
+smart-folder pages, and guests, keep the plain field.
+
+An accepted file opens the image search screen at `/image-search`
+([`ImageSearchPage.tsx`](../../web/src/library/imageSearch/ImageSearchPage.tsx)),
+pushed over the library entry, which keeps its filters, scroll and selection
+untouched. The file is handed over in memory under a token that the pushed
+entry's state names, with a mark that the library entry is under it; the
+request starts on the screen. A file given on the screen (the field, a drop
+on the query panel or `Choose another file…`) replaces the entry and keeps
+that mark, so Back never walks through old searches. A guest who opens `/image-search` is sent to `/`.
+
+The owner compares each candidate with the file, so the screen keeps the file
+in view and gives each video its evidence: how close, how many frames, at
+what times.
+
+| Decision                                                                               | Rejected                                                                                                 | Why                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Results on a screen of their own at `/image-search`, pushed over the library entry     | Results in the library's `ListPage` body, the first design, which the maintainer rejected after using it | The library body is a card grid sized by zoom under a toolbar that does not apply; a route gives browser Back and an untouched library entry                                                                                                                 |
+| The file stays in a query panel beside the results                                     | The file only as the chip in the field                                                                   | A chip cannot be compared with anything                                                                                                                                                                                                                      |
+| One row per video, holding every matched frame the server returns                      | One card per matched frame                                                                               | The answer is a video; several frames of one video are more evidence for one answer                                                                                                                                                                          |
+| Rows in match-rate bands whose ranges, like the number of frames, come from the server | Thresholds or a frame count fixed in the screen                                                          | The accuracy decision can move them without a screen change                                                                                                                                                                                                  |
+| On `/image-search` both the search field and the query panel take a dropped file       | Only the search field takes a dropped file, a rule carried over from the library page                    | On the library the rule keeps a stray drop from opening the file, which the refusal of drops elsewhere still does here; on the screen the panel is where the owner looks to search again, so a drop there spares the file dialog and the trip to the top bar |
+| A frame's rate and time are a caption under its image                                  | Text over the image                                                                                      | [VideoThumbnail](../../web/registry/rules/components.md#videothumbnail) allows only the duration, the notice and the credits on an image                                                                                                                     |
+| The file is handed over in memory under a token the entry's state names                | The `File` in history state                                                                              | The browser copies state into session history, and a reload would find a file where Idle is wanted                                                                                                                                                           |
+| Same                                                                                   | Starting the request on the library page and navigating with it                                          | The library unmounts on the push; the request, its abort and its progress belong to the screen that shows them                                                                                                                                               |
+| The entry's state records whether the library entry is under it                        | `history.length` or the referrer                                                                         | Neither tells which entry is under this one                                                                                                                                                                                                                  |
+
+The screen is a `QueryResultsPage`. Its top bar holds only the search field,
+with the query chip (the file's preview, its name from `sm` up, and `Clear
+image search`) at the field's start, holding at most half its width, and the
+placeholder `Or search by text`; filter, sort, view and zoom are not drawn.
+`Enter` with text opens `/` with that text search. The header is `Image
+search` with a `ghost` `Library` button. The `Library` button, the chip's `×`,
+`Escape` in the empty field and `Back to library` go one entry back when the
+library entry is under the screen, as browser Back does, and replace the
+screen with `/` otherwise (opened directly, in a new tab or from another
+site), so they never leave the app.
+
+The query panel is a `card` at the start from `lg`, stuck under the top bar,
+and full width above the results below `lg`. It shows the file whole, never
+cropped: an image, or a muted video with the browser's controls (an icon for
+a file the browser cannot show); the file name and `Image · 1.2 MB` or
+`Video · 2:31 · 48 MB`, the length read from the video until the answer
+gives it; a status line with the elapsed time at its end and, while the
+search runs, a `Progress` under it; the unindexed count after an answer; and
+its actions by state. Below `lg` it starts with a bar (a small preview, the
+name, the status and `Show your file` or `Hide your file`) that is its
+collapsed form: open while the search runs and after a refusal, failure or
+stop, collapsed when an answer arrives so the first rows are on screen, and
+the owner's toggle holds for that answer, or for the whole run. Collapsed,
+the bar sticks under the top bar while the rows scroll.
+
+The panel, open or collapsed into its bar, takes a dropped file through the
+same intake as the search field
+([`useFileIntake.ts`](../../web/src/videoList/useFileIntake.ts)), and the file
+goes the way of `Choose another file…`: it replaces the entry, aborts the
+running request and is refused in the results column without a request when
+two or more files are dropped or the file is neither an image nor a video.
+While a file is dragged into the window, the panel's frame turns dashed
+`primary` and a cover over it reads `Drop here to search by this file` with
+the `ScanSearch` icon; over the panel the frame is solid and the cover filled
+`primary-soft`.
+
+A video query is uploaded with its progress: `XMLHttpRequest.upload` reports
+the share of bytes sent, because `fetch` can only do that with a streamed
+body, which needs HTTP/2 and is missing in Firefox and Safari. The upload
+([`upload.ts`](../../web/src/api/upload.ts)) takes the same abort signal and
+maps the network failure, the owner check and the error body as every other
+request does. An image is small, so it is sent as one plain request and goes
+straight to Searching; the bar does not flash a measure for a blink. The
+screen measures the elapsed time from the request's start to its answer: it
+counts up each second while the search runs and reads `Took {time}` after an
+answer, to a tenth under 10 s (`0.8 s`), then in whole seconds (`12 s`), then
+as `m:ss` (`1:05`). Refusals, failures and stops show no time.
+
+| State                                              | Panel status and actions                                                                                 | Results column                                                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Idle (`/image-search` opened or reloaded, no file) | No panel                                                                                                 | `Empty` `Search by an image or a video` with `Choose a file…`                                                                  |
+| Uploading (video queries)                          | `Spinner`, `Uploading… {p}%`, a `Progress` of the share sent, the time counting up; `Cancel`             | `LoadingState` `rows`: three `ResultRow` skeletons under a band heading                                                        |
+| Searching                                          | `Spinner`, `Searching…`, an indeterminate `Progress`, the time counting up; `Cancel`                     | As Uploading                                                                                                                   |
+| Results                                            | `CircleCheck`, `Found {n} videos`, `Took {time}`; `Choose another file…`, or a file dropped on the panel | A `{n} videos` status with `Collapse all` or `Expand all` from two rows, then the rows in their match-rate bands               |
+| No match                                           | `SearchX`, `No match`, `Took {time}`; `Choose another file…`                                             | `Empty` with the unindexed count, or `Every video in your library was searched.`, `Choose another file…` and `Back to library` |
+| Refused                                            | `CircleAlert`, `Not searched`; `Choose another file…`                                                    | A destructive `Alert` with the reason and `Choose another file…`                                                               |
+| Failed (network or server failure)                 | `CircleAlert`, `Search failed`; `Retry`, `Choose another file…`                                          | A destructive `Alert` `The search failed` with the error, `Retry` and `Choose another file…`                                   |
+| Stopped (after `Cancel`)                           | `CircleSlash`, `Stopped`; `Search again`, `Choose another file…`                                         | `Empty` `Search stopped` with `Search again`                                                                                   |
+
+`Retry` and `Search again` send the same file, kept in memory until the
+entry is left. A stop, a failure and a refusal are kept with the entry like
+an answer, so coming back to the entry shows them without a request.
+
+A file given by the field keeps focus in the field on the screen; one given
+by the dialog moves focus to the title; one dropped on the panel leaves focus
+where it was. An answer does not move focus; the
+panel's status and the summary line are statuses.
+
+The rows sit in `ResultBand`s, one per band of the answer in the server's
+order (`Strong match`, `Similar`), each headed by its name, its range as
+`{min}–{max}%` and its count; a band without rows is not drawn, and rows keep
+the server's order. Each video is one `ResultRow`: a `RateRing` with the
+row's rate as a whole percent (`primary` in the answer's first band, `muted`
+below), the title as a link, the meta line and `Play`, and the matched frames
+as its body, expanded when the answer arrives. The first row carries a `soft`
+`Best candidate` badge and a `default` `Play` only when its shown rate is
+above the second row's, so a tie names no row the answer; every other `Play`
+is `secondary`. Title and `Play` open `/videos/{match.videoId}?t=` at the best
+frame, or at a video query's section start, so a version bundle plays the
+member that matched.
+
+An image query's meta reads `{k} matching frames · best at {time}`, where `k`
+is the server's `frameCount`, so a row cut at the limit of 12 frames still
+counts every frame found. Its body is a frame strip: the frames in the
+server's order, each `related-thumb` wide, as one link (`Play from {time}`)
+holding the frame at `maxEdge=320` in `VideoThumbnail` and a caption with the
+frame's rate and time. The strip scrolls sideways inside the row, which cuts
+the frame that does not fit, and is one tab stop on the frame last focused
+there; `ArrowLeft`, `ArrowRight`, `Home` and `End` move along it and scroll
+the frame into view. A video query's meta is `Whole video` or `Part of
+video` with the section's times; its body is a `SpanBar` of the section on
+the listed video's length, from `0:00` to that length, whose block plays from
+the section's start, followed by a frame strip only when the server sends
+frames. The rows have no selection, favorite, tags, preview or drag, because
+the video's own actions are on its page.
+
+The search lives in memory under the entry's token, never in the URL or in
+history state: the file cannot be put in a URL and must not be kept on the
+server. Returning from the player shows the same panel, rows, collapsed rows,
+the frame last focused in each strip and the scroll position without a
+request, and focus returns to the control that opened the player, whether the
+viewer goes back or closes the player: a result passes the token to the
+player, and closing carries it to the new entry. A reload or a direct visit
+has no file and shows Idle. `Cancel`, another file and leaving the screen or
+the entry abort the running request. Two or more files dropped or pasted on
+the field or dropped on the panel, or a file whose type is neither an image nor a video, open the screen with
+the first file in the panel and the refusal in the results column, without a
+request; the dialog takes one file, as it does for every upload. A file
+without a type goes to the server, which reads its content.
+
 ### Scan entry and progress
 
 A scan starts from `Scan library` in the `Scan status` section of the
@@ -342,14 +507,40 @@ on the `Scan` step of onboarding at `/welcome`
 ([Home and onboarding](home.md)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
-disabled while a scan runs (including one started in another tab) and while
-no media folder exists, with the reason in a line it references through
-`aria-describedby`. A failed start request appears as an alert in the same
+disabled while a scan runs (including one started in another tab), while a
+scan waits for the resume of background work, and while no media folder
+exists, with the reason in a line it references through `aria-describedby`.
+A waiting scan (state `paused`) shows `Waiting for resume` with a still
+`Pause` icon, keeps the counts read before the pause on a bar that does not
+animate, and says that it starts or continues when background work resumes
+([background pause](background-pause.md#scans)). A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
 empty folder is a link to `/settings/scan#scan-status` and starts nothing. The
 owner's action on an empty library, and on a home with no video, is `Set up
 library`: it sets the onboarding step to `folders` and opens `/welcome`
 ([`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)).
+
+The owner's `Background work` section
+([`BackgroundWorkSection.tsx`](../../web/src/settings/BackgroundWorkSection.tsx),
+anchor `background-work`) opens the same page, above `Scan status`, because
+the owner decides between stopping and running while reading what is left
+([background pause](background-pause.md)). Its header carries one state badge:
+`Paused` in `warning` with a still `Pause` icon, `Running` in `secondary` with
+a spinner, or `Idle`. Under it come, in order:
+
+| Row           | Content                                                                                                                                                                                                                                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Switch        | `Pause background work`, a `FormRow` whose `Switch` moves at once and stays `aria-disabled` with `Pausing…` or `Resuming…` until the answer; a failure returns it to the last status read and stays under the row until the next press, as `SaveStatus` draws it for `Auto import`                                                                  |
+| `Running now` | One truncated line per entry, `{action} · {video title or file name}`, oldest first, each with a spinner; while paused, an entry still listed reads `Stopping · …` in `muted-foreground` without one                                                                                                                                                |
+| `Left to do`  | A `FactList variant="divided"` of the six groups in the status's order, always six rows, in files for `Scan`, videos for `Import` and tasks for the rest; a 0 stays in `muted-foreground`, a waiting scan adds `Waiting for resume` after its name, and a group whose feature is off carries an `Off` badge with one explaining line under the list |
+
+The counts are one component
+([`BackgroundCounts.tsx`](../../web/src/shell/BackgroundCounts.tsx)), so every
+place that shows them agrees. One provider beside `ScanProvider`
+([`BackgroundProvider.tsx`](../../web/src/shell/BackgroundProvider.tsx)) reads
+the status once and again on each `background` event and each open of
+`/api/events`, the first included, because the stream sends no background
+state on connect; for a guest it reads nothing and the section is absent.
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
@@ -376,6 +567,35 @@ The hidden scan's id is kept in `localStorage` (`vv.scan-indicator-dismissed`),
 so a reload or another tab keeps it hidden, and a `storage` event hides it in
 tabs already open. Hiding a scan that is still starting waits for the new
 scan's id. The result of a hidden scan stays readable in `Scan status`.
+
+While background work is paused, the owner's screens show the paused
+indicator
+([`BackgroundPausedIndicator.tsx`](../../web/src/shell/BackgroundPausedIndicator.tsx))
+in this place instead of the scan states, so a stopped library is not
+forgotten: a `warning` `Pause` icon, `Paused` and the total left, which sums
+the groups whose feature is on, because that is what a resume starts. At 360px
+the total is the number alone, and from `sm` it reads `{n} left`. Pressing it
+opens `/settings/scan#background-work`. It has no hide button, a stored
+dismissal does not hide it, and it sits above a list's selection bar by the
+height the bar publishes (`bottom-indicator`). Its summary opens and closes by
+the rules above
+([`useIndicatorPopover.ts`](../../web/src/shell/useIndicatorPopover.ts)) and
+holds `Background work is paused`, the section's count list and its switch;
+`Tab` from the indicator moves into the summary, which stays open while focus
+is inside it. Turning the switch off resumes: the summary shows `Resuming…`
+until the answer, then the scan indicator takes the place again if a scan
+runs. A scan result due while paused is not shown afterwards; `Scan status`
+keeps it.
+
+While the status reports paused, every place that says `Waiting` for queued
+work says `Waiting for resume` instead, with the same icon, colour and
+position: an Activity entry's status icon name and result, a pipeline's
+`Waiting · …` line and a waiting stage row; the first figure of the `Progress`
+queue line of `Auto-tagging` and `Face recognition`; a waiting pair's automatic
+judgement on `Duplicates`; and a waiting stage under `Getting ready to play`
+for a video on this node, since the status does not cover a paired node's work.
+The screens read one flag from the provider (`useBackgroundPaused`), so a guest,
+who has no status, keeps the plain texts.
 
 ### Cards
 
@@ -442,7 +662,7 @@ full name in `title`. On `/folders` the owner also sees each media folder's
 path, truncated to favour its end, full in `title`. An empty registered root
 says to place files there and import.
 
-The library reads `GET /api/library`, which pages the owner's smart folders and then mixed
+The library reads `GET /api/library`, which pages mixed
 video and group keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
@@ -453,15 +673,16 @@ On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
-For the owner, root smart folders lead the unfiltered library by name, ahead of
-its groups and videos in any sort (favorites only keeps the favorited ones),
-and child folders lead a smart folder page by name. Guests see no smart folders
-there. The list carries only each folder's name; a card draws a `Skeleton` count
+For the owner, the favorite smart folders stand in a band above the home's list
+([Favorite smart folder band](home.md#favorite-smart-folder-band)), and child
+folders lead a smart folder page by name. Guests see no smart folders there.
+The list carries only each folder's name; a card draws a `Skeleton` count
 panel until it scrolls into view, and the cards then on screen are read 60 at a
 time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
-answer per card, and makes the unfiltered library reload its loaded pages, so
-a folder created, moved or renamed in another tab appears. A folder left out of
+answer per card, makes the home's band read the folder list again, so a folder
+favorited, renamed or deleted in another tab joins, changes or leaves it, and
+makes the unfiltered library reload its loaded pages. A folder left out of
 the answer loses its card. A smart folder card cannot be dragged, and dropping
 on it shows `Can't drop here`.
 
@@ -501,9 +722,9 @@ visit.
 ### Favorite mark
 
 The owner's favorite mark is one heart that is both mark and toggle, in the
-list rows of videos, groups and smart folders and on the video page. Grid
-cards carry none, so a card's favorite changes from its row, the selection bar
-or the video page.
+list rows of videos, groups and smart folders, on the video page and in the
+smart folder page's header. Grid cards carry none, so a card's favorite
+changes from its row, the selection bar, the video page or the folder's page.
 
 | Aspect                | Rule                                                                     |
 | --------------------- | ------------------------------------------------------------------------ |
@@ -513,6 +734,8 @@ or the video page.
 | Pressing              | Does not open the row's link or select it                                |
 | Filtered to favorites | Item stays until the next fetch                                          |
 | Guests                | Not shown                                                                |
+| Smart folder page     | `Favorite` pill before `Play` and `More`; heart alone below `sm`         |
+| Smart folder list     | The row heart of each root folder at `/smart-folders`                    |
 
 The mark changes only after the server answers:
 
@@ -525,6 +748,10 @@ flowchart LR
 ```
 
 A group is refetched with `GET /api/groups/{id}`.
+
+The smart folder page keeps the answered state until its next read; the
+`smartFolder` event that every favorite change raises re-reads the folder, so
+the toggle adds no refetch of its own.
 
 ### List view and selection
 
@@ -649,13 +876,28 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen. `Home` opens `/`, which combines the
-searchable library list with inline smart-folder cards
-([Home library and setup](home.md)). Smart-folder cards follow the list order and use the same one-column stacked
-artwork as groups. A promoted cover opens playback; the resting card, title
-and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
+Each sidebar item goes to its screen. `Home` opens `/`, the searchable library
+list of videos and groups under the owner's band of favorite smart folders
+([Home library and setup](home.md#favorite-smart-folder-band)). The band's
+cards use the same one-column stacked artwork as groups in one sideways row,
+with `All smart folders` leading to `/smart-folders`. A promoted cover opens
+playback; the resting card, title and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
 `/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
 hash intact.
+
+The owner's `Smart folders` entry, after `Folders` and before `History`, opens
+`/smart-folders` and stays lit on the folder pages below it. The 56px rail
+square shows the short label `Smart` and keeps `Smart folders` as the link's
+accessible name; the drawer row shows the full label. The page lists
+the root smart folders in the name order of `GET /api/smart-folders` as the
+home's list-view rows without the check and group cells, with `New smart
+folder` opening the folder dialog with an empty rule. It reads the list again
+after a creation, on every `smartFolder` and `peerItems` event and on
+reconnection. A created root folder gets the focus on its new row; a folder
+created with a parent has no row there, so the page opens that folder's page
+with `/smart-folders` as its return target. `/smart-folders` is an owner-only
+path of the auth gate; the folder pages below it check their own folder for a
+guest.
 
 While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's
@@ -1110,7 +1352,7 @@ that is not a positive integer is `400 invalid_request`. `personRole` without
 
 For the owner, a search term matches a video when it appears in the title or
 relative path of one of its locations, in a name or synonym of one of its
-tags, in its work code, or in a name or alias of a person or organization
+tags, in its work code, or in any name of a person or organization
 linked to its work information. Matching uses the folded form
 (`domain.FoldForMatch`), so width, letter case and hiragana or katakana do not
 matter. The description, dates, URLs and external IDs are not matched. A guest

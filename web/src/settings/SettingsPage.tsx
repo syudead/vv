@@ -16,6 +16,7 @@ import AccountSection from "./AccountSection";
 import APITokensSection from "./APITokensSection";
 import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
+import BackgroundWorkSection from "./BackgroundWorkSection";
 import ClearPeopleSection from "./ClearPeopleSection";
 import ComfyUISection from "./ComfyUISection";
 import { FaceRecognitionSections, faceRecognitionNotice } from "./FaceRecognitionSection";
@@ -41,6 +42,7 @@ import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
 /** null: the page's own view draws the section, since its state also feeds the page notice. */
 const sectionComponents: Record<SettingsSectionId, ComponentType | null> = {
+  "background-work": BackgroundWorkSection,
   "scan-status": ScanStatusSection,
   "auto-import-state": AutoImportStateSection,
   "media-folders": MediaFoldersSection,

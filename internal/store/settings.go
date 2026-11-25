@@ -48,7 +48,12 @@ const desktopLANAccessKey = "desktop.lan_access"
 
 // LANAccess defaults to false unless the stored value is exactly true.
 func (s *SettingsStore) LANAccess(ctx context.Context) (bool, error) {
-	value, found, err := readSetting(ctx, s.db.sql, desktopLANAccessKey)
+	return readTrueSetting(ctx, s.db.sql, desktopLANAccessKey)
+}
+
+// readTrueSetting reads a switch that is off unless the stored value is exactly true.
+func readTrueSetting(ctx context.Context, q rowQueryer, key string) (bool, error) {
+	value, found, err := readSetting(ctx, q, key)
 	if err != nil {
 		return false, err
 	}
@@ -72,6 +77,17 @@ func (s *SettingsStore) AutoImport(ctx context.Context) (bool, error) {
 
 func (s *SettingsStore) SaveAutoImport(ctx context.Context, enabled bool) error {
 	return writeSetting(ctx, s.db.sql, libraryAutoImportKey, strconv.FormatBool(enabled))
+}
+
+const backgroundPausedKey = "settings.background.paused"
+
+// BackgroundPaused defaults to false unless the stored value is exactly true.
+func (s *SettingsStore) BackgroundPaused(ctx context.Context) (bool, error) {
+	return readTrueSetting(ctx, s.db.sql, backgroundPausedKey)
+}
+
+func (s *SettingsStore) SaveBackgroundPaused(ctx context.Context, paused bool) error {
+	return writeSetting(ctx, s.db.sql, backgroundPausedKey, strconv.FormatBool(paused))
 }
 
 const workInfoPluginProxyURLKey = "work_info_plugins.proxy_url"

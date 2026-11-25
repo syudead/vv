@@ -12,6 +12,7 @@ type ErrorReason = components["schemas"]["ErrorReason"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 type ScanActivityKind = components["schemas"]["ScanActivityKind"];
+type BackgroundGroupName = components["schemas"]["BackgroundGroupName"];
 type FolderWatchProblem = NonNullable<components["schemas"]["FolderWatch"]["problem"]>;
 type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
@@ -174,6 +175,20 @@ function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
     other: `${formatNumber(count)} videos`,
+  });
+}
+
+function files(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} file`,
+    other: `${formatNumber(count)} files`,
+  });
+}
+
+function tasks(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} task`,
+    other: `${formatNumber(count)} tasks`,
   });
 }
 
@@ -458,6 +473,12 @@ const errorReasons = {
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
+  image_search_unreadable:
+    "The file isn't a PNG, JPEG or still WebP image or a video of at least a second, or it can't be read.",
+  image_search_uninformative: "The file is too plain to search by.",
+  image_search_too_long: "The video is too long: up to 3 hours.",
+  image_search_too_large:
+    "The file is too large: images up to 64 MB and 120 megapixels, videos up to 4 GB.",
   mixed_nodes:
     "Videos and groups of different VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
@@ -655,6 +676,11 @@ export const en = {
       favoriteOff: "Add to favorites",
       favoriteOn: "Remove from favorites",
       tentativeTag: "kyoto",
+      rateRing: {
+        primary: "Primary: the first band",
+        muted: "Muted: lower bands",
+        full: "A whole match",
+      },
     },
     pattern: {
       sidePanel: {
@@ -678,6 +704,8 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         profilePage: "Profile page",
+        queryResultsPage: "Query results page",
+        shelf: "Shelf",
         faceGrid: "Face grid",
         groupedList: "Grouped list",
         stepsPage: "Steps page",
@@ -866,6 +894,40 @@ export const en = {
       profilePageAgeValue: "34–35",
       profilePagePerformer: "Performer",
       profilePageCount: "4 videos",
+      queryResults: {
+        title: "Image search",
+        back: "Library",
+        query: "Your file",
+        fileName: "harbour-dusk.jpg",
+        fileMeta: "Image · 1.2 MB",
+        status: "Found 4 videos",
+        took: "Took 0.8 s",
+        another: "Choose another file…",
+        summary: "4 videos",
+        strong: "Strong match",
+        strongRange: "90–100%",
+        partial: "Partial match",
+        partialRange: "60–89%",
+        count: (n: number) =>
+          selectPlural(n, {
+            one: `${formatNumber(n)} video`,
+            other: `${formatNumber(n)} videos`,
+          }),
+        best: "Best candidate",
+        meta: (frames: number, time: string) =>
+          `${formatNumber(frames)} matching frames · best at ${time}`,
+        play: "Play",
+        showFrames: "Show frames",
+        hideFrames: "Hide frames",
+        showFramesFor: (title: string) => `Show frames of ${title}`,
+        hideFramesFor: (title: string) => `Hide frames of ${title}`,
+        playFrom: (time: string) => `Play from ${time}`,
+      },
+      shelfRowTitle: "Favorite collections",
+      shelfRowCount: "6 favorites",
+      shelfRowAll: "All collections",
+      shelfGridTitle: "Recently added",
+      shelfGridCount: "8 videos",
       faceGridLabel: "People",
       faceGridLoading: "Loading people",
       faceGridPeople: [
@@ -1045,6 +1107,96 @@ export const en = {
     resultsLabel: "Search results",
     // Library total counts cards, including one per group, not videos.
     resultCount: items,
+    imageSearch: {
+      pick: "Search by image or video",
+      placeholder: "Or search by text",
+      dropHere: "Drop here to search by this file",
+      clear: "Clear image search",
+      dialog: {
+        title: "Search by image or video",
+        description:
+          "PNG, JPEG or WebP images up to 64 MB, or a video up to 4 GB and 3 hours. The file is used for this search only and is not kept.",
+        zone: "Drop an image or a video here, or click to choose a file",
+        zoneHint: "You can also paste an image while this is open.",
+      },
+      title: "Image search",
+      library: "Library",
+      query: "Your file",
+      kinds: { image: "Image", video: "Video", file: "File" },
+      showFile: "Show your file",
+      hideFile: "Hide your file",
+      uploading: (percent: number) => `Uploading… ${formatNumber(percent)}%`,
+      searching: "Searching…",
+      found: (count: number) => `Found ${counted(count, "video", "videos")}`,
+      noMatchStatus: "No match",
+      notSearched: "Not searched",
+      searchFailed: "Search failed",
+      stopped: "Stopped",
+      took: (time: string) => `Took ${time}`,
+      /** Elapsed time under a minute; a tenth is shown under 10 s. */
+      seconds: (seconds: number, digits: number) =>
+        `${formatDecimal(seconds, digits, digits)} s`,
+      cancel: "Cancel",
+      searchAgain: "Search again",
+      searchStopped: "Search stopped",
+      idle: {
+        title: "Search by an image or a video",
+        description: "Find the videos that contain the same footage, and where.",
+        choose: "Choose a file…",
+      },
+      unindexed: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} video isn't indexed yet and wasn't searched.`,
+          other: `${formatNumber(count)} videos aren't indexed yet and weren't searched.`,
+        }),
+      range: (start: string, end: string) => `${start}–${end}`,
+      videos: (count: number) => counted(count, "video", "videos"),
+      collapseAll: "Collapse all",
+      expandAll: "Expand all",
+      bands: { strong: "Strong match", similar: "Similar" },
+      bandRange: (min: number, max: number) =>
+        `${formatNumber(min)}–${formatNumber(max)}%`,
+      best: "Best candidate",
+      frameMeta: (count: number, time: string) =>
+        `${counted(count, "matching frame", "matching frames")} · best at ${time}`,
+      sectionFrames: (count: number) =>
+        counted(count, "matching frame", "matching frames"),
+      play: "Play",
+      showFrames: "Show frames",
+      hideFrames: "Hide frames",
+      showFramesFor: (title: string) => `Show frames of ${title}`,
+      hideFramesFor: (title: string) => `Hide frames of ${title}`,
+      percent: (percent: number) => `${formatNumber(percent)}%`,
+      framesLabel: "Matching frames",
+      whole: "Whole video",
+      part: "Part of video",
+      spanLane: "Matched section",
+      playFrom: (start: string) => `Play from ${start}`,
+      noMatch: "No video has this footage",
+      allSearched: "Every video in your library was searched.",
+      chooseAnother: "Choose another file…",
+      backToLibrary: "Back to library",
+      retry: "Retry",
+      refused: {
+        several: {
+          title: "Search with one file at a time",
+          description: (count: number) => `${formatNumber(count)} files were given.`,
+        },
+        unreadable: {
+          title: "This file can't be searched",
+          description: "Use a PNG, JPEG or WebP image, or a video.",
+        },
+        tooLarge: "This file is too large",
+        tooLong: "This video is too long",
+        limit: (limit: string) => `The limit is ${limit}.`,
+        megapixels: (count: number) => `${formatNumber(count)} megapixels`,
+        uninformative: {
+          title: "There's nothing to compare in this file",
+          description: "A blank or single-colour picture matches no footage.",
+        },
+        failed: "The search failed",
+      },
+    },
     empty: {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
@@ -1457,6 +1609,7 @@ export const en = {
       folders,
       label: (name: string, videoCount: number, folderCount: number) =>
         `${name}, ${videos(videoCount)}, ${folders(folderCount)}`,
+      rootLabel: (name: string) => name,
       labelWithPath: (label: string, path: string) => `${label}, ${path}`,
     },
     empty: {
@@ -1843,8 +1996,8 @@ export const en = {
     },
     row: {
       open: (name: string) => `Open the library filtered by ${name}`,
-      aliases: (list: string) => `Aliases: ${list}`,
-      aliasWithLanguage: (alias: string, language: string) => `${alias} (${language})`,
+      otherNames: (list: string) => `Also known as ${list}`,
+      nameWithLanguage: (name: string, language: string) => `${name} (${language})`,
       partOf: (parent: string) => `Part of ${parent}`,
       secondLine: (parts: readonly string[]) => parts.join(" · "),
       videoCount: videos,
@@ -1857,17 +2010,28 @@ export const en = {
       favoriteOff: "Add to favorites",
       favoriteOn: "Remove from favorites",
     },
-    details: {
-      title: (name: string) => `Edit "${name}"`,
-      aliases: "Aliases",
-      externalIds: "External IDs",
-      parent: "Parent organization",
-      alias: "Alias",
+    names: {
+      title: "Names",
+      description:
+        "The first name is shown on pages, lists and credits. A language is optional, as a tag such as ja or en-US.",
+      displayName: "Display name",
+      otherNames: "Other names",
+      name: "Name",
       language: "Language",
       languagePlaceholder: "ja",
-      languageDescription: "Optional. A language tag such as ja or en-US.",
-      removeAlias: "Remove alias",
-      addAlias: "Add alias",
+      blank: "(blank)",
+      promote: (name: string) => `Make "${name}" the display name`,
+      promoteBlank: "Make this name the display name",
+      remove: (name: string) => `Remove "${name}"`,
+      removeBlank: "Remove this name",
+      reorder: (title: string) => `Reorder "${title}"`,
+      ...reorderTexts,
+      add: "Add name",
+    },
+    details: {
+      title: (name: string) => `Edit "${name}"`,
+      externalIds: "External IDs",
+      parent: "Parent organization",
       source: "Source",
       value: "Value",
       removeId: "Remove ID",
@@ -1911,12 +2075,12 @@ export const en = {
     },
     mergeDialog: {
       title: (name: string) => `Merge "${name}"`,
-      aliasHint: (alias: string) => `Alias: ${alias}`,
+      otherNameHint: (name: string) => `Also known as ${name}`,
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         count === 0
-          ? `"${source}" isn't on any videos. Its name, aliases and IDs become aliases and IDs of "${target}", and it leaves the list. This can't be undone.`
-          : `The ${videos(count)} with "${source}" get "${target}" instead. "${source}"'s name, aliases and IDs become aliases and IDs of "${target}", and "${source}" leaves the list. This can't be undone.`,
+          ? `"${source}" isn't on any videos. Its names and IDs join "${target}"'s, and it leaves the list. This can't be undone.`
+          : `The ${videos(count)} with "${source}" get "${target}" instead. "${source}"'s names and IDs join "${target}"'s, and "${source}" leaves the list. This can't be undone.`,
       submit: "Merge",
       submitting: "Merging…",
     },
@@ -2201,7 +2365,7 @@ export const en = {
           "profile.careerEndYear": "Career end",
           "profile.bio": "Bio",
           "profile.links": "Links",
-          aliases: "Aliases",
+          names: "Names",
           externalIds: "External IDs",
         } satisfies Record<PersonPluginItem, string>,
         empty: "Empty",
@@ -2220,7 +2384,7 @@ export const en = {
         nothingNew: "Nothing new for this person.",
         skipped: {
           taken: (name: string) => `already linked to ${name}`,
-          tooManyAliases: "over the limit for aliases",
+          tooManyNames: "over the limit for names",
           tooManyIds: "over the limit for external IDs",
           tooManyLinks: "over the limit for links",
           invalid: "too long or contains characters that can't be used",
@@ -2248,8 +2412,6 @@ export const en = {
       careerFrom: "Career from",
       careerUntil: "Career until",
       bio: "Bio",
-      name: "Name",
-      aliases: "Aliases",
       externalIds: "External IDs",
       url: "URL",
       meta: (parts: readonly string[]) => parts.join(" · "),
@@ -2958,7 +3120,7 @@ export const en = {
       addMaker: "Add a maker",
       addLabel: "Add a label",
       create: (name: string) => `Create "${name}"`,
-      alias: (alias: string) => `Alias: ${alias}`,
+      otherName: (name: string) => `Also known as ${name}`,
       videoCount: videos,
       remove: (name: string) => `Remove ${name}`,
       newMark: "New",
@@ -3469,6 +3631,11 @@ export const en = {
           one: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} task done`,
           other: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
         }),
+      waitingForResume: (done: number, total: number) =>
+        selectPlural(total, {
+          one: `Waiting for resume · ${formatNumber(done)} of ${formatNumber(total)} task done`,
+          other: `Waiting for resume · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
+        }),
       finished: (total: number) =>
         selectPlural(total, {
           one: `Finished · ${formatNumber(total)} task`,
@@ -3619,6 +3786,26 @@ export const en = {
     deleted: (name: string) => `Deleted "${name}"`,
     open: "Open",
     listFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+    list: {
+      title: "Smart folders",
+      documentTitle: "Smart folders",
+      count: smartFolders,
+      table: "Smart folders",
+      new: "New smart folder",
+      empty: {
+        title: "No smart folders yet",
+        description: "A smart folder keeps the videos that match its conditions.",
+      },
+    },
+    band: {
+      title: "Favorite smart folders",
+      count: (n: number) =>
+        selectPlural(n, {
+          one: `${formatNumber(n)} favorite`,
+          other: `${formatNumber(n)} favorites`,
+        }),
+      all: "All smart folders",
+    },
     dialog: {
       newTitle: "New smart folder",
       newChildTitle: (parent: string) => `New smart folder in "${parent}"`,
@@ -3663,6 +3850,7 @@ export const en = {
         })[kind],
     },
     detail: {
+      favorite: "Favorite",
       edit: "Edit…",
       newChild: "New child smart folder…",
       delete: "Delete…",
@@ -3961,6 +4149,8 @@ export const en = {
       home: "Home",
       library: "Library",
       folders: "Folders",
+      smartFolders: "Smart folders",
+      smartFoldersShort: "Smart",
       tags: "Tags",
       people: "People",
       organizations: "Organizations",
@@ -3995,6 +4185,52 @@ export const en = {
       guestBody: "Some videos aren't shown until it is.",
       openPairing: "Open Pairing",
     },
+    // Shared by the Settings section and the bottom-right indicator's summary.
+    background: {
+      switchLabel: "Pause background work",
+      pausing: "Pausing…",
+      resuming: "Resuming…",
+      pauseFailed: (reason: string) => `Couldn't pause background work: ${reason}`,
+      resumeFailed: (reason: string) => `Couldn't resume background work: ${reason}`,
+      countsLabel: "Left to do",
+      groups: {
+        scan: "Scan",
+        import: "Import",
+        auto_tag: "Auto-tagging",
+        face: "Face recognition",
+        version_judge: "Duplicate check",
+        backfill: "Catch-up",
+      } satisfies Record<BackgroundGroupName, string>,
+      // Scan counts files, import counts videos, and the other groups count tasks.
+      remaining: {
+        scan: files,
+        import: videos,
+        auto_tag: tasks,
+        face: tasks,
+        version_judge: tasks,
+        backfill: tasks,
+      } satisfies Record<BackgroundGroupName, (count: number) => string>,
+      waitingForResume: "Waiting for resume",
+      featureOff: "Off",
+      featureOffNote:
+        "Work for a feature that is off stays here until you turn the feature on.",
+      // The action of a running entry outside scan and import, worded by its group.
+      groupAction: {
+        auto_tag: "Auto-tagging",
+        face: "Analysing faces",
+        version_judge: "Judging duplicates",
+        backfill: "Catching up older videos",
+      },
+      stopping: "Stopping",
+      // The bottom-right indicator while paused, and its summary.
+      paused: "Paused",
+      left: (count: number) => `${formatNumber(count)} left`,
+      indicatorName: (total: number) =>
+        total === 0
+          ? "Background work is paused. Open the background work settings"
+          : `Background work is paused, ${formatNumber(total)} left. Open the background work settings`,
+      summaryHeading: "Background work is paused",
+    },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
       rescanFailed: (reason: string) => `Couldn't start the force rescan: ${reason}`,
@@ -4009,6 +4245,7 @@ export const en = {
         starting: "Starting",
         finding: "Scanning",
         running: "Scanning",
+        paused: "Waiting for resume",
         done: "Done",
         partial: "Some failed",
         failed: "Scan failed",
@@ -4022,6 +4259,9 @@ export const en = {
         "Counts changed files and videos that still needed preparing, not the whole library.",
       noChanges: "No changed files were found.",
       lookingForFiles: "Looking for files…",
+      // A scan waiting for the resume of background work, before and after it read its first file.
+      waitingToStart: "Starts when background work resumes.",
+      waitingToContinue: "Continues when background work resumes.",
       activity: {
         registering: "Adding to the library",
         probe: "Analyzing",
@@ -4427,7 +4667,6 @@ export const en = {
         organizationNames: "Organizations",
         role: "Role",
         synonym: "Synonym",
-        aliases: "Aliases",
         code: "Work code",
         url: "URL",
         dateKind: "Date",
@@ -4680,6 +4919,17 @@ export const en = {
         failed: (reason: string) => `Couldn't delete the people: ${reason}`,
       },
     },
+    backgroundWork: {
+      heading: "Background work",
+      state: { paused: "Paused", running: "Running", idle: "Idle" },
+      switchDescription:
+        "Stops scans, imports and analysis until you turn this off. Playback, browsing and editing keep working.",
+      runningLabel: "Running now",
+      nothingRunning: "Nothing is running.",
+      nothingRunsWhilePaused: "Nothing runs while paused.",
+      loading: "Loading background work",
+      loadFailed: (reason: string) => `Couldn't load background work: ${reason}`,
+    },
     scanStatus: {
       heading: "Scan status",
       state: {
@@ -4690,6 +4940,8 @@ export const en = {
       start: "Scan library",
       starting: "Scanning…",
       runningReason: "A scan is running. You can start another when it finishes.",
+      waitingReason:
+        "A scan is waiting for resume. You can start another when it finishes.",
       needsMediaFolder: { before: "Add a media folder in ", after: " to scan." },
       forceRescan: "Force rescan",
       rescanDialog: {
@@ -4878,8 +5130,15 @@ export const en = {
       loading: "Loading the auto-tagging settings",
       loadFailed: (reason: string) =>
         `Couldn't load the auto-tagging settings: ${reason}`,
-      queue: (queued: number, running: number, done: number, failed: number) =>
-        `Waiting ${formatNumber(queued)} · Tagging ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      // While background work is paused, the queued figure waits for its resume.
+      queue: (
+        queued: number,
+        running: number,
+        done: number,
+        failed: number,
+        paused: boolean,
+      ) =>
+        `${paused ? "Waiting for resume" : "Waiting"} ${formatNumber(queued)} · Tagging ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
       lastError: "Last failure",
       runMissing: "Tag videos not yet tagged",
       runAll: "Tag all videos again",
@@ -4904,8 +5163,14 @@ export const en = {
       off: "Face recognition is off.",
       offHint:
         "Turn on “Use face recognition” under Recognition to find people in videos.",
-      queue: (queued: number, running: number, done: number, failed: number) =>
-        `Waiting ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      queue: (
+        queued: number,
+        running: number,
+        done: number,
+        failed: number,
+        paused: boolean,
+      ) =>
+        `${paused ? "Waiting for resume" : "Waiting"} ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
       runMissing: "Analyse videos not yet analysed",
       started: (count: number) =>
         count === 0

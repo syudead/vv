@@ -23,6 +23,7 @@ import type {
 } from "../api/activity";
 import { formatDateTime, t } from "../i18n";
 import { cn } from "../lib/cn";
+import { useBackgroundPaused } from "../shell/BackgroundProvider";
 import { PageSection } from "../ui/patterns/page-section";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { JudgementEvidence } from "../versions/JudgementEvidence";
@@ -160,6 +161,7 @@ interface SectionProps extends LinkProps {
 /** A pipeline's members in join order, replaced ones included above their retry. */
 export function TasksSection({ entry, ops, now, listFrom }: SectionProps) {
   const members = entry.members ?? [];
+  const paused = useBackgroundPaused();
   if (entry.kind !== "pipeline" || members.length === 0) return null;
   return (
     <PageSection title={t.activity.detail.section.tasks}>
@@ -174,7 +176,7 @@ export function TasksSection({ entry, ops, now, listFrom }: SectionProps) {
           }
           actions={taskActions(member, ops)}
         >
-          <ResultText result={memberResult(member, now)} wrap />
+          <ResultText result={memberResult(member, now, paused)} wrap />
           <Muted>{formatDateTime(member.createdAt)}</Muted>
         </DetailRow>
       ))}
@@ -194,6 +196,7 @@ const stageIcon: Record<StageView, { icon: LucideIcon; className: string }> = {
 
 function StageRow({ line }: { line: StageLine }) {
   const { icon: Icon, className } = stageIcon[line.view];
+  const paused = useBackgroundPaused();
   const absent = line.view === "absent";
   return (
     <DetailRow
@@ -209,7 +212,9 @@ function StageRow({ line }: { line: StageLine }) {
           line.view === "failed" ? "text-destructive" : "text-muted-foreground",
         )}
       >
-        {t.activity.detail.stageState[line.view]}
+        {line.view === "waiting" && paused
+          ? t.shell.background.waitingForResume
+          : t.activity.detail.stageState[line.view]}
       </span>
       {line.message !== undefined && (
         <p className="whitespace-pre-line wrap-anywhere">{line.message}</p>

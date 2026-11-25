@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { isAborted, RequestFailed } from "../api/client";
 import {
-  type Alias,
   type Credit,
   type CreditKind,
   type CreditPatch,
@@ -15,31 +14,25 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import { type IdRow, newRowKey } from "../player/detailsEditor/draft";
 import {
-  AddRow,
   controlId,
   type FieldProblem,
   IdRows,
-  invalidProps,
   Problem,
-  RemoveRow,
-  type RowsProps,
   saveOnEnter,
-  useFocusAdded,
 } from "../player/detailsEditor/fields";
 import { DialogError } from "../tags/DialogError";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Combobox, type ComboboxOption } from "../ui/shadcn/combobox";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLegend,
-  FieldSet,
-  FieldTitle,
-} from "../ui/shadcn/field";
-import { Input } from "../ui/shadcn/input";
+import { Field, FieldError, FieldLegend, FieldSet } from "../ui/shadcn/field";
 import { Spinner } from "../ui/shadcn/spinner";
 import { parentOf } from "./creditRows";
+import {
+  type NameRow,
+  NameRows,
+  nameRowsControl,
+  nameRowsOf,
+  nameRowsToSend,
+} from "./NameRows";
 import {
   type OrganizationDraft,
   organizationDraftOf,
@@ -49,21 +42,14 @@ import {
   OrganizationProfileFields,
 } from "./OrganizationProfileFields";
 
-const maxAliases = 50;
 export const maxExternalIds = 20;
 
 /** Combobox values cannot be empty, so None needs a sentinel. */
 const noParent = "none";
 
-export interface AliasRow {
-  key: string;
-  name: string;
-  language: string;
-}
-
 /** Map submitted array indexes back to stable row keys for field errors. */
 export interface Sent {
-  aliasKeys: string[];
+  nameKeys: string[];
   idKeys: string[];
 }
 
@@ -76,13 +62,9 @@ export function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
   const field = failure.field ?? "";
   const profileControl = organizationProfileControl(field);
   if (profileControl !== undefined) return { control: profileControl, text };
-  if (field === "aliases") return { control: "aliases", text };
+  const name = nameRowsControl(field, sent.nameKeys);
+  if (name !== undefined) return { control: name, text };
   if (field === "externalIds") return { control: "ids", text };
-  const alias = /^aliases\[(\d+)\]\.(name|language)$/.exec(field);
-  if (alias !== null) {
-    const key = sent.aliasKeys[Number(alias[1])];
-    if (key !== undefined) return { control: `alias-${alias[2]!}-${key}`, text };
-  }
   const id = /^externalIds\[(\d+)\](?:\.(source|value))?$/.exec(field);
   if (id !== null) {
     const key = sent.idKeys[Number(id[1])];
@@ -93,7 +75,7 @@ export function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
 
 /** Submit only fields edited since opening the dialog. */
 interface Edited {
-  aliases: boolean;
+  names: boolean;
   ids: boolean;
   parent: boolean;
 }
@@ -104,28 +86,28 @@ interface OrganizationEdit {
   loaded: OrganizationDraft;
 }
 
-/** Ignore newly added rows whose inputs are all blank. */
+/** Ignore newly added ID rows whose inputs are all blank. */
 function blank(...values: string[]): boolean {
   return values.every((value) => value.trim() === "");
 }
 
 /**
  * Patch only edited fields to preserve concurrent changes in other tabs; edited lists replace
- * their entire value. Omit blank rows and languages; only organizations send parent, with null for
- * None.
+ * their entire value. Names go as NameRows sends them, blank ID rows are left out, and only
+ * organizations send parent, with null for None.
  */
 function buildPatch(
   kind: CreditKind,
-  aliases: readonly AliasRow[],
+  names: readonly NameRow[],
   ids: readonly IdRow[],
   parent: string,
   edited: Edited,
   organization: OrganizationEdit | null,
 ): { patch: CreditPatch; sent: Sent } {
-  const sentAliases = aliasesToSend(edited.aliases ? aliases : []);
+  const sentNames = nameRowsToSend(edited.names ? names : []);
   const sentIds = idsToSend(edited.ids ? ids : []);
   const patch: CreditPatch = {};
-  if (edited.aliases) patch.aliases = sentAliases.values;
+  if (edited.names) patch.names = sentNames.values;
   if (edited.ids) patch.externalIds = sentIds.values;
   if (kind === "organization" && edited.parent)
     patch.parentId = parent === noParent ? null : Number(parent);
@@ -133,24 +115,7 @@ function buildPatch(
     const profile = organizationProfilePatch(organization.draft, organization.loaded);
     if (Object.keys(profile).length > 0) patch.organizationProfile = profile;
   }
-  return { patch, sent: { aliasKeys: sentAliases.keys, idKeys: sentIds.keys } };
-}
-
-/** Rows as sent: blank rows and empty languages left out, values trimmed, with each sent row's key. */
-export function aliasesToSend(rows: readonly AliasRow[]): {
-  values: Alias[];
-  keys: string[];
-} {
-  const kept = rows.filter((row) => !blank(row.name, row.language));
-  return {
-    values: kept.map((row) => {
-      const language = row.language.trim();
-      return language === ""
-        ? { name: row.name.trim() }
-        : { name: row.name.trim(), language };
-    }),
-    keys: kept.map((row) => row.key),
-  };
+  return { patch, sent: { nameKeys: sentNames.keys, idKeys: sentIds.keys } };
 }
 
 export function idsToSend(rows: readonly IdRow[]): {
@@ -162,14 +127,6 @@ export function idsToSend(rows: readonly IdRow[]): {
     values: kept.map((row) => ({ source: row.source.trim(), value: row.value.trim() })),
     keys: kept.map((row) => row.key),
   };
-}
-
-export function aliasRowsOf(aliases: readonly Alias[]): AliasRow[] {
-  return aliases.map((alias) => ({
-    key: newRowKey("a"),
-    name: alias.name,
-    language: alias.language ?? "",
-  }));
 }
 
 export function idRowsOf(ids: readonly ExternalId[]): IdRow[] {
@@ -199,14 +156,14 @@ export default function CreditDetailsDialog({
     () => (organization === null ? null : organizationDraftOf(organization.profile)),
   );
   const [loadedOrganization] = useState(organizationDraft);
-  const [aliases, setAliases] = useState<AliasRow[]>(() => aliasRowsOf(credit.aliases));
+  const [names, setNames] = useState<NameRow[]>(() => nameRowsOf(credit.names));
   const [ids, setIds] = useState<IdRow[]>(() => idRowsOf(credit.externalIds));
   const [parent, setParent] = useState(() => {
     const current = parentOf(credit);
     return current === undefined ? noParent : String(current.id);
   });
   const [edited, setEdited] = useState<Edited>({
-    aliases: false,
+    names: false,
     ids: false,
     parent: false,
   });
@@ -223,7 +180,7 @@ export default function CreditDetailsDialog({
     if (pending) return;
     const { patch, sent } = buildPatch(
       kind,
-      aliases,
+      names,
       ids,
       parent,
       edited,
@@ -275,12 +232,12 @@ export default function CreditDetailsDialog({
       submitRef={submitRef}
     >
       <FieldSet>
-        <FieldLegend>{d.aliases}</FieldLegend>
-        <AliasRows
-          rows={aliases}
+        <FieldLegend>{t.credits.names.title}</FieldLegend>
+        <NameRows
+          rows={names}
           onChange={(next) => {
-            setAliases(next);
-            markEdited("aliases");
+            setNames(next);
+            markEdited("names");
           }}
           {...rowsProps}
         />
@@ -344,76 +301,6 @@ export default function CreditDetailsDialog({
       )}
       {error !== null && <DialogError message={error} />}
     </FormDialog>
-  );
-}
-
-export function AliasRows({
-  rows,
-  onChange,
-  saving,
-  problem,
-  onEnter,
-  title,
-}: RowsProps<AliasRow> & {
-  /** Omitted when the surrounding FieldLegend supplies the label. */
-  title?: UiText;
-}) {
-  const d = t.credits.details;
-  const focusAdded = useFocusAdded();
-  const change = (index: number, patch: Partial<AliasRow>) =>
-    onChange(rows.map((item, at) => (at === index ? { ...item, ...patch } : item)));
-  return (
-    <Field aria-labelledby={title === undefined ? undefined : controlId("aliases")}>
-      {title !== undefined && <FieldTitle id={controlId("aliases")}>{title}</FieldTitle>}
-      <FieldDescription>{d.languageDescription}</FieldDescription>
-      {rows.map((row, index) => (
-        <div key={row.key} className="flex flex-col gap-1">
-          <div className="flex items-start gap-2">
-            <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-3">
-              <Input
-                id={controlId(`alias-name-${row.key}`)}
-                aria-label={d.alias}
-                value={row.name}
-                readOnly={saving}
-                onChange={(event) => change(index, { name: event.target.value })}
-                onKeyDown={onEnter}
-                className="h-8 sm:col-span-2"
-                {...invalidProps(problem, `alias-name-${row.key}`)}
-              />
-              <Input
-                id={controlId(`alias-language-${row.key}`)}
-                aria-label={d.language}
-                placeholder={d.languagePlaceholder}
-                value={row.language}
-                readOnly={saving}
-                onChange={(event) => change(index, { language: event.target.value })}
-                onKeyDown={onEnter}
-                className="h-8"
-                {...invalidProps(problem, `alias-language-${row.key}`)}
-              />
-            </div>
-            <RemoveRow
-              label={d.removeAlias}
-              saving={saving}
-              onRemove={() => onChange(rows.filter((_, at) => at !== index))}
-            />
-          </div>
-          <Problem problem={problem} control={`alias-name-${row.key}`} />
-          <Problem problem={problem} control={`alias-language-${row.key}`} />
-        </div>
-      ))}
-      <AddRow
-        label={d.addAlias}
-        saving={saving}
-        disabled={rows.length >= maxAliases}
-        onAdd={() => {
-          const key = newRowKey("a");
-          focusAdded(`alias-name-${key}`);
-          onChange([...rows, { key, name: "", language: "" }]);
-        }}
-      />
-      <Problem problem={problem} control="aliases" />
-    </Field>
   );
 }
 

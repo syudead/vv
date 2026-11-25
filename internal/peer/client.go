@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -27,6 +28,7 @@ import (
 const (
 	connectTimeout  = 5 * time.Second
 	responseTimeout = 10 * time.Second
+	idleConnTimeout = 90 * time.Second
 	maxResponseSize = 1 << 20
 )
 
@@ -37,10 +39,13 @@ type Options struct {
 
 type Client struct {
 	roots *x509.CertPool
+
+	mu         sync.Mutex
+	transports map[transportKey]*http.Transport
 }
 
 func New(opts Options) *Client {
-	return &Client{roots: opts.RootCAs}
+	return &Client{roots: opts.RootCAs, transports: map[transportKey]*http.Transport{}}
 }
 
 // Fingerprint is the base64 SHA-256 of a certificate's SPKI, as the owner compares and pins it.
@@ -64,17 +69,37 @@ var (
 	mediaLimits = limits{}
 )
 
-// httpClient is built per target because the pin is part of the TLS check.
+// transportKey names a shared transport: the pin is part of the TLS check and the header timeout is the
+// transport's, while the host comes from each request's URL.
+type transportKey struct {
+	pin    string
+	header time.Duration
+}
+
+// idleConnsPerPeer keeps enough connections for a page's parallel thumbnail requests, so they are not dialled
+// again for each request.
+const idleConnsPerPeer = 16
+
+// httpClient shares one keep-alive transport per pin and header timeout; dialling the peer for every
+// request made each proxied thumbnail and list call pay a new connection.
 func (c *Client) httpClient(target domain.PeerTarget, bounds limits) *http.Client {
-	dialer := &net.Dialer{Timeout: connectTimeout}
-	transport := &http.Transport{
-		DialContext:         dialer.DialContext,
-		TLSHandshakeTimeout: connectTimeout,
-		// The peer is on the LAN; an environment proxy would not reach it.
-		Proxy:                 nil,
-		TLSClientConfig:       tlsConfig(target.PinnedSPKI, c.roots),
-		ResponseHeaderTimeout: bounds.header,
-		DisableKeepAlives:     true,
+	key := transportKey{pin: target.PinnedSPKI, header: bounds.header}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	transport, ok := c.transports[key]
+	if !ok {
+		dialer := &net.Dialer{Timeout: connectTimeout}
+		transport = &http.Transport{
+			DialContext:         dialer.DialContext,
+			TLSHandshakeTimeout: connectTimeout,
+			// The peer is on the LAN; an environment proxy would not reach it.
+			Proxy:                 nil,
+			TLSClientConfig:       tlsConfig(target.PinnedSPKI, c.roots),
+			ResponseHeaderTimeout: bounds.header,
+			MaxIdleConnsPerHost:   idleConnsPerPeer,
+			IdleConnTimeout:       idleConnTimeout,
+		}
+		c.transports[key] = transport
 	}
 	return &http.Client{Transport: transport, Timeout: bounds.total}
 }

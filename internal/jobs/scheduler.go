@@ -49,6 +49,8 @@ type Options struct {
 	// Paused reports the kinds whose feature is off; their jobs stay queued and are not claimed. Whoever turns a
 	// feature back on must Wake the scheduler. Nil pauses nothing.
 	Paused func(ctx context.Context) (map[domain.JobKind]bool, error)
+	// Held starts the scheduler held, as Hold does, for a pause of background work saved before startup.
+	Held bool
 	// Optional callback after claiming and immediately before handling.
 	Started func(job domain.Job)
 	// Optional callback after recording the outcome.
@@ -77,6 +79,17 @@ type Scheduler struct {
 	nextGroup int
 	nextKind  map[string]int
 	running   sync.WaitGroup
+	hold      hold
+}
+
+// hold is the pause of background work: while held nothing is granted, and every running job's context is cancelled
+// with domain.ErrJobPaused. The mutex orders a grant against Hold, so a job claimed during a hold never runs.
+type hold struct {
+	mu   sync.Mutex
+	held bool
+	// Each entry is the current claim's registration: a job snoozed by a hold can be claimed again before its
+	// earlier run returns, and that run must not remove the new one.
+	cancel map[int64]*context.CancelCauseFunc
 }
 
 func NewScheduler(opts Options) *Scheduler {
@@ -96,6 +109,7 @@ func NewScheduler(opts Options) *Scheduler {
 		logger:   logger,
 		capacity: newCapacity(opts.CPUSlots),
 		nextKind: map[string]int{},
+		hold:     hold{held: opts.Held, cancel: map[int64]*context.CancelCauseFunc{}},
 	}
 	s.roots = newRoots(opts.Disks, logger, s.Wake)
 	return s
@@ -103,6 +117,52 @@ func NewScheduler(opts Options) *Scheduler {
 
 func (s *Scheduler) Wake() {
 	s.loop.Wake()
+}
+
+// Hold stops granting jobs and cancels the running ones with domain.ErrJobPaused, which records each as a snooze when
+// its handler returns. It does not wait for the handlers. See docs/design-docs/background-pause.md.
+func (s *Scheduler) Hold() {
+	s.hold.mu.Lock()
+	defer s.hold.mu.Unlock()
+	s.hold.held = true
+	for _, cancel := range s.hold.cancel {
+		(*cancel)(domain.ErrJobPaused)
+	}
+	s.logger.Info("held the background jobs", slog.Int("cancelled", len(s.hold.cancel)))
+}
+
+// Release grants jobs again after Hold. Kinds whose feature is off stay paused.
+func (s *Scheduler) Release() {
+	s.hold.mu.Lock()
+	s.hold.held = false
+	s.hold.mu.Unlock()
+	s.logger.Info("released the background jobs")
+	s.Wake()
+}
+
+func (s *Scheduler) held() bool {
+	s.hold.mu.Lock()
+	defer s.hold.mu.Unlock()
+	return s.hold.held
+}
+
+// track registers a granted job's cancellation, cancelling it at once when a hold came after its claim.
+func (s *Scheduler) track(id int64, cancel context.CancelCauseFunc) (untrack func()) {
+	s.hold.mu.Lock()
+	defer s.hold.mu.Unlock()
+	if s.hold.held {
+		cancel(domain.ErrJobPaused)
+	}
+	registration := &cancel
+	s.hold.cancel[id] = registration
+	return func() {
+		s.hold.mu.Lock()
+		if s.hold.cancel[id] == registration {
+			delete(s.hold.cancel, id)
+		}
+		s.hold.mu.Unlock()
+		cancel(nil)
+	}
 }
 
 // RecheckRoots checks the unavailable media folders again, as after a scan starts or the folder watcher reports a
@@ -137,13 +197,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 // turn is what one step knows while it grants: the disks in rotation, the most urgent due class of each kind, the
-// paused kinds, the class being served and the unavailable folders.
+// paused kinds and the class being served.
 type turn struct {
-	groups      []diskGroup
-	due         map[domain.JobKind]domain.JobPriority
-	paused      map[domain.JobKind]bool
-	class       domain.JobPriority
-	unavailable []int64
+	groups []diskGroup
+	due    map[domain.JobKind]domain.JobPriority
+	paused map[domain.JobKind]bool
+	class  domain.JobPriority
 }
 
 // step serves the classes strictly in order. Within a class it visits the disks in turn, claiming one job per visit,
@@ -152,6 +211,10 @@ type turn struct {
 func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 	// The turn's claims see every job due by now, so the lookup from now also finds one that came due mid-turn.
 	since := time.Now()
+	// Release wakes the loop, so a held scheduler sleeps until then.
+	if s.held() {
+		return domain.WorkerIdle
+	}
 	t, err := s.prepare(ctx, since)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -172,10 +235,10 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 	if err != nil {
 		return turn{}, fmt.Errorf("cannot list the media folders: %w", err)
 	}
-	s.roots.refresh(folders, now, func(folder domain.MediaFolder) bool { return s.populated(ctx, folder) })
+	s.roots.refresh(ctx, folders, now, s.populated)
 	var t turn
 	var readSlots map[string]int
-	t.groups, readSlots, t.unavailable = s.roots.snapshot()
+	t.groups, readSlots = s.roots.snapshot()
 	s.capacity.setDisks(readSlots)
 	if t.due, err = s.queue.DueJobKinds(ctx); err != nil {
 		return turn{}, err
@@ -189,14 +252,17 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 }
 
 // populated reports whether the library holds a location under the folder; a lookup that fails counts the folder as
-// new, so an empty folder is then readable rather than parked.
-func (s *Scheduler) populated(ctx context.Context, folder domain.MediaFolder) bool {
+// new, so an empty folder is then readable rather than parked. It fails only when ctx ended the lookup.
+func (s *Scheduler) populated(ctx context.Context, folder domain.MediaFolder) (bool, error) {
 	populated, err := s.folders.HasLocationsUnder(ctx, folder.ID)
-	if err != nil && ctx.Err() == nil {
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
 		s.logger.Warn("could not check whether the media folder holds videos", slog.String("path", folder.Path),
 			slog.Any("error", err))
 	}
-	return populated
+	return populated, nil
 }
 
 // grantClass visits the disks round robin from where the last turn stopped, so a disk with a long queue takes turns
@@ -231,12 +297,16 @@ func (s *Scheduler) grantIn(ctx context.Context, g diskGroup, t turn, empty map[
 		if class, ok := t.due[kind]; !ok || class > t.class || empty[key] || t.paused[kind] {
 			continue
 		}
+		// A hold during the round grants nothing after it.
+		if s.held() {
+			return false, nil
+		}
 		demand := domain.JobDemand(kind)
 		if !s.capacity.reserveJob(g.disk, kind, demand) {
 			continue
 		}
 		job, err := s.queue.ClaimJobOn(ctx, domain.JobClaim{
-			Kind: kind, MaxPriority: t.class, Roots: g.roots, Unavailable: t.unavailable,
+			Kind: kind, MaxPriority: t.class, Roots: g.roots, Unavailable: s.roots.unavailable(),
 		})
 		if err != nil {
 			s.capacity.releaseJob(g.disk, kind, demand)
@@ -283,9 +353,12 @@ func (s *Scheduler) untilNextRunAfter(ctx context.Context, since time.Time) doma
 
 func (s *Scheduler) grant(ctx context.Context, job domain.Job, disk string, demand domain.JobResources) {
 	s.logger.Debug("granted a job", s.slotAttrs(job, disk, demand)...)
-	jobCtx := domain.WithJobSlots(ctx, lentSlots{scheduler: s, job: job, disk: disk})
+	jobCtx, cancel := context.WithCancelCause(ctx)
+	untrack := s.track(job.ID, cancel)
+	jobCtx = domain.WithJobSlots(jobCtx, lentSlots{scheduler: s, job: job, disk: disk})
 	s.running.Go(func() {
-		s.process(jobCtx, job)
+		s.process(ctx, jobCtx, job)
+		untrack()
 		s.capacity.releaseJob(disk, job.Kind, demand)
 		s.logger.Debug("released a job", s.slotAttrs(job, disk, demand)...)
 		s.Wake()
@@ -379,9 +452,14 @@ func (l lentSlots) Release(demand domain.JobResources) {
 	l.scheduler.Wake()
 }
 
-// Cancellation leaves running jobs for startup recovery instead of consuming retry attempts as
-// failures.
-func (s *Scheduler) process(ctx context.Context, job domain.Job) {
+// Cancellation of ctx leaves running jobs for startup recovery instead of consuming retry attempts as failures. A
+// hold cancels only jobCtx, and a job it stopped is snoozed instead of failed.
+func (s *Scheduler) process(ctx, jobCtx context.Context, job domain.Job) {
+	if jobCtx.Err() != nil {
+		// A hold came between the claim and the start.
+		s.recordOutcome(ctx, job, domain.ErrJobPaused)
+		return
+	}
 	if s.started != nil {
 		s.started(job)
 	}
@@ -390,24 +468,68 @@ func (s *Scheduler) process(ctx context.Context, job domain.Job) {
 		// Retry cannot change this result and would only block the queue.
 		err = fmt.Errorf("unknown job kind: %s", job.Kind)
 	} else {
-		err = handler(ctx, job)
+		err = handler(jobCtx, job)
 	}
 	if ctx.Err() != nil {
 		return
 	}
 
-	if err != nil {
+	switch {
+	case err != nil && errors.Is(context.Cause(jobCtx), domain.ErrJobPaused):
+		s.logger.Info("stopped a job for the pause", slog.Int64("job", job.ID), slog.String("kind", string(job.Kind)))
+		s.recordOutcome(ctx, job, domain.ErrJobPaused)
+	case err != nil:
 		err = s.snoozeIfRootUnreadable(ctx, job, err)
 		if ctx.Err() != nil {
 			return
 		}
 		s.fail(ctx, job, err)
-	} else if completeErr := s.queue.CompleteClaimedJob(ctx, job); completeErr != nil {
-		s.logger.Warn("could not record job completion",
-			slog.Int64("job", job.ID), slog.Any("error", completeErr))
+	default:
+		s.recordOutcome(ctx, job, nil)
 	}
 	if s.finished != nil {
 		s.finished(job)
+	}
+}
+
+// Retry delays for recording a claimed job's outcome; a transient storage failure must not leave the job running
+// until the next restart.
+const (
+	outcomeRetryInitial = time.Second
+	outcomeRetryMax     = 30 * time.Second
+)
+
+// recordOutcome retries a transient storage failure so a claimed job is not left running until the next restart. A
+// cancelled context leaves the job for startup recovery, and a job another operation already settled needs no retry.
+func (s *Scheduler) recordOutcome(ctx context.Context, job domain.Job, cause error) {
+	backoff := outcomeRetryInitial
+	for {
+		var err error
+		if cause != nil {
+			err = s.queue.FailClaimedJob(ctx, job, cause)
+		} else {
+			err = s.queue.CompleteClaimedJob(ctx, job)
+		}
+		if err == nil {
+			return
+		}
+		if ctx.Err() != nil || errors.Is(err, domain.ErrJobNotRunning) {
+			if ctx.Err() == nil {
+				s.logger.Warn("could not record the job outcome",
+					slog.Int64("job", job.ID), slog.Any("error", err))
+			}
+			return
+		}
+		s.logger.Warn("could not record the job outcome; retrying",
+			slog.Int64("job", job.ID), slog.Duration("retryIn", backoff), slog.Any("error", err))
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		backoff = min(backoff*2, outcomeRetryMax)
 	}
 }
 
@@ -459,8 +581,5 @@ func (s *Scheduler) fail(ctx context.Context, job domain.Job, cause error) {
 		slog.Any("error", cause),
 	)
 
-	if err := s.queue.FailClaimedJob(ctx, job, cause); err != nil {
-		s.logger.Warn("could not record job failure",
-			slog.Int64("job", job.ID), slog.Any("error", err))
-	}
+	s.recordOutcome(ctx, job, cause)
 }

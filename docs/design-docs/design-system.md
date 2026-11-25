@@ -283,6 +283,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default                                                            |
 | `PersonFace`                                                                                              | —                                                                         | vv component; a person's face or the `UserRound` placeholder in one frame, in the `card`, `profile`, `chip`, `token`, `option`, `compare`, `judge` and `scene` shapes               |
 | `SpanBar` | — | vv component; when something happens in a video, as blocks on a lane the video's length, pressable while the player can play |
+| `RateRing` | — | vv component; a rate of 100 as a ring with its whole percent inside, in `primary` or `muted-foreground`; not a control |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -313,8 +314,8 @@ to pick, what goes in each slot and what must not is in
 
 | Layer          | What it is                                                                                                                                                                                                                                                                             | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `SidePanel`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `Shelf`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                            | `registry:ui`, one item each |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `SidePanel`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `QueryResultsPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `Shelf`, `CardList`, `ResultRow`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                            | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                                                          | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
@@ -428,6 +429,19 @@ row's end), then the items, usually as `Shelf`s. Below `sm` the face stands
 above the identity and the facts card follows it. No skeleton had that shape:
 `ListPage`'s `aside` is a right-hand column for tools read after the body, and
 `DetailPage` is outside the shell with media edge to edge.
+
+`QueryResultsPage` is a shell page for a query beside the results it found,
+such as an image search: the header, then from `lg` the query column
+`query-aside` wide at the start, stuck under the top bar, and the results in
+`ResultBand`s of `ResultRow`s; below `lg` one column, where the query's
+collapsed bar sticks under the top bar. The query stays in view because the
+viewer compares every result with it. No skeleton kept a subject beside its
+items: `ListPage`'s `aside` is a right-hand column read after the body, and
+`ProfilePage` puts its subject above. A `ResultRow` is one candidate on `card`
+whose body, such as a strip of matched frames, the caller shows or hides; it
+shares the expand button with `CardListItem`. `RateRing` marks a row with its
+rate, so the eye finds the closest rows by the length of the arc before
+reading a number.
 
 `StepsPage` is a page outside the shell for steps taken in a fixed order, one
 at a time, such as the first setup: a header band with the logo and a strip of

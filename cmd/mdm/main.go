@@ -155,6 +155,12 @@ func run(opts runOptions) error {
 	scanIndexStore := db.ScanIndex()
 	settingsStore := db.Settings()
 	playbackStore := db.Playback()
+	// A pause saved before the restart holds the scans and the scheduler from the start, so startup recovery's
+	// requeued jobs wait for the owner's resume; see docs/design-docs/background-pause.md.
+	backgroundPaused, err := settingsStore.BackgroundPaused(backgroundCtx)
+	if err != nil {
+		return &startupError{stage: stageDatabase, err: err}
+	}
 
 	// Scan content-key reads take read slots from the scheduler; see docs/design-docs/job-scheduling.md.
 	var scheduler *jobs.Scheduler
@@ -169,16 +175,22 @@ func run(opts runOptions) error {
 				ReadSlots: scanReadSlots{scheduler: &scheduler}, Logger: logger,
 			})
 		},
-		Folders:   scanIndexStore,
-		Context:   backgroundCtx,
-		Publisher: bus,
-		Logger:    logger,
+		Folders:          scanIndexStore,
+		Context:          backgroundCtx,
+		Publisher:        bus,
+		Logger:           logger,
+		BackgroundPaused: backgroundPaused,
 	})
 
 	artifactStore := artifacts.New(cfg.ThumbnailsDir())
 	// Clean temporary artifacts before workers start so active output cannot be removed.
 	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
+	}
+	// Empty the image search uploads before the listener opens, so a search a crash interrupted leaves nothing.
+	searchUploads := artifacts.NewSearchUploads(cfg.SearchUploadsDir())
+	if err := searchUploads.Empty(); err != nil {
+		logger.Warn("could not delete interrupted image search uploads", slog.Any("error", err))
 	}
 	sources := app.MediaFiles{Folders: settingsStore, Resolver: mediafs.New()}
 	ingest := app.NewIngest(app.IngestOptions{
@@ -202,7 +214,7 @@ func run(opts runOptions) error {
 	})
 	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
 	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
-	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, bus, logger)
 	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
 	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
@@ -225,6 +237,7 @@ func run(opts runOptions) error {
 		handlers[kind] = faces.analysis.HandleJob
 	}
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
+	featureOff := app.PausedJobKinds(autoTagger, faces.analysis, versionJudge)
 	addBackfillHandlers(handlers, ingestStore, sources, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
@@ -232,7 +245,8 @@ func run(opts runOptions) error {
 		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
 		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
-		Paused:   app.PausedJobKinds(autoTagger, faces.analysis, versionJudge),
+		Paused:   featureOff,
+		Held:     backgroundPaused,
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -241,7 +255,16 @@ func run(opts runOptions) error {
 		Logger: logger,
 	})
 	// Start filesystem watching only after interrupted scans have been recovered and restarted.
-	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+	// Directories held through a pause are kept in the scans role; see docs/design-docs/background-pause.md.
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger,
+		func(o *app.AutoImportOptions) { o.Held, o.Paused = scanStore, backgroundPaused })
+	backgroundPause := app.NewBackgroundPause(app.BackgroundPauseOptions{
+		Settings: settingsStore, Scheduler: scheduler, AutoImport: autoImport, Scans: scans, Publisher: bus,
+		Paused: backgroundPaused, Logger: logger,
+		Report: app.NewBackgroundStatus(app.BackgroundStatusOptions{
+			Counts: ingestStore, Scans: scanStore, Videos: libraryStore, Running: scans, FeatureOff: featureOff,
+		}),
+	})
 
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
@@ -296,8 +319,12 @@ func run(opts runOptions) error {
 			domain.ActivityFaceMerge:        app.NewFaceMergeActivity(db.Activity()),
 		},
 	})
+	// The background event reaches the screens at most once a second.
+	backgroundEvents := app.NewBackgroundEvents(events.BackgroundChanged, nil)
+	defer backgroundEvents.Stop()
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
+		Background:       backgroundEvents.Changed,
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 		ImagesFinished: func(videoID int64) {
@@ -359,7 +386,7 @@ func run(opts runOptions) error {
 	}
 
 	// Shutdown does not cancel active HTTP contexts, so cancel a separate server context first to stop
-	// request-owned transcoders.
+	// request-owned transcoders and image searches.
 	requestMediaCtx, stopRequestMedia := context.WithCancel(context.Background())
 	defer stopRequestMedia()
 
@@ -433,6 +460,7 @@ func run(opts runOptions) error {
 		NetworkSettings:   networkSettings,
 		PluginProxy:       pluginProxy,
 		AutoImport:        autoImport,
+		Background:        backgroundPause,
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,
@@ -445,22 +473,28 @@ func run(opts runOptions) error {
 		ThumbnailEdits:    thumbnailEdits,
 		ThumbnailUploads:  ingest,
 		PersonImages:      personImages,
-		WorkInfoPlugins:   workInfoPlugins,
-		TranscodeProbes:   ingestStore,
-		Artifacts:         artifactStore,
-		Catalog:           catalog,
-		Opener:            fileOpener,
-		Files:             mediaFiles,
-		Foreground:        scheduler,
-		Subtitles:         media.NewSubtitleConverter(),
-		Events:            events,
-		Assets:            web.Dist(),
-		Logger:            logger,
-		Auth:              httpAuthenticator,
-		APITokens:         apiTokens,
-		Pairing:           pairing,
-		PeerLink:          peerLink,
-		TrustedProxies:    cfg.TrustedProxies,
+		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
+			Index: libraryStore, Uploads: searchUploads, ServerDone: requestMediaCtx.Done(), Logger: logger,
+			Media: app.ImageSearchMedia{
+				HashImage: media.ImageFrameHash, Duration: media.QueryVideoDuration, Frames: media.QueryVideoFrames,
+			},
+		}),
+		WorkInfoPlugins: workInfoPlugins,
+		TranscodeProbes: ingestStore,
+		Artifacts:       artifactStore,
+		Catalog:         catalog,
+		Opener:          fileOpener,
+		Files:           mediaFiles,
+		Foreground:      scheduler,
+		Subtitles:       media.NewSubtitleConverter(),
+		Events:          events,
+		Assets:          web.Dist(),
+		Logger:          logger,
+		Auth:            httpAuthenticator,
+		APITokens:       apiTokens,
+		Pairing:         pairing,
+		PeerLink:        peerLink,
+		TrustedProxies:  cfg.TrustedProxies,
 	})
 	assistant.UseRunner(assistantRunner)
 
@@ -486,7 +520,7 @@ func run(opts runOptions) error {
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
 }
 
-// addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
+// addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.
 func addBackfillHandlers(
 	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
 ) {
@@ -499,6 +533,9 @@ func addBackfillHandlers(
 	handlers[domain.JobVirtualThumbnails] = func(ctx context.Context, _ domain.Job) error {
 		return ingest.RepublishVirtualThumbnails(ctx)
 	}
+	searchIndex := app.NewSearchIndexBuilder(ingestStore, sources, media.KeyframeHashes)
+	handlers[domain.JobQueueFrameIndex] = searchIndex.QueueAll
+	handlers[domain.JobFrameIndex] = searchIndex.Build
 }
 
 // recoverActivity marks interrupted processing as attention/interrupted, leaving waiting records

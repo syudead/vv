@@ -231,7 +231,7 @@ func (t *assistantTurn) idPinned(name string, found []domain.AssistantCandidate)
 var nameArguments = []string{"name", "names", "tagNames", "personNames", "organizationNames", "tagKindName", "parentName"}
 
 // listArguments take an array; a model often writes one string for one item.
-var listArguments = []string{"names", "tagNames", "personNames", "organizationNames", "aliases", "fields"}
+var listArguments = []string{"names", "tagNames", "personNames", "organizationNames", "fields"}
 
 // rowRequest reads a name-based row's tool arguments: the target and the row's own arguments, with each
 // { name, id } item replaced by its name and its id kept as a pin.

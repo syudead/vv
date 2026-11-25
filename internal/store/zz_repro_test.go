@@ -17,7 +17,7 @@ func TestZZRepro(t *testing.T) {
 		ids = append(ids, domain.ExternalID{Source: "wiki", Value: fmt.Sprint("v", i)})
 		links = append(links, fmt.Sprintf("https://e.test/%d", i))
 	}
-	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T", ExternalIDs: ids, Profile: domain.PersonProfile{Links: links}})
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Names: namesOf("T"), ExternalIDs: ids, Profile: domain.PersonProfile{Links: links}})
 	got, _ := db.Credits().Get(context.Background(), domain.CreditPerson, target.ID)
 	t.Logf("stored ids=%d links=%d", len(got.ExternalIDs), len(got.Profile.Links))
 	fetched := append(append([]domain.ExternalID{}, ids...), domain.ExternalID{Source: "wiki", Value: "new"})

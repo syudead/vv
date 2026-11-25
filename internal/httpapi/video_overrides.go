@@ -139,9 +139,9 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Pass the resolved path to prevent a symlink swap from reading another file or escaping the root.
-	location, path, ok := s.resolveMediaFile(r, video)
-	if !ok {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+	location, path, err := s.resolveMediaFile(r, video)
+	if err != nil {
+		s.mediaFileError(w, err)
 		return
 	}
 
@@ -169,9 +169,9 @@ func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id
 			s.internalError(w, "Media file access is not configured.", nil)
 			return
 		}
-		location, path, ok = s.resolveMediaFile(r, video)
-		if !ok {
-			s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+		var err error
+		if location, path, err = s.resolveMediaFile(r, video); err != nil {
+			s.mediaFileError(w, err)
 			return
 		}
 	}

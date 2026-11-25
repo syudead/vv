@@ -167,14 +167,19 @@ func SummarizeFolder(root MediaFolder, rel string, locations []FolderLocation) (
 // SortFolders breaks natural-name ties by original spelling, then absolute root path.
 func SortFolders(folders []FolderSummary) {
 	slices.SortStableFunc(folders, func(a, b FolderSummary) int {
-		if order := CompareNatural(a.Name, b.Name); order != 0 {
-			return order
-		}
-		if order := strings.Compare(a.Name, b.Name); order != 0 {
-			return order
-		}
-		return strings.Compare(a.RootPath, b.RootPath)
+		return CompareFolders(a.Name, a.RootPath, b.Name, b.RootPath)
 	})
+}
+
+// CompareFolders orders folders by natural name, then original spelling, then absolute root path.
+func CompareFolders(nameA, rootA, nameB, rootB string) int {
+	if order := CompareNatural(nameA, nameB); order != 0 {
+		return order
+	}
+	if order := strings.Compare(nameA, nameB); order != 0 {
+		return order
+	}
+	return strings.Compare(rootA, rootB)
 }
 
 // CompareNatural compares digit runs numerically and other characters case-insensitively; equal numbers such as 01 and 1 require a caller-provided tie-breaker.

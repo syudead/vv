@@ -167,6 +167,25 @@ func TestAudienceListsFolderFollowsItsScope(t *testing.T) {
 	}
 }
 
+func TestAudienceListsAsSwitches(t *testing.T) {
+	folders := []MediaFolder{{ID: 3, Enabled: true}, {ID: 5, Enabled: false}}
+	for _, c := range []struct {
+		name     string
+		audience Audience
+		want     bool
+	}{
+		{"switches", AudienceOwner, true},
+		{"the switched-off folder", AudienceOwner.WithExcludedFolders([]int64{5}), true},
+		{"plus a folder this node lacks", AudienceGuest.WithExcludedFolders([]int64{5, 9}), true},
+		{"a switched-on folder too", AudienceOwner.WithExcludedFolders([]int64{3, 5}), false},
+		{"nothing", AudienceOwner.WithExcludedFolders(nil), false},
+	} {
+		if got := c.audience.ListsAsSwitches(folders); got != c.want {
+			t.Errorf("%s: ListsAsSwitches = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestCheckVideoQuery(t *testing.T) {
 	defaults := VideoQuery{Sort: SortAddedDesc}
 	allowed := []VideoQuery{
