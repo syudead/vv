@@ -505,7 +505,8 @@ writes the credits, so a refused name stops the save before the video changes.
 ## Organizations share the profile, image and favorite shapes
 
 An organization keeps a profile, one image (its logo) and an owner favorite,
-stored and merged as a person's are. `CreditStore` reaches both kinds through
+stored and merged as a person's are; its page is described in
+[organizations.md](organizations.md). `CreditStore` reaches both kinds through
 the table names in `creditTables` and a profile codec per kind
 ([`credit_profiles.go`](../../internal/store/credit_profiles.go)), and the
 field-wise patch and merge fill run through one `profileSchema`

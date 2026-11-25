@@ -1,7 +1,9 @@
 import { UserRound } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
+
+import { FrameImage, FrameMark } from "./ImageFrame";
 
 // See web/registry/rules/components.md, PersonFace.
 
@@ -64,61 +66,29 @@ export function PersonFace({
   onAdd,
   children,
 }: PersonFaceProps) {
-  // Remember which URL failed so that a new revision is tried again.
-  const [failed, setFailed] = useState<string | null>(null);
-  const shown = src !== undefined && failed !== src ? src : undefined;
-  const icon = (
-    <UserRound aria-hidden="true" className={cn("text-muted-foreground", icons[shape])} />
-  );
   return (
     <div
       data-slot="person-face"
       data-shape={shape}
       className={cn("relative shrink-0 overflow-hidden bg-muted", frames[shape])}
     >
-      {shown !== undefined ? (
-        <img
-          src={shown}
-          alt={name}
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailed(shown)}
-          className="size-full object-cover object-face"
-        />
-      ) : onAdd !== undefined ? (
-        <button
-          type="button"
-          aria-label={addLabel}
-          onClick={onAdd}
-          className="flex size-full items-center justify-center hover:bg-accent"
-        >
-          {icon}
-        </button>
-      ) : (
-        <span className="flex size-full items-center justify-center">{icon}</span>
-      )}
+      <FrameImage
+        src={src}
+        alt={name}
+        imageClassName="object-cover object-face"
+        icon={
+          <UserRound
+            aria-hidden="true"
+            className={cn("text-muted-foreground", icons[shape])}
+          />
+        }
+        addLabel={addLabel}
+        onAdd={onAdd}
+      />
       {children}
     </div>
   );
 }
 
 /** A control or mark in a corner of a card or profile face. */
-export function PersonFaceMark({
-  corner,
-  children,
-}: {
-  corner: "top-end" | "bottom-end";
-  children: ReactNode;
-}) {
-  return (
-    <div
-      data-slot="person-face-mark"
-      className={cn(
-        "absolute right-1.5 z-20 flex [&_svg]:drop-shadow-mark",
-        corner === "top-end" ? "top-1.5" : "bottom-1.5",
-      )}
-    >
-      {children}
-    </div>
-  );
-}
+export const PersonFaceMark = FrameMark;

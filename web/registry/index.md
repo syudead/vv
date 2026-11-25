@@ -63,6 +63,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-states-example`        | Block         | The list body in every state                                                 |
 | `load-more-row`              | State         | The next page loading, or failed with Retry                                  |
 | `loading-state`              | State         | Skeleton shapes of the final layout: grid, table, grouped list or cards      |
+| `organization-logo`          | vv component  | An organization's logo, drawn whole, or its placeholder: profile             |
+| `organization-page-example`  | Block         | Copy to start a profile page for an organization, with a relations shelf     |
 | `page-column`                | Pattern       | The reading column settings and record pages share; patterns only            |
 | `page-header`                | Section       | Page title, count and the main action                                        |
 | `page-section`               | Section       | A titled card of rows                                                        |

@@ -11,6 +11,7 @@ import { FaceGridExample } from "./blocks/face-grid-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
 import { FormPageDialogExample, FormPageExample } from "./blocks/form-page-example";
 import { GroupedListExample } from "./blocks/grouped-list-example";
+import { OrganizationPageExample } from "./blocks/organization-page-example";
 import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { QueryResultsPageExample } from "./blocks/query-results-page-example";
@@ -215,9 +216,19 @@ export default function Patterns() {
       <Pattern
         id="profile-page"
         name={p.names.profilePage}
-        items={["profile-page", "profile-page-example", "shelf", "person-face"]}
+        items={[
+          "profile-page",
+          "profile-page-example",
+          "organization-page-example",
+          "shelf",
+          "person-face",
+          "organization-logo",
+        ]}
       >
         <ProfilePageExample />
+        <div className="border-t border-border">
+          <OrganizationPageExample />
+        </div>
       </Pattern>
       <Pattern
         id="query-results-page"
