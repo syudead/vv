@@ -97,7 +97,8 @@ Two owner-only reads are added
 | Same | A link per role to the library | The library has no role filter in its URL, and one link to every video in any role is what the shelves add up to |
 | Favorite, the logo's upload and removal, `Merge…` and `Delete…` are on the page; a merge opens the target's page and a delete the list, each with a toast | Keeping them in the list's row menu | The list has no rows any more, and the person page settled the same moves |
 | `/organizations/:id/edit` is a `FormPage` outside the shell that edits the names list, external IDs, profile and parent and saves one `PATCH` of the changed properties | Keeping the details dialog | Requirement 8; the person edit page already has the band, the discard check and the return |
-| A `404 organization_not_found` on any read or write turns the page and the edit page into a gone state with a link to `/organizations` | Redirecting to the list | The person page settled the gone state; a redirect hides why the page left |
+| A `404 organization_not_found` without a `field` (the organization itself is missing, as `isCreditGone` decides) turns the page and the edit page into a gone state with a link to `/organizations`; the same answer with `field: parentId` stays on the edit page under the parent field | Redirecting to the list | The person page settled the gone state; a redirect hides why the page left |
+| Same | Treating every `organization_not_found` as gone | A parent deleted while the edit page is open answers it with `field: parentId`, and the owner can pick another parent and save |
 | The video page's organization name links to `/organizations/:id` | Keeping the filtered library link | Requirement 9; the page's `Show in library` is one press away |
 
 The layout, the card, the states and the widths are decided in `ui-design.md`.
@@ -214,7 +215,8 @@ discard check and the return to the page; the helpers move out of
 
 **Acceptance**: Component tests show a save sending only the changed
 properties and returning to the page, `Cancel` with changes asking before it
-leaves, a parent cycle answer shown at the parent field, and the gone state;
+leaves, a parent cycle answer and a missing parent (`404` with
+`field: parentId`) shown at the parent field, and the gone state;
 the person edit page tests still pass. A visual review of the edit page.
 
 ### Replace the organizations table with a grid of logo cards
