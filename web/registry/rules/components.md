@@ -482,8 +482,28 @@ the viewer little; it also stands in when the image fails to load. Pass
 Put marks over the frame, such as the favorite heart, as children in a
 `PersonFaceMark` (`top-end` or `bottom-end`).
 
-Do not use it for anything but a person: organizations and videos have no
-face.
+Do not use it for anything but a person: an organization's image is its logo,
+drawn by [OrganizationLogo](#organizationlogo), and a video has no face.
+
+### OrganizationLogo
+
+Item `organization-logo`. An organization's logo in a rectangular frame, or the
+placeholder in the same frame. The frame is `bg-muted` with a `border`; the
+image is drawn whole with `object-contain` and centred, never cropped, since a
+cropped wordmark cannot be read.
+
+| Shape     | Frame                                     | Where                                  |
+| --------- | ----------------------------------------- | -------------------------------------- |
+| `profile` | Full width, `aspect-square`, `rounded-md` | The organization page's profile column |
+
+The placeholder is lucide `Building2` in `muted-foreground`; it also stands in
+when the image fails to load. Pass `onAdd` and `addLabel` to make it a button
+that adds a logo, as `PersonFace` does. Put marks over the frame as children in
+an `OrganizationLogoMark` (`top-end` or `bottom-end`), the same corner holder
+as `PersonFaceMark`.
+
+Use it on the organization screens only. Pickers, filter chips and the video
+page show organizations as text.
 
 ### SpanBar
 

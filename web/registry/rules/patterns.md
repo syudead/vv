@@ -410,11 +410,14 @@ the items, `gap-8` apart, with `p-3` (`p-4` from `sm`) around them.
 
 | Slot       | Put in it                                                                                                                                                                                                                                                                         | Never                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `face`     | The subject's image (`PersonFace profile`) with its marks, and an error line under it                                                                                                                                                                                             | Text about the subject                       |
+| `face`     | The subject's image (`PersonFace profile`, or `OrganizationLogo profile` for an organization) with its marks, and an error line under it                                                                                                                                          | Text about the subject                       |
 | `identity` | The name as the page's `h1` (`text-xl font-semibold`) with a muted second line, the key figures as a `dl` of `text-lg font-semibold` values over `text-xs` muted terms, the text, then a row of `secondary` `sm` actions, each with its icon, and a `ghost` `icon-sm` `More` menu | A `default` button; nothing outranks viewing |
 | `facts`    | The remaining facts as a `FactList`, then links and IDs; drawn on a `muted` card that from `lg` stops at the face's height (`profile-facts-max`) and scrolls inside, so a long list never pushes the items down. Leave it out when there is nothing left to show                  | Headings; a `PageSection` card               |
-| children   | `Shelf`s, one per kind of item; or one state block                                                                                                                                                                                                                                | Work on the subject that is not viewing it   |
+| children   | `Shelf`s, one per kind of item, after the shelf of the subject's relations when it has one; or one state block                                                                                                                                                                    | Work on the subject that is not viewing it   |
 | `status`   | One state block in place of the whole page, such as the subject no longer existing                                                                                                                                                                                                | Loading; draw `Skeleton`s in the slots       |
+
+Example block `organization-page-example` fills it for an organization: the
+logo in `face` and a relations shelf before the video shelf.
 
 Use it when the subject is looked at before its items. Put work on the
 subject that is not viewing it, such as face recognition, on a page of its
@@ -527,6 +530,11 @@ control }`: inline, the controls stand without a visible name, so each needs
   `ErrorState`, goes in the grid layout, under the same heading and actions.
   Box selection skips the part of a card the row clips. Example block
   `shelf-example`.
+- `Shelf` of relations: in place of a `CardGrid`, the body may be one
+  `FactList` of the subject's relations to other subjects, each value a text
+  link to the other subject's page, such as an organization's parent and
+  children. It has no count and no `LoadMoreRow`; a row without a value is
+  left out, and with no rows the shelf is.
 - `GroupedList`: pass a `label`, then one `GroupedListGroup` per heading
   (`heading`, and `detail` for the muted second part, such as the date after a
   day's name) with its rows as `GroupedListItem`s. A row lays its children

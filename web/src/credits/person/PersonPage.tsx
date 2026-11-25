@@ -6,13 +6,11 @@ import { useAssistantScreen } from "../../assistant/AssistantProvider";
 import { getFaceRecognitionSettings } from "../../api/client";
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
 import { errorText, t, type UiText } from "../../i18n";
-import { ErrorState } from "../../ui/patterns/error-state";
-import { LoadingState } from "../../ui/patterns/loading-state";
 import { ProfilePage } from "../../ui/patterns/profile-page";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
-import { Skeleton } from "../../ui/shadcn/skeleton";
 import { useToast } from "../../ui/Toast";
+import { CreditPageStatus } from "../CreditPageStatus";
 import DeleteCreditDialog from "../DeleteCreditDialog";
 import { creditDisplayName } from "../displayName";
 import MergeCreditDialog from "../MergeCreditDialog";
@@ -45,52 +43,19 @@ function PersonScreen({ id }: { id: number | null }) {
     name: person === undefined ? undefined : creditDisplayName(person),
   });
 
-  if (state.kind === "gone") {
+  if (state.kind !== "ready") {
     return (
-      <ProfilePage
+      <CreditPageStatus
+        state={state}
         profileLabel={text.profile}
-        face={null}
-        identity={null}
-        status={<PersonGone />}
-      >
-        {null}
-      </ProfilePage>
+        faceClassName="aspect-portrait w-full"
+        failedTitle={text.loadFailed}
+        gone={<PersonGone />}
+        onRetry={reload}
+      />
     );
   }
-  if (person === undefined || id === null) {
-    return (
-      <ProfilePage
-        profileLabel={text.profile}
-        face={
-          state.kind === "loading" ? (
-            <Skeleton className="aspect-portrait w-full" />
-          ) : null
-        }
-        identity={state.kind === "loading" ? <IdentitySkeleton /> : null}
-      >
-        {state.kind === "failed" ? (
-          <ErrorState
-            title={text.loadFailed(state.reason)}
-            retryLabel={t.common.retry}
-            onRetry={reload}
-          />
-        ) : (
-          <LoadingState label={text.loading} layout="grid" size={0} count={6} />
-        )}
-      </ProfilePage>
-    );
-  }
-  return <PersonShown person={person} replace={replace} markGone={markGone} />;
-}
-
-function IdentitySkeleton() {
-  return (
-    <>
-      <Skeleton className="h-6 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="h-10 w-full" />
-    </>
-  );
+  return <PersonShown person={state.credit} replace={replace} markGone={markGone} />;
 }
 
 /** Whether face recognition is on; off, unknown or unreadable all hide its entry. */

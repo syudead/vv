@@ -7,9 +7,7 @@ import type { Video } from "../api/client";
 import { videoItem } from "../api/libraryItems";
 import { clearListSnapshot, saveListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
-import type { WorkInfo as WorkInfoValue } from "../api/workInfo";
 import { type Audience, AudienceProvider } from "../auth/audience";
-import WorkInfo from "../player/WorkInfo";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -47,16 +45,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-const info: WorkInfoValue = {
-  dates: [],
-  people: [],
-  organizations: [
-    { role: "maker", organization: { id: 5, name: "Studio", provisional: false } },
-  ],
-  urls: [],
-  externalIds: [],
-};
-
 function LocationProbe() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -84,15 +72,6 @@ function renderAt(initial: string, audience: Audience = "owner") {
                     <>
                       <LibraryPage />
                       <LocationProbe />
-                    </>
-                  }
-                />
-                <Route
-                  path="/videos/:id"
-                  element={
-                    <>
-                      <p>再生画面</p>
-                      <WorkInfo info={info} />
                     </>
                   }
                 />
@@ -210,14 +189,10 @@ describe("人物・団体での絞り込み", () => {
     vi.unstubAllGlobals();
   });
 
-  it("動画ページで団体を押すと organization=<id> のライブラリが開き、要求に載り、名前のチップが出て、Back で動画ページに戻る", async () => {
-    const user = userEvent.setup();
-    renderAt("/videos/7");
-
-    await user.click(screen.getByRole("link", { name: "Show videos with Studio" }));
+  it("organization=<id> のライブラリは要求に載り、名前のチップが出る", async () => {
+    renderAt("/?organization=5");
 
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(location()).toBe("?organization=5");
     const requests = libraryRequests();
     expect(requests.length).toBeGreaterThan(0);
     for (const url of requests) expect(url.searchParams.get("organization")).toBe("5");
@@ -226,9 +201,6 @@ describe("人物・団体での絞り込み", () => {
       await screen.findByRole("button", { name: "Remove the filter for Studio" }),
     ).toBeDefined();
     expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
-    expect(await screen.findByText("再生画面")).toBeDefined();
   });
 
   it("名前の読みが 404 なら、そのパラメータを外して知らせ、タグともう一方の絞り込みは残す", async () => {

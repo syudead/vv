@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "organization-page-example",
+  "title": "Organization page example",
+  "description": "A working organization page: the logo, name and facts above a shelf of related organizations drawn as one fact list; the video shelves follow as in profile-page-example.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/organization-page-example.tsx",
+      "content": "import { t } from \"@/i18n\";\nimport { FactList } from \"@/ui/patterns/fact-list\";\nimport { ProfilePage } from \"@/ui/patterns/profile-page\";\nimport { Shelf } from \"@/ui/patterns/shelf\";\nimport { OrganizationLogo } from \"@/ui/OrganizationLogo\";\nimport { Button } from \"@/ui/shadcn/button\";\n\n// registry:block organization-page-example. See web/registry/rules/patterns.md, Profile page.\n\nexport function OrganizationPageExample() {\n  const p = t.designSystem.pattern;\n  return (\n    <ProfilePage\n      profileLabel={p.organizationPageLabel}\n      face={<OrganizationLogo alt={p.organizationPageName} shape=\"profile\" />}\n      identity={\n        <>\n          <div className=\"flex flex-col gap-1\">\n            <h1 className=\"line-clamp-3 text-xl font-semibold\">\n              {p.organizationPageName}\n            </h1>\n            <p className=\"text-sm text-muted-foreground\">{p.organizationPageAliases}</p>\n          </div>\n          <div className=\"flex flex-wrap items-center gap-2\">\n            <Button variant=\"secondary\" size=\"sm\">\n              {p.profilePageEdit}\n            </Button>\n          </div>\n        </>\n      }\n      facts={\n        <FactList\n          facts={[\n            {\n              id: \"founded\",\n              term: p.organizationPageFounded,\n              value: (\n                <span className=\"tabular-nums\">{p.organizationPageFoundedValue}</span>\n              ),\n            },\n            {\n              id: \"location\",\n              term: p.organizationPageLocation,\n              value: p.organizationPageLocationValue,\n            },\n          ]}\n        />\n      }\n    >\n      <Shelf title={p.organizationPageFamily}>\n        <FactList\n          facts={[\n            {\n              id: \"parent\",\n              term: p.organizationPageParent,\n              value: p.organizationPageParentValue,\n            },\n            {\n              id: \"children\",\n              term: p.organizationPageChildren,\n              value: p.organizationPageChildrenValue,\n            },\n          ]}\n        />\n      </Shelf>\n    </ProfilePage>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#profile-page (item vv-rules).",
+  "type": "registry:block"
+}

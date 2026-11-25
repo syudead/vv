@@ -15,7 +15,7 @@ import {
   ValueToggle,
 } from "../../../player/workInfoFetch/compareParts";
 import { PersonFace } from "../../../ui/PersonFace";
-import { Bio } from "../PersonProfile";
+import { Bio } from "../../CreditProfile";
 import { useLocalToday } from "../useLocalToday";
 import {
   nameList,

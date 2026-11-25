@@ -61,7 +61,11 @@ const PersonEditPage = await deferredRoute(
 );
 const OrganizationsPage = await deferredRoute(
   () => import("../credits/OrganizationsPage"),
-  "/organizations",
+  (pathname) => matchesExactPath(pathname, "/organizations"),
+);
+const OrganizationPage = await deferredRoute(
+  () => import("../credits/organization/OrganizationPage"),
+  (pathname) => matchesBelowPath(pathname, "/organizations"),
 );
 const HistoryPage = await deferredRoute(
   () => import("../history/HistoryPage"),
@@ -224,6 +228,14 @@ function AppRoutes() {
             element={
               <ShellPage>
                 <OrganizationsPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path="/organizations/:id"
+            element={
+              <ShellPage>
+                <OrganizationPage />
               </ShellPage>
             }
           />

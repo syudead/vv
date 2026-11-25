@@ -272,6 +272,28 @@
         {
           "path": "src/ui/PersonFace.tsx",
           "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/ImageFrame.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
+      "name": "organization-logo",
+      "type": "registry:ui",
+      "title": "OrganizationLogo",
+      "description": "vv component: an organization's logo drawn whole in a bordered frame, or the Building2 placeholder in the same frame, in the profile shape; OrganizationLogoMark places a mark in a corner.",
+      "docs": "Usage rules: web/registry/rules/components.md#organizationlogo (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/OrganizationLogo.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/ImageFrame.tsx",
+          "type": "registry:ui"
         }
       ],
       "dependencies": ["lucide-react"]
@@ -1407,6 +1429,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/profile-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "organization-page-example",
+      "type": "registry:block",
+      "title": "Organization page example",
+      "description": "A working organization page: the logo, name and facts above a shelf of related organizations drawn as one fact list; the video shelves follow as in profile-page-example.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#profile-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/organization-page-example.tsx",
           "type": "registry:component"
         }
       ]

@@ -48,7 +48,7 @@ function PersonEditor({ id }: { id: number | null }) {
       if (saved !== undefined) handPerson(saved);
     },
   });
-  const person = state.kind === "ready" ? state.person : undefined;
+  const person = state.kind === "ready" ? state.credit : undefined;
   useDocumentTitle(
     person === undefined ? undefined : text.title(creditDisplayName(person)),
   );
