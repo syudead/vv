@@ -7,8 +7,8 @@ Sources: [plan.md](plan.md);
 [foundations.md](../../web/registry/rules/foundations.md));
 [library-ui.md](../../docs/design-docs/library-ui.md) for the top-bar toolbar,
 window scrolling, card selection and the selection bar; the current screens in
-`web/src/tags/` and `web/src/credits/`; the screen text in
-[web/src/i18n/en.ts](../../web/src/i18n/en.ts) (`tags`, `credits`).
+`web/src/tags/`; the screen text in
+[web/src/i18n/en.ts](../../web/src/i18n/en.ts) (`tags`).
 
 The diagram shows the screens this design covers and how the owner moves
 between them.
@@ -21,8 +21,6 @@ flowchart LR
   tags -->|Rejected names| rejected[Rejected names page]
   kinds -->|a kind's tag count| tags
   tag -->|Open in library| lib[Library]
-  orgs[Organization list] -->|open a card| org[Organization page]
-  org -->|Organizations, Back| orgs
 ```
 
 ## Why this shape
@@ -145,7 +143,6 @@ are its synonyms. Text not listed here is today's.
 | Gone state | `This tag no longer exists`, `Back to tags` | |
 | Kinds page | `Kinds`, `{n} tags`, `First on cards`, `Rename`, `Delete…`, `New kind` | |
 | Rejected names page | `Rejected names`, `Allow again` | |
-| Organization page | `Organizations`, `Save`, `Delete…`, `Merge into another organization`, `Organization to keep`, `Merge…`, `Discard changes?`, `Discard` | Section names are today's `Names`, `Profile`, `External IDs`, `Parent organization` |
 
 ## Tag list
 
@@ -322,48 +319,11 @@ pages with `LoadMoreRow`. `Allow again` removes the row at once; a failure
 shows today's message as an `Alert` row in the section. With no names the
 section holds `EmptyState` `No rejected names`.
 
-## Organization list
-
-`/organizations` is a `ListPage`: the top-bar `Toolbar` with search and sort,
-a `PageHeader` with `Organizations`, the count and `New organization`
-(`default` `sm`, a `FormDialog` with the name), and a `CardGrid size="record"`
-of `RecordCard`s. It has no `filter`, `summary`, checks or selection bar.
-
-A card shows the display name, the video count, `Part of {parent}` as its
-`detail` and the other names as its secondary names, and opens the
-organization page. Loading, the two empty states, a failed load and the
-end-of-list notice follow the tag list's table with today's texts. Creating
-an organization opens its page.
-
-## Organization page
-
-`/organizations/:id` is a `RecordEditorPage` that holds today's details form:
-the fields are held until `Save`, as in the dialog it replaces, because
-`About`, `Links` and the IDs are typed at length and the server names the
-field an error belongs to. Merge and delete act through their dialogs.
-
-| Slot | Content |
-| --- | --- |
-| `back` | `Organizations` |
-| `title` | The display name |
-| `figures` | `{n} videos` |
-| `actions` | `Save` (`default`, disabled until a field differs), then `Delete…` (`ghost-destructive`) |
-| `main` | `Names` (today's name rows: display name, other names, language, reorder, add), then `Profile` (logo, founded, dissolved, location, about, links) |
-| `side` | `Parent organization`, `External IDs`, then `Merge into another organization` (as the tag page's merge section) |
-| children | `Shelf layout="row"` titled `Videos`, as on the tag page |
-
-A rename is a change of the display name in `Names`. The logo is uploaded and
-removed at once, as today. Leaving with unsaved fields asks `Discard
-changes?` in a `ConfirmDialog`. A failed save shows field errors under their
-fields and the rest in `notice`. Loading, in flight, failed and gone follow
-the tag page's table, with `This organization no longer exists` and `Back to
-organizations`.
-
 ## Responsive behaviour
 
 The sidebar is the rail from 640px and a drawer below it.
 
-| Width | Tag list and organization list | Tag page and organization page | Kinds and rejected names |
+| Width | Tag list | Tag page | Kinds and rejected names |
 | --- | --- | --- | --- |
 | 360px | Two columns of cards. The header's actions wrap under the title; the filter is one line that scrolls sideways; three tallies with count and label only; the selection bar wraps onto more lines | One column: `main`, `side`, the shelf. The actions wrap under the title; a name wraps and keeps `Main` and `More` at the row's end; the shelf shows one thumbnail and part of the next | One column; a kind row's switch and menu on a second line |
 | 768px | Three columns. The header's actions on the title's row; the filter on its own line; tallies with hints | One column; the actions on the title's row | One column, `max-w-3xl` |
@@ -396,5 +356,3 @@ The sidebar is the rail from 640px and a drawer below it.
    pills, and `gap-6` between sections, wider than the gaps inside one.
 9. At 360px no screen scrolls sideways as a whole, no action loses its name,
    and a 40-character tag name reads in full on the tag page.
-10. The organization list and page are recognisably the same pieces as the
-    tag ones: the same card, header, section and shelf rhythm.
