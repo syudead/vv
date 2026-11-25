@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Credit, CreditKind, CreditName } from "../api/credits";
 import { foldForMatch } from "../lib/foldForMatch";
-import { compareTagsForSort } from "../tags/tagPageRows";
+import { compareTagsForSort } from "../recordList/listRows";
 import { stubRowHeights } from "../testing/virtualRows";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";

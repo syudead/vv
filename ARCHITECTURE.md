@@ -284,8 +284,9 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `shell/` | Top bar, sidebar, scan state, the frame around a screen |
 | `library/`, `folders/`, `settings/`, `tags/`, `player/`, `versions/` | Their product flows |
 | `assistant/` | The assistant's panel, mounted above the routes, its thread store and the review list page |
-| `credits/` | The people and organizations admin screens: one page that takes the kind, built from the tag admin screen's list pieces in `tags/` |
+| `credits/` | The people and organizations admin screens: one page that takes the kind, built from the list pieces in `recordList/` |
 | `videoList/` | List pieces the library and folder screens share |
+| `recordList/` | List pieces the tag, people and organizations screens share: server paging, local row updates, URL criteria, virtual rows, the toolbar and the list notices |
 | `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |
 | `hooks/` | Hooks the registry components share, such as `use-mobile` |
 | `lib/` | Helpers several flows share: locale-independent formatting, the tag-name rule, IME key handling |

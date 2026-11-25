@@ -24,6 +24,23 @@ export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
 export type TagList = components["schemas"]["TagList"];
 export type TagSort = components["schemas"]["TagSort"];
 
+/** Match API TagSort values; natural name order has no direction. */
+export type TagListSort = TagSort;
+
+export const defaultTagListSort: TagListSort = "name";
+
+const sorts: Record<TagListSort, true> = {
+  name: true,
+  countDesc: true,
+  countAsc: true,
+  createdDesc: true,
+  createdAsc: true,
+};
+
+export function isTagListSort(value: unknown): value is TagListSort {
+  return typeof value === "string" && Object.hasOwn(sorts, value);
+}
+
 /** Batch updates are atomic: disable oversized selections instead of silently splitting requests. */
 export const maxVideoTagsSelection = 20000;
 

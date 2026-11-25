@@ -2,13 +2,13 @@ import { useEffect, useRef } from "react";
 
 import { t, type UiText } from "../i18n";
 import { isComposingKeyEvent } from "../lib/ime";
-import { Button } from "../ui/shadcn/button";
-import { Field, FieldError } from "../ui/shadcn/field";
-import { Input } from "../ui/shadcn/input";
-import { Spinner } from "../ui/shadcn/spinner";
-import { TableCell, TableRow } from "../ui/shadcn/table";
-import type { NameRules } from "../ui/NameCommand";
-import { useTagNameField, type TagFieldError } from "./tagNameField";
+import { Button } from "./shadcn/button";
+import { Field, FieldError } from "./shadcn/field";
+import { Input } from "./shadcn/input";
+import { Spinner } from "./shadcn/spinner";
+import { TableCell, TableRow } from "./shadcn/table";
+import type { NameRules } from "./NameCommand";
+import { useTagNameField, type TagFieldError } from "./nameField";
 
 export default function CreateTagRow({
   columnCount,

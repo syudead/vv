@@ -3,16 +3,16 @@ import type { Ref } from "react";
 
 import type { CreditKind } from "../api/credits";
 import { t, type UiText } from "../i18n";
-import { TagsEmpty } from "../tags/TagListEmptyState";
+import { TagsEmpty } from "../recordList/TagsEmpty";
 import {
   TagListChanged,
   TagLoadFailed,
   TagLoadingMore,
   TagLoadMoreFailed,
   TagStaleList,
-} from "../tags/TagListNotices";
-import type { TagListEmpty } from "../tags/tagListView";
-import type { MoreState } from "../tags/useTagPage";
+} from "../recordList/TagListNotices";
+import type { TagListEmpty } from "../recordList/listView";
+import type { MoreState } from "../recordList/usePagedRows";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { Button } from "../ui/shadcn/button";
 import { TableHead, TableHeader, TableRow } from "../ui/shadcn/table";

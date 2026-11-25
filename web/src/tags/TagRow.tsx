@@ -7,7 +7,7 @@ import {
   Tags as SynonymsIcon,
   Trash2,
 } from "lucide-react";
-import { type ComponentProps, memo, type ReactNode, type Ref } from "react";
+import { memo, type Ref } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
@@ -26,18 +26,12 @@ import {
 import { Spinner } from "../ui/shadcn/spinner";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
+import type { TagFieldError } from "../ui/nameField";
+import { RowIconButton } from "../ui/RowIconButton";
+import { RowMoreMenu, type TagRowRefs } from "../ui/RowMoreMenu";
+import RowNameInput from "../ui/RowNameInput";
 import TentativeMark from "../ui/TentativeMark";
-import RowNameInput from "./RowNameInput";
 import TagKindLabel from "./TagKindLabel";
-import type { TagFieldError } from "./tagNameField";
-
-export interface TagRowRefs {
-  nameLink: HTMLAnchorElement | null;
-  renameButton: HTMLButtonElement | null;
-  synonymsButton: HTMLButtonElement | null;
-  menuButton: HTMLButtonElement | null;
-  actionsButton: HTMLButtonElement | null;
-}
 
 /** Rename only the name cell while preserving row layout. Memoization requires stable props because virtualization rerenders on scrolling/search. */
 export default memo(TagRow);
@@ -238,63 +232,6 @@ function TagRow({
         </div>
       </TableCell>
     </TableRow>
-  );
-}
-
-export function RowIconButton({
-  label,
-  ...props
-}: Omit<ComponentProps<typeof Button>, "variant" | "size" | "aria-label"> & {
-  label: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={label} {...props} />
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/** describedBy names why the trigger is disabled; className places it in the row's layout. */
-export function RowMoreMenu({
-  buttonRef,
-  label,
-  disabled,
-  describedBy,
-  className,
-  children,
-}: {
-  buttonRef: Ref<HTMLButtonElement>;
-  label: string;
-  disabled: boolean;
-  describedBy?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              ref={buttonRef}
-              variant="ghost"
-              size="icon-sm"
-              aria-label={label}
-              aria-describedby={describedBy}
-              disabled={disabled}
-              className={className}
-            >
-              <Ellipsis aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

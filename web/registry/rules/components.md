@@ -647,3 +647,61 @@ no heading.
 
 Do not use either for values other than tag names and the names of people and
 organizations.
+
+### DialogError
+
+Item `dialog-error`. A request that failed inside a dialog, a form section or
+a notice: a `destructive` `Alert` with the reason as its title and, when the
+caller passes `onRetry`, an `outline` `sm` Retry at its end. The dialog stays
+open around it.
+
+Do not use it for a list that failed to load (use `error-state`) or for a
+field's own reason (use `FieldError`).
+
+### RowIconButton
+
+Item `row-icon-button`. One action of a list row as a `ghost` `icon-sm`
+`Button` whose `label` is both its accessible name and its tooltip. A row
+shows its frequent actions this way and puts the rest in a `RowMoreMenu`.
+
+Do not use it outside rows, where a labelled `Button` fits.
+
+### RowMoreMenu
+
+Item `row-more-menu`. The Ellipsis button at a row's end, with its label in a
+tooltip, that opens a `DropdownMenu` aligned to its end; the children are the
+row's other actions as `DropdownMenuItem`s, the destructive one last after a
+separator. `describedBy` names the reason the trigger is disabled.
+`TagRowRefs` names the focus targets of a virtualized admin row: the name
+link, rename, synonyms, the menu and the compact actions button.
+
+Do not use it for a row with a single action; give that action a
+`RowIconButton`.
+
+### RowNameInput
+
+Item `row-name-input`. The rename input that replaces a row's name cell: it
+focuses and selects the name, Enter saves, Escape cancels, and both are
+ignored while saving. The name rules (`rules`, tag names by default) show
+their reason under the input as it is typed; a name already taken shows under
+it too, and any other failure as an alert.
+
+Do not use it for a name that is not edited in place in a row.
+
+### CreateTagRow
+
+Item `create-tag-row`. The first table row of an admin list while a new entry
+is named: an `Input` with Create and Cancel, the same keys and name checks as
+`RowNameInput`, and the failure under it. `label`, `placeholder` and `rules`
+default to the tag's; the people and tag-kind lists pass their own.
+
+Do not use it outside a `DataTable`.
+
+### MergeParts
+
+Item `merge-parts`. Two pieces of a merge dialog. `MergeTargetField` is the
+target field: a visible label above an `inline` `TagCommand` or
+`CreditCommand` (passed as `Command`), with the search failure under it.
+`MergeSummary` is the line that reads source → target, each name truncated.
+
+Do not use them for picks that do not merge one entry into another.

@@ -6,7 +6,7 @@ import { errorText, t, type UiText } from "../i18n";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
-import { DialogError } from "./DialogError";
+import { DialogError } from "../ui/DialogError";
 
 export type BulkTagAction = "reject" | "delete";
 

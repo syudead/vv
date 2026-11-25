@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { clearPeople } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import { DialogError } from "../tags/DialogError";
+import { DialogError } from "../ui/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { PageSection } from "../ui/patterns/page-section";
 import { Button } from "../ui/shadcn/button";

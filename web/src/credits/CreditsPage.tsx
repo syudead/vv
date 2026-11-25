@@ -13,11 +13,11 @@ import { updateFavorites } from "../api/favorites";
 import { errorText, t, type UiText } from "../i18n";
 import { writeListSortPreferences } from "../preferences/tagListPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
-import CreateTagRow from "../tags/CreateTagRow";
-import type { TagListSort } from "../tags/tagListOrder";
-import { useUrlCriteria } from "../tags/tagListUrl";
-import { tagListView } from "../tags/tagListView";
-import type { TagFieldError } from "../tags/tagNameField";
+import CreateTagRow from "../ui/CreateTagRow";
+import type { TagListSort } from "../api/tags";
+import { useUrlCriteria } from "../recordList/useUrlCriteria";
+import { tagListView } from "../recordList/listView";
+import type { TagFieldError } from "../ui/nameField";
 import {
   addRow,
   compareTagsForSort,
@@ -25,12 +25,12 @@ import {
   type ListRowsQuery,
   removeRows,
   replaceRow,
-} from "../tags/tagPageRows";
-import { AdminListToolbar } from "../tags/TagToolbar";
-import { useAdminTableBand, useListScrollMargin } from "../tags/useAdminTableBand";
-import { usePagedRows, useSearchQuery } from "../tags/useTagPage";
-import { ROW_OVERSCAN, useVirtualTagRows } from "../tags/useVirtualTagRows";
-import { virtualBodyRows } from "../tags/virtualBodyRows";
+} from "../recordList/listRows";
+import { AdminListToolbar } from "../recordList/AdminListToolbar";
+import { useAdminTableBand, useListScrollMargin } from "../recordList/useAdminTableBand";
+import { usePagedRows, useSearchQuery } from "../recordList/usePagedRows";
+import { ROW_OVERSCAN, useVirtualTagRows } from "../recordList/useVirtualTagRows";
+import { virtualBodyRows } from "../recordList/virtualBodyRows";
 import { creditNameRules } from "../ui/CreditCommand";
 import { AdminTablePage } from "../ui/patterns/admin-table-page";
 import { DataTable } from "../ui/patterns/data-table";

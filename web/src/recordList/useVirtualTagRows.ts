@@ -15,7 +15,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import type { TagRowRefs } from "./TagRow";
+import type { TagRowRefs } from "../ui/RowMoreMenu";
 
 export type FocusTarget = "rename" | "synonyms" | "name" | "menu";
 

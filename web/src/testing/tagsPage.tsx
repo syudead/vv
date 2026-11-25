@@ -11,7 +11,7 @@ import { afterEach, beforeEach, expect, vi } from "vitest";
 import { type TagKind, __resetTagKindsForTest } from "../api/tagKinds";
 import { type Tag, type TagSort, __resetTagsForTest } from "../api/tags";
 import { foldForMatch } from "../lib/foldForMatch";
-import { compareTagsForSort } from "../tags/tagPageRows";
+import { compareTagsForSort } from "../recordList/listRows";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import TagsPage from "../tags/TagsPage";
