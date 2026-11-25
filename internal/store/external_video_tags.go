@@ -50,6 +50,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		return domain.VideoTagsOutcome{}, err
 	}
 	c.matchesChanged()
+	c.tagsChanged()
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VideoTagsOutcome{}, fmt.Errorf("cannot update the video tags: %w", err)
 	}

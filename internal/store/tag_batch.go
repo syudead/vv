@@ -66,7 +66,7 @@ func (s *TagStore) BatchTags(ctx context.Context, req domain.TagBatchRequest, id
 		return domain.TagBatchOutcome{}, err
 	}
 
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.TagBatchOutcome{}, fmt.Errorf("cannot apply the tag batch: %w", err)
 	}
 	return outcome, nil

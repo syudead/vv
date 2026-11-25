@@ -164,6 +164,7 @@ func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, e
 			return nil, err
 		}
 		c := &changes{}
+		c.tagsChanged()
 		if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityTagAttach, ownerTagChanges(attached, out.Tag.ID),
 			now); err != nil {
 			return nil, err

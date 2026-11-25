@@ -59,19 +59,26 @@ func canonicalNames(ctx context.Context, db *sql.DB, query string, ids []int64) 
 // nothing; a new name any tag holds is a *domain.TagNameConflict.
 func (s *TagStore) ApplyTagByName(ctx context.Context, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
 	return applyByName(ctx, s.sql, s.db, change, map[domain.VocabularyAction]byNameAction{
-		domain.VocabularyRename: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := renameTagByName(ctx, tx, change.Name, change.NewName)
-			return outcome, nil, err
-		},
-		domain.VocabularyDelete: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := deleteTagByName(ctx, tx, change.Name)
-			return outcome, nil, err
-		},
-		domain.VocabularyMerge: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := mergeTagsByName(ctx, tx, change.Into, change.Sources)
-			return outcome, nil, err
-		},
+		domain.VocabularyRename: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return renameTagByName(ctx, tx, change.Name, change.NewName)
+		}),
+		domain.VocabularyDelete: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return deleteTagByName(ctx, tx, change.Name)
+		}),
+		domain.VocabularyMerge: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return mergeTagsByName(ctx, tx, change.Into, change.Sources)
+		}),
 	})
+}
+
+// tagByName adapts a tag action to byNameAction; a commit of any tag action changes the tag list.
+func tagByName(
+	apply func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error),
+) byNameAction {
+	return func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
+		outcome, err := apply(ctx, tx, change)
+		return outcome, []domain.Event{domain.TagsChanged{}}, err
+	}
 }
 
 // byNameAction applies one action by name inside tx and returns the events its commit publishes.
