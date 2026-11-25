@@ -237,10 +237,10 @@ test.describe.serial("video tags", () => {
       await expect(page).toHaveURL(`${origin}${String(href)}`);
     });
 
-    test("狭い幅でも見出しの件数は折り返さず、「Rejected names」のタブを省略せずに本文の中に収める", async ({
+    test("狭い幅でも見出しの件数は折り返さず、「Kinds」「Rejected names」のリンクを省略せずに本文の中に収め、そのページも横にはみ出さない", async ({
       page,
     }) => {
-      // Four-digit counts maximize heading and tab widths.
+      // A four-digit count maximizes the heading width.
       const createdAt = "2026-01-01T00:00:00Z";
       const items = Array.from({ length: 1000 }, (_, index) => ({
         id: 900000 + index,
@@ -263,13 +263,7 @@ test.describe.serial("video tags", () => {
       await page.route("**/api/tags/rejected-names**", (route) =>
         route.request().method() === "GET"
           ? route.fulfill({
-              json: {
-                items: Array.from(
-                  { length: 1000 },
-                  (_, index) => `e2e却下${String(index)}`,
-                ),
-                total: 1000,
-              },
+              json: { items: ["e2e却下0"], total: 1 },
             })
           : route.fallback(),
       );
@@ -279,11 +273,9 @@ test.describe.serial("video tags", () => {
         await page.goto("/tags?tentative=1");
         const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
         await expect(count).toBeVisible();
-        const tab = page.getByRole("tab", { name: /^Rejected names/ });
-        await expect(tab).toBeVisible();
-        await expect(tab).toContainText("1,000");
-        const tabBox = await tab.boundingBox();
-        if (tabBox === null) throw new Error("no layout");
+        await expect(page.getByRole("heading", { level: 1, name: "Tags" })).toBeVisible();
+        const fitsWidth = () =>
+          page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
         // A wrapped count produces multiple client rectangles.
         expect(
           await count.evaluate((element) => {
@@ -294,56 +286,25 @@ test.describe.serial("video tags", () => {
             ).size;
           }),
         ).toBe(1);
+        for (const name of ["Kinds", "Rejected names"]) {
+          const link = page.getByRole("link", { name, exact: true });
+          await expect(link).toHaveText(name);
+          const box = await link.boundingBox();
+          if (box === null) throw new Error("no layout");
+          expect(box.x + box.width).toBeLessThanOrEqual(width);
+        }
+        expect(await fitsWidth()).toBe(true);
 
-        expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(width);
+        await page.getByRole("link", { name: "Rejected names", exact: true }).click();
+        await expect(page).toHaveURL(/\/tags\/rejected$/);
+        await expect(
+          page.getByRole("button", { name: 'Allow "e2e却下0" again' }),
+        ).toBeVisible();
+        expect(await fitsWidth()).toBe(true);
 
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= window.innerWidth,
-          ),
-        ).toBe(true);
-        // The third tab must remain reachable by scrolling when it does not fit.
-        const kinds = page.getByRole("tab", { name: /^Kinds/ });
-        await kinds.click();
-        await expect(page).toHaveURL(/[?&]tab=kinds/);
-        // The scroll strip must not clip the focus ring extending 4 px outside the tab.
-        await kinds.press("ArrowLeft");
-        await expect(tab).toBeFocused();
-        expect(
-          await tab.evaluate((element) => {
-            const strip = element.closest('[role="tablist"]')?.parentElement;
-            if (strip === null || strip === undefined) return false;
-            const outer = strip.getBoundingClientRect();
-            const inner = element.getBoundingClientRect();
-            return outer.top <= inner.top - 4 && outer.bottom >= inner.bottom + 4;
-          }),
-        ).toBe(true);
-        // The selected tab stays visible after direct navigation and back navigation.
-        const kindsInView = async () => {
-          await expect(kinds).toHaveAttribute("aria-selected", "true");
-          await expect
-            .poll(async () => {
-              const box = await kinds.boundingBox();
-              return box !== null && box.x >= 0 && box.x + box.width <= width;
-            })
-            .toBe(true);
-        };
-        await page.goto("/tags?tentative=1&tab=kinds");
-        await expect(kinds).toContainText(/\d/);
-        await kindsInView();
-        await page.getByRole("tab", { name: /^Tags/ }).click();
-        await expect(page).not.toHaveURL(/[?&]tab=kinds/);
-        // 押したタブへのフォーカスで帯が送られるのを描き終えてから戻る。人は押した同じ
-        // コマのうちに戻らない。
-        await page.evaluate(
-          () =>
-            new Promise((resolve) =>
-              requestAnimationFrame(() => requestAnimationFrame(resolve)),
-            ),
-        );
-        await page.goBack();
-        await expect(page).toHaveURL(/[?&]tab=kinds/);
-        await kindsInView();
+        await page.goto("/tags/kinds");
+        await expect(page.getByRole("textbox", { name: "New kind name" })).toBeVisible();
+        expect(await fitsWidth()).toBe(true);
       }
       await page.setViewportSize({ width: 1280, height: 800 });
     });

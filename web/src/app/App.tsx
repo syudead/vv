@@ -39,7 +39,18 @@ const SettingsPage = await deferredRoute(
   () => import("../settings/SettingsPage"),
   "/settings",
 );
-const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
+const TagsPage = await deferredRoute(
+  () => import("../tags/TagsPage"),
+  (pathname) => matchesExactPath(pathname, "/tags"),
+);
+const TagKindsPage = await deferredRoute(
+  () => import("../tags/TagKindsPage"),
+  "/tags/kinds",
+);
+const RejectedNamesPage = await deferredRoute(
+  () => import("../tags/RejectedNamesPage"),
+  "/tags/rejected",
+);
 const PeoplePage = await deferredRoute(
   () => import("../credits/people/PeoplePage"),
   (pathname) => matchesExactPath(pathname, "/people"),
@@ -192,6 +203,22 @@ function AppRoutes() {
             element={
               <ShellPage>
                 <TagsPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path="/tags/kinds"
+            element={
+              <ShellPage>
+                <TagKindsPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path="/tags/rejected"
+            element={
+              <ShellPage>
+                <RejectedNamesPage />
               </ShellPage>
             }
           />

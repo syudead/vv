@@ -11,7 +11,6 @@ import {
   install,
   renderPage,
   toggleFilter,
-  tagsTab,
   setUpTagsPageServer,
 } from "../testing/tagsPage";
 import { stubRowHeights } from "../testing/virtualRows";
@@ -181,7 +180,6 @@ describe("TagsPage サーバーのページで読む", () => {
         "Tags were added or removed elsewhere, so the rest of this list may be out of date.",
       ),
     ).toBeDefined();
-    expect(tagsTab().textContent).toBe("Tags150");
     expect(
       within(screen.getByRole("region", { name: "Selected tags" })).getByText(
         "1 tag selected",

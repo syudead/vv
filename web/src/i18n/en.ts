@@ -1744,10 +1744,6 @@ export const en = {
     count: tagCount,
     filteredCount: (shown: number, total: number) =>
       `${formatNumber(shown)} of ${tagCount(total)}`,
-    tabs: {
-      label: "Tag lists",
-      tags: "Tags",
-    },
     columns: {
       name: "Name",
       videos: "Videos",
@@ -1836,6 +1832,7 @@ export const en = {
       heading: "Rejected names",
       description:
         "Automatic tagging won't create these names. Allow a name again to let it be created.",
+      section: "All rejected names",
       empty: "No rejected names",
       allow: (name: string) => `Allow "${name}" again`,
       allowShort: "Allow again",
@@ -1845,24 +1842,19 @@ export const en = {
         `Couldn't remove "${name}": ${reason}`,
     },
     kinds: {
-      tab: "Kinds",
-      table: "Kinds",
+      title: "Kinds",
+      section: "All kinds",
       description:
-        "A tag has one kind or none. Set it from the Tags tab's selection bar. Video cards list tags of kinds marked First on cards before the rest. Deleting a kind leaves its tags without one.",
+        "A tag has one kind or none. Set it from the tag list's selection bar. Video cards list tags of kinds marked First on cards before the rest. Deleting a kind leaves its tags without one.",
       newKind: "New kind",
       loading: "Loading kinds…",
-      columns: {
-        name: "Name",
-        cardFirst: "First on cards",
-        tags: "Tags",
-      },
+      firstOnCards: "First on cards",
       tagCount,
-      cardFirst: (name: string) => `List tags of the kind "${name}" first on video cards`,
-      open: (name: string) => `Show the tags of the kind "${name}"`,
+      openCount: (count: number, name: string) =>
+        `${tagCount(count)} of the kind "${name}"`,
+      more: (name: string) => `More actions for the kind "${name}"`,
       create: {
         label: "New kind name",
-        placeholder: "Kind name",
-        submit: "Create",
         submitting: "Creating…",
       },
       renameLabel: (name: string) => `New name for "${name}"`,
@@ -1966,7 +1958,7 @@ export const en = {
       merged: (count: number, target: string) =>
         `Merged ${tagCount(count)} into "${target}"`,
       setKind: "Set kind…",
-      noKinds: "No kinds yet. Add them on the Kinds tab.",
+      noKinds: "No kinds yet. Add them on the Kinds page.",
       kindSet: (name: string, applied: number, skipped: number) =>
         skipped === 0
           ? `Set the kind "${name}" on ${tagCount(applied)}`

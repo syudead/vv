@@ -212,10 +212,16 @@ any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
-header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar, and the table's column header sticks right under them. The
+header (or, while rows are selected, the selection bar), the `Kinds` and
+`Rejected names` links and the filter chips stick under the top bar, and the
+table's column header sticks right under them. The links open `/tags/kinds`
+and `/tags/rejected`, each a `SettingsPage` with a back link to `/tags` and one
+section of rows: a kind's row has its colour mark, its tag count linking to
+`/tags?kind=<id>`, the `First on cards` switch and a `More` menu, and the
+section ends with the `New kind` field; a rejected name's row has
+`Allow again`. The
 organizations page is an `AdminTablePage` with the same header and column
-header, without the filter, tabs, checkbox column and selection bar, and a
+header, without the filter, checkbox column and selection bar, and a
 details dialog (the names list, external IDs and the parent) in place of the synonyms
 dialog. The people page is a `ListPage` of face cards with the search, the
 favorites filter and the sort in the top bar.
@@ -630,7 +636,7 @@ Video card behaviour:
 
 | Case                                         | Behaviour                                                                                                                                                                      |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds tab of `/tags`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
+| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds page, `/tags/kinds`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
 | Tag pressed in the library                   | Filters by the tag                                                                                                                                                             |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>`                                                                                                                                                             |
 | Tags that do not fit the row                 | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full |

@@ -2,14 +2,8 @@ import { isTagListSort, type TagListSort } from "../api/tags";
 import { useUrlCriteria } from "../recordList/useUrlCriteria";
 import { type HistoryMode, normalizeQuery } from "../videoList/listCriteria";
 
-export type TagListTab = "tags" | "rejected" | "kinds";
-
 /** Positive ID string or none; null means unfiltered. */
 export type TagKindFilter = string | null;
-
-function parseTagListTab(value: string | null): TagListTab {
-  return value === "rejected" || value === "kinds" ? value : "tags";
-}
 
 function parseTagKindFilter(value: string | null): TagKindFilter {
   if (value === null) return null;
@@ -22,7 +16,6 @@ export interface TagListCriteria {
   unusedOnly: boolean;
   kind: TagKindFilter;
   sort: TagListSort;
-  tab: TagListTab;
 }
 
 /** Invalid values fall back silently; missing/invalid sort uses the device preference. */
@@ -39,13 +32,12 @@ export function parseTagListCriteria(
       unusedOnly: params.get("unused") === "1",
       kind: parseTagKindFilter(params.get("kind")),
       sort: hasExplicitSort ? rawSort : preferredSort,
-      tab: parseTagListTab(params.get("tab")),
     },
     hasExplicitSort,
   };
 }
 
-/** Always serialize sort so Back restores prior order instead of a changed preference; omit false filters and the default tab. */
+/** Always serialize sort so Back restores prior order instead of a changed preference; omit false filters. */
 export function serializeTagListCriteria(criteria: TagListCriteria): URLSearchParams {
   const params = new URLSearchParams();
   const query = normalizeQuery(criteria.query);
@@ -54,7 +46,6 @@ export function serializeTagListCriteria(criteria: TagListCriteria): URLSearchPa
   if (criteria.unusedOnly) params.set("unused", "1");
   if (criteria.kind !== null) params.set("kind", criteria.kind);
   params.set("sort", criteria.sort);
-  if (criteria.tab !== "tags") params.set("tab", criteria.tab);
   return params;
 }
 
