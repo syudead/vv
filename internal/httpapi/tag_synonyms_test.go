@@ -48,31 +48,34 @@ func TestGetTagAnswersTheTagListTagsGives(t *testing.T) {
 	}
 }
 
+// Each operation maps its store error to the contract's answer, and a remote id answers 404 without calling the store.
 func TestSynonymOperationsAnswerTheirErrors(t *testing.T) {
-	f := newGuestFixture(t, true)
-	cat := tagOn(t, f, "猫")
-	addSynonymOn(t, f, cat.ID, "ねこ")
-	catID := strconv.FormatInt(cat.ID, 10)
-
+	_, emptyName := domain.NormalizeTagName(" ")
 	cases := []struct {
 		label, target, body string
+		err                 error
+		wantCall            string
 		want                wantError
 	}{
-		{"move to its own tag", tagPath(cat.ID, "/synonyms/move"), `{"name":"ねこ","targetId":` + catID + `}`,
+		{"move to its own tag", "/api/tags/3/synonyms/move", `{"name":"ねこ","targetId":3}`, domain.ErrMoveSameTag, "move",
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonMoveSameTag}},
-		{"promote the canonical name", tagPath(cat.ID, "/synonyms/promote"), `{"name":"猫"}`,
-			wantError{status: http.StatusConflict, code: gen.ErrorCodeTagSynonymNotFound}},
-		{"detach an empty name", tagPath(cat.ID, "/synonyms/detach"), `{"name":" "}`,
+		{"promote a name that is no synonym", "/api/tags/3/synonyms/promote", `{"name":"猫"}`, domain.ErrTagSynonymNotFound,
+			"promote", wantError{status: http.StatusConflict, code: gen.ErrorCodeTagSynonymNotFound}},
+		{"detach from a missing tag", "/api/tags/3/synonyms/detach", `{"name":"ねこ"}`, domain.ErrTagNotFound, "detach",
+			wantError{status: http.StatusNotFound, code: gen.ErrorCodeTagNotFound}},
+		{"detach an empty name", "/api/tags/3/synonyms/detach", `{"name":" "}`,
+			emptyName, "detach",
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonTagNameEmpty}},
-		{"promote on a remote id", tagPath(domain.RemoteID(1, cat.ID), "/synonyms/promote"), `{"name":"ねこ"}`,
+		{"promote on a remote id", tagPath(domain.RemoteID(1, 3), "/synonyms/promote"), `{"name":"ねこ"}`, nil, "",
 			wantError{status: http.StatusNotFound, code: gen.ErrorCodeTagNotFound}},
 	}
 	for _, tc := range cases {
-		rec := f.ownerRequest(http.MethodPost, tc.target, tc.body)
+		fake := &fakeTags{err: tc.err}
+		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, tc.target, tc.body)
 		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), tc.want)
-	}
-	if tag, _ := tagNamed(t, f, "猫"); tag.Name != "猫" || !slices.Equal(tag.Synonyms, []string{"ねこ"}) {
-		t.Errorf("猫 = %+v, want it unchanged", tag)
+		if fake.operation != tc.wantCall {
+			t.Errorf("%s: store call = %q, want %q", tc.label, fake.operation, tc.wantCall)
+		}
 	}
 }
 
@@ -91,9 +94,9 @@ func TestPromoteChangesTheCanonicalNameOnBothNodesAndMoveStaysLocal(t *testing.T
 	if got := decode[gen.Tag](t, rec); got.Name != "ねこ" || !slices.Equal(got.Synonyms, []string{"にゃんこ", "猫"}) {
 		t.Errorf("promote = %+v, want ねこ with にゃんこ and 猫", got)
 	}
-	// a's 猫 lacks the synonym ねこ, so it is renamed and keeps its own synonym.
-	if tag, _ := tagNamed(t, fa, "ねこ"); tag.Name != "ねこ" || !slices.Equal(tag.Synonyms, []string{"にゃんこ"}) {
-		t.Errorf("a's tag = %+v, want ねこ with にゃんこ", tag)
+	// a's 猫 lacks the synonym ねこ, so it gains ねこ as its canonical name and keeps 猫 and its own synonym.
+	if tag, _ := tagNamed(t, fa, "ねこ"); tag.Name != "ねこ" || !slices.Equal(tag.Synonyms, []string{"にゃんこ", "猫"}) {
+		t.Errorf("a's tag = %+v, want ねこ with にゃんこ and 猫", tag)
 	}
 
 	body := `{"name":"にゃんこ","targetId":` + strconv.FormatInt(dog.ID, 10) + `}`
@@ -106,6 +109,30 @@ func TestPromoteChangesTheCanonicalNameOnBothNodesAndMoveStaysLocal(t *testing.T
 	}
 	if tag, _ := tagNamed(t, fa, "にゃんこ"); tag.Name != "ねこ" {
 		t.Errorf("a's にゃんこ is on %+v, want it to stay on ねこ", tag)
+	}
+}
+
+// A promote that changed the link but stopped before the local write can be repeated, and joins the tag again.
+func TestPromoteRepeatsAfterOnlyTheLinkChanged(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	cat := tagOn(t, fb, "猫")
+	addSynonymOn(t, fb, cat.ID, "ねこ")
+	tagOn(t, fa, "猫")
+	if _, err := fa.env.db.Tags().ApplyTagByName(context.Background(), domain.VocabularyChange{
+		Kind: domain.VocabularyTag, Action: domain.VocabularyPromote, Name: "猫", NewName: "ねこ",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := b.owner(http.MethodPost, tagPath(cat.ID, "/synonyms/promote"), `{"name":"ねこ"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("repeated promote: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Tag](t, rec); got.Name != "ねこ" {
+		t.Errorf("b's tag = %+v, want ねこ", got)
+	}
+	if tag, _ := tagNamed(t, fa, "猫"); tag.Name != "ねこ" || !slices.Equal(tag.Synonyms, []string{"猫"}) {
+		t.Errorf("a's tag = %+v, want ねこ with 猫", tag)
 	}
 }
 

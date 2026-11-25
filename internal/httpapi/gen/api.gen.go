@@ -6792,7 +6792,7 @@ type PeerState struct {
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
 type PeerVocabularyRequest struct {
-	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name`: a synonym `newName` of that tag swaps with `name`, and otherwise the tag is renamed; it takes kind `tag` only
+	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only
 	Action PeerVocabularyRequestAction `json:"action"`
 
 	// Into The merge destination, created when absent; required for merge
@@ -6809,7 +6809,7 @@ type PeerVocabularyRequest struct {
 	Sources *[]string `json:"sources,omitempty"`
 }
 
-// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name`: a synonym `newName` of that tag swaps with `name`, and otherwise the tag is renamed; it takes kind `tag` only
+// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only
 type PeerVocabularyRequestAction string
 
 // PeerVocabularyRequestKind defines model for PeerVocabularyRequest.Kind.

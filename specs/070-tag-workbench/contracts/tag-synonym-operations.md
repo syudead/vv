@@ -95,10 +95,20 @@ as the canonical name, no kind and no explicit attachments.
 ## `POST /api/peer/vocabulary` (changed)
 
 `PeerVocabularyRequest.action` gains `promote` for `kind: tag`, with `name`
-(the current canonical name) and `newName`. When the tag named `name` holds
-`newName` as a synonym, the two are swapped; otherwise the tag is renamed to
-`newName`. A missing `name` answers `changed: false`; a `newName` held by
-another tag answers `409 tag_name_taken`.
+(the current canonical name) and `newName`. The peer keeps `name` as a
+synonym, as the local promote does. When the tag named `name` holds `newName`
+as a synonym, the two are swapped; otherwise `newName` becomes the tag's
+canonical name and `name` its synonym. A tag whose canonical name is
+`newName` and which holds `name` as a synonym, where an earlier promote
+already applied, answers `changed: false`, and so does a missing `name`; a
+`newName` held by another tag answers `409 tag_name_taken`.
+
+The conflict check before the write treats a link's tag that an earlier
+promote already changed as the same tag, so a promote that stopped after the
+links changed can be repeated. One lock on the node holds a promote or a
+rename of a local tag from the links' write through the local write, so two
+concurrent promotes of one tag cannot leave the nodes with different canonical
+names.
 
 ## Client use
 

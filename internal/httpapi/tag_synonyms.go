@@ -42,7 +42,12 @@ func (s *server) getMergedTag(w http.ResponseWriter, r *http.Request, id int64) 
 
 func (s *server) PromoteTagSynonym(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	var body gen.TagSynonymRequest
-	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) || !s.promoteTagOnPeer(w, r, id, body.Name) {
+	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) {
+		return
+	}
+	s.tagNameWrites.Lock()
+	defer s.tagNameWrites.Unlock()
+	if !s.promoteTagOnPeer(w, r, id, body.Name) {
 		return
 	}
 	tag, err := s.tags.PromoteSynonym(r.Context(), id, body.Name)

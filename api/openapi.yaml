@@ -3704,7 +3704,7 @@ paths:
     post:
       operationId: promoteTagSynonym
       summary: "Make a synonym of tag id its canonical name"
-      description: "The synonym `name` becomes the canonical name and the old canonical name a synonym; attachments do not change and the tag becomes confirmed. A `name` breaking the tag-name rule returns 400 invalid_request with its reason; a missing tag or a remote id (at or above 2^40) returns 404 tag_not_found; a `name` that is not a synonym of id now, its canonical name included, returns 409 tag_synonym_not_found. While this node reads others, the tag of the canonical name is changed on every read VVMDM first, as renameTag is: a new name another tag there holds returns 409 tag_name_taken with `tagName` and `peer`, and a read VVMDM that is not connected returns 409 conflict with peer_unreachable. Nothing changes on an error."
+      description: "The synonym `name` becomes the canonical name and the old canonical name a synonym; attachments do not change and the tag becomes confirmed. A `name` breaking the tag-name rule returns 400 invalid_request with its reason; a missing tag or a remote id (at or above 2^40) returns 404 tag_not_found; a `name` that is not a synonym of id now, its canonical name included, returns 409 tag_synonym_not_found. While this node reads others, the tag of the canonical name is changed on every read VVMDM first, as renameTag is, and keeps the old canonical name as a synonym there; a read VVMDM where an earlier promote already applied is left as it is, so repeating a promote that stopped after the read VVMDMs completes it. A new name another tag there holds returns 409 tag_name_taken with `tagName` and `peer`, and a read VVMDM that is not connected returns 409 conflict with peer_unreachable. Nothing changes on an error."
       parameters:
         - $ref: "#/components/parameters/TagId"
       requestBody:
@@ -15223,7 +15223,7 @@ components:
         action:
           type: string
           enum: [rename, merge, delete, unname, promote]
-          description: "`unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name`: a synonym `newName` of that tag swaps with `name`, and otherwise the tag is renamed; it takes kind `tag` only"
+          description: "`unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only"
         name:
           type: string
           description: "The current canonical name; required for rename, promote, delete and unname"

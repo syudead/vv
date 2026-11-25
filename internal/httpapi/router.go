@@ -12,6 +12,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/semaphore"
@@ -407,6 +408,9 @@ type Options struct {
 type server struct {
 	// favoritesMaxBody overrides the default byte limit for this server instance.
 	favoritesMaxBody int64
+	// tagNameWrites holds a local tag's rename or promote from the links' write through the local write, so a
+	// concurrent change of the same tag sends the links the canonical name the earlier one left.
+	tagNameWrites sync.Mutex
 
 	build        domain.BuildInfo
 	pinger       Pinger

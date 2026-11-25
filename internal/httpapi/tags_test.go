@@ -117,16 +117,19 @@ func (f *fakeTags) Tag(context.Context, domain.Audience, int64) (domain.Tag, err
 	return domain.Tag{}, errors.New("not faked")
 }
 
-func (f *fakeTags) PromoteSynonym(context.Context, int64, string) (domain.Tag, error) {
-	return domain.Tag{}, errors.New("not faked")
+func (f *fakeTags) PromoteSynonym(_ context.Context, id int64, name string) (domain.Tag, error) {
+	f.operation, f.lastID, f.lastName = "promote", id, name
+	return domain.Tag{ID: id, Name: name, Synonyms: []string{}}, f.err
 }
 
-func (f *fakeTags) MoveSynonym(context.Context, int64, string, int64) (domain.Tag, domain.Tag, error) {
-	return domain.Tag{}, domain.Tag{}, errors.New("not faked")
+func (f *fakeTags) MoveSynonym(_ context.Context, id int64, name string, targetID int64) (domain.Tag, domain.Tag, error) {
+	f.operation, f.lastID, f.lastName, f.lastTag = "move", id, name, &targetID
+	return domain.Tag{ID: id, Synonyms: []string{}}, domain.Tag{ID: targetID, Synonyms: []string{name}}, f.err
 }
 
-func (f *fakeTags) DetachSynonym(context.Context, int64, string) (domain.Tag, domain.Tag, error) {
-	return domain.Tag{}, domain.Tag{}, errors.New("not faked")
+func (f *fakeTags) DetachSynonym(_ context.Context, id int64, name string) (domain.Tag, domain.Tag, error) {
+	f.operation, f.lastID, f.lastName = "detach", id, name
+	return domain.Tag{ID: id, Synonyms: []string{}}, domain.Tag{Name: name, Synonyms: []string{}}, f.err
 }
 
 func (f *fakeTags) AttachTagByID(_ context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {

@@ -321,7 +321,13 @@ func (s *server) tagNameOnPeer(
 	if send, ok := check(r.Context(), current, normalized); !ok || !send {
 		return ok
 	}
-	if !s.renameFreeOnLinks(w, r, domain.VocabularyTag, current, normalized, 0) {
+	holderOf := func(items []peerVocabularyItem) (string, bool) {
+		return renameHolder(items, domain.VocabularyTag, current, normalized)
+	}
+	if action == domain.VocabularyPromote {
+		holderOf = func(items []peerVocabularyItem) (string, bool) { return promoteHolder(items, current, normalized) }
+	}
+	if !s.nameFreeOnLinks(w, r, domain.VocabularyTag, normalized, 0, holderOf) {
 		return false
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
@@ -470,6 +476,16 @@ func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind
 func (s *server) renameFreeOnLinks(
 	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, name, newName string, skip int64,
 ) bool {
+	return s.nameFreeOnLinks(w, r, kind, newName, skip, func(items []peerVocabularyItem) (string, bool) {
+		return renameHolder(items, kind, name, newName)
+	})
+}
+
+// nameFreeOnLinks is renameFreeOnLinks with holderOf naming the entry of a link's items that refuses newName.
+func (s *server) nameFreeOnLinks(
+	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, newName string, skip int64,
+	holderOf func(items []peerVocabularyItem) (string, bool),
+) bool {
 	links, err := s.readLinks(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the pairing.", err)
@@ -484,7 +500,7 @@ func (s *server) renameFreeOnLinks(
 			s.vocabularyFailure(w, &linkError{name: link.Link.Name, err: err})
 			return false
 		}
-		holder, taken := renameHolder(items, kind, name, newName)
+		holder, taken := holderOf(items)
 		if !taken {
 			continue
 		}
@@ -517,6 +533,17 @@ func renameHolder(items []peerVocabularyItem, kind domain.VocabularyKind, name, 
 		return "", false
 	}
 	return holder.Name, true
+}
+
+// promoteHolder is renameHolder for a tag promote, except that a tag whose canonical name is newName and which holds
+// name as a synonym holds nothing: an earlier promote applied on that link, which its promote answers unchanged.
+func promoteHolder(items []peerVocabularyItem, name, newName string) (string, bool) {
+	for _, item := range items {
+		if item.Name == newName && slices.Contains(item.Synonyms, name) {
+			return "", false
+		}
+	}
+	return renameHolder(items, domain.VocabularyTag, name, newName)
 }
 
 // syncCreditNameOnPeer checks patch against id's entry and, when it changes the display name, renames every link's

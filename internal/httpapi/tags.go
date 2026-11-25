@@ -179,6 +179,8 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	s.tagNameWrites.Lock()
+	defer s.tagNameWrites.Unlock()
 	if !s.renameTagOnPeer(w, r, id, body.Name) {
 		return
 	}
