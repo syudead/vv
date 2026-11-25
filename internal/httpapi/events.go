@@ -37,6 +37,7 @@ type eventSubscriber struct {
 	scan         bool
 	candidates   bool
 	activity     bool
+	tags         bool
 	videos       map[int64]struct{}
 	groups       map[int64]struct{}
 	smartFolders map[int64]struct{}
@@ -77,6 +78,7 @@ type pendingEvents struct {
 	scan         bool
 	candidates   bool
 	activity     bool
+	tags         bool
 	videos       []int64
 	groups       []int64
 	smartFolders []int64
@@ -91,7 +93,7 @@ func (s *eventSubscriber) take() pendingEvents {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pending := pendingEvents{
-		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
+		scan: s.scan, candidates: s.candidates, activity: s.activity, tags: s.tags, videos: sortedIDs(s.videos),
 		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), onboarding: s.onboarding,
 		assistant: s.assistant, background: s.background, peer: s.peer, mediaFolders: s.mediaFolders,
 	}
@@ -100,6 +102,7 @@ func (s *eventSubscriber) take() pendingEvents {
 	s.scan = false
 	s.candidates = false
 	s.activity = false
+	s.tags = false
 	s.onboarding = false
 	s.assistant = false
 	s.background = false
@@ -171,6 +174,11 @@ func (e *Events) VideoChanged(id int64) {
 // Candidate notifications have no payload; the UI rereads the list.
 func (e *Events) CandidatesChanged() {
 	e.publish(func(s *eventSubscriber) { s.candidates = true })
+}
+
+// TagsChanged has no payload; an open tag list rereads its loaded rows and only tells the owner they changed.
+func (e *Events) TagsChanged() {
+	e.publish(func(s *eventSubscriber) { s.tags = true })
 }
 
 // Activity notifications have no payload; the UI rereads entries and counts.
@@ -265,6 +273,8 @@ func (e *Events) Handle(event domain.Event) {
 		e.CandidatesChanged()
 	case domain.ActivityChanged:
 		e.ActivityChanged()
+	case domain.TagsChanged:
+		e.TagsChanged()
 	case domain.GroupsChanged:
 		e.GroupsChanged(event.GroupIDs)
 	case domain.SmartFoldersChanged:
@@ -350,6 +360,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		pending.scan = false
 		pending.candidates = false
 		pending.activity = false
+		pending.tags = false
 		pending.assistant = false
 		pending.background = false
 		pending.videos = nil
@@ -366,7 +377,9 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			}
 		}
 	}
-	if err := writeSignals(w, signal{pending.candidates, "candidates"}, signal{pending.activity, "activity"}); err != nil {
+	// The peer's tag changes reach this node through peerItems, so the peer-credential stream gets no tags.
+	if err := writeSignals(w, signal{pending.candidates, "candidates"}, signal{pending.activity, "activity"},
+		signal{pending.tags && !peer, "tags"}); err != nil {
 		return err
 	}
 	for _, id := range pending.videos {

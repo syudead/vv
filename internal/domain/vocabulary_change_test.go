@@ -21,3 +21,21 @@ func TestUnnameIsValidForANamedPersonOnly(t *testing.T) {
 		}
 	}
 }
+
+// Only a tag has synonyms, so only a tag's canonical name can be promoted by name.
+func TestPromoteIsValidForATagWithBothNamesOnly(t *testing.T) {
+	cases := []struct {
+		name   string
+		change VocabularyChange
+		want   bool
+	}{
+		{"tag", VocabularyChange{Kind: VocabularyTag, Action: VocabularyPromote, Name: "猫", NewName: "ねこ"}, true},
+		{"person", VocabularyChange{Kind: VocabularyPerson, Action: VocabularyPromote, Name: "佐藤", NewName: "さとう"}, false},
+		{"no new name", VocabularyChange{Kind: VocabularyTag, Action: VocabularyPromote, Name: "猫"}, false},
+	}
+	for _, tc := range cases {
+		if got := tc.change.Valid(); got != tc.want {
+			t.Errorf("%s: Valid() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

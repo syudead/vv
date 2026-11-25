@@ -96,6 +96,9 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, err
 	}
 	c.matchesChanged()
+	if len(apply.Tags) > 0 {
+		c.tagsChanged()
+	}
 	events := append(appliedWorkInfoEvents(apply.VideoID, changed), workInfoEvents...)
 	events = append(events, same.events...)
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {

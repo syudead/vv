@@ -33,15 +33,19 @@ const (
 	VocabularyDelete VocabularyAction = "delete"
 	// VocabularyUnname empties a person's names, making it provisional; an organization always has a name.
 	VocabularyUnname VocabularyAction = "unname"
+	// VocabularyPromote makes NewName a tag's canonical name: a synonym NewName of the tag named Name swaps with
+	// Name, and a tag without that synonym is renamed.
+	VocabularyPromote VocabularyAction = "promote"
 )
 
-// VocabularyChange is a rename, merge or deletion of a tag, person or organization, or the unnaming of a person, by
+// VocabularyChange is a rename, merge or deletion of a tag, person or organization, the promote of a tag's synonym,
+// or the unnaming of a person, by
 // canonical name, which the paired nodes apply to the entity of that name; synonyms, other names and the rest stay
 // with each node, except that an unnamed person keeps no name.
 type VocabularyChange struct {
 	Kind   VocabularyKind
 	Action VocabularyAction
-	// Name is the current name of a rename, deletion or unnaming.
+	// Name is the current name of a rename, promote, deletion or unnaming.
 	Name    string
 	NewName string
 	// Into is the destination of a merge, created when a source exists and it does not.
@@ -55,8 +59,9 @@ func (c VocabularyChange) Valid() bool {
 		return false
 	}
 	switch c.Action {
-	case VocabularyRename:
-		return c.Name != "" && c.NewName != "" && c.Into == "" && len(c.Sources) == 0
+	case VocabularyRename, VocabularyPromote:
+		return (c.Action == VocabularyRename || c.Kind == VocabularyTag) &&
+			c.Name != "" && c.NewName != "" && c.Into == "" && len(c.Sources) == 0
 	case VocabularyDelete, VocabularyUnname:
 		return (c.Action == VocabularyDelete || c.Kind == VocabularyPerson) &&
 			c.Name != "" && c.NewName == "" && c.Into == "" && len(c.Sources) == 0
