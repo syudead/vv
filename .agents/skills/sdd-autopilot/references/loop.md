@@ -41,12 +41,12 @@ the orchestrator's reads small:
 
 | Rule in the selection | Autopilot does instead |
 | --- | --- |
-| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge ([Drive a feature PR to merge](#drive-a-feature-pr-to-merge)), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session. Open implementation PRs do not stop new children from starting (next row) |
+| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge ([Drive a feature PR to merge](#drive-a-feature-pr-to-merge)), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN`, or held, in this session. Open implementation PRs do not stop new children from starting (next row) |
 | 2 `plan`, 3 `design`, 4 `plan-to-issues` | Run that stage through workers ([Run a stage](#run-a-stage)) |
 | Between 4 and 5, not in the selection: the parent has sub-issues and a merged Plan revision PR has no reconciled comment | Run `plan-to-issues` with those PRs in the brief's `Revisions:` slot, so the children match the revised Plan before any is implemented ([Revise the Plan](#revise-the-plan)). Rule 4 passes the same slot |
 | A worker returns `BLOCKED` with `BLOCKED_ON: artifact` and the parent has no integration PR | [Revise the Plan](#revise-the-plan) instead of stopping |
 | Any other `BLOCKED`, or a wait that ran out | [Holding one item](#holding-one-item): the loop goes on with everything that does not depend on it |
-| 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once ([Run a stage](#run-a-stage)), and drive each resulting PR with [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) on its own; when one merges, go to [Derive the state](#derive-the-state), which may make more children ready. If no child is ready and no implementation PR is open, stop |
+| 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once ([Run a stage](#run-a-stage)), and drive each resulting PR with [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) on its own; when one merges, go to [Derive the state](#derive-the-state), which may make more children ready. If no child is ready and no implementation PR is open, report as [Holding one item](#holding-one-item) says |
 | 6 `integrate` | Integration refresh, which opens the integration PR, its review pass, the pre-merge sweep, and the finish line ([Integration refresh and the finish line](#integration-refresh-and-the-finish-line)) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
@@ -97,7 +97,10 @@ Handle each PR with one review-fix pass:
    on every PR, and any other), and name the PR in the final report as merged
    without the marked review. A missing review has never needed the
    maintainer; a PR that conflicts with its base is a common cause, and the
-   fixer resolves that. When a check is still pending an hour after the head
+   fixer resolves that: when the PR conflicts with its base, go to step 3
+   at once instead of waiting, and after `FIXED` wait for the checks on the
+   new head before merging, because GitHub ran none on the conflicting one.
+   When a check is still pending an hour after the head
    was pushed, hold this PR ([Holding one item](#holding-one-item)).
 3. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
@@ -123,12 +126,14 @@ Handle each PR with one review-fix pass:
 
 After a restart, if GitHub state does not establish whether the one fixer pass
 already happened, hold that PR and report the ambiguity instead of repeating
-it.
+it. A PR that has an unresolved thread after its fixer pass is held and never
+merged: the fixer left that thread open for a question. Start one fixer to
+get the `BLOCKER` back.
 
 **Limits.** The sweep PR ([Integration refresh and the finish line](#integration-refresh-and-the-finish-line) step 4) counts as an integration-fix PR. Stop
 when three integration-fix PRs have merged since the
 integration PR was opened, when its head has been refreshed from `main` twice
-([Integration refresh and the finish line](#integration-refresh-and-the-finish-line) step 2), or when a fixer returns `BLOCKED` because a finding repeats one
+([Integration refresh and the finish line](#integration-refresh-and-the-finish-line) step 2), or when the integration-PR fixer returns `BLOCKED` because a finding repeats one
 it can see was already fixed and resolved on the same PR. All of them are read
 from GitHub, not remembered: the integration-fix count is the number of PRs
 merged into the feature branch that `Refs #<parent>` after the integration
@@ -165,7 +170,9 @@ continues. Who corrects it depends on who found it:
 A merged PR that carries the marker and has no reconciled comment makes the
 selection run `plan-to-issues` before any further child is implemented. It
 rewrites, adds and closes children to match the revised Plan and marks the PR
-reconciled. A fixer returns `DROPPED` for an open PR whose child that
+reconciled. Each implementation PR open when a reconcile ran was built on the
+earlier text: give it one more review fixer with the brief's "After a Plan
+revision" line before merging it. A fixer returns `DROPPED` for an open PR whose child that
 reconcile closed as not planned: close the PR without merging it and name it
 in the final report.
 
@@ -175,9 +182,9 @@ feature has had. Hold the item
 
 - the answer is not in the parent Issue: it changes what the user gets, or
   the Issue contradicts itself (`BLOCKED_ON: requester`)
-- the same contradiction comes back after the correction made for it merged.
-  The worker says so in `BLOCKER`; a correction that did not hold needs a
-  person, and a different contradiction does not
+- the same contradiction comes back after the correction made for it merged
+  (`BLOCKED_ON: recurring`). A correction that did not hold needs a person;
+  a different contradiction does not
 - the parent already has an integration PR. The sweep removes the artifacts
   there, and the integration PR's review and sweep fix code, not the Plan
 

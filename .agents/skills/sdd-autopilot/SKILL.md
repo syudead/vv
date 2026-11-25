@@ -119,7 +119,8 @@ Follow [references/loop.md](references/loop.md). In short:
    through workers (independent children in parallel), apply the merge gates,
    close merged children. Repeat.
 3. After the integration PR's review pass, run the pre-merge sweep once.
-4. Stop on a blocker, or when the integration PR meets the finish line.
+4. Hold what a blocker holds and go on with the rest; stop when nothing else
+   can move, or when the integration PR meets the finish line.
 
 Report to the maintainer in one short line per merged PR, and at the end with
 the integration PR link and anything a worker deferred.

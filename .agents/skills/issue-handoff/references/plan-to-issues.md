@@ -56,7 +56,8 @@ in the parent Issue or the approved artifacts the statement comes from.
      ([P-5](../../../../docs/design-docs/plan-quality.md)).
 
    Create no child Issue until the artifact that owns the answer carries it and
-   a human has approved that change. A child Issue built on an answer the parent
+   a human has approved that change (under `sdd-autopilot`, its merge of the
+   revision PR). A child Issue built on an answer the parent
    Issue does not have leaves the specification behind the implementation.
 5. List the parent's open and closed native sub-issues. Immediately before each
    create, skip the proposal when the same work is already represented.
@@ -79,8 +80,8 @@ children to be reconciled, or when the `sdd-autopilot` brief names the
 revision PR. Compare each unit with its child by heading and title:
 
 - A unit with no child: create it as in steps 3 to 6. A child closed as not
-  planned does not represent a unit, here or in step 5; a unit an earlier
-  revision dropped and this one restores gets a new child.
+  planned still represents its unit, unless the revision being reconciled
+  lists that unit as added: then it gets a new child.
 - A child that is not done
   ([README](README.md#selecting-the-stage)) and whose unit, or an artifact
   its body draws from, changed: rewrite its body from the revised Plan and
