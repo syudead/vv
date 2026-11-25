@@ -12,7 +12,7 @@ import {
   server,
   setUpTagsPageServer,
   tag,
-} from "../testing/tagsPage";
+} from "../testing/tagScreens";
 
 setUpTagsPageServer();
 

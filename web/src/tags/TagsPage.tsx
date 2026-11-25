@@ -1,288 +1,201 @@
-import { Plus } from "lucide-react";
-import {
-  type RefObject,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Plus, Shapes } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router";
 
-import { Link } from "react-router";
-
-import { RequestFailed } from "../api/client";
 import {
-  batchTags,
-  confirmTag,
-  createTag,
-  deleteTag,
-  maxTagBatch,
-  rejectTag,
-  renameTag,
-  type Tag,
-  type TagListSort,
-} from "../api/tags";
-import {
-  subscribeTagKindRefsChanged,
-  tagKindCountsChanged,
-  tagKindGone,
-} from "../api/tagKinds";
-import { errorText, t, type UiText } from "../i18n";
+  clearTagListSnapshot,
+  saveTagListSnapshot,
+  type TagListSnapshot,
+  takeTagListSnapshot,
+} from "../api/tagListSnapshot";
+import type { Tag, TagListSort } from "../api/tags";
+import { subscribeTagKindRefsChanged } from "../api/tagKinds";
+import { t } from "../i18n";
 import {
   readTagListPreferences,
   writeTagListPreferences,
 } from "../preferences/tagListPreferences";
-import { AdminTablePage } from "../ui/patterns/admin-table-page";
-import { DataTable } from "../ui/patterns/data-table";
+import { AdminListToolbar } from "../recordList/AdminListToolbar";
+import { tagListView } from "../recordList/listView";
+import { TagStaleList } from "../recordList/TagListNotices";
+import { useSearchQuery } from "../recordList/usePagedRows";
+import TopBarPortal from "../shell/TopBarPortal";
+import { FloatingNotice } from "../ui/FloatingNotice";
+import { ErrorState } from "../ui/patterns/error-state";
+import { ListPage } from "../ui/patterns/list-page";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
-import { TableBody } from "../ui/shadcn/table";
 import { useToast } from "../ui/Toast";
 import type { HistoryMode } from "../videoList/listCriteria";
-import BulkTagDialog, { type BulkTagAction } from "./BulkTagDialog";
-import CreateTagRow from "../ui/CreateTagRow";
-import DeleteTagDialog from "./DeleteTagDialog";
-import MergeTagDialog from "./MergeTagDialog";
-import RejectTagDialog from "./RejectTagDialog";
-import SynonymsDialog from "./SynonymsDialog";
+import NewTagDialog from "./NewTagDialog";
+import { tagPagePath } from "./TagCard";
+import { TagCards } from "./TagCardGrid";
+import TagListEmptyState from "./TagListEmptyState";
+import { TagKindFilterGroup, TagTallyStrip } from "./TagListFilters";
+import type { TagPageRows } from "./tagPageRows";
 import {
-  addTag,
-  confirmTags,
-  matchesTagQuery,
-  removeTags,
-  replaceTag,
-  setTagsKind,
-  type TagPageRows,
-} from "./tagPageRows";
-import { insertionIndex } from "../recordList/listRows";
-import { tagFieldError } from "./tagNameField";
-import type { TagFieldError } from "../ui/nameField";
-import {
-  type TagKindFilter,
+  serializeTagListCriteria,
   type TagListCriteria,
   useTagListCriteria,
 } from "./tagListUrl";
-import TagRow from "./TagRow";
-import {
-  TagListChanged,
-  TagLoadFailed,
-  TagLoadingMore,
-  TagLoadMoreFailed,
-  TagStaleList,
-} from "../recordList/TagListNotices";
-import TagSelectionBar from "./TagSelectionBar";
-import { tagCountText } from "./tagListView";
-import { tagListView } from "../recordList/listView";
-import {
-  countSelectable,
-  keepLoaded,
-  selectAllCheck,
-  selectedKinds,
-  withoutIds,
-} from "./tagSelection";
 import { useTagKinds } from "./useTagKinds";
-import TagFilterChips, { type TagFilter, tagFilterOrder } from "./TagFilterChips";
-import type { KindChoice } from "./TagSetKindMenu";
 import { kindNameOf, useTagKindFilter } from "./useTagKindFilter";
-import TagListEmptyState from "./TagListEmptyState";
-import TagListHead from "./TagListHead";
-import { useSearchQuery } from "../recordList/usePagedRows";
+import { useTagListChanges } from "./useTagListChanges";
 import { useTagPage } from "./useTagPage";
-import { ROW_OVERSCAN, useVirtualTagRows } from "../recordList/useVirtualTagRows";
-import { useAdminTableBand, useListScrollMargin } from "../recordList/useAdminTableBand";
-import { virtualBodyRows } from "../recordList/virtualBodyRows";
-import TopBarPortal from "../shell/TopBarPortal";
-import TagToolbar from "./TagToolbar";
+import { useTagTallies } from "./useTagTallies";
 
-function isTagNotFound(error: unknown): boolean {
-  return error instanceof RequestFailed && error.code === "tag_not_found";
-}
+const allTags = {
+  query: "",
+  tentativeOnly: false,
+  unusedOnly: false,
+  kind: null,
+} as const;
 
-function isTagNotTentative(error: unknown): boolean {
-  return error instanceof RequestFailed && error.code === "tag_not_tentative";
-}
-
-function isTagKindNotFound(error: unknown): boolean {
-  return error instanceof RequestFailed && error.reason === "tag_kind_not_found";
-}
-
-const noFilters = { tentativeOnly: false, unusedOnly: false, kind: null } as const;
-
-const filterOff: Record<TagFilter, Partial<TagListCriteria>> = {
-  tentative: { tentativeOnly: false },
-  unused: { unusedOnly: false },
-  kind: { kind: null },
-};
-
-/** Active filters remain enabled even with zero tags so users can clear them. */
-function filterButtonDisabled(
-  page: TagPageRows | undefined,
-  noTags: boolean,
-  criteria: TagListCriteria,
-): boolean {
-  if (page === undefined) return true;
-  const filtering =
-    criteria.tentativeOnly || criteria.unusedOnly || criteria.kind !== null;
-  return noTags && !filtering;
-}
-
-function appliedKindOf(page: TagPageRows | undefined): TagKindFilter {
-  return page?.query.kind ?? null;
-}
-
-function nextChip(
-  removed: TagFilter,
-  active: Record<TagFilter, boolean>,
-): TagFilter | undefined {
-  const index = tagFilterOrder.indexOf(removed);
-  const remaining = tagFilterOrder.filter(
-    (filter) => filter !== removed && active[filter],
-  );
+function headerActions(onCreate: () => void, createDisabled: boolean) {
   return (
-    remaining.find((filter) => tagFilterOrder.indexOf(filter) > index) ?? remaining.at(-1)
+    <>
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/tags/kinds">
+          <Shapes aria-hidden="true" />
+          {t.tags.kinds.title}
+        </Link>
+      </Button>
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/tags/rejected">{t.tags.rejectedNames.heading}</Link>
+      </Button>
+      <Button size="sm" onClick={onCreate} disabled={createDisabled}>
+        <Plus aria-hidden="true" />
+        {t.tags.newTag}
+      </Button>
+    </>
   );
 }
 
-/** Stable callbacks keep memoized rows from rerendering. */
-interface RowHandlers {
-  onStartRename: (tag: Tag) => void;
-  onCancelRename: (tag: Tag) => void;
-  onSubmitRename: (tag: Tag, name: string) => void;
-  onOpenSynonyms: (tag: Tag) => void;
-  onOpenMerge: (tag: Tag) => void;
-  onDelete: (tag: Tag) => void;
-  onConfirm: (tag: Tag) => void;
-  onReject: (tag: Tag) => void;
-  onDraftChange: () => void;
-  onSelect: (tag: Tag, selected: boolean) => void;
-}
-
-/** Read server-filtered pages independently of the shared tag cache; apply mutations locally and reload for missing targets. Persist criteria in the URL. */
+/**
+ * The tag list: kind-filtered tag cards read a page of 100 at a time for the URL's criteria. A card
+ * keeps the loaded list for Back from its tag page, and a `tags` event shows a notice instead of
+ * moving the cards.
+ */
 export default function TagsPage() {
   const toast = useToast();
-  const {
-    page,
-    loadError,
-    firstPending,
-    more,
-    appliedSearch,
-    pageRef,
-    load,
-    reload,
-    loadMore,
-    retryMore,
-    applyLocal,
-  } = useTagPage(() => scrollListToTop());
-  /** Missing URL sort uses the device preference. */
+  const navigate = useNavigate();
   const [preferredSort] = useState<TagListSort>(() => readTagListPreferences().sort);
   const { criteria, apply: applyCriteria } = useTagListCriteria(preferredSort);
   const { query: search, tentativeOnly, unusedOnly, kind, sort } = criteria;
   const kindList = useTagKinds();
+  const { tallies, reload: reloadTallies } = useTagTallies();
   const [creating, setCreating] = useState(false);
-  const [createPending, setCreatePending] = useState(false);
-  const [createError, setCreateError] = useState<TagFieldError | null>(null);
-
-  /** Pin the original renaming row in sorted order even when refreshed results omit it. */
-  const [renaming, setRenaming] = useState<Tag | null>(null);
-  const renamingId = renaming?.id ?? null;
-  const [renamePending, setRenamePending] = useState(false);
-  const [renameError, setRenameError] = useState<TagFieldError | null>(null);
-
-  const [deletingTag, setDeletingTag] = useState<Tag | null>(null);
-  const [deletePending, setDeletePending] = useState(false);
-  const [deleteError, setDeleteError] = useState<UiText | null>(null);
-
-  /** Freeze merge sources when opening the dialog. */
-  const [merging, setMerging] = useState<{
-    sources: readonly Tag[];
-    fromSelection: boolean;
-  } | null>(null);
-  /** Keep the synonym dialog open even when mutations remove its row from current results. */
-  const [synonymsTag, setSynonymsTag] = useState<Tag | null>(null);
-  const synonymsTagId = synonymsTag?.id ?? null;
-  /** Original row order supplies focus fallback if the source disappears. */
-  const synonymsOrderRef = useRef<readonly Tag[]>([]);
-
-  const [confirming, setConfirming] = useState<ReadonlySet<number>>(new Set());
-  const confirmingRef = useRef(new Set<number>());
-
-  const [rejectingTag, setRejectingTag] = useState<Tag | null>(null);
-  const [rejectPending, setRejectPending] = useState(false);
-  const [rejectError, setRejectError] = useState<UiText | null>(null);
-
-  /** Selection contains loaded non-renaming rows only. */
-  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
-  const [bulkPending, setBulkPending] = useState<"confirm" | "kind" | "dialog" | null>(
+  const scrollToRef = useRef<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const restoredRef = useRef<{ key: string; kept: TagListSnapshot<TagPageRows> } | null>(
     null,
   );
-  const [bulkDialog, setBulkDialog] = useState<{
-    action: BulkTagAction;
-    ids: readonly number[];
-  } | null>(null);
-  const [bulkError, setBulkError] = useState<UiText | null>(null);
-  const selectAllRef = useRef<HTMLButtonElement | null>(null);
-  const barConfirmRef = useRef<HTMLButtonElement | null>(null);
-  const barSetKindRef = useRef<HTMLButtonElement | null>(null);
-  const barMergeRef = useRef<HTMLButtonElement | null>(null);
-  const barRejectRef = useRef<HTMLButtonElement | null>(null);
-  const barDeleteRef = useRef<HTMLButtonElement | null>(null);
+  const { reload: reloadKinds } = kindList;
 
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const createButtonRef = useRef<HTMLButtonElement | null>(null);
-  const filterButtonRef = useRef<HTMLButtonElement | null>(null);
-  const chipRefs: Record<TagFilter, RefObject<HTMLButtonElement | null>> = {
-    tentative: useRef<HTMLButtonElement | null>(null),
-    unused: useRef<HTMLButtonElement | null>(null),
-    kind: useRef<HTMLButtonElement | null>(null),
-  };
-  const listBoxRef = useRef<HTMLDivElement | null>(null);
-  const {
-    bandRef,
-    headRef,
-    stuckBottom,
-    rowsTop,
-    scrollMargin,
-    setScrollMargin,
-    scrollListToTop: scrollBoxToTop,
-  } = useAdminTableBand();
+  const resetRef = useRef<() => void>(() => undefined);
+  const onFirstPage = useCallback(() => {
+    // A page read from the server supersedes the list kept for Back.
+    clearTagListSnapshot();
+    resetRef.current();
+    reloadTallies();
+    reloadKinds();
+    if (window.scrollY > 0) window.scrollTo({ top: 0 });
+  }, [reloadTallies, reloadKinds]);
+  const paged = useTagPage(onFirstPage);
+  const { page, loadError, firstPending, more, appliedSearch, pageRef } = paged;
+  const { load, reload, loadMore, retryMore, restore } = paged;
 
-  /** Read current filters when responses arrive, rather than the filters captured at submission. */
-  const filtersRef = useRef<{
-    tentativeOnly: boolean;
-    unusedOnly: boolean;
-    kind: TagKindFilter;
-  }>({ tentativeOnly: false, unusedOnly: false, kind: null });
+  const searchRef = useRef(appliedSearch);
+  useLayoutEffect(() => {
+    searchRef.current = appliedSearch;
+  });
+  const changes = useTagListChanges({ pageRef, searchRef, firstPending });
+  const { check, reset } = changes;
+  useLayoutEffect(() => {
+    resetRef.current = reset;
+  });
 
-  /** Prefer Filter for empty filtered results, New tag otherwise, then the header checkbox if the selection bar hides creation. */
-  function fallbackFocus() {
-    const filtered =
-      filtersRef.current.tentativeOnly ||
-      filtersRef.current.unusedOnly ||
-      filtersRef.current.kind !== null;
-    const candidates = filtered
-      ? [filterButtonRef.current, createButtonRef.current, selectAllRef.current]
-      : [createButtonRef.current, selectAllRef.current, filterButtonRef.current];
-    candidates
-      .find((element) => element?.isConnected === true && !element.disabled)
-      ?.focus();
-    // Do not retain temporarily rendered focus candidates in tab order.
-    releasePinIfFocusOutside();
-  }
+  const { normalizedQuery, searchRef: typedRef } = useSearchQuery(search);
+  // Keyed by the folded query, as reloads are, so a snapshot survives a change of letter case.
+  const criteriaKey = serializeTagListCriteria({
+    ...criteria,
+    query: normalizedQuery,
+  }).toString();
+  useEffect(() => {
+    const restored = restoredRef.current;
+    if (restored?.key === criteriaKey) {
+      // StrictMode replays this effect after its cleanup aborted the reads; the list is already restored.
+      reloadTallies();
+      check(restored.kept.page, restored.kept.search);
+      return;
+    }
+    const kept = takeTagListSnapshot<TagPageRows>(criteriaKey);
+    if (kept !== undefined) {
+      restoredRef.current = { key: criteriaKey, kept };
+      restore(kept.page, kept.search);
+      scrollToRef.current = kept.scrollY;
+      reloadTallies();
+      check(kept.page, kept.search);
+      return;
+    }
+    restoredRef.current = null;
+    clearTagListSnapshot();
+    void load({
+      query: normalizedQuery,
+      search: typedRef.current,
+      tentativeOnly,
+      unusedOnly,
+      kind,
+      sort,
+    });
+  }, [
+    criteriaKey,
+    normalizedQuery,
+    tentativeOnly,
+    unusedOnly,
+    kind,
+    sort,
+    load,
+    restore,
+    reloadTallies,
+    check,
+    typedRef,
+  ]);
 
-  function focusFilterButton() {
-    const filter = filterButtonRef.current;
-    if (filter?.isConnected === true && !filter.disabled) filter.focus();
-    else createButtonRef.current?.focus();
-  }
+  // Cards embed kind refs; re-read them when a kind edit lands after this list loaded, as after Back mid-delete.
+  useEffect(() => subscribeTagKindRefsChanged(() => void reload()), [reload]);
 
-  function scrollListToTop() {
-    scrollBoxToTop(listBoxRef.current);
-  }
+  // Return to where the card was opened once the restored cards are drawn.
+  useLayoutEffect(() => {
+    if (scrollToRef.current === null || page === undefined) return;
+    window.scrollTo({ top: scrollToRef.current });
+    scrollToRef.current = null;
+  }, [page]);
 
-  function reloadList() {
-    setSelected(new Set());
-    void reload();
+  const { kindName } = useTagKindFilter({
+    kind,
+    kinds: kindList.kinds,
+    fresh: kindList.fresh,
+    onGone: () => {
+      applyCriteria({ kind: null }, "replace");
+      toast(t.tags.kindFilter.gone);
+    },
+  });
+
+  const openCard = useCallback(() => {
+    const shown = pageRef.current;
+    if (shown === undefined) return;
+    saveTagListSnapshot({
+      key: criteriaKey,
+      page: shown,
+      search: searchRef.current,
+      scrollY: window.scrollY,
+    });
+  }, [pageRef, criteriaKey]);
+
+  function applyFilter(change: Partial<TagListCriteria>) {
+    applyCriteria(change, "push");
   }
 
   function changeSort(next: TagListSort) {
@@ -294,981 +207,125 @@ export default function TagsPage() {
     applyCriteria({ query: next }, mode);
   }
 
-  // Normalize only to detect empty/equivalent queries; the server searches the full tag set.
-  const { normalizedQuery, searchRef } = useSearchQuery(search);
-
-  useEffect(() => {
-    setSelected((current) => (current.size === 0 ? current : new Set()));
-    void load({
-      query: normalizedQuery,
-      search: searchRef.current,
-      tentativeOnly,
-      unusedOnly,
-      kind,
-      sort,
-    });
-  }, [normalizedQuery, tentativeOnly, unusedOnly, kind, sort, load, searchRef]);
-
-  /** Rows embed kind refs; re-read them when a kind edit lands after this page loaded, as after Back mid-delete. */
-  useEffect(
-    () =>
-      subscribeTagKindRefsChanged(() => {
-        void reload();
-      }),
-    [reload],
-  );
-
-  useLayoutEffect(() => {
-    filtersRef.current = { tentativeOnly, unusedOnly, kind };
-  }, [tentativeOnly, unusedOnly, kind]);
-
-  /** Remove unknown kind filters with history replacement while preserving other conditions. */
-  const { kindName } = useTagKindFilter({
-    kind,
-    kinds: kindList.kinds,
-    fresh: kindList.fresh,
-    onGone: () => {
-      applyCriteria({ kind: null }, "replace");
-      toast(t.tags.kindFilter.gone);
-    },
-  });
-
-  function shown(tag: Tag): boolean {
-    const query = pageRef.current?.query;
-    return query === undefined || matchesTagQuery(tag, query);
-  }
-
-  const rows = useMemo(() => page?.rows ?? [], [page]);
-
-  /** Pin renaming rows to preserve drafts, but exclude them from result counts. */
-  const visibleRows = useMemo(() => {
-    if (renaming === null || page === undefined) return rows;
-    if (rows.some((tag) => tag.id === renaming.id)) return rows;
-    const index = insertionIndex(rows, renaming, page.query.sort);
-    return [...rows.slice(0, index), renaming, ...rows.slice(index)];
-  }, [rows, page, renaming]);
-
-  useLayoutEffect(() => {
-    setSelected((current) => keepLoaded(current, rows, renamingId));
-  }, [rows, renamingId]);
-
-  const selectableCount = countSelectable(rows, renamingId);
-  /** Apply the API limit to loaded rows for Select all and selected rows for batch actions. */
-  const selectAllOverLimit = rows.length > maxTagBatch;
-  const selectionOverLimit = selected.size > maxTagBatch;
-  const selection = useMemo(() => selectedKinds(rows, selected), [selected, rows]);
-  const selectAllState = selectAllCheck(selected.size, selectableCount);
-
-  const {
-    listRef,
-    registerRefs,
-    visibleRowsRef,
-    virtualizer,
-    virtualItems,
-    afterCommit,
-    focusRow,
-    focusAfterRemoval,
-    releasePinIfFocusOutside,
-    handleListFocus,
-    handleListBlur,
-    handleListKeyDown,
-  } = useVirtualTagRows({
-    visibleRows,
-    renamingId,
-    scrollMargin,
-    rowsTop,
-    fallbackFocus: () => fallbackFocus(),
-  });
-
-  // Load near the virtual tail, including when mutations remove every loaded row.
-  const lastRendered = virtualItems.at(-1)?.index ?? -1;
-  const nextCursor = page?.nextCursor;
-  useEffect(() => {
-    if (nextCursor === undefined) return;
-    if (lastRendered >= visibleRows.length - ROW_OVERSCAN) loadMore();
-  }, [
-    lastRendered,
-    visibleRows.length,
-    nextCursor,
-    more,
-    firstPending,
-    loadError,
-    loadMore,
-  ]);
-
-  // Remeasure list offsets when creation rows or wrapped toolbars change document layout.
-  const hasList = page !== undefined && visibleRows.length > 0;
-  useListScrollMargin(listRef, hasList, setScrollMargin);
-
-  /** Counts and empty states describe received rows, preserving prior state while new criteria load. */
-  const applied = page?.query;
-  const totalAll = page?.totalAll ?? 0;
-  const countText = tagCountText(page);
-
-  function openCreate() {
-    // Guard keyboard/direct callers too: pending renames must block starting creation.
-    if (renamePending) return;
-    // Scroll to the top before inserting the creation input so it cannot appear out of view.
-    scrollListToTop();
-    setCreating(true);
-    setCreateError(null);
-    setRenaming(null);
-  }
-
-  function clearSearch() {
-    applyCriteria({ query: "" }, "push");
-    searchInputRef.current?.focus();
-  }
-
-  function changeTentativeOnly(value: boolean) {
-    applyCriteria({ tentativeOnly: value }, "push");
-  }
-
-  function changeUnusedOnly(value: boolean) {
-    applyCriteria({ unusedOnly: value }, "push");
-  }
-
-  function changeKind(next: TagKindFilter) {
-    applyCriteria({ kind: next }, "push");
-  }
-
-  function removeFilterChip(which: TagFilter) {
-    const next = nextChip(which, {
-      tentative: tentativeOnly,
-      unused: unusedOnly,
-      kind: kind !== null,
-    });
-    applyCriteria(filterOff[which], "push");
-    setTimeout(() => {
-      if (next !== undefined) {
-        chipRefs[next].current?.focus();
-        return;
-      }
-      if (totalAll === 0) createButtonRef.current?.focus();
-      else focusFilterButton();
-    }, 0);
-  }
-
-  function clearFilters() {
-    applyCriteria(noFilters, "push");
-  }
-
-  function showAllFromFilter() {
-    applyCriteria(noFilters, "push");
-    setTimeout(
-      () => (totalAll === 0 ? createButtonRef.current?.focus() : focusFilterButton()),
-      0,
-    );
-  }
-
-  function showAllFromFilterSearch() {
-    applyCriteria({ ...noFilters, query: "" }, "push");
-    setTimeout(
-      () => (totalAll === 0 ? createButtonRef : searchInputRef).current?.focus(),
-      0,
-    );
-  }
-
-  /** Use loaded or supplied prior state to update matching counts and sorted position. */
-  function replaceRow(updated: Tag, before?: Tag) {
-    applyLocal((current) => {
-      if (current === undefined) return current;
-      const previous = current.rows.find((item) => item.id === updated.id) ?? before;
-      return replaceTag(current, previous, updated);
-    });
-  }
-
-  function removeRows(removed: readonly Tag[]) {
-    applyLocal((current) => {
-      if (current === undefined) return current;
-      const byId = new Map(current.rows.map((item) => [item.id, item]));
-      return removeTags(
-        current,
-        removed.map((item) => byId.get(item.id) ?? item),
-      );
-    });
-  }
-
-  async function submitCreate(name: string) {
-    setCreateError(null);
-    setCreatePending(true);
-    try {
-      const created = await createTag(name);
-      applyLocal((current) =>
-        current === undefined ? current : addTag(current, created),
-      );
-      setCreating(false);
-      focusRow(created.id, "name");
-    } catch (failure) {
-      setCreateError(tagFieldError(failure, { submitted: name }));
-    } finally {
-      setCreatePending(false);
-    }
-  }
-
-  async function submitRename(tag: Tag, name: string) {
-    setRenameError(null);
-    setRenamePending(true);
-    const order = visibleRows;
-    try {
-      const updated = await renameTag(tag.id, name);
-      // For unloaded renaming rows, use their original state or totals may falsely count a new match.
-      replaceRow(updated, tag);
-      setRenaming(null);
-      if (shown(updated)) focusRow(tag.id, "rename");
-      else focusAfterRemoval(order, tag.id);
-    } catch (failure) {
-      if (isTagNotFound(failure)) {
-        setRenaming(null);
-        toast(t.tags.gone);
-        await reload();
-        focusAfterRemoval(order, tag.id);
-        return;
-      }
-      setRenameError(tagFieldError(failure, { submitted: name, ownTagName: tag.name }));
-    } finally {
-      setRenamePending(false);
-    }
-  }
-
-  async function performDelete() {
-    if (deletingTag === null) return;
-    const target = deletingTag;
-    const order = visibleRows;
-    setDeleteError(null);
-    setDeletePending(true);
-    try {
-      await deleteTag(target.id);
-      removeRows([target]);
-      tagKindCountsChanged();
-      setDeletingTag(null);
-      toast(t.tags.deleted(target.name));
-      focusAfterRemoval(order, target.id);
-    } catch (failure) {
-      if (isTagNotFound(failure)) {
-        setDeletingTag(null);
-        toast(t.tags.gone);
-        await reload();
-        focusAfterRemoval(order, target.id);
-        return;
-      }
-      setDeleteError(errorText(failure));
-    } finally {
-      setDeletePending(false);
-    }
-  }
-
-  /** Block same-tick duplicate confirmation and focus the current or next surviving rename action. */
-  async function submitConfirm(tag: Tag) {
-    if (confirmingRef.current.has(tag.id)) return;
-    confirmingRef.current.add(tag.id);
-    setConfirming(new Set(confirmingRef.current));
-    const order = visibleRows;
-    try {
-      const updated = await confirmTag(tag.id);
-      replaceRow(updated);
-      toast(t.tags.confirmed(updated.name));
-      if (shown(updated)) focusRow(updated.id, "rename");
-      else focusAfterRemoval(order, updated.id);
-    } catch (failure) {
-      if (isTagNotFound(failure)) {
-        toast(t.tags.gone);
-        await reload();
-        focusAfterRemoval(order, tag.id);
-        return;
-      }
-      // No inline error slot exists in the row; report through a toast.
-      toast(errorText(failure));
-    } finally {
-      confirmingRef.current.delete(tag.id);
-      setConfirming(new Set(confirmingRef.current));
-    }
-  }
-
-  async function performReject() {
-    if (rejectingTag === null) return;
-    const target = rejectingTag;
-    const order = visibleRows;
-    setRejectError(null);
-    setRejectPending(true);
-    try {
-      await rejectTag(target.id);
-      removeRows([target]);
-      tagKindCountsChanged();
-      setRejectingTag(null);
-      toast(t.tags.rejected(target.name));
-      focusAfterRemoval(order, target.id);
-    } catch (failure) {
-      if (isTagNotFound(failure)) {
-        setRejectingTag(null);
-        toast(t.tags.gone);
-        await reload();
-        focusAfterRemoval(order, target.id);
-        return;
-      }
-      if (isTagNotTentative(failure)) {
-        setRejectingTag(null);
-        toast(t.tags.alreadyConfirmed);
-        await reload();
-        if (filtersRef.current.tentativeOnly) focusAfterRemoval(order, target.id);
-        else focusRow(target.id, "menu");
-        return;
-      }
-      setRejectError(errorText(failure));
-    } finally {
-      setRejectPending(false);
-    }
-  }
-
-  function cancelReject() {
-    if (rejectPending || rejectingTag === null) return;
-    const target = rejectingTag;
-    setRejectingTag(null);
-    setRejectError(null);
-    focusRow(target.id, "menu");
-  }
-
-  function cancelDelete() {
-    if (deletePending || deletingTag === null) return;
-    const target = deletingTag;
-    setDeletingTag(null);
-    setDeleteError(null);
-    // The originating menu item no longer exists; restore its row's menu trigger explicitly.
-    focusRow(target.id, "menu");
-  }
-
-  function cancelMerge() {
-    if (merging === null) return;
-    const { sources, fromSelection } = merging;
-    setMerging(null);
-    if (fromSelection) afterCommit(() => barMergeRef.current?.focus());
-    else focusRow(sources[0]!.id, "menu");
-  }
-
-  /** Update sources/target locally, count only actual merges, and reload when any sources were missing. */
-  function performMerge(
-    merged: Tag,
-    sourceIds: readonly number[],
-    notFoundIds: readonly number[],
-    target: Tag,
-  ) {
-    if (merging === null) return;
-    const { sources, fromSelection } = merging;
-    const order = visibleRows;
-    const removed = new Set(sourceIds);
-    removeRows(sources.filter((item) => removed.has(item.id)));
-    replaceRow(merged, target);
-    tagKindCountsChanged();
-    if (fromSelection) setSelected(new Set());
-    else setSelected((current) => withoutIds(current, removed));
-    setMerging(null);
-    const missing = new Set(notFoundIds);
-    const done = sources.filter((item) => removed.has(item.id) && !missing.has(item.id));
-    toast(
-      done.length === 1
-        ? t.tags.merged(done[0]!.name, merged.name)
-        : t.tags.selection.merged(done.length, merged.name),
-    );
-    afterStale(notFoundIds);
-    // Confirmation removes both source and target from tentative-only results; focus from the first source's old position.
-    // 。
-    if (shown(merged)) {
-      focusRow(merged.id, "name");
-      return;
-    }
-    const first = order.find((item) => removed.has(item.id));
-    if (first === undefined) afterCommit(fallbackFocus);
-    else focusAfterRemoval(order, first.id, new Set([...removed, merged.id]));
-  }
-
-  function staleMerge() {
-    if (merging === null) return;
-    const { sources, fromSelection } = merging;
-    const order = visibleRows;
-    setMerging(null);
-    toast(fromSelection ? t.tags.selection.stale : t.tags.gone);
-    void reload().then(() => {
-      if (fromSelection) {
-        const merge = barMergeRef.current;
-        if (merge?.isConnected === true && !merge.disabled) merge.focus();
-        else focusSelectAllOr(fallbackFocus);
-        return;
-      }
-      focusAfterRemoval(order, sources[0]!.id);
-    });
-  }
-
-  function openMergeSelected() {
-    if (bulkPending !== null || selected.size === 0) return;
-    setMerging({
-      sources: visibleRows.filter((tag) => selected.has(tag.id)),
-      fromSelection: true,
-    });
-  }
-
-  /** Restore the synonym trigger, or use the original row order to find the next action if the row disappeared. */
-  function cancelSynonyms() {
-    if (synonymsTagId === null) return;
-    const id = synonymsTagId;
-    setSynonymsTag(null);
-    if (rows.some((tag) => tag.id === id)) {
-      focusRow(id, "synonyms");
-      return;
-    }
-    const loadedIds = new Set(rows.map((tag) => tag.id));
-    const order = synonymsOrderRef.current;
-    const gone = new Set(
-      order.filter((tag) => !loadedIds.has(tag.id)).map((tag) => tag.id),
-    );
-    focusAfterRemoval(order, id, gone);
-  }
-
-  const synonymsTagRef = useRef<Tag | null>(synonymsTag);
-  useLayoutEffect(() => {
-    synonymsTagRef.current = synonymsTag;
-  });
-
-  /** Reevaluate current filters after synonym edits/merges; subtract matching unloaded sources using their pre-merge state. */
-  function updateSynonymsTag(updated: Tag, removed?: Tag) {
-    const opened = synonymsTagRef.current;
-    applyLocal((current) => {
-      if (current === undefined) return current;
-      let next = current;
-      if (removed !== undefined) {
-        const source = next.rows.find((item) => item.id === removed.id) ?? removed;
-        next = removeTags(next, [source]);
-      }
-      const previous =
-        next.rows.find((item) => item.id === updated.id) ??
-        (opened?.id === updated.id ? opened : undefined);
-      return replaceTag(next, previous, updated);
-    });
-    setSynonymsTag((current) => (current?.id === updated.id ? updated : current));
-    //
-    if (removed !== undefined) tagKindCountsChanged();
-  }
-
-  /** Remove from latest state with a functional update so concurrent removals cannot overwrite each other. */
-  function removeSynonymFromTag(tagId: number, name: string) {
-    const without = (item: Tag): Tag => ({
-      ...item,
-      synonyms: item.synonyms.filter((synonym) => synonym !== name),
-    });
-    applyLocal((current) => {
-      const previous = current?.rows.find((item) => item.id === tagId);
-      if (current === undefined || previous === undefined) return current;
-      return replaceTag(current, previous, without(previous));
-    });
-    setSynonymsTag((current) => (current?.id === tagId ? without(current) : current));
-  }
-
-  function staleSynonyms() {
-    if (synonymsTagId === null) return;
-    const id = synonymsTagId;
-    const order = visibleRows;
-    setSynonymsTag(null);
-    toast(t.tags.gone);
-    void reload().then(() => focusAfterRemoval(order, id));
-  }
-
-  function toggleSelectAll() {
-    if (selectAllState === true) {
-      setSelected(new Set());
-      return;
-    }
-    setSelected(
-      new Set(rows.filter((tag) => tag.id !== renamingId).map((tag) => tag.id)),
-    );
-  }
-
-  function clearSelection() {
-    setSelected(new Set());
-    afterCommit(() => {
-      const header = selectAllRef.current;
-      if (header !== null && !header.disabled) header.focus();
-      else fallbackFocus();
-    });
-  }
-
-  function afterStale(notFoundIds: readonly number[]) {
-    if (notFoundIds.length === 0) return;
-    toast(t.tags.selection.stale);
+  function refresh() {
+    reset();
     void reload();
   }
 
-  /** Deselect only rows actually confirmed; already-confirmed or failed rows remain selected. */
-  async function submitBulkConfirm() {
-    if (bulkPending !== null || selected.size === 0) return;
-    const ids = [...selected];
-    setBulkPending("confirm");
-    try {
-      const result = await batchTags("confirm", ids);
-      const applied = new Set(result.appliedIds);
-      applyLocal((current) =>
-        current === undefined ? current : confirmTags(current, applied),
-      );
-      setSelected((current) => withoutIds(current, applied));
-      toast(t.tags.selection.confirmed(applied.size, result.notApplicableIds.length));
-      afterStale(result.notFoundIds);
-      afterCommit(focusAfterBulkConfirm);
-    } catch (failure) {
-      toast(errorText(failure));
-    } finally {
-      setBulkPending(null);
-    }
+  function created(tag: Tag) {
+    setCreating(false);
+    void navigate(tagPagePath(tag.id));
   }
 
-  function focusAfterBulkConfirm() {
-    focusAfterBulkAction(filtersRef.current.tentativeOnly, barConfirmRef);
-  }
-
-  /** Choose an enabled action or header checkbox; empty filtered results return focus to Filter. */
-  function focusAfterBulkAction(
-    filteredOut: boolean,
-    first: RefObject<HTMLButtonElement | null>,
-  ) {
-    if (filteredOut && visibleRowsRef.current.length === 0) {
-      focusFilterButton();
-      return;
-    }
-    for (const candidate of [first.current, barMergeRef.current]) {
-      if (candidate?.isConnected === true && !candidate.disabled) {
-        candidate.focus();
-        return;
-      }
-    }
-    focusSelectAllOr(fallbackFocus);
-  }
-
-  /** Deselect only changed rows; stale kinds refresh their list without changing the selection. */
-  async function submitSetKind(choice: KindChoice) {
-    if (bulkPending !== null || selected.size === 0) return;
-    const ids = [...selected];
-    const kindRef =
-      choice === "none"
-        ? null
-        : { id: choice.id, name: choice.name, cardFirst: choice.cardFirst };
-    setBulkPending("kind");
-    try {
-      const result = await batchTags(
-        kindRef === null ? "clearKind" : { action: "setKind", kindId: kindRef.id },
-        ids,
-      );
-      const applied = new Set(result.appliedIds);
-      applyLocal((current) =>
-        current === undefined ? current : setTagsKind(current, applied, kindRef),
-      );
-      setSelected((current) => withoutIds(current, applied));
-      const skipped = result.notApplicableIds.length;
-      toast(
-        kindRef === null
-          ? t.tags.selection.kindCleared(applied.size, skipped)
-          : t.tags.selection.kindSet(kindRef.name, applied.size, skipped),
-      );
-      if (applied.size > 0) tagKindCountsChanged();
-      afterStale(result.notFoundIds);
-      afterCommit(() =>
-        focusAfterBulkAction(filtersRef.current.kind !== null, barSetKindRef),
-      );
-    } catch (failure) {
-      if (isTagKindNotFound(failure)) {
-        tagKindGone();
-        toast(t.tags.selection.kindGone);
-        return;
-      }
-      toast(errorText(failure));
-    } finally {
-      setBulkPending(null);
-    }
-  }
-
-  function focusSelectAllOr(otherwise: () => void) {
-    const header = selectAllRef.current;
-    if (header?.isConnected === true && !header.disabled) header.focus();
-    else otherwise();
-  }
-
-  function openBulkDialog(action: BulkTagAction) {
-    if (bulkPending !== null || selected.size === 0) return;
-    setBulkError(null);
-    setBulkDialog({ action, ids: [...selected] });
-  }
-
-  /** Keep inapplicable rows selected and preserve both dialog and selection on failure. */
-  async function performBulk() {
-    if (bulkDialog === null || bulkPending !== null) return;
-    const { action, ids } = bulkDialog;
-    const order = visibleRows;
-    setBulkError(null);
-    setBulkPending("dialog");
-    try {
-      const result = await batchTags(action, ids);
-      const applied = new Set(result.appliedIds);
-      removeRows(rows.filter((item) => applied.has(item.id)));
-      tagKindCountsChanged();
-      setSelected((current) => withoutIds(current, applied));
-      setBulkDialog(null);
-      const skipped = result.notApplicableIds.length;
-      toast(
-        action === "reject"
-          ? t.tags.selection.rejected(applied.size, skipped)
-          : t.tags.selection.deleted(applied.size, skipped),
-      );
-      afterStale(result.notFoundIds);
-      const fallback = () => {
-        if (filtersRef.current.tentativeOnly) focusFilterButton();
-        else focusSelectAllOr(fallbackFocus);
-      };
-      const first = order.find((tag) => applied.has(tag.id));
-      if (first === undefined) afterCommit(fallback);
-      else focusAfterRemoval(order, first.id, applied, fallback);
-    } catch (failure) {
-      setBulkError(errorText(failure));
-    } finally {
-      setBulkPending(null);
-    }
-  }
-
-  function cancelBulk() {
-    if (bulkPending !== null || bulkDialog === null) return;
-    const opener = bulkDialog.action === "reject" ? barRejectRef : barDeleteRef;
-    setBulkDialog(null);
-    setBulkError(null);
-    afterCommit(() => (opener.current ?? barMergeRef.current)?.focus());
-  }
-
-  /** Stable wrapper callbacks read current handlers so React.memo rows avoid unrelated rerenders. */
-  const rowHandlersRef = useRef<RowHandlers | null>(null);
-  useLayoutEffect(() => {
-    rowHandlersRef.current = {
-      onStartRename: (target) => {
-        // Guard direct callers as well as disabled controls against overlapping row edits.
-        if (createPending || renamePending) return;
-        setCreating(false);
-        setRenameError(null);
-        setRenaming(target);
-        setSelected((current) => withoutIds(current, new Set([target.id])));
-      },
-      onCancelRename: (target) => {
-        if (renamePending) return;
-        setRenaming(null);
-        setRenameError(null);
-        focusRow(target.id, "rename");
-      },
-      onSubmitRename: (target, name) => void submitRename(target, name),
-      onOpenSynonyms: (target) => {
-        synonymsOrderRef.current = visibleRows;
-        setSynonymsTag(target);
-      },
-      onOpenMerge: (target) => setMerging({ sources: [target], fromSelection: false }),
-      onDelete: (target) => {
-        setDeleteError(null);
-        setDeletingTag(target);
-      },
-      onConfirm: (target) => void submitConfirm(target),
-      onReject: (target) => {
-        setRejectError(null);
-        setRejectingTag(target);
-      },
-      onDraftChange: () => setRenameError(null),
-      onSelect: (target, next) => {
-        if (target.id === renamingId) return;
-        setSelected((current) => {
-          if (current.has(target.id) === next) return current;
-          const updated = new Set(current);
-          if (next) updated.add(target.id);
-          else updated.delete(target.id);
-          return updated;
-        });
-      },
-    };
-  });
-  const rowHandlers = useMemo<RowHandlers>(
-    () => ({
-      onStartRename: (tag) => rowHandlersRef.current?.onStartRename(tag),
-      onCancelRename: (tag) => rowHandlersRef.current?.onCancelRename(tag),
-      onSubmitRename: (tag, name) => rowHandlersRef.current?.onSubmitRename(tag, name),
-      onOpenSynonyms: (tag) => rowHandlersRef.current?.onOpenSynonyms(tag),
-      onOpenMerge: (tag) => rowHandlersRef.current?.onOpenMerge(tag),
-      onDelete: (tag) => rowHandlersRef.current?.onDelete(tag),
-      onConfirm: (tag) => rowHandlersRef.current?.onConfirm(tag),
-      onReject: (tag) => rowHandlersRef.current?.onReject(tag),
-      onDraftChange: () => rowHandlersRef.current?.onDraftChange(),
-      onSelect: (tag, next) => rowHandlersRef.current?.onSelect(tag, next),
-    }),
-    [],
-  );
-
-  const { empty, showRows, staleList, tail, noTags } = tagListView({
+  const view = tagListView({
     page,
     loadError,
     more,
-    visibleCount: visibleRows.length,
-    creating,
+    visibleCount: page?.rows.length ?? 0,
+    creating: false,
   });
-  const appliedTentative = applied?.tentativeOnly ?? false;
-  const appliedKind = appliedKindOf(page);
-  const sortDisabled = noTags;
-
-  const selecting = selected.size > 0;
-
-  function headerAction() {
-    return (
-      <Button
-        ref={createButtonRef}
-        size="sm"
-        onClick={openCreate}
-        disabled={page === undefined || creating || createPending || renamePending}
-      >
-        <Plus aria-hidden="true" />
-        {t.tags.newTag}
-      </Button>
-    );
-  }
-
-  const bodyRows = virtualBodyRows({
-    items: virtualItems,
-    scrollStart: virtualizer.options.scrollMargin,
-    totalSize: virtualizer.getTotalSize(),
-    columnCount: tagColumnCount,
-    renderRow: (item) => {
-      const tag = visibleRows[item.index]!;
-      return (
-        <TagRow
-          key={item.key}
-          index={item.index}
-          measureRef={virtualizer.measureElement}
-          tag={tag}
-          renaming={renamingId === tag.id}
-          pending={renamingId === tag.id && renamePending}
-          blockStart={createPending || (renamePending && renamingId !== tag.id)}
-          error={renamingId === tag.id ? renameError : null}
-          registerRefs={registerRefs}
-          confirming={confirming.has(tag.id)}
-          selected={selected.has(tag.id)}
-          {...rowHandlers}
-        />
-      );
-    },
-  });
+  const appliedKind = page?.query.kind ?? null;
 
   return (
-    <AdminTablePage
-      bandRef={bandRef}
+    <ListPage
       toolbar={
         <TopBarPortal>
-          <TagToolbar
+          <AdminListToolbar
             query={search}
             onQueryCommit={commitQuery}
             searchRef={searchInputRef}
             searchDisabled={page !== undefined && page.totalAll === 0}
-            tentativeOnly={tentativeOnly}
-            onTentativeOnlyChange={changeTentativeOnly}
-            unusedOnly={unusedOnly}
-            onUnusedOnlyChange={changeUnusedOnly}
-            kind={kind}
-            kinds={kindList.kinds}
-            onKindChange={changeKind}
-            onClearFilters={clearFilters}
-            filterDisabled={filterButtonDisabled(page, noTags, criteria)}
-            filterRef={filterButtonRef}
+            searchLabel={t.tags.search.label}
+            searchPlaceholder={t.tags.search.placeholder}
             sort={sort}
             onSortChange={changeSort}
-            sortDisabled={sortDisabled}
+            sortDisabled={view.noTags}
+            compactSortName="tag-compact-sort"
           />
         </TopBarPortal>
       }
       header={
-        selecting ? (
-          <TagSelectionBar
-            count={selected.size}
-            hasTentative={selection.tentative}
-            hasConfirmed={selection.confirmed}
-            overLimit={selectionOverLimit}
-            busy={bulkPending !== null}
-            confirming={bulkPending === "confirm"}
-            onConfirm={() => void submitBulkConfirm()}
-            onReject={() => openBulkDialog("reject")}
-            onDelete={() => openBulkDialog("delete")}
-            onMerge={openMergeSelected}
-            onClear={clearSelection}
-            kinds={kindList.kinds}
-            sharedKind={selection.kind}
-            settingKind={bulkPending === "kind"}
-            onSetKind={(choice) => void submitSetKind(choice)}
-            setKindRef={barSetKindRef}
-            confirmRef={barConfirmRef}
-            mergeRef={barMergeRef}
-            rejectRef={barRejectRef}
-            deleteRef={barDeleteRef}
-          />
-        ) : (
-          <PageHeader
-            title={t.tags.title}
-            count={
-              <span role="status" aria-live="polite" className="whitespace-nowrap">
-                {countText}
-              </span>
-            }
-            actions={headerAction()}
+        <PageHeader
+          title={t.tags.title}
+          actions={headerActions(() => setCreating(true), page === undefined)}
+        />
+      }
+      filter={
+        <TagKindFilterGroup
+          kind={kind}
+          kinds={kindList.kinds}
+          totalAll={page?.totalAll}
+          noKind={tallies.noKind}
+          onKindChange={(next) => applyFilter({ kind: next })}
+        />
+      }
+      summary={
+        <TagTallyStrip
+          tallies={tallies}
+          criteria={{ tentativeOnly, unusedOnly, kind }}
+          onApply={applyFilter}
+        />
+      }
+      notice={
+        changes.changed && (
+          <FloatingNotice
+            message={t.tags.list.changed}
+            actionLabel={t.tags.list.refresh}
+            onAction={refresh}
           />
         )
       }
-      band={
-        <>
-          {/* Where the Kinds and Rejected names tabs were; the header has no room for them at 360px. */}
-          <div className="-mx-3 flex flex-wrap gap-1">
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/tags/kinds">{t.tags.kinds.title}</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/tags/rejected">{t.tags.rejectedNames.heading}</Link>
-            </Button>
-          </div>
-          <TagFilterChips
-            tentativeOnly={tentativeOnly}
-            unusedOnly={unusedOnly}
-            kind={kind}
-            kindName={kindName}
-            onRemove={removeFilterChip}
-            chipRefs={chipRefs}
-          />
-        </>
-      }
     >
-      <div ref={listBoxRef} className="flex flex-col gap-3">
-        {staleList && loadError !== null && (
-          <TagStaleList
-            reason={loadError}
-            pending={firstPending}
-            onRetry={() => void reload()}
-          />
-        )}
-
-        {page === undefined && loadError === null && (
-          <LoadingState label={t.tags.loading} layout="table" count={6} />
-        )}
-
-        {page === undefined && loadError !== null && (
-          <TagLoadFailed pending={firstPending} onRetry={() => void reload()} />
-        )}
-
-        {empty !== null && (
-          <TagListEmptyState
-            empty={empty}
-            appliedSearch={appliedSearch}
-            appliedTentative={appliedTentative}
-            appliedKind={appliedKind}
-            kindName={kindNameOf(kindList.kinds, appliedKind)}
-            onCreate={openCreate}
-            onShowAll={showAllFromFilter}
-            onShowAllAndSearch={showAllFromFilterSearch}
-            onClearSearch={clearSearch}
-          />
-        )}
-
-        {showRows && (
-          <DataTable label={t.tags.title} stickyHeaderTop={stuckBottom}>
-            <TagListHead
-              headRef={headRef}
-              selectAllRef={selectAllRef}
-              checked={selectAllState}
-              selectableCount={selectableCount}
-              overLimit={selectAllOverLimit}
-              onToggle={toggleSelectAll}
-            />
-            {creating && (
-              <TableBody>
-                <CreateTagRow
-                  columnCount={tagColumnCount}
-                  pending={createPending}
-                  error={createError}
-                  onCancel={() => {
-                    // Guard closing here too; pending row responses still need their draft/error destination.
-                    if (createPending) return;
-                    setCreating(false);
-                    setCreateError(null);
-                    // Return to New tag, even under filters, once closing the creation row reenables it.
-                    setTimeout(() => createButtonRef.current?.focus(), 0);
-                  }}
-                  onSubmit={(name) => void submitCreate(name)}
-                  onDraftChange={() => setCreateError(null)}
-                />
-              </TableBody>
-            )}
-            {/* Spacer rows preserve document height; tbody coordinates focus and Tab across virtual rows. */}
-            <TableBody
-              ref={listRef}
-              aria-busy={tail.kind === "loading" ? true : undefined}
-              onFocus={handleListFocus}
-              onBlur={handleListBlur}
-              onKeyDown={handleListKeyDown}
-            >
-              {bodyRows}
-            </TableBody>
-          </DataTable>
-        )}
-        {showRows && tail.kind === "loading" && <TagLoadingMore />}
-        {showRows && tail.kind === "failed" && (
-          <TagLoadMoreFailed reason={tail.error} onRetry={retryMore} />
-        )}
-        {showRows && tail.kind === "inconsistent" && (
-          <TagListChanged onReload={reloadList} />
-        )}
-      </div>
-
-      {bulkDialog !== null && (
-        <BulkTagDialog
-          action={bulkDialog.action}
-          ids={bulkDialog.ids}
-          pending={bulkPending === "dialog"}
-          error={bulkError}
-          onClose={cancelBulk}
-          onSubmit={() => void performBulk()}
+      {view.staleList && loadError !== null && (
+        <TagStaleList
+          reason={loadError}
+          pending={firstPending}
+          onRetry={() => void reload()}
         />
       )}
-
-      {deletingTag !== null && (
-        <DeleteTagDialog
-          tag={deletingTag}
-          pending={deletePending}
-          error={deleteError}
-          onClose={cancelDelete}
-          onDelete={() => void performDelete()}
+      {page === undefined && loadError === null && (
+        <LoadingState
+          label={t.tags.list.loading}
+          layout="grid"
+          size="record"
+          count={12}
         />
       )}
-
-      {rejectingTag !== null && (
-        <RejectTagDialog
-          tag={rejectingTag}
-          pending={rejectPending}
-          error={rejectError}
-          onClose={cancelReject}
-          onReject={() => void performReject()}
+      {page === undefined && loadError !== null && (
+        <ErrorState
+          title={t.tags.loadFailed}
+          retryLabel={t.common.retry}
+          onRetry={() => void reload()}
         />
       )}
-
-      {merging !== null && page !== undefined && (
-        <MergeTagDialog
-          sources={merging.sources}
-          fromSelection={merging.fromSelection}
-          onClose={cancelMerge}
-          onMerged={performMerge}
-          onStale={staleMerge}
+      {view.empty !== null && (
+        <TagListEmptyState
+          empty={view.empty}
+          appliedSearch={appliedSearch}
+          appliedTentative={page?.query.tentativeOnly ?? false}
+          appliedKind={appliedKind}
+          kindName={kindNameOf(kindList.kinds, appliedKind) ?? kindName}
+          onCreate={() => setCreating(true)}
+          onShowAll={() => applyFilter(allTags)}
         />
       )}
-
-      {synonymsTag !== null && (
-        <SynonymsDialog
-          tag={synonymsTag}
-          onClose={cancelSynonyms}
-          onTagUpdated={updateSynonymsTag}
-          onSynonymRemoved={removeSynonymFromTag}
-          onStale={staleSynonyms}
+      {view.showRows && page !== undefined && (
+        <TagCards
+          tags={page.rows}
+          tail={view.tail}
+          onOpen={openCard}
+          onNearEnd={loadMore}
+          onRetryMore={retryMore}
+          onReload={refresh}
         />
       )}
-    </AdminTablePage>
+      {creating && (
+        <NewTagDialog
+          track={changes.track}
+          onClose={() => setCreating(false)}
+          onCreated={created}
+        />
+      )}
+    </ListPage>
   );
 }
-
-const tagColumnCount = 4;

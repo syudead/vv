@@ -32,7 +32,8 @@ export function isShown(element: HTMLElement): boolean {
   return "checkVisibility" in element ? element.checkVisibility() : true;
 }
 
-function rowFocusables(row: Element): HTMLElement[] {
+/** The row's Tab stops in DOM order, leaving out CSS-hidden ones. */
+export function rowFocusables(row: Element): HTMLElement[] {
   return [...row.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
     (element) => element.tabIndex >= 0 && isShown(element),
   );

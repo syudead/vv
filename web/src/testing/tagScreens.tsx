@@ -1,5 +1,6 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, render, screen } from "@testing-library/react";
+import type userEvent from "@testing-library/user-event";
+import { Fragment, StrictMode } from "react";
 import {
   MemoryRouter,
   type NavigateFunction,
@@ -8,8 +9,10 @@ import {
   useLocation,
   useNavigate,
 } from "react-router";
-import { afterEach, beforeEach, expect, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
+import { installFakeEventSource } from "../api/fakeEventSource";
+import { clearTagListSnapshot } from "../api/tagListSnapshot";
 import { type TagKind, __resetTagKindsForTest } from "../api/tagKinds";
 import { type Tag, type TagSort, __resetTagsForTest } from "../api/tags";
 import { foldForMatch } from "../lib/foldForMatch";
@@ -758,54 +761,36 @@ export async function historyForward() {
 export function renderPage({
   url = "/tags",
   topBar = false,
-}: { url?: string; topBar?: boolean } = {}) {
+  strict = false,
+}: {
+  url?: string;
+  topBar?: boolean;
+  /** Replay effects as development builds do. */
+  strict?: boolean;
+} = {}) {
+  const Mode = strict ? StrictMode : Fragment;
   return render(
-    <MemoryRouter initialEntries={[url]}>
-      <TooltipProvider>
-        <ToastProvider>
-          {topBar && (
-            <header data-testid="topbar">
-              <div id="topbar-library-tools" />
-            </header>
-          )}
-          <Routes>
-            <Route path="/tags" element={<TagsPage />} />
-            <Route path="/tags/kinds" element={<TagKindsPage />} />
-            <Route path="/tags/rejected" element={<RejectedNamesPage />} />
-          </Routes>
-          <LocationProbe />
-        </ToastProvider>
-      </TooltipProvider>
-    </MemoryRouter>,
+    <Mode>
+      <MemoryRouter initialEntries={[url]}>
+        <TooltipProvider>
+          <ToastProvider>
+            {topBar && (
+              <header data-testid="topbar">
+                <div id="topbar-library-tools" />
+              </header>
+            )}
+            <Routes>
+              <Route path="/tags" element={<TagsPage />} />
+              <Route path="/tags/kinds" element={<TagKindsPage />} />
+              <Route path="/tags/rejected" element={<RejectedNamesPage />} />
+              <Route path="/tags/:id" element={<p>Tag page</p>} />
+            </Routes>
+            <LocationProbe />
+          </ToastProvider>
+        </TooltipProvider>
+      </MemoryRouter>
+    </Mode>,
   );
-}
-
-export function filterButton(): HTMLElement {
-  return screen.getByRole("button", { name: /^Filter/ });
-}
-
-export type FilterName = "Tentative only" | "Unused only";
-
-export async function toggleFilter(
-  user: ReturnType<typeof userEvent.setup>,
-  name: FilterName,
-) {
-  await user.click(filterButton());
-  await user.click(await screen.findByRole("checkbox", { name: new RegExp(`^${name}`) }));
-  await user.keyboard("{Escape}");
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-}
-
-export async function filterChecked(
-  user: ReturnType<typeof userEvent.setup>,
-  name: FilterName,
-): Promise<boolean> {
-  await user.click(filterButton());
-  const box = await screen.findByRole("checkbox", { name: new RegExp(`^${name}`) });
-  const checked = box.getAttribute("aria-checked") === "true";
-  await user.keyboard("{Escape}");
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  return checked;
 }
 
 export function rejectedLink(): HTMLElement {
@@ -825,6 +810,8 @@ export async function openRejectedPage(user: ReturnType<typeof userEvent.setup>)
 /** Call once at file scope to reset server and caches per test and restore fetch afterward. */
 export function setUpTagsPageServer() {
   beforeEach(() => {
+    installFakeEventSource();
+    clearTagListSnapshot();
     __resetTagsForTest();
     __resetTagKindsForTest();
     server.tagKinds = presetKinds();

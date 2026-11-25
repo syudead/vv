@@ -13,11 +13,13 @@ const initialTagQuery: TagPageQuery = {
   sort: "name",
 };
 
-function fetchTagPage(
+/** One page of the list for its criteria; search is the raw text the folded query came from. */
+export function fetchTagPage(
   query: TagRowsQuery,
   search: string,
   cursor: string | undefined,
   signal: AbortSignal,
+  limit = tagPageLimit,
 ): Promise<RowsPage<Tag>> {
   return listTagPage(
     {
@@ -27,12 +29,16 @@ function fetchTagPage(
       kind: query.kind ?? undefined,
       sort: query.sort,
       cursor,
-      limit: tagPageLimit,
+      limit,
     },
     signal,
   );
 }
 
 export function useTagPage(onFirstPage: () => void) {
-  return usePagedRows<Tag, TagRowsQuery>(fetchTagPage, initialTagQuery, onFirstPage);
+  return usePagedRows<Tag, TagRowsQuery>(
+    (query, search, cursor, signal) => fetchTagPage(query, search, cursor, signal),
+    initialTagQuery,
+    onFirstPage,
+  );
 }

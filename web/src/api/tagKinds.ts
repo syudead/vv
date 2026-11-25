@@ -1,5 +1,6 @@
 import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import { clearTagListSnapshot } from "./tagListSnapshot";
 import { compareNatural } from "./tagOrder";
 import { refreshTags } from "./tags";
 import type { components } from "./gen/openapi";
@@ -90,6 +91,7 @@ export function subscribeTagKindRefsChanged(listener: TagKindRefsListener): () =
 function afterTagKindRenamedOrDeleted(): void {
   afterTagKindsChanged();
   clearListSnapshot();
+  clearTagListSnapshot();
   refreshTags().catch(() => undefined);
   for (const listener of refsListeners) listener();
 }

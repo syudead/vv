@@ -179,22 +179,33 @@ func (s *server) mergedTags(r *http.Request) ([]domain.VocabularyEntry[gen.Tag],
 }
 
 // listMergedTagKinds lists every node's kinds joined by name in id order: this node's, then each link's others.
+// A kind's tagCount counts the joined tags the merged tag list shows with that kind, so a tag both nodes hold
+// counts once.
 func (s *server) listMergedTagKinds(w http.ResponseWriter, r *http.Request, local []gen.TagKind) {
 	remote, err := peerVocabularies(s, r, "/api/tag-kinds", rewriteRemoteTagKind)
 	if err != nil {
 		s.internalError(w, "Could not load tag kinds.", err)
 		return
 	}
-	entry := func(kind gen.TagKind) domain.VocabularyEntry[gen.TagKind] {
-		return domain.VocabularyEntry[gen.TagKind]{ID: kind.Id, Name: kind.Name, Count: kind.TagCount}
+	tags, err := s.mergedTags(r)
+	if err != nil {
+		s.internalError(w, "Could not load tag kinds.", err)
+		return
 	}
-	merged := mergeVocabularies(local, remote, entry, func(local, peer gen.TagKind) gen.TagKind {
-		local.TagCount += peer.TagCount
-		return local
-	})
+	counts := make(map[int64]int)
+	for _, tag := range tags {
+		if tag.Value.Kind != nil {
+			counts[tag.Value.Kind.Id]++
+		}
+	}
+	entry := func(kind gen.TagKind) domain.VocabularyEntry[gen.TagKind] {
+		return domain.VocabularyEntry[gen.TagKind]{ID: kind.Id, Name: kind.Name}
+	}
+	merged := mergeVocabularies(local, remote, entry, func(local, _ gen.TagKind) gen.TagKind { return local })
 	items := make([]gen.TagKind, len(merged))
 	for i, kind := range merged {
 		items[i] = kind.Value
+		items[i].TagCount = counts[kind.Value.Id]
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.TagKindList{Items: items}, s.logger)

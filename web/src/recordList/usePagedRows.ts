@@ -197,6 +197,21 @@ export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
     loadMore();
   }, [loadMore]);
 
+  /** Show rows kept from an earlier visit without a request; later pages continue from its cursor. */
+  const restore = useCallback((kept: PageRows<R, Q>, search: string) => {
+    firstAbortRef.current?.abort();
+    moreAbortRef.current?.abort();
+    generationRef.current += 1;
+    queryRef.current = { ...kept.query, search };
+    firstPendingRef.current = false;
+    setFirstPending(false);
+    moreRef.current = moreIdle;
+    setMore(moreIdle);
+    setLoadError(null);
+    setAppliedSearch(search);
+    setPage(kept);
+  }, []);
+
   /** Advance mutation generation before applying local data so earlier responses are retried. */
   const applyLocal = useCallback(
     (update: (current: PageRows<R, Q> | undefined) => PageRows<R, Q> | undefined) => {
@@ -234,5 +249,6 @@ export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
     loadMore,
     retryMore,
     applyLocal,
+    restore,
   };
 }
