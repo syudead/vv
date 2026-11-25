@@ -108,8 +108,9 @@ type listSpec struct {
 	// Match credits in any role; zero disables the filter.
 	personID       int64
 	organizationID int64
-	// personRole narrows personID to one role; empty matches any role.
-	personRole domain.PersonRole
+	// personRole narrows personID and organizationRole organizationID to one role; empty matches any role.
+	personRole       domain.PersonRole
+	organizationRole domain.OrganizationRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
 	// Duration, added-day and watch-state filters; zero values do not filter.
@@ -117,7 +118,7 @@ type listSpec struct {
 	// tagKindNameID is the kind a kind name resolved to, ANDed with tagKindID; zero disables it.
 	tagKindNameID int64
 	// personName and organizationName match every entity with that display name; personRole applies to both
-	// person filters.
+	// person filters and organizationRole to both organization filters.
 	personName, organizationName string
 	// matchNothing empties the list, for a name filter that resolved to no entity.
 	matchNothing bool
@@ -196,7 +197,7 @@ func filteredListSpec(scope locationScope, q domain.VideoQuery, tagIDs []int64) 
 		scope: scope, expr: domain.ParseSearchQuery(q.Query),
 		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
-		personName: q.PersonName, organizationName: q.OrganizationName,
+		organizationRole: q.OrganizationRole, personName: q.PersonName, organizationName: q.OrganizationName,
 		conditions: q.VideoConditions,
 		sort:       q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}

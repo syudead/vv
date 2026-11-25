@@ -9554,6 +9554,9 @@ type OrganizationId = int64
 // OrganizationNameFilter defines model for OrganizationNameFilter.
 type OrganizationNameFilter = string
 
+// OrganizationRoleFilter Organization role in a video.
+type OrganizationRoleFilter = WorkOrganizationRole
+
 // PeerLinkFolderId defines model for PeerLinkFolderId.
 type PeerLinkFolderId = int64
 
@@ -9777,7 +9780,7 @@ type ListFolderVideosParams struct {
 	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
 	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
 
-	// OrganizationName Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.
+	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.
 	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 }
 
@@ -9894,7 +9897,7 @@ type ListLibraryParams struct {
 	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
 	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
 
-	// OrganizationName Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.
+	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.
 	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 }
 
@@ -10133,6 +10136,9 @@ type ListVideosParams struct {
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 
+	// OrganizationRole Keeps only videos linked to `organization` in this role, including total. Requires `organization` or `organizationName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
+	OrganizationRole *OrganizationRoleFilter `form:"organizationRole,omitempty" json:"organizationRole,omitempty"`
+
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 
@@ -10160,7 +10166,7 @@ type ListVideosParams struct {
 	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
 	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
 
-	// OrganizationName Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.
+	// OrganizationName Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.
 	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 
 	// Kind Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both.
@@ -10857,6 +10863,9 @@ type ServerInterface interface {
 	// UpdateOrganization Update an organization's names and external IDs
 	// (PATCH /api/organizations/{id})
 	UpdateOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// ListOrganizationChildren List an organization's child organizations
+	// (GET /api/organizations/{id}/children)
+	ListOrganizationChildren(w http.ResponseWriter, r *http.Request, id OrganizationId)
 	// DeleteOrganizationImage Remove an organization's logo
 	// (DELETE /api/organizations/{id}/image)
 	DeleteOrganizationImage(w http.ResponseWriter, r *http.Request, id OrganizationId)
@@ -13777,6 +13786,32 @@ func (siw *ServerInterfaceWrapper) UpdateOrganization(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateOrganization(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrganizationChildren operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationChildren(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationChildren(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17181,6 +17216,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "organizationRole" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organizationRole", r.URL.Query(), &params.OrganizationRole, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organizationRole"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organizationRole", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "tagKind" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -19493,6 +19541,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{id}", wrapper.GetOrganization)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/organizations/{id}", wrapper.UpdateOrganization)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{id}/children", wrapper.ListOrganizationChildren)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}/image", wrapper.DeleteOrganizationImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{id}/image", wrapper.GetOrganizationImage)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/organizations/{id}/image", wrapper.UploadOrganizationImage)

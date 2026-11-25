@@ -267,6 +267,12 @@ func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain
 	rewriteRemoteOrganization(organization.Parent, join)
 }
 
+func rewriteRemoteOrganizations(list *gen.OrganizationList, join domain.VocabularyJoin) {
+	for i := range list.Items {
+		rewriteRemoteOrganizationEntity(&list.Items[i], join)
+	}
+}
+
 // rewriteRemoteOrganizeResult marks the peer's undo token so that its undo is forwarded too.
 func rewriteRemoteOrganizeResult(result *gen.OrganizeResult, join domain.VocabularyJoin) {
 	result.UndoToken = remoteUndoToken(join.Slot, result.UndoToken)

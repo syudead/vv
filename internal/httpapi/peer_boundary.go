@@ -111,6 +111,7 @@ var remoteRewrites = map[string]remoteRewrite{
 	"TagKind":                 rewriteAs(rewriteRemoteTagKind),
 	"Person":                  rewriteAs(rewriteRemotePerson),
 	"Organization":            rewriteAs(rewriteRemoteOrganizationEntity),
+	"OrganizationList":        rewriteAs(rewriteRemoteOrganizations),
 
 	"FaceAppearanceList":        rewriteAs(rewriteRemotePersonAppearances),
 	"FaceAppearanceMove":        rewriteAs(rewriteRemoteFaceMove),

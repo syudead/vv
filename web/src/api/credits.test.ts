@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { updateCredit } from "./credits";
+import { listOrganizationChildren, updateCredit } from "./credits";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 function holdSnapshot() {
@@ -40,5 +40,22 @@ describe("クレジットの変更と一覧の控え", () => {
     answer(500);
     await expect(updateCredit("person", 1, { name: "新しい名前" })).rejects.toThrow();
     expect(takeListSnapshot({ query: "" })).toBeDefined();
+  });
+});
+
+describe("子団体の読み取り", () => {
+  it("団体の children を読み、一覧を返す", async () => {
+    const list = { items: [], total: 0, totalAll: 0 };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(list), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await expect(listOrganizationChildren(7)).resolves.toEqual(list);
+    expect(String(fetch.mock.calls[0]?.[0])).toBe("/api/organizations/7/children");
   });
 });

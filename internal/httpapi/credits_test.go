@@ -391,3 +391,18 @@ func TestCreditsOwnerOnly(t *testing.T) {
 		t.Errorf("ゲストの要求のあと = %+v", list)
 	}
 }
+
+func TestListOrganizationChildrenAnswersTheListOr404(t *testing.T) {
+	f := newCreditFixture(t)
+	parent := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "親"}}})
+	child := f.createOrganization(t, map[string]any{"names": []map[string]string{{"name": "子"}}, "parentId": parent.Id})
+
+	rec := f.env.get(creditPath("/api/organizations", parent.Id, "/children"), f.owner)
+	list := decode[gen.OrganizationList](t, rec)
+	if rec.Code != http.StatusOK || len(list.Items) != 1 || list.Items[0].Id != child.Id || list.Total != 1 ||
+		list.TotalAll != 1 || list.NextCursor != nil {
+		t.Errorf("子団体: status = %d: %s", rec.Code, rec.Body)
+	}
+	assertFieldError(t, "無い団体", f.env.get(creditPath("/api/organizations", 999_999, "/children"), f.owner),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound}, "")
+}

@@ -258,6 +258,7 @@ paths:
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/OrganizationRoleFilter"
         - $ref: "#/components/parameters/TagKindFilter"
         - $ref: "#/components/parameters/MinDurationFilter"
         - $ref: "#/components/parameters/MaxDurationFilter"
@@ -4592,6 +4593,23 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/organizations/{id}/children:
+    get:
+      operationId: listOrganizationChildren
+      summary: "List an organization's child organizations"
+      description: "Owner-only. Every organization whose parent is `id`, one level down, ordered by name then ID; not paged, so `total` and `totalAll` equal the item count and there is no `nextCursor`. An organization without children answers an empty list. Missing organization returns 404 organization_not_found."
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: "Child organizations"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/organizations/{id}/image:
     get:
       operationId: getOrganizationImage
@@ -6586,6 +6604,12 @@ components:
       description: "Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed."
       schema:
         $ref: "#/components/schemas/WorkPersonRole"
+    OrganizationRoleFilter:
+      name: organizationRole
+      in: query
+      description: "Keeps only videos linked to `organization` in this role, including total. Requires `organization` or `organizationName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed."
+      schema:
+        $ref: "#/components/schemas/WorkOrganizationRole"
     OrganizationFilter:
       name: organization
       in: query
@@ -6663,7 +6687,7 @@ components:
     OrganizationNameFilter:
       name: organizationName
       in: query
-      description: "Canonical organization name; follows `organization` semantics, and a name no organization has matches no video."
+      description: "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video."
       schema:
         type: string
         minLength: 1
