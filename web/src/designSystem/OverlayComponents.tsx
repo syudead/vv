@@ -12,7 +12,7 @@ import {
   Trash2,
   VideoOff,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { toast } from "sonner";
 
 import { t } from "../i18n";
@@ -90,8 +90,13 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { Toaster } from "../ui/shadcn/sonner";
 import { Spinner } from "../ui/shadcn/spinner";
 import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
+import { FloatingNotice } from "../ui/FloatingNotice";
+import { KindMark } from "../ui/KindMark";
+import { KindToggleGroup } from "../ui/KindToggleGroup";
 import { RateRing } from "../ui/RateRing";
+import { RecordCard, type RecordCardProps } from "../ui/RecordCard";
 import RemoteMark from "../ui/RemoteMark";
+import { TallyStrip } from "../ui/TallyStrip";
 import TentativeMark from "../ui/TentativeMark";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
@@ -511,6 +516,192 @@ function Feedback() {
   );
 }
 
+const kindColours = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+
+/** The pieces of a record list and a record editor page, in their states. */
+function RecordComponents() {
+  const o = t.designSystem.overlay;
+  const r = t.designSystem.pattern.record;
+  const stay = (event: MouseEvent) => event.preventDefault();
+  const noop = () => undefined;
+  const card = (overrides: Partial<RecordCardProps>) => (
+    <RecordCard
+      link={<a href="#record-card" onClick={stay} />}
+      name={r.tags.travel}
+      count={42}
+      countTitle={r.videoCount(42)}
+      detail={r.kindNames.genre}
+      secondary={r.synonyms.travel}
+      kind={3}
+      selection={{
+        selected: false,
+        selectionMode: false,
+        label: r.select(r.tags.travel),
+        onSelectedChange: noop,
+      }}
+      {...overrides}
+    />
+  );
+  return (
+    <>
+      <Item name="RecordCard" wide>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <State label={o.states.normal}>{card({})}</State>
+          <State label={o.states.hover}>
+            <Demo state="hover">{card({})}</Demo>
+          </State>
+          <State label={o.recordCard.tentative}>
+            {card({
+              name: r.tags.kyoto,
+              nameMarks: <TentativeMark />,
+              detail: r.tentativeDetail(r.kindNames.place),
+              secondary: r.synonyms.kyoto,
+              kind: 1,
+              tentative: true,
+            })}
+          </State>
+          <State label={o.recordCard.plain}>
+            {card({
+              name: r.tags.night,
+              count: 7,
+              detail: r.noKind,
+              secondary: [],
+              kind: undefined,
+            })}
+          </State>
+          <State label={o.states.selected}>
+            {card({
+              selection: {
+                selected: true,
+                selectionMode: true,
+                label: r.select(r.tags.travel),
+                onSelectedChange: noop,
+              },
+            })}
+          </State>
+          <State label={o.recordCard.longName}>
+            {card({ name: o.recordCard.longNameValue, count: 1284, kind: 6 })}
+          </State>
+        </div>
+      </Item>
+
+      <Item name="KindMark">
+        <div className="grid gap-3">
+          <div className="flex flex-wrap gap-3">
+            {kindColours.map((kind) => (
+              <span key={kind} className="flex items-center gap-1.5 text-sm">
+                <KindMark kind={kind} variant="dot" />
+                {o.kindColour(kind)}
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {kindColours.map((kind) => (
+              <span
+                key={kind}
+                className="relative overflow-hidden rounded-md border border-border bg-card py-2 ps-3 pe-2 text-xs"
+              >
+                <KindMark kind={kind} variant="bar" />
+                {o.kindColour(kind)}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Item>
+
+      <Item name="KindToggleGroup">
+        <div className="grid gap-3">
+          <State label={o.kindToggle.kind}>
+            {/* The scroll layout scrolls inside its slot, as ListPage's filter does. */}
+            <div className="w-full overflow-x-auto contain-inline-size">
+              <KindToggleGroup
+                label={r.filter}
+                value="1"
+                onValueChange={noop}
+                options={[
+                  { value: "all", label: r.all, count: 6 },
+                  { value: "1", label: r.kindNames.place, kind: 1, count: 2 },
+                  { value: "2", label: r.kindNames.season, kind: 2, count: 1 },
+                  { value: "none", label: r.noKind, count: 1 },
+                ]}
+              />
+            </div>
+          </State>
+          <State label={o.kindToggle.plain}>
+            <KindToggleGroup
+              label={r.kind}
+              layout="wrap"
+              value="none"
+              onValueChange={noop}
+              options={[
+                { value: "1", label: r.kindNames.place, kind: 1 },
+                { value: "3", label: r.kindNames.genre, kind: 3 },
+                { value: "none", label: r.none },
+              ]}
+            />
+          </State>
+        </div>
+      </Item>
+
+      <Item name="TallyStrip · FloatingNotice" wide>
+        <div className="grid gap-4">
+          <TallyStrip
+            label={r.summary}
+            clearLabel={r.clear}
+            tallies={[
+              {
+                id: "tentative",
+                count: 128,
+                label: r.tentative,
+                hint: r.tentativeHint,
+                action: r.review,
+                pressed: true,
+                onPressedChange: noop,
+              },
+              {
+                id: "no-kind",
+                count: 37,
+                label: r.noKind,
+                hint: r.noKindHint,
+                action: r.sort,
+                pressed: false,
+                onPressedChange: noop,
+              },
+              {
+                id: "unused",
+                count: 0,
+                empty: true,
+                label: r.unused,
+                hint: r.unusedHint,
+                action: r.cleanUp,
+                pressed: false,
+                onPressedChange: noop,
+              },
+            ]}
+          />
+          <TallyStrip
+            label={r.summary}
+            clearLabel={r.clear}
+            tallies={[
+              {
+                id: "tentative",
+                label: r.tentative,
+                pressed: false,
+                onPressedChange: noop,
+              },
+              { id: "no-kind", label: r.noKind, pressed: false, onPressedChange: noop },
+              { id: "unused", label: r.unused, pressed: false, onPressedChange: noop },
+            ]}
+          />
+          <div className="flex justify-center">
+            <FloatingNotice message={r.changed} actionLabel={r.refresh} onAction={noop} />
+          </div>
+        </div>
+      </Item>
+    </>
+  );
+}
+
 function VvComponents() {
   const o = t.designSystem.overlay;
   const noop = () => Promise.resolve();
@@ -636,6 +827,8 @@ function VvComponents() {
           </State>
         </div>
       </Item>
+
+      <RecordComponents />
 
       <Item name="TentativeMark · BrandHomeLink">
         <div className="flex flex-wrap items-center gap-4">

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "floating-notice",
+  "title": "FloatingNotice",
+  "description": "vv component: one line and one ghost sm action on popover, rounded-full with shadow-elevated, for ListPage's notice slot, which sticks it over the body without moving the list. Uses button.",
+  "files": [
+    {
+      "path": "src/ui/FloatingNotice.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { Button } from \"@/ui/shadcn/button\";\n\n// See web/registry/rules/components.md, FloatingNotice. ListPage's notice slot sticks it over the body.\n\nexport interface FloatingNoticeProps {\n  message: ReactNode;\n  actionLabel: ReactNode;\n  onAction: () => void;\n}\n\n/** One line and one action, for a condition that lasts until the viewer acts. */\nexport function FloatingNotice({ message, actionLabel, onAction }: FloatingNoticeProps) {\n  return (\n    <div\n      role=\"status\"\n      data-slot=\"floating-notice\"\n      className=\"flex max-w-full animate-fade-in items-center gap-2 rounded-full bg-popover py-1 ps-4 pe-1 text-sm text-popover-foreground shadow-elevated motion-reduce:animate-none\"\n    >\n      <span className=\"min-w-0 truncate\">{message}</span>\n      <Button variant=\"ghost\" size=\"sm\" shape=\"pill\" onClick={onAction}>\n        {actionLabel}\n      </Button>\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#floatingnotice (item vv-rules).",
+  "type": "registry:ui"
+}
