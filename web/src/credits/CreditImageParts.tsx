@@ -26,19 +26,22 @@ export function withImageOf<T extends { imageRevision?: number }>(saved: T) {
 }
 
 /**
- * Asks before removing the image and stays open while it is removed; a failure stays in the
- * dialog, and a missing record calls onGone.
+ * Asks before removing the image and stays open while it is removed. A failure stays in the
+ * dialog unless onFailed takes its reason, and a missing record calls onGone.
  */
 export function RemoveImageDialog({
   title,
   onRemove,
   onClose,
   onGone,
+  onFailed,
 }: {
   title: UiText;
   onRemove: () => Promise<void>;
   onClose: () => void;
   onGone: () => void;
+  /** Called with the reason in place of showing it, after the dialog closes. */
+  onFailed?: (reason: UiText) => void;
 }) {
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
@@ -52,6 +55,11 @@ export function RemoveImageDialog({
     } catch (failure) {
       if (isCreditGone(failure)) {
         onGone();
+        return;
+      }
+      if (onFailed !== undefined) {
+        onClose();
+        onFailed(errorText(failure));
         return;
       }
       setError(errorText(failure));

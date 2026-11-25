@@ -148,6 +148,7 @@ export default function OrganizationLogoControl({
           }}
           onClose={() => setConfirmRemove(false)}
           onGone={onGone}
+          onFailed={(reason) => setFailure(details.logoFailed(reason))}
         />
       )}
     </div>

@@ -40,6 +40,8 @@ const server = {
   others: [] as Organization[],
   /** The reason a logo upload fails with, or null to accept it. */
   logoFailure: null as string | null,
+  /** Who is gone when the merge answers: the target alone, or both organizations. */
+  mergeMissing: null as "target" | "both" | null,
 };
 
 /** Answers the page's writes as the server does; null for a read. */
@@ -54,7 +56,14 @@ function respondToWrite(method: string, url: URL): Response | null {
     return jsonResponse({ ...server.organization, imageRevision: 3 });
   }
   if (method === "POST" && url.pathname === "/api/organizations/8/merge") {
+    if (server.mergeMissing !== null) {
+      if (server.mergeMissing === "both") server.organization = null;
+      return jsonResponse({ code: "not_found", reason: "organization_not_found" }, 404);
+    }
     return jsonResponse({ organization: server.others[0], notFoundIds: [] });
+  }
+  if (method === "DELETE" && url.pathname === "/api/organizations/5/image") {
+    return jsonResponse({ code: "invalid", message: "Disk full" }, 400);
   }
   if (method === "DELETE" && url.pathname === "/api/organizations/5") {
     return new Response(null, { status: 204 });
@@ -81,6 +90,10 @@ function respond(url: URL): Response {
         : [...server.videos.maker, ...server.videos.label];
     return jsonResponse({ items: ids.map((id) => video(id)), total: ids.length });
   }
+  const other = server.others.find(
+    (item) => url.pathname === `/api/organizations/${item.id}`,
+  );
+  if (other !== undefined) return jsonResponse(other);
   if (server.organization === null) {
     return jsonResponse({ code: "not_found", reason: "organization_not_found" }, 404);
   }
@@ -105,6 +118,7 @@ beforeEach(() => {
   server.writes = [];
   server.others = [];
   server.logoFailure = null;
+  server.mergeMissing = null;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
@@ -351,6 +365,24 @@ describe("OrganizationPage", () => {
     );
   });
 
+  it("closes the removal confirmation and says why under the logo when removing fails", async () => {
+    const user = userEvent.setup();
+    server.organization = organization({ imageRevision: 1 });
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Change logo" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove logo" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: 'Remove the logo of "Studio"?',
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByText("Couldn't change the logo: Disk full")).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByRole("img", { name: "Logo of Studio" }).getAttribute("src")).toBe(
+      "/api/organizations/5/image?v=1",
+    );
+  });
+
   it("opens the target's page after merging into it", async () => {
     const user = userEvent.setup();
     server.others = [organization({ id: 8, name: "Agency" })];
@@ -362,8 +394,47 @@ describe("OrganizationPage", () => {
 
     await waitFor(() => expect(location()).toBe("/organizations/8"));
     expect(await screen.findByText('Merged into "Agency"')).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Agency", level: 1 })).toBeTruthy();
     const merge = server.writes.find((write) => write.method === "POST");
     expect(JSON.parse(String(merge?.body))).toEqual({ sourceIds: [5] });
+  });
+
+  /** Picks Agency in the merge dialog and merges into it. */
+  async function mergeIntoAgency(user: ReturnType<typeof userEvent.setup>) {
+    server.others = [organization({ id: 8, name: "Agency" })];
+    renderPage();
+    await chooseMore(user, "Merge into another organization…");
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "Studio"' });
+    await user.click(await within(dialog).findByRole("option", { name: /Agency/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    return dialog;
+  }
+
+  it("keeps the page and says why in the dialog when the merge target is gone", async () => {
+    const user = userEvent.setup();
+    server.mergeMissing = "target";
+    const dialog = await mergeIntoAgency(user);
+
+    expect(
+      await within(dialog).findByText("This organization no longer exists."),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Merge" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    // The open dialog hides the page from the accessibility tree.
+    expect(
+      screen.getByRole("heading", { name: "Studio", level: 1, hidden: true }),
+    ).toBeTruthy();
+  });
+
+  it("turns into the gone state when the merge finds the organization itself gone", async () => {
+    const user = userEvent.setup();
+    server.mergeMissing = "both";
+    await mergeIntoAgency(user);
+
+    expect(await screen.findByText("This organization no longer exists")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens the organizations list after deleting", async () => {
