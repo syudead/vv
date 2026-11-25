@@ -192,7 +192,8 @@ the shadcn components do not change.
 | --- | --- | --- |
 | A new skeleton, `RecordEditorPage` | Widening `RecordPage` | `RecordPage` is for reading one record and rules out operations on it in its actions; the activity entry depends on that |
 | Same | `ProfilePage` | It puts viewing first and sends work on the subject to another page ([patterns.md, Profile page](../../web/registry/rules/patterns.md#profile-page)); here the work is the point |
-| A kind takes `kind-N` by its position among kinds ordered by id, so a kind keeps its colour | A colour the owner picks | A picker is a new setting and API field; the Issue asks for none |
+| A kind takes `kind-N` from its id, N = (id − 1) mod 8 + 1, so a kind keeps its colour when others are created or deleted | A colour the owner picks | A picker is a new setting and API field; the Issue asks for none |
+| Same | Its position among the kinds ordered by id | Deleting a kind with a lower id shifts every later kind to another colour |
 | Same | One colour for all kinds | The review chose cards with a kind colour; telling kinds apart at a glance is the reason |
 | Remove `AdminTablePage`, its example and its rules, in the change that moves its last caller | Keeping it for other admin tables | Requirement 9; only the tags and organizations screens use it |
 | Organizations move onto the same pieces: a card list at `/organizations` and an organization page `/organizations/:id` holding today's details (names, external ids, parent) with merge and delete | Keeping organizations on a table with a details dialog | Requirement 10 |
