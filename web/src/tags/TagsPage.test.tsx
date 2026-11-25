@@ -8,6 +8,7 @@ import {
   historyBack,
   hold,
   install,
+  kindsLink,
   probe,
   renderPage,
   server,
@@ -111,6 +112,55 @@ describe("TagsPage 条件と URL", () => {
   });
 });
 
+describe("TagsPage 続きの読み込み", () => {
+  it("描画する行が同じでも、切り替えた条件のページに続きがあれば読み込む", async () => {
+    const user = userEvent.setup();
+    server.tags = Array.from({ length: 6 }, (_, index) =>
+      tag({
+        id: index + 1,
+        name: `Tag${String(index + 1)}`,
+        kind: index < 3 ? genre : null,
+      }),
+    );
+    server.pageLimitOverride = 3;
+    install();
+    renderPage({ url: "/tags?kind=1&sort=name" });
+    await screen.findByTitle("Tag3");
+
+    const filter = screen.getByRole("radiogroup", { name: "Kind" });
+    await user.click(within(filter).getByRole("radio", { name: /^All/ }));
+
+    expect(await screen.findByTitle("Tag6")).toBeDefined();
+  });
+});
+
+describe("TagsPage キーボード", () => {
+  it("Tab は描画されていない隣の行のカードへ一覧の順に進む", async () => {
+    const user = userEvent.setup();
+    // Rows measure as one card high, so only the rows near the top of the window are drawn.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.hasAttribute("data-index") ? 108 : 0;
+    });
+    server.tags = Array.from({ length: 40 }, (_, index) =>
+      tag({ id: index + 1, name: `Tag${String(index + 1).padStart(2, "0")}` }),
+    );
+    install();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag01");
+    const grid = screen.getByRole("region", { name: "Tags" });
+    const drawn = [...grid.querySelectorAll<HTMLElement>("[data-index]")];
+    const last = Number(drawn.at(-1)!.dataset.index);
+    expect(last).toBeLessThan(39);
+    const name = (row: number) => `Tag${String(row + 1).padStart(2, "0")}`;
+
+    card(name(last)).focus();
+    await user.tab();
+    expect(document.activeElement).toBe(card(name(last + 1)));
+  });
+});
+
 describe("TagsPage タグのページから戻る", () => {
   it("最初のページより先のカードから戻ると、読み込んだカードと位置をそれらのリクエストなしで戻す", async () => {
     const user = userEvent.setup();
@@ -152,6 +202,53 @@ describe("TagsPage タグのページから戻る", () => {
   });
 });
 
+describe("TagsPage 戻ったあとの読み直し", () => {
+  it("戻ったあとに読み直した一覧は、別の画面から戻っても古いカードに戻らない", async () => {
+    const user = userEvent.setup();
+    nineTagsInPagesOfThree();
+    install();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag9");
+    await user.click(card("Tag8"));
+    await historyBack();
+    await screen.findByTitle("Tag9");
+
+    server.tags[7]!.synonyms = ["Elsewhere"];
+    await emitServerEvent("tags");
+    await user.click(await screen.findByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(within(card("Tag8")).getByText("Elsewhere")).toBeDefined(),
+    );
+
+    await user.click(kindsLink());
+    await historyBack();
+    await waitFor(() =>
+      expect(within(card("Tag8")).getByText("Elsewhere")).toBeDefined(),
+    );
+  });
+
+  it("開発時に effect が繰り返されても、戻ったあとに件数と変更を確かめる", async () => {
+    const user = userEvent.setup();
+    nineTagsInPagesOfThree();
+    install();
+    renderPage({ url: "/tags?sort=name", strict: true });
+    await screen.findByTitle("Tag9");
+    await user.click(card("Tag8"));
+
+    server.tags[7]!.synonyms = ["Elsewhere"];
+    server.tags[0]!.tentative = true;
+    await historyBack();
+
+    expect(await screen.findByText("Tags changed elsewhere")).toBeDefined();
+    const tallies = screen.getByRole("group", { name: "What is left to tidy" });
+    await waitFor(() =>
+      expect(
+        within(tallies).getByRole("button", { name: /Tentative/ }).textContent,
+      ).toMatch(/^1/),
+    );
+  });
+});
+
 describe("TagsPage 変更の通知", () => {
   it("最初のページより先のカードが読み直しで違えば通知を出し、カードは動かさない", async () => {
     const user = userEvent.setup();
@@ -173,6 +270,33 @@ describe("TagsPage 変更の通知", () => {
       expect(within(card("Tag8")).getByText("Elsewhere")).toBeDefined(),
     );
     expect(screen.queryByText("Tags changed elsewhere")).toBeNull();
+  });
+
+  it("Refresh は種類の一覧と件数も読み直し、消えた種類の絞り込みを外す", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 1, name: "Robot", kind: genre }),
+      tag({ id: 2, name: "Plain" }),
+    ];
+    install();
+    renderPage({ url: "/tags?kind=1&sort=name" });
+    await screen.findByTitle("Robot");
+    const filter = screen.getByRole("radiogroup", { name: "Kind" });
+    await waitFor(() =>
+      expect(within(filter).getByRole("radio", { name: /^Genre/ }).textContent).toMatch(
+        /1$/,
+      ),
+    );
+
+    server.tagKinds = server.tagKinds.filter((item) => item.id !== 1);
+    server.tags[0]!.kind = null;
+    await emitServerEvent("tags");
+    await user.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    await waitFor(() =>
+      expect(within(filter).queryByRole("radio", { name: /^Genre/ })).toBeNull(),
+    );
+    await waitFor(() => expect(probe.search).toBe("?sort=name"));
   });
 
   it("読み直しが表示と同じなら何も出さない", async () => {

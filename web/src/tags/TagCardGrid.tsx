@@ -32,18 +32,19 @@ function TagCardGrid({
   onOpen: (tag: Tag) => void;
   onNearEnd: () => void;
 }) {
-  const { gridRef, columns, virtualizer, onFocus, onBlur } = useVirtualCardRows({
-    count: tags.length,
-    minWidthToken: "--spacing-card-record",
-    rowEstimate: ROW_ESTIMATE,
-    gap: GAP,
-  });
+  const { gridRef, columns, rowCount, virtualizer, onFocus, onBlur, onKeyDown } =
+    useVirtualCardRows({
+      count: tags.length,
+      minWidthToken: "--spacing-card-record",
+      rowEstimate: ROW_ESTIMATE,
+      gap: GAP,
+    });
   const items = virtualizer.getVirtualItems();
-  const rowCount = Math.ceil(tags.length / columns);
   const lastDrawn = items.at(-1)?.index ?? -1;
+  // Every new page is checked too: one read under other criteria can bring a cursor with the same rows drawn.
   useEffect(() => {
     if (lastDrawn >= rowCount - CARD_ROW_OVERSCAN) onNearEnd();
-  }, [lastDrawn, rowCount, onNearEnd]);
+  }, [tags, lastDrawn, rowCount, onNearEnd]);
 
   const top = virtualizer.options.scrollMargin;
   return (
@@ -58,6 +59,7 @@ function TagCardGrid({
       style={{ height: Math.max(0, virtualizer.getTotalSize() - GAP) }}
       onFocus={onFocus}
       onBlur={onBlur}
+      onKeyDown={onKeyDown}
     >
       {items.map((item) => (
         <div

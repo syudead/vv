@@ -1,5 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import type userEvent from "@testing-library/user-event";
+import { Fragment, StrictMode } from "react";
 import {
   MemoryRouter,
   type NavigateFunction,
@@ -760,26 +761,35 @@ export async function historyForward() {
 export function renderPage({
   url = "/tags",
   topBar = false,
-}: { url?: string; topBar?: boolean } = {}) {
+  strict = false,
+}: {
+  url?: string;
+  topBar?: boolean;
+  /** Replay effects as development builds do. */
+  strict?: boolean;
+} = {}) {
+  const Mode = strict ? StrictMode : Fragment;
   return render(
-    <MemoryRouter initialEntries={[url]}>
-      <TooltipProvider>
-        <ToastProvider>
-          {topBar && (
-            <header data-testid="topbar">
-              <div id="topbar-library-tools" />
-            </header>
-          )}
-          <Routes>
-            <Route path="/tags" element={<TagsPage />} />
-            <Route path="/tags/kinds" element={<TagKindsPage />} />
-            <Route path="/tags/rejected" element={<RejectedNamesPage />} />
-            <Route path="/tags/:id" element={<p>Tag page</p>} />
-          </Routes>
-          <LocationProbe />
-        </ToastProvider>
-      </TooltipProvider>
-    </MemoryRouter>,
+    <Mode>
+      <MemoryRouter initialEntries={[url]}>
+        <TooltipProvider>
+          <ToastProvider>
+            {topBar && (
+              <header data-testid="topbar">
+                <div id="topbar-library-tools" />
+              </header>
+            )}
+            <Routes>
+              <Route path="/tags" element={<TagsPage />} />
+              <Route path="/tags/kinds" element={<TagKindsPage />} />
+              <Route path="/tags/rejected" element={<RejectedNamesPage />} />
+              <Route path="/tags/:id" element={<p>Tag page</p>} />
+            </Routes>
+            <LocationProbe />
+          </ToastProvider>
+        </TooltipProvider>
+      </MemoryRouter>
+    </Mode>,
   );
 }
 

@@ -3,7 +3,17 @@ import {
   type Range,
   useWindowVirtualizer,
 } from "@tanstack/react-virtual";
-import { type FocusEvent, useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { flushSync } from "react-dom";
+
+import { rowFocusables } from "./useVirtualTagRows";
 
 /** Rows drawn past each edge of the viewport; also how near the end the next page is asked for. */
 export const CARD_ROW_OVERSCAN = 3;
@@ -27,7 +37,8 @@ export function cardColumns(width: number, minWidth: number, gap: number): numbe
 
 /**
  * Window-virtualize a grid of fixed-height cards by rows. The column count follows the grid's width
- * and the minimum card width token; a focused row stays drawn so its card keeps focus while scrolling.
+ * and the minimum card width token; a focused row stays drawn so its card keeps focus while scrolling,
+ * and Tab past a row's edge draws the next row first so focus moves in list order.
  */
 export function useVirtualCardRows({
   count,
@@ -47,6 +58,9 @@ export function useVirtualCardRows({
   const [columns, setColumns] = useState(1);
   const [scrollMargin, setScrollMargin] = useState(0);
   const focusedRowRef = useRef<number | null>(null);
+  /** A row drawn for Tab to move into before focus reaches it. */
+  const [pinnedRow, setPinnedRow] = useState<number | null>(null);
+  const rowCount = Math.ceil(count / columns);
 
   // Measure after every commit: the header above can change height as its counts and filter load.
   useLayoutEffect(() => {
@@ -63,16 +77,22 @@ export function useVirtualCardRows({
     return () => observer.disconnect();
   });
 
-  const rangeExtractor = useCallback((range: Range) => {
-    const indexes = defaultRangeExtractor(range);
-    const focused = focusedRowRef.current;
-    if (focused === null || indexes.includes(focused) || focused >= range.count)
-      return indexes;
-    return [...indexes, focused].sort((a, b) => a - b);
-  }, []);
+  // Depends on pinnedRow so pinning a row recomputes the drawn rows.
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range);
+      const kept = [focusedRowRef.current, pinnedRow].filter(
+        (row): row is number =>
+          row !== null && row < range.count && !indexes.includes(row),
+      );
+      if (kept.length === 0) return indexes;
+      return [...new Set([...indexes, ...kept])].sort((a, b) => a - b);
+    },
+    [pinnedRow],
+  );
 
   const virtualizer = useWindowVirtualizer({
-    count: Math.ceil(count / columns),
+    count: rowCount,
     estimateSize: () => rowEstimate,
     overscan: CARD_ROW_OVERSCAN,
     scrollMargin,
@@ -83,6 +103,7 @@ export function useVirtualCardRows({
   const onFocus = useCallback((event: FocusEvent<HTMLElement>) => {
     const row = (event.target as HTMLElement).closest("[data-index]");
     focusedRowRef.current = row === null ? null : Number(row.getAttribute("data-index"));
+    setPinnedRow(null);
   }, []);
   const onBlur = useCallback((event: FocusEvent<HTMLElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -90,5 +111,30 @@ export function useVirtualCardRows({
     }
   }, []);
 
-  return { gridRef, columns, virtualizer, onFocus, onBlur };
+  /** Tab from a row's last card (Shift+Tab from its first) into an undrawn neighbour row; pass to onKeyDown. */
+  const onKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.defaultPrevented) return;
+      const grid = event.currentTarget;
+      const target = event.target as HTMLElement;
+      const row = target.closest<HTMLElement>("[data-index]");
+      if (row === null || !grid.contains(row)) return;
+      const stops = rowFocusables(row);
+      if (target !== (event.shiftKey ? stops[0] : stops.at(-1))) return;
+      const next = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
+      if (next < 0 || next >= rowCount) return;
+      const selector = `[data-index="${String(next)}"]`;
+      if (grid.querySelector(selector) !== null) return;
+      event.preventDefault();
+      flushSync(() => setPinnedRow(next));
+      const drawn = grid.querySelector(selector);
+      if (drawn === null) return;
+      const into = rowFocusables(drawn);
+      (event.shiftKey ? into.at(-1) : into[0])?.focus();
+    },
+    [rowCount],
+  );
+
+  return { gridRef, columns, rowCount, virtualizer, onFocus, onBlur, onKeyDown };
 }

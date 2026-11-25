@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router";
 import {
   clearTagListSnapshot,
   saveTagListSnapshot,
+  type TagListSnapshot,
   takeTagListSnapshot,
 } from "../api/tagListSnapshot";
 import type { Tag, TagListSort } from "../api/tags";
@@ -87,14 +88,20 @@ export default function TagsPage() {
   const [creating, setCreating] = useState(false);
   const scrollToRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const restoredRef = useRef<string | null>(null);
+  const restoredRef = useRef<{ key: string; kept: TagListSnapshot<TagPageRows> } | null>(
+    null,
+  );
+  const { reload: reloadKinds } = kindList;
 
   const resetRef = useRef<() => void>(() => undefined);
   const onFirstPage = useCallback(() => {
+    // A page read from the server supersedes the list kept for Back.
+    clearTagListSnapshot();
     resetRef.current();
     reloadTallies();
+    reloadKinds();
     if (window.scrollY > 0) window.scrollTo({ top: 0 });
-  }, [reloadTallies]);
+  }, [reloadTallies, reloadKinds]);
   const paged = useTagPage(onFirstPage);
   const { page, loadError, firstPending, more, appliedSearch, pageRef } = paged;
   const { load, reload, loadMore, retryMore, restore } = paged;
@@ -116,11 +123,16 @@ export default function TagsPage() {
     query: normalizedQuery,
   }).toString();
   useEffect(() => {
-    // StrictMode replays this effect; the list is already restored.
-    if (restoredRef.current === criteriaKey) return;
+    const restored = restoredRef.current;
+    if (restored?.key === criteriaKey) {
+      // StrictMode replays this effect after its cleanup aborted the reads; the list is already restored.
+      reloadTallies();
+      check(restored.kept.page, restored.kept.search);
+      return;
+    }
     const kept = takeTagListSnapshot<TagPageRows>(criteriaKey);
     if (kept !== undefined) {
-      restoredRef.current = criteriaKey;
+      restoredRef.current = { key: criteriaKey, kept };
       restore(kept.page, kept.search);
       scrollToRef.current = kept.scrollY;
       reloadTallies();
