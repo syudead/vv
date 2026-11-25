@@ -540,6 +540,39 @@ func TestOrganizationParentCycleIsRefused(t *testing.T) {
 	}
 }
 
+// Only the direct children are listed, in name order; a grandchild and an unrelated organization are not.
+func TestOrganizationChildrenListsDirectChildrenByName(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	parent := createOrganization(t, db, "親", nil)
+	second := createOrganization(t, db, "B", &parent)
+	first := createOrganization(t, db, "A", &parent)
+	createOrganization(t, db, "孫", &second)
+	createOrganization(t, db, "無関係", nil)
+
+	children, err := db.Credits().OrganizationChildren(ctx, domain.AudienceOwner, parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, child := range children {
+		got = append(got, child.ID)
+		if child.Parent == nil || *child.Parent != (domain.CreditRef{ID: parent.ID, Name: "親"}) {
+			t.Errorf("%s の親 = %+v", child.Name, child.Parent)
+		}
+	}
+	if want := []int64{first.ID, second.ID}; !slices.Equal(got, want) {
+		t.Errorf("子 = %v, want %v", got, want)
+	}
+
+	if leaf, err := db.Credits().OrganizationChildren(ctx, domain.AudienceOwner, first.ID); err != nil || len(leaf) != 0 {
+		t.Errorf("子の無い団体 = %v, %v, want 空", leaf, err)
+	}
+	if _, err := db.Credits().OrganizationChildren(ctx, domain.AudienceOwner, parent.ID+1000); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("無い団体 err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestDeleteCreditRemovesLinksAndRenumbers(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

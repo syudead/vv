@@ -159,6 +159,7 @@ export function useVideoPages({
           person: current.person,
           personRole: current.personRole,
           organization: current.organization,
+          organizationRole: current.organizationRole,
           tagKind: current.tagKind,
         };
         const fetchOne = (cursorFrom: string | undefined) =>

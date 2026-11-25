@@ -529,6 +529,15 @@ one error mapping. A work-info plugin's `profile` on an organization fills the
 linked organization's empty fields, as a person's does; a plugin's organization
 `image` is not fetched yet.
 
+`GET /api/organizations/{id}/children` lists the organizations whose parent is
+`{id}`, one level down, in name order and unpaged. A parent is a link one node
+records, so a remote id's children are read from its own node and each takes
+the same-named local id, else the offset form, as a forwarded organization
+does ([peer-library.md](peer-library.md)); children are not merged across
+nodes by name. `GET /api/videos` narrows `organization` to one role with
+`organizationRole`, as `personRole` narrows `person`
+([library-ui.md](library-ui.md#list-conditions-applied-by-the-server)).
+
 The organizations table shows a favorite toggle on each row, and the details
 dialog edits the logo, which saves at once, and the profile, which saves with
 the dialog. The dialog's first group is the names list of

@@ -1342,13 +1342,16 @@ others:
 | `person`       | Videos linked to that person in any role                                               | `400 guest_filter_not_allowed`                    |
 | `personRole`   | With `person`, only videos linked to that person in this role (not `GET /api/library`) | `400 guest_filter_not_allowed`                    |
 | `organization` | Videos linked to that organization in any role                                         | `400 guest_filter_not_allowed`                    |
+| `organizationRole` | With `organization`, only videos linked to that organization in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed` |
 | `tagKind`      | Videos with at least one tag of that kind, manual or from the folder                   | `400 guest_filter_not_allowed`                    |
 
 `query`, `tag`, `tagKind`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
 that is not a positive integer is `400 invalid_request`. `personRole` without
-`person`, or with a role outside `WorkPersonRole`, is also `400 invalid_request`.
+`person`, or with a role outside `WorkPersonRole`, is also `400 invalid_request`,
+as is `organizationRole` without `organization` or with a role outside
+`WorkOrganizationRole`.
 
 For the owner, a search term matches a video when it appears in the title or
 relative path of one of its locations, in a name or synonym of one of its

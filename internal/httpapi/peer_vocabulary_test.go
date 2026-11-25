@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -223,6 +224,44 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound})
 	if got := parentOnA(); got != peerLabel {
 		t.Errorf("拒否の後の a の親 = %d, want %d のまま", got, peerLabel)
+	}
+}
+
+// A remote parent's children are read from its own node, each taking the same-named local id or the offset form.
+func TestForwardedOrganizationChildrenTakeTheLocalIDsByName(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	organization := func(f *guestFixture, name string, parent *int64) int64 {
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization,
+			domain.CreditInput{Names: namesOf(name), ParentID: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return credit.ID
+	}
+	organization(fb, "手元だけ", nil)
+	localLabel := organization(fb, "レーベル", nil)
+	series := organization(fa, "系列", nil)
+	peerOnly := organization(fa, "相手だけ", &series)
+	peerLabel := organization(fa, "レーベル", &series)
+	if peerLabel == localLabel {
+		t.Fatalf("レーベルの ID が両方の台で %d; 書き換えを確かめられない", peerLabel)
+	}
+
+	remoteSeries := domain.RemoteID(1, series)
+	rec := b.owner(http.MethodGet, "/api/organizations/"+strconv.FormatInt(remoteSeries, 10)+"/children", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	got := map[string]int64{}
+	for _, child := range decode[gen.OrganizationList](t, rec).Items {
+		got[child.Name] = child.Id
+		if child.Parent == nil || child.Parent.Id != remoteSeries {
+			t.Errorf("%s の親 = %+v, want %d", child.Name, child.Parent, remoteSeries)
+		}
+	}
+	if want := map[string]int64{"レーベル": localLabel, "相手だけ": domain.RemoteID(1, peerOnly)}; !maps.Equal(got, want) {
+		t.Errorf("子団体 = %v, want %v", got, want)
 	}
 }
 

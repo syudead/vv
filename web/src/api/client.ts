@@ -342,6 +342,8 @@ export interface CreditFilterParams {
   /** Owner-only; keeps videos where person has this role and requires person. */
   personRole?: components["schemas"]["WorkPersonRole"];
   organization?: number;
+  /** Owner-only; keeps videos where organization has this role and requires organization. */
+  organizationRole?: components["schemas"]["WorkOrganizationRole"];
   /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
 }
@@ -376,6 +378,9 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
   if (params.personRole !== undefined) query.set("personRole", params.personRole);
   if (params.organization !== undefined) {
     query.set("organization", String(params.organization));
+  }
+  if (params.organizationRole !== undefined) {
+    query.set("organizationRole", params.organizationRole);
   }
   if (params.tagKind !== undefined) query.set("tagKind", String(params.tagKind));
 }

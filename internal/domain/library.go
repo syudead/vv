@@ -95,6 +95,8 @@ type VideoQuery struct {
 	Organization int64
 	// PersonRole narrows Person to one role; it requires Person and is empty when unset.
 	PersonRole PersonRole
+	// OrganizationRole narrows Organization to one role; it requires Organization and is empty when unset.
+	OrganizationRole OrganizationRole
 	// TagKindID matches manual or folder-derived tags; zero disables filtering and nonexistent IDs match nothing.
 	TagKindID int64
 	// Kind narrows the listing to file or virtual videos; empty means VideoKindAll.

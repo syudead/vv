@@ -178,7 +178,8 @@ func (f peerListFilters) linkEmpty(slot int64) bool {
 
 // peerFilterParams are the filter parameters a request to the peer carries in its own terms.
 var peerFilterParams = []string{
-	"tag", "tagKind", "person", "organization", "personRole", "tagName", "tagKindName", "personName", "organizationName",
+	"tag", "tagKind", "person", "organization", "personRole", "organizationRole", "tagName", "tagKindName", "personName",
+	"organizationName",
 }
 
 // splitPeerFilters splits q's filters between this node and the links.
@@ -221,7 +222,7 @@ func (s *server) splitPeerFilters(ctx context.Context, q domain.VideoQuery) (pee
 	}
 	for param, value := range map[string]string{
 		"tagKindName": named.TagKindName, "personName": named.PersonName, "organizationName": named.OrganizationName,
-		"personRole": string(named.PersonRole),
+		"personRole": string(named.PersonRole), "organizationRole": string(named.OrganizationRole),
 	} {
 		if value != "" {
 			out.values.Set(param, value)

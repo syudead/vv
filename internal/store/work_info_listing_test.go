@@ -117,3 +117,41 @@ func TestListVideosFiltersByPersonRole(t *testing.T) {
 		}
 	}
 }
+
+// ep1 holds メーカーA as maker and レーベルB as label, so an organization and a role matched on different rows would
+// list it under the wrong role.
+func TestListVideosFiltersByOrganizationRole(t *testing.T) {
+	db, ids, _, makerA, labelB := workInfoListingFixture(t)
+	ep1, ep2, ep10, p2 := ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")],
+		ids[fixturePath("/media/show/ep10.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
+
+	cases := []struct {
+		name string
+		q    domain.VideoQuery
+		want []int64
+	}{
+		{"maker", domain.VideoQuery{Organization: makerA.ID, OrganizationRole: domain.OrganizationMaker}, []int64{ep1, p2}},
+		{"label", domain.VideoQuery{Organization: labelB.ID, OrganizationRole: domain.OrganizationLabel}, []int64{ep1, ep2, ep10}},
+		{"その役割では付いていない団体", domain.VideoQuery{Organization: makerA.ID, OrganizationRole: domain.OrganizationLabel}, nil},
+		{"名前と役割", domain.VideoQuery{OrganizationName: "メーカーA", OrganizationRole: domain.OrganizationMaker}, []int64{ep1, p2}},
+		{"名前と別の役割", domain.VideoQuery{OrganizationName: "レーベルB", OrganizationRole: domain.OrganizationMaker}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.q.Limit = 50
+			page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, tc.q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var listed []int64
+			for _, video := range page.Items {
+				listed = append(listed, video.ID)
+			}
+			slices.Sort(listed)
+			want := slices.Sorted(slices.Values(tc.want))
+			if !slices.Equal(listed, want) || page.Total != len(want) {
+				t.Errorf("items = %v（total %d）, want %v", listed, page.Total, want)
+			}
+		})
+	}
+}

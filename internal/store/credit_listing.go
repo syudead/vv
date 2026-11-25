@@ -81,6 +81,34 @@ func (s *CreditStore) List(ctx context.Context, audience domain.Audience, kind d
 	return page, nil
 }
 
+// OrganizationChildren lists the organizations whose parent is id, in name order, with List's video counts; it
+// returns domain.ErrNotFound for a missing organization.
+func (s *CreditStore) OrganizationChildren(ctx context.Context, audience domain.Audience, id int64) ([]domain.Credit, error) {
+	t := creditTablesByKind[domain.CreditOrganization]
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot start reading the child organizations: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	exists, err := existingCreditIDs(ctx, tx, t, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if !exists[id] {
+		return nil, domain.ErrNotFound
+	}
+	listed, listedArgs := listedCreditsCTE(t, audience, creditFilter{parentID: id})
+	statement, args := adminListOrders[domain.TagSortName].pageStatement(listed, listedArgs, creditListedColumns, "", nil, 0)
+	items, _, _, err := readListedCredits(ctx, tx, t, statement, args)
+	if err != nil {
+		return nil, err
+	}
+	if err := addCreditDetails(ctx, tx, t, items); err != nil {
+		return nil, err
+	}
+	return items, tx.Commit()
+}
+
 // Reject nonpositive IDs before the CTE interprets them as no ID filter.
 func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (domain.Credit, error) {
 	if id <= 0 {
@@ -103,10 +131,11 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 
 const creditListedColumns = `id, name, provisional, created_at, sort_key, video_count, parent_id, birth_key`
 
-// creditFilter narrows the listed relation; a zero onlyID means every entity.
+// creditFilter narrows the listed relation; a zero onlyID or parentID means every entity.
 type creditFilter struct {
 	search       string
 	onlyID       int64
+	parentID     int64
 	favoriteOnly bool
 	// provisional, when set, keeps only people with (false) or without (true) names.
 	provisional *bool
@@ -125,6 +154,10 @@ func listedCreditsCTE(t creditTables, audience domain.Audience, filter creditFil
 		countArgs = []any{filter.onlyID}
 		conditions = append(conditions, `e.id = ?`)
 		whereArgs = append(whereArgs, filter.onlyID)
+	}
+	if filter.parentID > 0 {
+		conditions = append(conditions, `e.parent_id = ?`)
+		whereArgs = append(whereArgs, filter.parentID)
 	}
 	if filter.search != "" {
 		conditions = append(conditions,
