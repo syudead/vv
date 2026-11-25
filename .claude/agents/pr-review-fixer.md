@@ -37,11 +37,12 @@ the brief and the "Review of the integration PR" section of
 resolve the rest, listing the real defects among them in the PR body. Resolve
 a thread you answered as not a defect, and leave a thread whose fix went into a
 fix PR unresolved; the pre-merge sweep resolves it after that PR merges. Do not
-merge the PR, rebase, force-push, close Issues, or
-change approved artifacts (the brief says which artifacts a Plan or Design
-PR leaves unapproved).
-When a fix needs an approved artifact or a requester decision changed, change
-nothing and return BLOCKED with the exact question.
+merge the PR, rebase, force-push or close Issues. Change a feature artifact
+(the Plan, ui-design.md, a contract, the data model) only as the brief
+allows: to correct one that contradicts the code or itself where the parent
+Issue still decides the answer. When a finding needs a requester decision,
+fix the other findings, leave that one, and return BLOCKED with the exact
+question in terms of what the user gets.
 
 End with the return block from
 `.agents/skills/sdd-autopilot/references/briefs.md` and nothing after it: FIXED

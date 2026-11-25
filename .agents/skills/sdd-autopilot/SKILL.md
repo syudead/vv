@@ -27,13 +27,15 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
 - merging stage and implementation PRs into the feature branch once they pass
   the gates in [references/loop.md](references/loop.md)
 - closing a child Issue as completed after its PR merges
-- revising the Plan this run merged, when a later stage finds that it
-  contradicts the code, another artifact or itself and the parent Issue still
-  decides the answer
+- correcting the Plan and the other artifacts this run merged, when a later
+  stage finds that one contradicts the code, another artifact or itself, or
+  leaves a decision open, and the parent Issue still decides the answer
   ([references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)).
   The parent Issue is never changed here
-- closing, without merging it, an implementation PR whose unit that revision
-  dropped
+- closing, without merging it, an implementation PR whose unit that
+  correction dropped
+- merging a feature-branch PR on the reviews it has when the requested
+  automated review does not arrive
 
 The integration PR is never merged here. Before handing it over, the run makes
 it as ready as it can: after the initial review pass, a pre-merge sweep runs
@@ -124,23 +126,47 @@ the integration PR link and anything a worker deferred.
 
 ## Stop and ask instead of deciding
 
-Autopilot does not widen what a single stage may decide. Stop the loop and
-report to the maintainer when:
+Autopilot does not widen what a single stage may decide, with one exception:
+it corrects artifacts it merged itself
+([references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)).
+A stop costs the maintainer hours, because nobody is watching the run. Before
+stopping, check that the answer is one the run cannot give: in past runs most
+stops were answered with "go on" and nothing else.
+
+Hold one item and keep the rest of the run going
+([references/loop.md, Holding one item](references/loop.md#holding-one-item))
+when:
 
 - a worker returns `BLOCKED` for a question that belongs to the requester
   (Q-6, Q-7 in
-  [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)),
-  or for anything else that is not `BLOCKED_ON: artifact`
-- a worker returns `BLOCKED_ON: artifact` and
-  [references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)
-  says to stop: the integration PR exists, two revisions have merged, or the
-  same work is blocked again
+  [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md))
+- a contradiction comes back after its correction merged, or is found once
+  the integration PR exists
+- a check stays pending, or branch protection refuses a merge
+
+Stop the whole run and report when:
+
 - an integration fix or refresh reaches a limit in
   [references/loop.md, Drive a feature PR to merge](references/loop.md#drive-a-feature-pr-to-merge)
 - a required GitHub capability is missing, or the stage selection would stop
   and ask
 - the free disk space stays below the threshold after removing finished
   worktrees
+
+### Reporting a stop
+
+The maintainer reads the report cold, hours later, without the run's context.
+Two past reports needed a second round trip because they could not be
+understood. Write it in Japanese, and so that it can be answered in one
+word:
+
+- what is held and what went on without it, in one sentence each
+- the question in terms of what the user of the product sees or gets, not in
+  the Plan's unit names, file names or this skill's labels
+- the options, each with what the user gets and what it costs, and which one
+  you recommend and why
+- nothing that is not a question: decisions the run already made go in the
+  PR bodies, not into a list of "decisions waiting on you"
 
 Any other revision of an approved artifact is outside this skill: one the
 maintainer wants, or one that follows a changed parent Issue. The stage
