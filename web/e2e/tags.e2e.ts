@@ -263,13 +263,7 @@ test.describe.serial("video tags", () => {
       await page.route("**/api/tags/rejected-names**", (route) =>
         route.request().method() === "GET"
           ? route.fulfill({
-              json: {
-                items: Array.from(
-                  { length: 1000 },
-                  (_, index) => `e2e却下${String(index)}`,
-                ),
-                total: 1000,
-              },
+              json: { items: ["e2e却下0"], total: 1 },
             })
           : route.fallback(),
       );

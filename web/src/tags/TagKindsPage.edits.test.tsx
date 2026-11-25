@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
+  historyBack,
   hold,
   install,
   kind,
@@ -10,6 +11,7 @@ import {
   renderPage,
   server,
   setUpTagsPageServer,
+  tag,
 } from "../testing/tagsPage";
 
 setUpTagsPageServer();
@@ -85,6 +87,37 @@ describe("TagKindsPage 取り消しと失敗", () => {
     });
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByTitle("Place")).toBeNull();
+  });
+
+  it("削除の送信中にタグの一覧へ戻ると、削除が済んでから一覧を読み直し、種類なしで出す", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre", cardFirst: false } }),
+    ];
+    install();
+    renderPage({ url: "/tags" });
+    await screen.findByTitle("Robot");
+    await user.click(screen.getByRole("link", { name: "Kinds" }));
+    await screen.findByTitle("Genre");
+
+    const dialog = await openDeleteDialog(user, "Genre");
+    hold.kindDeletes = true;
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(kindDeleteReleases).toHaveLength(1));
+    await historyBack();
+    const row = (await screen.findByTitle("Robot")).closest<HTMLElement>(
+      "[data-tag-id]",
+    )!;
+    expect(within(row).getByText("Genre")).toBeDefined();
+
+    await act(async () => {
+      kindDeleteReleases[0]!();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      const current = screen.getByTitle("Robot").closest<HTMLElement>("[data-tag-id]")!;
+      expect(within(current).queryByText("Genre")).toBeNull();
+    });
   });
 
   it("削除が 404 以外で失敗したら窓の中に誤りを出し、窓と行を残す", async () => {

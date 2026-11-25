@@ -22,7 +22,11 @@ import {
   type Tag,
   type TagListSort,
 } from "../api/tags";
-import { tagKindCountsChanged, tagKindGone } from "../api/tagKinds";
+import {
+  subscribeTagKindRefsChanged,
+  tagKindCountsChanged,
+  tagKindGone,
+} from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
 import {
   readTagListPreferences,
@@ -304,6 +308,15 @@ export default function TagsPage() {
       sort,
     });
   }, [normalizedQuery, tentativeOnly, unusedOnly, kind, sort, load, searchRef]);
+
+  /** Rows embed kind refs; re-read them when a kind edit lands after this page loaded, as after Back mid-delete. */
+  useEffect(
+    () =>
+      subscribeTagKindRefsChanged(() => {
+        void reload();
+      }),
+    [reload],
+  );
 
   useLayoutEffect(() => {
     filtersRef.current = { tentativeOnly, unusedOnly, kind };
