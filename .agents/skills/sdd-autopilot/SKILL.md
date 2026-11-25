@@ -27,6 +27,15 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
 - merging stage and implementation PRs into the feature branch once they pass
   the gates in [references/loop.md](references/loop.md)
 - closing a child Issue as completed after its PR merges
+- correcting the Plan and the other artifacts this run merged, when a later
+  stage finds that one contradicts the code, another artifact or itself, or
+  leaves a decision open, and the parent Issue still decides the answer
+  ([references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)).
+  The parent Issue is never changed here
+- closing, without merging it, an implementation PR whose unit that
+  correction dropped
+- merging a feature-branch PR on the reviews it has when the requested
+  automated review does not arrive
 
 The integration PR is never merged here. Before handing it over, the run makes
 it as ready as it can: after the initial review pass, a pre-merge sweep runs
@@ -92,7 +101,7 @@ everything downstream or a miss is expensive to find later.
 
 | Work | Model | Why |
 | --- | --- | --- |
-| `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
+| `plan`, Plan revision and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
 | Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
 | Implementation, `plan-to-issues`, review fixers, conflict-free integrate, pre-merge sweep | inherit | Bounded by an approved artifact or a child Issue; high volume |
 
@@ -110,21 +119,34 @@ Follow [references/loop.md](references/loop.md). In short:
    through workers (independent children in parallel), apply the merge gates,
    close merged children. Repeat.
 3. After the integration PR's review pass, run the pre-merge sweep once.
-4. Stop on a blocker, or when the integration PR meets the finish line.
+4. Hold what a blocker holds and go on with the rest; stop when nothing else
+   can move, or when the integration PR meets the finish line.
 
 Report to the maintainer in one short line per merged PR, and at the end with
 the integration PR link and anything a worker deferred.
 
 ## Stop and ask instead of deciding
 
-Autopilot does not widen what a single stage may decide. Stop the loop and
-report to the maintainer when:
+Autopilot does not widen what a single stage may decide, with one exception:
+it corrects artifacts it merged itself
+([references/loop.md, Revise the Plan](references/loop.md#revise-the-plan)).
+A stop costs the maintainer hours, because nobody is watching the run. Before
+stopping, check that the answer is one the run cannot give: in past runs most
+stops were answered with "go on" and nothing else.
+
+Hold one item and keep the rest of the run going
+([references/loop.md, Holding one item](references/loop.md#holding-one-item))
+when:
 
 - a worker returns `BLOCKED` for a question that belongs to the requester
   (Q-6, Q-7 in
   [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md))
-  or to an approved artifact
-- a review finding can only be fixed by changing an approved artifact
+- a contradiction comes back after its correction merged, or is found once
+  the integration PR exists
+- a check stays pending, or branch protection refuses a merge
+
+Stop the whole run and report when:
+
 - an integration fix or refresh reaches a limit in
   [references/loop.md, Drive a feature PR to merge](references/loop.md#drive-a-feature-pr-to-merge)
 - a required GitHub capability is missing, or the stage selection would stop
@@ -132,11 +154,27 @@ report to the maintainer when:
 - the free disk space stays below the threshold after removing finished
   worktrees
 
-Revising an approved artifact is outside this skill. The stage selection
-never re-runs a stage whose artifact exists, so it does not notice that, for
-example, `ui-design.md` predates a revised Plan. The maintainer names and
-reruns the affected stages with `issue-handoff` first, and starts
-this skill again afterwards.
+### Reporting a stop
+
+The maintainer reads the report cold, hours later, without the run's context.
+Two past reports needed a second round trip because they could not be
+understood. Write it in Japanese, and so that it can be answered in one
+word:
+
+- what is held and what went on without it, in one sentence each
+- the question in terms of what the user of the product sees or gets, not in
+  the Plan's unit names, file names or this skill's labels
+- the options, each with what the user gets and what it costs, and which one
+  you recommend and why
+- nothing that is not a question: decisions the run already made go in the
+  PR bodies, not into a list of "decisions waiting on you"
+
+Any other revision of an approved artifact is outside this skill: one the
+maintainer wants, or one that follows a changed parent Issue. The stage
+selection never re-runs a stage whose artifact exists, so it does not notice
+that, for example, `ui-design.md` predates a Plan the maintainer revised. The
+maintainer names and reruns the affected stages with `issue-handoff` first,
+and starts this skill again afterwards.
 
 Leave everything already merged in place. A later run of this skill on the same
 parent picks up from GitHub where this one stopped.

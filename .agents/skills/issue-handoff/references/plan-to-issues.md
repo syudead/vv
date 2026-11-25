@@ -56,7 +56,8 @@ in the parent Issue or the approved artifacts the statement comes from.
      ([P-5](../../../../docs/design-docs/plan-quality.md)).
 
    Create no child Issue until the artifact that owns the answer carries it and
-   a human has approved that change. A child Issue built on an answer the parent
+   a human has approved that change (under `sdd-autopilot`, its merge of the
+   revision PR). A child Issue built on an answer the parent
    Issue does not have leaves the specification behind the implementation.
 5. List the parent's open and closed native sub-issues. Immediately before each
    create, skip the proposal when the same work is already represented.
@@ -67,9 +68,30 @@ in the parent Issue or the approved artifacts the statement comes from.
    sub-issue API. Add no other label. Do not create an ordinary unparented
    Issue as a fallback.
 7. Do not update or close existing children unless the user explicitly names
-   those Issues.
+   those Issues or asks for the reconcile [after a Plan revision](#after-a-plan-revision).
 8. After all missing children are attached, stop. Do not edit the parent body,
    change repository files, or open a PR.
+
+## After a Plan revision
+
+After a merged revision of the Plan or of an artifact the child Issues were
+written from, the children created earlier no longer match it. Run this when the user asks for the
+children to be reconciled, or when the `sdd-autopilot` brief names the
+revision PR. Compare each unit with its child by heading and title:
+
+- A unit with no child: create it as in steps 3 to 6. A child closed as not
+  planned still represents its unit, unless the revision being reconciled
+  lists that unit as added: then it gets a new child.
+- A child that is not done
+  ([README](README.md#selecting-the-stage)) and whose unit, or an artifact
+  its body draws from, changed: rewrite its body from the revised Plan and
+  artifacts, including the `Depends on:` line.
+- A child that is not done and whose unit the Plan dropped: close it as not
+  planned.
+- A done child is never edited or reopened. The revised Plan corrects merged
+  work through a new unit.
+
+Step 4 still applies: decide nothing the revised Plan does not.
 
 If Issue creation or native sub-issue attachment is unavailable, stop before
 creating anything and report the missing capability.
