@@ -6,16 +6,13 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import {
   tag,
   server,
-  rejectedGetReleases,
   confirmReleases,
   hold,
   install,
   renderPage,
   filterButton,
   toggleFilter,
-  rejectedTab,
-  tagsTab,
-  openRejectedTab,
+  openRejectedPage,
   setUpTagsPageServer,
 } from "../testing/tagsPage";
 
@@ -196,9 +193,6 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const entry = rejectedTab();
-    await waitFor(() => expect(entry.textContent).toContain("0"));
-
     await user.click(
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
     );
@@ -218,10 +212,9 @@ describe("TagsPage 仮のタグ", () => {
         within(rowOf("Beta")).getByRole("button", { name: "Rename" }),
       ),
     );
-    await waitFor(() => expect(entry.textContent).toContain("1"));
 
-    const list = await openRejectedTab(user);
-    expect(within(list).getByTitle("Alpha")).toBeDefined();
+    const list = await openRejectedPage(user);
+    expect(await within(list).findByTitle("Alpha")).toBeDefined();
   });
 
   it("0本の仮のタグの却下の確認は、どの動画にも付いていないと出す", async () => {
@@ -297,161 +290,6 @@ describe("TagsPage 仮のタグ", () => {
     expect(screen.getByRole("alertdialog", { name: 'Reject "Alpha"' })).toBeDefined();
   });
 
-  it("却下した名前を「Allow again」で一覧から外せる。最後の1つならタブへフォーカスが移る（受け入れ条件13）", async () => {
-    const user = userEvent.setup();
-    server.rejectedNames = ["Old", "Stale"];
-    install();
-    renderPage();
-    await screen.findByTitle("Alpha");
-
-    const entry = rejectedTab();
-    await waitFor(() => expect(entry.textContent).toContain("2"));
-    const list = await openRejectedTab(user);
-    expect(entry.getAttribute("aria-selected")).toBe("true");
-    expect(
-      screen.getByText(
-        "Automatic tagging won't create these names. Allow a name again to let it be created.",
-      ),
-    ).toBeDefined();
-
-    await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
-    await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
-    expect(server.rejectedNames).toEqual(["Stale"]);
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(list).getByRole("button", { name: 'Allow "Stale" again' }),
-      ),
-    );
-
-    await user.click(within(list).getByRole("button", { name: 'Allow "Stale" again' }));
-    expect(await screen.findByText("No rejected names")).toBeDefined();
-    await waitFor(() => expect(document.activeElement).toBe(rejectedTab()));
-    expect(rejectedTab().textContent).toContain("0");
-  });
-
-  it("却下した名前は見出しの下のタブで、選ぶと本文に一覧と取り外しが出る（受け入れ条件12）", async () => {
-    const user = userEvent.setup();
-    server.rejectedNames = ["Old"];
-    install();
-    renderPage();
-    await screen.findByTitle("Alpha");
-
-    const entry = rejectedTab();
-    const firstRow = screen.getByTitle("Alpha").closest("[data-tag-id]")!;
-    expect(
-      entry.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(entry.closest(".sticky")).toBe(
-      screen.getByRole("heading", { name: "Tags" }).closest(".sticky"),
-    );
-    expect(entry.getAttribute("aria-haspopup")).toBeNull();
-    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
-    await waitFor(() => expect(entry.textContent).toContain("1"));
-
-    const list = await openRejectedTab(user);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(
-      screen.queryByRole("link", { name: "Open the library filtered by Alpha" }),
-    ).toBeNull();
-    expect(
-      screen.getByText(
-        "Automatic tagging won't create these names. Allow a name again to let it be created.",
-      ),
-    ).toBeDefined();
-    await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
-    expect(await screen.findByText("No rejected names")).toBeDefined();
-    expect(server.rejectedNames).toEqual([]);
-
-    await user.click(tagsTab());
-    expect(await screen.findByTitle("Alpha")).toBeDefined();
-  });
-
-  it("タグの一覧を取る前もタブは出し、件数は届いてから添える。タグが無いときも出す", async () => {
-    server.tags = [];
-    install();
-    renderPage();
-    expect(rejectedTab()).toBeDefined();
-    expect(await screen.findByText("No tags yet")).toBeDefined();
-    await waitFor(() => expect(rejectedTab().textContent).toContain("0"));
-    expect(tagsTab().textContent).toContain("0");
-  });
-
-  it("却下した名前を取れなかったら理由を出し、再試行できる", async () => {
-    const user = userEvent.setup();
-    server.failRejectedGets = true;
-    server.rejectedNames = ["Old"];
-    install();
-    renderPage();
-    await screen.findByTitle("Alpha");
-
-    await user.click(rejectedTab());
-    expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
-
-    server.failRejectedGets = false;
-    await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(
-      await screen.findByRole("button", { name: 'Allow "Old" again' }),
-    ).toBeDefined();
-  });
-
-  it("取り外しの前から待っていた取り直しの古い応答で、外した名前が戻らない", async () => {
-    const user = userEvent.setup();
-    server.rejectedNames = ["Old", "Stale"];
-    install();
-    renderPage();
-    await screen.findByTitle("Alpha");
-
-    hold.rejectedGets = true;
-    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    await user.click(await screen.findByRole("button", { name: "Reject" }));
-    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
-    expect(rejectedGetReleases).toHaveLength(1);
-    hold.rejectedGets = false;
-
-    const list = await openRejectedTab(user);
-
-    await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
-    await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
-
-    rejectedGetReleases.forEach((resolve) => resolve());
-    expect(
-      await within(list).findByRole("button", { name: 'Allow "Beta" again' }),
-    ).toBeDefined();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(within(list).queryByTitle("Old")).toBeNull();
-  });
-
-  it("一覧を持ったあとの取り直しに失敗しても、古い並びを残さず理由と再試行を出す", async () => {
-    const user = userEvent.setup();
-    server.rejectedNames = ["Old"];
-    install();
-    renderPage();
-    await screen.findByTitle("Alpha");
-    await user.click(rejectedTab());
-    expect(
-      await screen.findByRole("button", { name: 'Allow "Old" again' }),
-    ).toBeDefined();
-    await user.click(tagsTab());
-    await screen.findByTitle("Beta");
-
-    server.failRejectedGets = true;
-    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    await user.click(await screen.findByRole("button", { name: "Reject" }));
-    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
-
-    await user.click(rejectedTab());
-    expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
-    expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
-
-    server.failRejectedGets = false;
-    await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(
-      await screen.findByRole("button", { name: 'Allow "Beta" again' }),
-    ).toBeDefined();
-  });
-
   it("「Tentative only」中に作成を取り消すと、「新しいタグ」へフォーカスが戻る", async () => {
     const user = userEvent.setup();
     install();
@@ -519,16 +357,12 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const entry = rejectedTab();
-    await waitFor(() => expect(entry.textContent).toContain("1"));
-
     await user.click(screen.getByRole("button", { name: "New tag" }));
     await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Old");
     await user.keyboard("{Enter}");
     await screen.findByTitle("Old");
 
-    await waitFor(() => expect(entry.textContent).toContain("0"));
-    await user.click(entry);
+    await openRejectedPage(user);
     expect(await screen.findByText("No rejected names")).toBeDefined();
     expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
   });
@@ -630,10 +464,10 @@ describe("TagsPage 仮のタグ", () => {
     const userData = ["Alpha", "Beta", "Cat", "Gamma", "ガンマ", "Old"];
     expectCatalogTextOnly(document.body, userData);
 
-    await user.click(screen.getByRole("tab", { name: /Rejected names/ }));
-    await screen.findByRole("table", { name: /Rejected names/ });
+    await user.click(screen.getByRole("link", { name: /Rejected names/ }));
+    await screen.findByRole("button", { name: /Old/ });
     expectCatalogTextOnly(document.body, userData);
-    await user.click(screen.getByRole("tab", { name: /Tags/ }));
+    await user.click(screen.getByRole("link", { name: /Tags/ }));
     await screen.findByTitle("Alpha");
 
     await user.click(screen.getByRole("button", { name: /Filter/ }));

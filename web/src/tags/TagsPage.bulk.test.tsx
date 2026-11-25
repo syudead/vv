@@ -202,12 +202,11 @@ describe("TagsPage まとめての操作", () => {
     expect(server.pageRequests.at(-1)?.get("limit")).toBe("100");
     expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
     await waitFor(() =>
-      expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
-        "Gamma",
-        "Cat",
-        "Alpha",
-        "Beta",
-      ]),
+      expect(
+        within(screen.getByRole("table"))
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["Gamma", "Cat", "Alpha", "Beta"]),
     );
     expect(selectAll().getAttribute("aria-checked")).toBe("false");
 

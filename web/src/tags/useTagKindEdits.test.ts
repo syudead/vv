@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextAfterRemoval, withKind } from "./useTagKindsTab";
+import { nextAfterRemoval, withKind } from "./useTagKindEdits";
 
 const kind = (id: number, name: string) => ({
   id,

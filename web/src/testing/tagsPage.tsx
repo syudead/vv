@@ -1,8 +1,10 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   MemoryRouter,
   type NavigateFunction,
+  Route,
+  Routes,
   useLocation,
   useNavigate,
 } from "react-router";
@@ -14,6 +16,8 @@ import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "../recordList/listRows";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import RejectedNamesPage from "../tags/RejectedNamesPage";
+import TagKindsPage from "../tags/TagKindsPage";
 import TagsPage from "../tags/TagsPage";
 
 export function jsonResponse(body: unknown, status = 200): Response {
@@ -725,12 +729,14 @@ export function install() {
   return fetchMock;
 }
 
-export const probe = { search: "" };
+export const probe = { pathname: "", search: "" };
 
 let historyNavigate: NavigateFunction | null = null;
 
 export function LocationProbe() {
-  probe.search = useLocation().search;
+  const location = useLocation();
+  probe.pathname = location.pathname;
+  probe.search = location.search;
   historyNavigate = useNavigate();
   return null;
 }
@@ -762,7 +768,11 @@ export function renderPage({
               <div id="topbar-library-tools" />
             </header>
           )}
-          <TagsPage />
+          <Routes>
+            <Route path="/tags" element={<TagsPage />} />
+            <Route path="/tags/kinds" element={<TagKindsPage />} />
+            <Route path="/tags/rejected" element={<RejectedNamesPage />} />
+          </Routes>
           <LocationProbe />
         </ToastProvider>
       </TooltipProvider>
@@ -798,22 +808,18 @@ export async function filterChecked(
   return checked;
 }
 
-export function rejectedTab(): HTMLElement {
-  return screen.getByRole("tab", { name: /Rejected names/ });
+export function rejectedLink(): HTMLElement {
+  return screen.getByRole("link", { name: "Rejected names" });
 }
 
-export function kindsTab(): HTMLElement {
-  return screen.getByRole("tab", { name: /^Kinds/ });
+export function kindsLink(): HTMLElement {
+  return screen.getByRole("link", { name: "Kinds" });
 }
 
-export function tagsTab(): HTMLElement {
-  return screen.getByRole("tab", { name: /^Tags/ });
-}
-
-export async function openRejectedTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(rejectedTab());
-  const panel = await screen.findByRole("tabpanel", { name: /Rejected names/ });
-  return within(panel).findByRole("table", { name: "Rejected names" });
+/** The section of the rejected names page, reached from the tag list's header. */
+export async function openRejectedPage(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(rejectedLink());
+  return screen.findByRole("region", { name: "All rejected names" });
 }
 
 /** Call once at file scope to reset server and caches per test and restore fetch afterward. */

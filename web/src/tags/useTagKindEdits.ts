@@ -1,29 +1,19 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import {
   createTagKind,
-  currentTagKinds,
   deleteTagKind,
-  refreshTagKinds,
   renameTagKind,
   setTagKindCardFirst,
   sortTagKinds,
-  subscribeTagKinds,
   type TagKind,
 } from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
 import type { ShowToast } from "../ui/Toast";
-import { kindFieldError } from "./tagNameField";
 import type { TagFieldError } from "../ui/nameField";
-import { isShown } from "../recordList/useVirtualTagRows";
-
-export interface KindRowRefs {
-  nameLink: HTMLAnchorElement | null;
-  renameButton: HTMLButtonElement | null;
-  menuButton: HTMLButtonElement | null;
-  actionsButton: HTMLButtonElement | null;
-}
+import { kindFieldError } from "./tagNameField";
+import { useTagKinds } from "./useTagKinds";
 
 export function withKind(kinds: readonly TagKind[], kind: TagKind): TagKind[] {
   return sortTagKinds([...kinds.filter((item) => item.id !== kind.id), kind]);
@@ -42,12 +32,9 @@ function isKindNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.reason === "tag_kind_not_found";
 }
 
-export interface TagKindsTab {
+export interface TagKindEdits {
   kinds: TagKind[] | undefined;
-  /** Cached data alone cannot prove a URL kind is gone; require a successful read since mount. */
-  fresh: boolean;
   loadError: UiText | null;
-  creating: boolean;
   createPending: boolean;
   createError: TagFieldError | null;
   renamingId: number | null;
@@ -58,13 +45,10 @@ export interface TagKindsTab {
   deleteError: UiText | null;
   /** The kind whose card order is being saved. */
   cardFirstPendingId: number | null;
-  pending: boolean;
-  editing: boolean;
-  registerRefs: (id: number, refs: Partial<KindRowRefs>) => void;
+  registerMenu: (id: number, menu: HTMLButtonElement | null) => void;
   reload: () => void;
-  openCreate: () => void;
-  cancelCreate: () => void;
-  submitCreate: (name: string) => void;
+  /** Resolves true when the kind was created, so the field can clear itself. */
+  submitCreate: (name: string) => Promise<boolean>;
   clearCreateError: () => void;
   startRename: (kind: TagKind) => void;
   cancelRename: (kind: TagKind) => void;
@@ -74,26 +58,17 @@ export interface TagKindsTab {
   cancelDelete: () => void;
   performDelete: (kind: TagKind) => void;
   setCardFirst: (kind: TagKind, cardFirst: boolean) => void;
-  closeEdits: () => void;
-  /** Consume rename/deletion changes to decide whether the Tags tab must refresh. */
-  takeChanged: () => boolean;
 }
 
-/** Refresh on entry even with cached kinds because counts may have changed; apply edits locally while the API refreshes shared state. */
-export function useTagKindsTab({
+/** Apply edits locally while the API refreshes the shared kinds; focus returns to a row's menu or the New kind field. */
+export function useTagKindEdits({
   toast,
   newKindRef,
 }: {
   toast: ShowToast;
-  newKindRef: RefObject<HTMLButtonElement | null>;
-}): TagKindsTab {
-  const [kinds, setKinds] = useState<TagKind[] | undefined>(() => {
-    const held = currentTagKinds();
-    return held === undefined ? undefined : sortTagKinds(held);
-  });
-  const [loadError, setLoadError] = useState<UiText | null>(null);
-  const [fresh, setFresh] = useState(false);
-  const [creating, setCreating] = useState(false);
+  newKindRef: RefObject<HTMLInputElement | null>;
+}): TagKindEdits {
+  const { kinds, loadError, setKinds, reload } = useTagKinds();
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -103,84 +78,38 @@ export function useTagKindsTab({
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
   const [cardFirstPendingId, setCardFirstPendingId] = useState<number | null>(null);
-  const changed = useRef(false);
-  const rowRefs = useRef(new Map<number, Partial<KindRowRefs>>());
+  const menus = useRef(new Map<number, HTMLButtonElement>());
 
-  useEffect(() => {
-    const received = (list: TagKind[]) => {
-      setKinds(sortTagKinds(list));
-      setLoadError(null);
-      setFresh(true);
-    };
-    const unsubscribe = subscribeTagKinds(received);
-    refreshTagKinds().then(received, (failure: unknown) =>
-      setLoadError(errorText(failure)),
-    );
-    return unsubscribe;
+  const registerMenu = useCallback((id: number, menu: HTMLButtonElement | null) => {
+    if (menu === null) menus.current.delete(id);
+    else menus.current.set(id, menu);
   }, []);
 
-  /** Preserve rows during refresh, but expose failure instead of stale counts used by deletion confirmation. */
-  const reload = useCallback(() => {
-    setLoadError(null);
-    refreshTagKinds().catch((failure: unknown) => setLoadError(errorText(failure)));
-  }, []);
-
-  const registerRefs = useCallback((id: number, refs: Partial<KindRowRefs>) => {
-    const current = rowRefs.current.get(id) ?? {};
-    rowRefs.current.set(id, { ...current, ...refs });
-  }, []);
-
-  /** Focus compact Actions when individual buttons are hidden; fall back to New kind for missing rows. */
-  function focusLater(id: number | undefined, part: "name" | "rename" | "menu") {
+  /** Wait for the row to render or leave before choosing the target. */
+  function focusLater(id: number | undefined) {
     setTimeout(() => {
-      const refs = id === undefined ? undefined : rowRefs.current.get(id);
-      const preferred =
-        part === "name"
-          ? refs?.nameLink
-          : part === "rename"
-            ? refs?.renameButton
-            : refs?.menuButton;
-      const target =
-        preferred?.isConnected === true && (part === "name" || isShown(preferred))
-          ? preferred
-          : refs?.actionsButton;
-      if (target?.isConnected === true) target.focus();
+      const menu = id === undefined ? undefined : menus.current.get(id);
+      if (menu?.isConnected === true) menu.focus();
       else newKindRef.current?.focus();
     }, 0);
   }
 
-  // Callers block starting/cancelling edits while pending through disabled actions and guarded row inputs.
-  function openCreate() {
-    setCreating(true);
-    setCreateError(null);
-    setRenamingId(null);
-    setRenameError(null);
-  }
-
-  function cancelCreate() {
-    setCreating(false);
-    setCreateError(null);
-    setTimeout(() => newKindRef.current?.focus(), 0);
-  }
-
-  async function submitCreate(name: string) {
+  async function submitCreate(name: string): Promise<boolean> {
     setCreateError(null);
     setCreatePending(true);
     try {
       const created = await createTagKind(name);
       setKinds((current) => withKind(current ?? [], created));
-      setCreating(false);
-      focusLater(created.id, "name");
+      return true;
     } catch (failure) {
       setCreateError(kindFieldError(failure));
+      return false;
     } finally {
       setCreatePending(false);
     }
   }
 
   function startRename(kind: TagKind) {
-    setCreating(false);
-    setCreateError(null);
     setRenameError(null);
     setRenamingId(kind.id);
   }
@@ -188,13 +117,12 @@ export function useTagKindsTab({
   function cancelRename(kind: TagKind) {
     setRenamingId(null);
     setRenameError(null);
-    focusLater(kind.id, "rename");
+    focusLater(kind.id);
   }
 
   function gone(order: readonly TagKind[], id: number) {
-    changed.current = true;
     toast(t.tags.kinds.gone);
-    focusLater(nextAfterRemoval(order, id)?.id, "rename");
+    focusLater(nextAfterRemoval(order, id)?.id);
   }
 
   async function submitRename(kind: TagKind, name: string) {
@@ -203,10 +131,9 @@ export function useTagKindsTab({
     const order = kinds ?? [];
     try {
       const updated = await renameTagKind(kind.id, name);
-      changed.current = true;
       setKinds((current) => withKind(current ?? [], updated));
       setRenamingId(null);
-      focusLater(updated.id, "rename");
+      focusLater(updated.id);
     } catch (failure) {
       if (isKindNotFound(failure)) {
         setRenamingId(null);
@@ -230,8 +157,7 @@ export function useTagKindsTab({
     const target = deleting;
     setDeleting(null);
     setDeleteError(null);
-    // The originating menu item unmounted; restore its row's menu trigger.
-    focusLater(target.id, "menu");
+    focusLater(target.id);
   }
 
   async function performDelete(target: TagKind) {
@@ -240,11 +166,10 @@ export function useTagKindsTab({
     setDeletePending(true);
     try {
       await deleteTagKind(target.id);
-      changed.current = true;
       setKinds((current) => current?.filter((item) => item.id !== target.id));
       setDeleting(null);
       toast(t.tags.kinds.deleted(target.name));
-      focusLater(nextAfterRemoval(order, target.id)?.id, "rename");
+      focusLater(nextAfterRemoval(order, target.id)?.id);
     } catch (failure) {
       if (isKindNotFound(failure)) {
         setDeleting(null);
@@ -274,26 +199,9 @@ export function useTagKindsTab({
     }
   }
 
-  function closeEdits() {
-    setCreating(false);
-    setCreateError(null);
-    setRenamingId(null);
-    setRenameError(null);
-    setDeleting(null);
-    setDeleteError(null);
-  }
-
-  function takeChanged(): boolean {
-    const result = changed.current;
-    changed.current = false;
-    return result;
-  }
-
   return {
     kinds,
-    fresh,
     loadError,
-    creating,
     createPending,
     createError,
     renamingId,
@@ -303,13 +211,9 @@ export function useTagKindsTab({
     deletePending,
     deleteError,
     cardFirstPendingId,
-    pending: createPending || renamePending || deletePending,
-    editing: creating || renamingId !== null || deleting !== null,
-    registerRefs,
+    registerMenu,
     reload,
-    openCreate,
-    cancelCreate,
-    submitCreate: (name) => void submitCreate(name),
+    submitCreate,
     clearCreateError: () => setCreateError(null),
     startRename,
     cancelRename,
@@ -319,7 +223,5 @@ export function useTagKindsTab({
     cancelDelete,
     performDelete: (kind) => void performDelete(kind),
     setCardFirst: (kind, cardFirst) => void setCardFirst(kind, cardFirst),
-    closeEdits,
-    takeChanged,
   };
 }
