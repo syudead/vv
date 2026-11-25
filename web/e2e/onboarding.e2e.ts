@@ -267,16 +267,14 @@ test.describe.serial("onboarding", () => {
 
       const videos = await waitForVideos(request);
 
-      await test.step("3: 分野のタグが種類 Genre でタグ管理画面に並ぶ", async () => {
+      await test.step("3: 分野のタグが種類 Genre のタグカードとして一覧に並ぶ", async () => {
         await page.goto("/tags");
         for (const name of interests) {
-          const row = page
-            .getByRole("link", {
-              name: `Open the library filtered by ${name}`,
-              exact: true,
-            })
-            .locator("xpath=ancestor::*[@data-tag-id][1]");
-          await expect(row.getByTitle("Kind: Genre")).toBeVisible();
+          // A tag card names its kind on its second line.
+          const card = page
+            .locator("a[data-tag-id]")
+            .filter({ has: page.getByTitle(name, { exact: true }) });
+          await expect(card).toContainText("Genre");
         }
       });
 
