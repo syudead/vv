@@ -286,6 +286,21 @@ func restoreBody(r *http.Request, raw []byte) {
 // renameTagOnPeer renames every link's tag of id's name before RenameTag renames id; it answers w and reports false
 // when the rename stops here. A name the rule refuses, or a tag that is not here, is left to the local rename.
 func (s *server) renameTagOnPeer(w http.ResponseWriter, r *http.Request, id int64, name string) bool {
+	return s.tagNameOnPeer(w, r, id, name, domain.VocabularyRename, func(ctx context.Context, current, normalized string) (send, ok bool) {
+		if current == normalized {
+			return false, true
+		}
+		return true, s.tagNameFree(w, ctx, normalized)
+	})
+}
+
+// tagNameOnPeer sends action, which gives every link's tag of id's canonical name the normalized name, once check
+// says to send it; check answers w itself when ok is false. It answers w and reports false when the change stops
+// here; a name the rule refuses, or a tag that is not here, is left to the local change.
+func (s *server) tagNameOnPeer(
+	w http.ResponseWriter, r *http.Request, id int64, name string, action domain.VocabularyAction,
+	check func(ctx context.Context, current, normalized string) (send, ok bool),
+) bool {
 	normalized, err := domain.NormalizeTagName(name)
 	if err != nil {
 		return true
@@ -300,14 +315,23 @@ func (s *server) renameTagOnPeer(w http.ResponseWriter, r *http.Request, id int6
 		return false
 	}
 	current, found := names[id]
-	if !found || current == normalized {
+	if !found {
 		return true
 	}
-	if !s.tagNameFree(w, r.Context(), normalized) || !s.renameFreeOnLinks(w, r, domain.VocabularyTag, current, normalized, 0) {
+	if send, ok := check(r.Context(), current, normalized); !ok || !send {
+		return ok
+	}
+	holderOf := func(items []peerVocabularyItem) (string, bool) {
+		return renameHolder(items, domain.VocabularyTag, current, normalized)
+	}
+	if action == domain.VocabularyPromote {
+		holderOf = func(items []peerVocabularyItem) (string, bool) { return promoteHolder(items, current, normalized) }
+	}
+	if !s.nameFreeOnLinks(w, r, domain.VocabularyTag, normalized, 0, holderOf) {
 		return false
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
-		Kind: domain.VocabularyTag, Action: domain.VocabularyRename, Name: current, NewName: normalized,
+		Kind: domain.VocabularyTag, Action: action, Name: current, NewName: normalized,
 	})
 	return ok
 }
@@ -452,6 +476,16 @@ func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind
 func (s *server) renameFreeOnLinks(
 	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, name, newName string, skip int64,
 ) bool {
+	return s.nameFreeOnLinks(w, r, kind, newName, skip, func(items []peerVocabularyItem) (string, bool) {
+		return renameHolder(items, kind, name, newName)
+	})
+}
+
+// nameFreeOnLinks is renameFreeOnLinks with holderOf naming the entry of a link's items that refuses newName.
+func (s *server) nameFreeOnLinks(
+	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, newName string, skip int64,
+	holderOf func(items []peerVocabularyItem) (string, bool),
+) bool {
 	links, err := s.readLinks(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the pairing.", err)
@@ -466,7 +500,7 @@ func (s *server) renameFreeOnLinks(
 			s.vocabularyFailure(w, &linkError{name: link.Link.Name, err: err})
 			return false
 		}
-		holder, taken := renameHolder(items, kind, name, newName)
+		holder, taken := holderOf(items)
 		if !taken {
 			continue
 		}
@@ -499,6 +533,17 @@ func renameHolder(items []peerVocabularyItem, kind domain.VocabularyKind, name, 
 		return "", false
 	}
 	return holder.Name, true
+}
+
+// promoteHolder is renameHolder for a tag promote, except that a tag whose canonical name is newName and which holds
+// name as a synonym holds nothing: an earlier promote applied on that link, which its promote answers unchanged.
+func promoteHolder(items []peerVocabularyItem, name, newName string) (string, bool) {
+	for _, item := range items {
+		if item.Name == newName && slices.Contains(item.Synonyms, name) {
+			return "", false
+		}
+	}
+	return renameHolder(items, domain.VocabularyTag, name, newName)
 }
 
 // syncCreditNameOnPeer checks patch against id's entry and, when it changes the display name, renames every link's

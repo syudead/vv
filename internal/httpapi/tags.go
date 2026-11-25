@@ -179,6 +179,8 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	s.tagNameWrites.Lock()
+	defer s.tagNameWrites.Unlock()
 	if !s.renameTagOnPeer(w, r, id, body.Name) {
 		return
 	}
@@ -524,6 +526,10 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 		s.writeError(w, http.StatusNotFound, codeTagNotFound, "Tag not found.")
 	case errors.Is(err, domain.ErrTagNotTentative):
 		s.writeError(w, http.StatusConflict, codeTagNotTentative, "The tag is already confirmed.")
+	case errors.Is(err, domain.ErrTagSynonymNotFound):
+		s.writeError(w, http.StatusConflict, codeTagSynonymNotFound, "The name is no longer a synonym of the tag.")
+	case errors.Is(err, domain.ErrMoveSameTag):
+		s.invalidRequestReason(w, reasonMoveSameTag, "A synonym cannot move to the tag that holds it.")
 	case errors.As(err, &nameConflict):
 		s.writeTagNameTaken(w, submittedName, nameConflict.Tag)
 	case errors.As(err, &mergeRequired):

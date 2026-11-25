@@ -62,6 +62,9 @@ func (s *TagStore) ApplyTagByName(ctx context.Context, change domain.VocabularyC
 		domain.VocabularyRename: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
 			return renameTagByName(ctx, tx, change.Name, change.NewName)
 		}),
+		domain.VocabularyPromote: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return promoteTagByName(ctx, tx, change.Name, change.NewName)
+		}),
 		domain.VocabularyDelete: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
 			return deleteTagByName(ctx, tx, change.Name)
 		}),
@@ -140,6 +143,52 @@ func renameTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (dom
 	}
 	changed, err := renameTagInTx(ctx, tx, id, normalized)
 	return domain.VocabularyOutcome{Changed: changed}, err
+}
+
+// promoteTagByName makes newName the canonical name of the tag named name and keeps name as its synonym, as the
+// local promote does; the nodes may hold different synonyms, so newName is added when the tag lacks it. A tag
+// named newName that already holds name, an earlier promote applied here, changes nothing.
+func promoteTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (domain.VocabularyOutcome, error) {
+	normalized, err := domain.NormalizeTagName(newName)
+	if err != nil {
+		return domain.VocabularyOutcome{}, err
+	}
+	holder, held, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.VocabularyOutcome{}, err
+	}
+	id, found, err := canonicalTagIDByName(ctx, tx, name)
+	switch {
+	case err != nil:
+		return domain.VocabularyOutcome{}, err
+	case !found:
+		return domain.VocabularyOutcome{}, refuseHeldUnlessPromoted(ctx, tx, holder, held, name)
+	case held && holder.tagID == id && holder.isCanonical:
+		return domain.VocabularyOutcome{}, nil
+	case held && holder.tagID != id:
+		return domain.VocabularyOutcome{}, &domain.TagNameConflict{Tag: holder.ref()}
+	case !held:
+		if err := insertTagName(ctx, tx, normalized, id, false); err != nil {
+			return domain.VocabularyOutcome{}, err
+		}
+	}
+	return domain.VocabularyOutcome{Changed: true}, promoteSynonymInTx(ctx, tx, id, normalized)
+}
+
+// refuseHeldUnlessPromoted answers a *domain.TagNameConflict when a tag holds the new name, since the caller
+// promotes its own tag next, unless that tag has it as its canonical name and name as a synonym: an earlier promote
+// applied here.
+func refuseHeldUnlessPromoted(ctx context.Context, tx *sql.Tx, holder nameLookup, held bool, name string) error {
+	if !held {
+		return nil
+	}
+	if normalized, err := domain.NormalizeTagName(name); err == nil && holder.isCanonical {
+		old, found, err := lookupTagName(ctx, tx, normalized)
+		if err != nil || (found && !old.isCanonical && old.tagID == holder.tagID) {
+			return err
+		}
+	}
+	return &domain.TagNameConflict{Tag: holder.ref()}
 }
 
 func deleteTagByName(ctx context.Context, tx *sql.Tx, name string) (domain.VocabularyOutcome, error) {

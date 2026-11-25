@@ -133,21 +133,11 @@ func tagKindFilterMatches(filter domain.TagKindFilter, kind *gen.TagKindRef) boo
 // listMergedTags lists every node's tags joined by name; the filters apply to the joined entries, so a tag
 // unused here but used on a link is not unused.
 func (s *server) listMergedTags(w http.ResponseWriter, r *http.Request, query domain.TagListQuery) {
-	all, err := s.tags.ListTags(r.Context(), audienceFrom(r.Context()), domain.TagListQuery{Sort: domain.TagSortName})
+	merged, err := s.mergedTags(r)
 	if err != nil {
 		s.internalError(w, "Could not load tags.", err)
 		return
 	}
-	local := make([]gen.Tag, len(all.Items))
-	for i, tag := range all.Items {
-		local[i] = toAPITag(tag)
-	}
-	remote, err := peerVocabularies(s, r, "/api/tags", rewriteRemoteTag)
-	if err != nil {
-		s.internalError(w, "Could not load tags.", err)
-		return
-	}
-	merged := mergeVocabularies(local, remote, tagEntry, addTags)
 	keep := func(entry domain.VocabularyEntry[gen.Tag]) bool {
 		return entry.MatchesSearch(query.Search) && (!query.TentativeOnly || entry.Value.Tentative) &&
 			(!query.UnusedOnly || entry.Count == 0) && tagKindFilterMatches(query.Kind, entry.Value.Kind)
@@ -169,6 +159,23 @@ func (s *server) listMergedTags(w http.ResponseWriter, r *http.Request, query do
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, body, s.logger)
+}
+
+// mergedTags are every node's tags joined by name, in this node's id space.
+func (s *server) mergedTags(r *http.Request) ([]domain.VocabularyEntry[gen.Tag], error) {
+	all, err := s.tags.ListTags(r.Context(), audienceFrom(r.Context()), domain.TagListQuery{Sort: domain.TagSortName})
+	if err != nil {
+		return nil, err
+	}
+	local := make([]gen.Tag, len(all.Items))
+	for i, tag := range all.Items {
+		local[i] = toAPITag(tag)
+	}
+	remote, err := peerVocabularies(s, r, "/api/tags", rewriteRemoteTag)
+	if err != nil {
+		return nil, err
+	}
+	return mergeVocabularies(local, remote, tagEntry, addTags), nil
 }
 
 // listMergedTagKinds lists every node's kinds joined by name in id order: this node's, then each link's others.
