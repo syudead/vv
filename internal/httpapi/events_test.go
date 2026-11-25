@@ -239,6 +239,35 @@ func TestOnboardingEventsAreOwnerOnly(t *testing.T) {
 		}
 	}
 }
+
+// Tags reaches the owner once for changes made before its next write; guests and the paired node get none.
+func TestTagsEventsAreOwnerOnly(t *testing.T) {
+	server := &server{}
+	for _, viewer := range []struct {
+		name        string
+		guest, peer bool
+		want        string
+	}{
+		{"owner", false, false, "event: tags\ndata: {}\n\n"},
+		{"guest", true, false, ""},
+		{"peer", false, true, ""},
+	} {
+		events := NewEvents()
+		sub, unsubscribe := events.subscribe()
+		sub.take()
+		events.Handle(domain.TagsChanged{})
+		events.Handle(domain.TagsChanged{})
+		response := httptest.NewRecorder()
+		if err := server.writePendingEvents(context.Background(), response, sub, viewer.guest, viewer.peer); err != nil {
+			t.Fatal(err)
+		}
+		unsubscribe()
+		if response.Body.String() != viewer.want {
+			t.Errorf("%s: %q, want %q", viewer.name, response.Body.String(), viewer.want)
+		}
+	}
+}
+
 func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events := NewEvents()
 	sub, unsubscribe := events.subscribe()

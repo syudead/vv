@@ -366,6 +366,7 @@ func (s *AutoTagStore) Finish(
 		if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 			return err
 		}
+		c.tagsChanged()
 	}
 	if err := endContentJob(ctx, tx, autoTagQueue, contentKey, string(domain.JobDone), "", now); err != nil {
 		return err
@@ -472,6 +473,7 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 		kind = domain.ActivityTagReject
 	}
 	c := &changes{}
+	c.tagsChanged()
 	if err := recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges([]string{userKey}, tagID), now); err != nil {
 		return err
 	}
