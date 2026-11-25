@@ -23,6 +23,9 @@ func TestTagWritesPublishTagsChangedAfterCommit(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	tagID := createTagForTest(t, db, "旅行")
+	if _, err := db.Tags().AddSynonym(ctx, tagID, "トラベル", nil); err != nil {
+		t.Fatal(err)
+	}
 	createTagForTest(t, db, "海")
 	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
 	videoID := ids[fixturePath("/media/a.mp4")]
@@ -45,6 +48,8 @@ func TestTagWritesPublishTagsChangedAfterCommit(t *testing.T) {
 	}{
 		{"rename", func() error { _, err := db.Tags().RenameTag(ctx, tagID, "旅"); return err },
 			committed(`select count(*) from tag_names where tag_id = ? and name = '旅' and canonical = 1`, tagID)},
+		{"promote synonym", func() error { _, err := db.Tags().PromoteSynonym(ctx, tagID, "トラベル"); return err },
+			committed(`select count(*) from tag_names where tag_id = ? and name = 'トラベル' and canonical = 1`, tagID)},
 		{"attach", func() error { _, _, err := db.Tags().AttachTagByID(ctx, []int64{videoID}, tagID); return err },
 			committed(`select count(*) from video_tags where tag_id = ?`, tagID)},
 		{"set kind", func() error {

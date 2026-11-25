@@ -908,7 +908,7 @@
       "operationId": "applyPeerVocabulary",
       "method": "POST",
       "path": "/api/peer/vocabulary",
-      "summary": "Rename, merge or delete a tag, person or organization, or unname a person, by name",
+      "summary": "Rename, merge or delete a tag, person or organization, promote a tag's synonym, or unname a person, by name",
       "description": "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.",
       "owner": true,
       "response": "json",
@@ -918,12 +918,13 @@
             "additionalProperties": false,
             "properties": {
               "action": {
-                "description": "`unname` empties a person's names, making it provisional; it takes kind `person` only",
+                "description": "`unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only",
                 "enum": [
                   "rename",
                   "merge",
                   "delete",
-                  "unname"
+                  "unname",
+                  "promote"
                 ],
                 "type": "string"
               },
@@ -940,11 +941,11 @@
                 "type": "string"
               },
               "name": {
-                "description": "The current canonical name; required for rename, delete and unname",
+                "description": "The current canonical name; required for rename, promote, delete and unname",
                 "type": "string"
               },
               "newName": {
-                "description": "Required for rename",
+                "description": "Required for rename and promote",
                 "type": "string"
               },
               "sources": {
@@ -3822,6 +3823,55 @@
       ]
     },
     {
+      "operationId": "detachTagSynonym",
+      "method": "POST",
+      "path": "/api/tags/{id}/synonyms/detach",
+      "summary": "Detach a synonym of tag id into a new tag",
+      "description": "Removes the synonym `name` from tag id and creates a confirmed tag with it as the canonical name, no kind and no explicit attachments; videos under a folder of that name follow the name. Applies to this node only. A `name` breaking the tag-name rule returns 400 invalid_request; a missing or remote id returns 404 tag_not_found; a `name` that is not a synonym of id now returns 409 tag_synonym_not_found. Nothing changes on an error.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "A synonym of the tag, normalized like a tag name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "description": "Tag ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
+        "type": "object"
+      },
+      "body": true,
+      "bodyType": "application/json",
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "tag"
+        }
+      ]
+    },
+    {
       "operationId": "discardThumbnailEdit",
       "method": "DELETE",
       "path": "/api/thumbnail-edits/{editId}",
@@ -5332,6 +5382,39 @@
           "in": "path",
           "field": "id",
           "kind": "smartFolder"
+        }
+      ]
+    },
+    {
+      "operationId": "getTag",
+      "method": "GET",
+      "path": "/api/tags/{id}",
+      "summary": "Read one tag",
+      "description": "Returns the Tag that listTags gives for the same tag: names, video count, tentative state and kind. A missing tag (deleted, or merged into another tag) or a remote id (at or above 2^40) returns 404 tag_not_found.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "id": {
+            "description": "Tag ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "tag"
         }
       ]
     },
@@ -8947,6 +9030,66 @@
       ]
     },
     {
+      "operationId": "moveTagSynonym",
+      "method": "POST",
+      "path": "/api/tags/{id}/synonyms/move",
+      "summary": "Move a synonym of tag id to another tag",
+      "description": "The synonym `name` leaves tag id and becomes a synonym of `targetId`, which becomes confirmed; explicit attachments and the tentative state of id do not change, and videos under a folder of that name follow the name. Applies to this node only. A `name` breaking the tag-name rule, or `targetId` equal to id (move_same_tag), returns 400 invalid_request; a missing or remote id or `targetId` returns 404 tag_not_found; a `name` that is not a synonym of id now returns 409 tag_synonym_not_found. Nothing changes on an error.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "A synonym of the source tag, normalized like a tag name",
+                "type": "string"
+              },
+              "targetId": {
+                "description": "The tag that receives the synonym",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name",
+              "targetId"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "description": "Tag ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
+        "type": "object"
+      },
+      "body": true,
+      "bodyType": "application/json",
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "tag"
+        },
+        {
+          "in": "body",
+          "field": "/targetId",
+          "kind": ""
+        }
+      ]
+    },
+    {
       "operationId": "openVideoFile",
       "method": "POST",
       "path": "/api/videos/{id}/open",
@@ -9436,6 +9579,55 @@
       },
       "body": true,
       "bodyType": "application/json"
+    },
+    {
+      "operationId": "promoteTagSynonym",
+      "method": "POST",
+      "path": "/api/tags/{id}/synonyms/promote",
+      "summary": "Make a synonym of tag id its canonical name",
+      "description": "The synonym `name` becomes the canonical name and the old canonical name a synonym; attachments do not change and the tag becomes confirmed. A `name` breaking the tag-name rule returns 400 invalid_request with its reason; a missing tag or a remote id (at or above 2^40) returns 404 tag_not_found; a `name` that is not a synonym of id now, its canonical name included, returns 409 tag_synonym_not_found. While this node reads others, the tag of the canonical name is changed on every read VVMDM first, as renameTag is, and keeps the old canonical name as a synonym there; a read VVMDM where an earlier promote already applied is left as it is, so repeating a promote that stopped after the read VVMDMs completes it. A new name another tag there holds returns 409 tag_name_taken with `tagName` and `peer`, and a read VVMDM that is not connected returns 409 conflict with peer_unreachable. Nothing changes on an error.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "A synonym of the tag, normalized like a tag name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "description": "Tag ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
+        "type": "object"
+      },
+      "body": true,
+      "bodyType": "application/json",
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "tag"
+        }
+      ]
     },
     {
       "operationId": "putVideoProgress",

@@ -2,9 +2,9 @@ import { useEffect, useRef } from "react";
 
 import type { UiText } from "../i18n";
 import { isComposingKeyEvent } from "../lib/ime";
-import type { NameRules } from "../ui/NameCommand";
-import { Input } from "../ui/shadcn/input";
-import { useTagNameField, type TagFieldError } from "./tagNameField";
+import type { NameRules } from "./NameCommand";
+import { Input } from "./shadcn/input";
+import { useTagNameField, type TagFieldError } from "./nameField";
 
 /** Keep the rename input open while saving; distinguish inline validation from alert-level failures. */
 export default function RowNameInput({

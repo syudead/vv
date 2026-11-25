@@ -29,12 +29,14 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `command`                    | Component     | A list narrowed by typing; the inside of a combobox                          |
 | `confirm-dialog`             | Page skeleton | Confirm an action that cannot be undone                                      |
 | `confirm-dialog-example`     | Block         | Copy to start a confirm dialog                                               |
+| `create-tag-row`             | vv component  | The table row that names a new entry, with Create and Cancel                 |
 | `credit-command`             | vv component  | Type the name of a person or organization to pick or create one              |
 | `data-table`                 | Section       | A table on a card                                                            |
 | `density`                    | Pattern       | The density a skeleton gives its sections; patterns only                     |
 | `detail-page`                | Page skeleton | One item to view, with its facts beside it                                   |
 | `detail-page-example`        | Block         | Copy to start a detail page                                                  |
 | `dialog`                     | Component     | A modal form or long choice                                                  |
+| `dialog-error`               | vv component  | A failed request inside a dialog or section, with Retry                      |
 | `dropdown-menu`              | Component     | Actions or one choice from a few, from a button                              |
 | `editor-dialog`              | Page skeleton | A task on one image that needs the whole window                              |
 | `editor-dialog-example`      | Block         | Copy to start an editor dialog                                               |
@@ -66,6 +68,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-states-example`        | Block         | The list body in every state                                                 |
 | `load-more-row`              | State         | The next page loading, or failed with Retry                                  |
 | `loading-state`              | State         | Skeleton shapes of the final layout: grid, table, grouped list or cards      |
+| `merge-parts`                | vv component  | The target field and source → target line of a merge or move dialog          |
 | `page-column`                | Pattern       | The reading column settings and record pages share; patterns only            |
 | `page-header`                | Section       | Page title, count, a list page's filter and the main action                  |
 | `page-section`               | Section       | A titled card of rows                                                        |
@@ -86,6 +89,9 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `record-page`                | Page skeleton | One record to read inside the shell: an entry's full detail                  |
 | `record-page-example`        | Block         | Copy to start a record page                                                  |
 | `result-row`                 | Section       | One candidate of a query's results, with a body it shows or hides            |
+| `row-icon-button`            | vv component  | One icon action of a list row, named by its tooltip                          |
+| `row-more-menu`              | vv component  | The ellipsis menu of a row's other actions                                   |
+| `row-name-input`             | vv component  | Rename a row's name in place                                                 |
 | `scrub-preview`              | vv component  | The card scrub inside a thumbnail                                            |
 | `select`                     | Component     | Pick one value from a fixed list in a dropdown                               |
 | `selection-bar`              | Section       | Count and bulk actions while items are selected                              |

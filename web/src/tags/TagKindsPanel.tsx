@@ -26,10 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/shadcn/table";
-import CreateTagRow from "./CreateTagRow";
-import { DialogError } from "./DialogError";
-import RowNameInput from "./RowNameInput";
-import { RowIconButton, RowMoreMenu } from "./TagRow";
+import CreateTagRow from "../ui/CreateTagRow";
+import { DialogError } from "../ui/DialogError";
+import RowNameInput from "../ui/RowNameInput";
+import { RowIconButton } from "../ui/RowIconButton";
+import { RowMoreMenu } from "../ui/RowMoreMenu";
 import type { TagKindsTab } from "./useTagKindsTab";
 
 const kindColumnCount = 4;

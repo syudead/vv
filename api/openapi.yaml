@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`). Its folder scope is `X-VV-Peer-Excluded-Folders`, this node's ids of the folders the reader switched off, comma-separated, and none when the header is absent; this node's own switches never apply to it, and a value that is not a list of positive ids returns `400 invalid_request`. Such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; its sorts and `favorite=true` use the peer's own favorites and play history. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While this node reads others, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied by name on every read VVMDM in slot order first and then here: a new name any node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while any read VVMDM is not connected the change returns `409 conflict` with `peer_unreachable` and changes nothing. `Error.peer` names the read VVMDM that is not connected, whose connection fails or that refuses; the read VVMDMs before it stay changed. A failure here after the read VVMDMs applied the change is returned as is, and repeating the request completes it. Synonyms, the names after the display name, tag kinds, the tentative state, rejected names, images and links stay with each node."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`). Its folder scope is `X-VV-Peer-Excluded-Folders`, this node's ids of the folders the reader switched off, comma-separated, and none when the header is absent; this node's own switches never apply to it, and a value that is not a list of positive ids returns `400 invalid_request`. Such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; its sorts and `favorite=true` use the peer's own favorites and play history. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While this node reads others, renaming, merging or deleting a tag, person or organization (`renameTag`, `promoteTagSynonym`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied by name on every read VVMDM in slot order first and then here: a new name any node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while any read VVMDM is not connected the change returns `409 conflict` with `peer_unreachable` and changes nothing. `Error.peer` names the read VVMDM that is not connected, whose connection fails or that refuses; the read VVMDMs before it stay changed. A failure here after the read VVMDMs applied the change is returned as is, and repeating the request completes it. Synonyms, the names after the display name, tag kinds, the tentative state, rejected names, images and links stay with each node."
 servers:
   - url: /
     description: "Served by the application"
@@ -2908,7 +2908,7 @@ paths:
   /api/peer/vocabulary:
     post:
       operationId: applyPeerVocabulary
-      summary: "Rename, merge or delete a tag, person or organization, or unname a person, by name"
+      summary: "Rename, merge or delete a tag, person or organization, promote a tag's synonym, or unname a person, by name"
       description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error."
       requestBody:
         required: true
@@ -3570,6 +3570,21 @@ paths:
           $ref: "#/components/responses/Conflict"
 
   /api/tags/{id}:
+    get:
+      operationId: getTag
+      summary: "Read one tag"
+      description: "Returns the Tag that listTags gives for the same tag: names, video count, tentative state and kind. A missing tag (deleted, or merged into another tag) or a remote id (at or above 2^40) returns 404 tag_not_found."
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      responses:
+        "200":
+          description: "The tag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "404":
+          $ref: "#/components/responses/NotFound"
     patch:
       operationId: renameTag
       summary: "Rename a tag's canonical name"
@@ -3684,6 +3699,93 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/tags/{id}/synonyms/promote:
+    post:
+      operationId: promoteTagSynonym
+      summary: "Make a synonym of tag id its canonical name"
+      description: "The synonym `name` becomes the canonical name and the old canonical name a synonym; attachments do not change and the tag becomes confirmed. A `name` breaking the tag-name rule returns 400 invalid_request with its reason; a missing tag or a remote id (at or above 2^40) returns 404 tag_not_found; a `name` that is not a synonym of id now, its canonical name included, returns 409 tag_synonym_not_found. While this node reads others, the tag of the canonical name is changed on every read VVMDM first, as renameTag is, and keeps the old canonical name as a synonym there; a read VVMDM where an earlier promote already applied is left as it is, so repeating a promote that stopped after the read VVMDMs completes it. A new name another tag there holds returns 409 tag_name_taken with `tagName` and `peer`, and a read VVMDM that is not connected returns 409 conflict with peer_unreachable. Nothing changes on an error."
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagSynonymRequest"
+      responses:
+        "200":
+          description: "Updated tag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tags/{id}/synonyms/move:
+    post:
+      operationId: moveTagSynonym
+      summary: "Move a synonym of tag id to another tag"
+      description: "The synonym `name` leaves tag id and becomes a synonym of `targetId`, which becomes confirmed; explicit attachments and the tentative state of id do not change, and videos under a folder of that name follow the name. Applies to this node only. A `name` breaking the tag-name rule, or `targetId` equal to id (move_same_tag), returns 400 invalid_request; a missing or remote id or `targetId` returns 404 tag_not_found; a `name` that is not a synonym of id now returns 409 tag_synonym_not_found. Nothing changes on an error."
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveTagSynonymRequest"
+      responses:
+        "200":
+          description: "The source and target after the move"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagSynonymMoveResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tags/{id}/synonyms/detach:
+    post:
+      operationId: detachTagSynonym
+      summary: "Detach a synonym of tag id into a new tag"
+      description: "Removes the synonym `name` from tag id and creates a confirmed tag with it as the canonical name, no kind and no explicit attachments; videos under a folder of that name follow the name. Applies to this node only. A `name` breaking the tag-name rule returns 400 invalid_request; a missing or remote id returns 404 tag_not_found; a `name` that is not a synonym of id now returns 409 tag_synonym_not_found. Nothing changes on an error."
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagSynonymRequest"
+      responses:
+        "201":
+          description: "The source and the created tag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagSynonymDetachResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/tags/{id}/confirm:
     post:
@@ -9889,6 +9991,48 @@ components:
           format: int64
           description: "ID of the tag whose merge was approved."
 
+    TagSynonymRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "A synonym of the tag, normalized like a tag name"
+
+    MoveTagSynonymRequest:
+      type: object
+      required: [name, targetId]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "A synonym of the source tag, normalized like a tag name"
+        targetId:
+          type: integer
+          format: int64
+          description: "The tag that receives the synonym"
+
+    TagSynonymMoveResponse:
+      type: object
+      required: [source, target]
+      additionalProperties: false
+      properties:
+        source:
+          $ref: "#/components/schemas/Tag"
+        target:
+          $ref: "#/components/schemas/Tag"
+
+    TagSynonymDetachResponse:
+      type: object
+      required: [source, created]
+      additionalProperties: false
+      properties:
+        source:
+          $ref: "#/components/schemas/Tag"
+        created:
+          $ref: "#/components/schemas/Tag"
+
     TagInput:
       type: object
       additionalProperties: false
@@ -15078,14 +15222,14 @@ components:
           enum: [tag, person, organization]
         action:
           type: string
-          enum: [rename, merge, delete, unname]
-          description: "`unname` empties a person's names, making it provisional; it takes kind `person` only"
+          enum: [rename, merge, delete, unname, promote]
+          description: "`unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only"
         name:
           type: string
-          description: "The current canonical name; required for rename, delete and unname"
+          description: "The current canonical name; required for rename, promote, delete and unname"
         newName:
           type: string
-          description: "Required for rename"
+          description: "Required for rename and promote"
         into:
           type: string
           description: "The merge destination, created when absent; required for merge"
@@ -15256,6 +15400,7 @@ components:
             - tag_name_taken
             - tag_merge_required
             - tag_not_tentative
+            - tag_synonym_not_found
             - unauthenticated
             - invalid_credentials
             - login_throttled
@@ -15348,6 +15493,7 @@ components:
         - tag_name_control_characters
         - tag_name_too_long
         - merge_same_tag
+        - move_same_tag
         - search_too_long
         - too_many_tag_filters
         - too_many_videos

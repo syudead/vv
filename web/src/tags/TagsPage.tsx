@@ -19,6 +19,7 @@ import {
   rejectTag,
   renameTag,
   type Tag,
+  type TagListSort,
 } from "../api/tags";
 import { type TagKind, tagKindCountsChanged, tagKindGone } from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
@@ -35,25 +36,25 @@ import { TableBody } from "../ui/shadcn/table";
 import { useToast } from "../ui/Toast";
 import type { HistoryMode } from "../videoList/listCriteria";
 import BulkTagDialog, { type BulkTagAction } from "./BulkTagDialog";
-import CreateTagRow from "./CreateTagRow";
+import CreateTagRow from "../ui/CreateTagRow";
 import DeleteTagDialog from "./DeleteTagDialog";
 import MergeTagDialog from "./MergeTagDialog";
 import RejectedNames from "./RejectedNames";
 import RejectTagDialog from "./RejectTagDialog";
 import TagKindsPanel from "./TagKindsPanel";
 import SynonymsDialog from "./SynonymsDialog";
-import type { TagListSort } from "./tagListOrder";
 import {
   addTag,
   confirmTags,
-  insertionIndex,
   matchesTagQuery,
   removeTags,
   replaceTag,
   setTagsKind,
   type TagPageRows,
 } from "./tagPageRows";
-import { tagFieldError, type TagFieldError } from "./tagNameField";
+import { insertionIndex } from "../recordList/listRows";
+import { tagFieldError } from "./tagNameField";
+import type { TagFieldError } from "../ui/nameField";
 import {
   serializeTagListCriteria,
   type TagKindFilter,
@@ -68,9 +69,10 @@ import {
   TagLoadingMore,
   TagLoadMoreFailed,
   TagStaleList,
-} from "./TagListNotices";
+} from "../recordList/TagListNotices";
 import TagSelectionBar from "./TagSelectionBar";
-import { tagCountText, tagListView } from "./tagListView";
+import { tagCountText } from "./tagListView";
+import { tagListView } from "../recordList/listView";
 import {
   countSelectable,
   keepLoaded,
@@ -86,10 +88,11 @@ import { kindNameOf, useTagKindFilter } from "./useTagKindFilter";
 import TagListEmptyState from "./TagListEmptyState";
 import TagListHead from "./TagListHead";
 import TagsTabs, { tagsPanelId, tagsTabId } from "./TagsTabs";
-import { useSearchQuery, useTagPage } from "./useTagPage";
-import { ROW_OVERSCAN, useVirtualTagRows } from "./useVirtualTagRows";
-import { useAdminTableBand, useListScrollMargin } from "./useAdminTableBand";
-import { virtualBodyRows } from "./virtualBodyRows";
+import { useSearchQuery } from "../recordList/usePagedRows";
+import { useTagPage } from "./useTagPage";
+import { ROW_OVERSCAN, useVirtualTagRows } from "../recordList/useVirtualTagRows";
+import { useAdminTableBand, useListScrollMargin } from "../recordList/useAdminTableBand";
+import { virtualBodyRows } from "../recordList/virtualBodyRows";
 import TopBarPortal from "../shell/TopBarPortal";
 import TagToolbar from "./TagToolbar";
 

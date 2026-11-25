@@ -16,8 +16,8 @@ import { Field, FieldTitle } from "../ui/shadcn/field";
 import { Spinner } from "../ui/shadcn/spinner";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
-import { DialogError } from "./DialogError";
-import { MergeSummary, MergeTargetField } from "./MergeParts";
+import { DialogError } from "../ui/DialogError";
+import { MergeSummary, MergeTargetField } from "../ui/MergeParts";
 
 /** Search all server tags with exact matches first. Selection merges exclude the chosen target from sources and require refreshed impact counts. */
 export default function MergeTagDialog({

@@ -248,6 +248,7 @@ const errorCodes = {
       ? "Another tag already has that name. Merge the tags instead."
       : `The tag "${tagName}" already has that name. Merge the tags instead.`,
   tag_not_tentative: "The tag is already confirmed.",
+  tag_synonym_not_found: "The name is no longer a synonym of this tag.",
   unauthenticated: "Sign in to continue.",
   invalid_credentials: "The username or password is incorrect.",
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",
@@ -316,6 +317,7 @@ const errorReasons = {
       ? "The tag name is too long."
       : `Use a tag name of ${characters(limit)} or fewer.`,
   merge_same_tag: "A tag can't be merged into itself.",
+  move_same_tag: "A synonym can't move to the tag that holds it.",
   search_too_long: ({ limit }) =>
     limit === undefined
       ? "The search is too long."

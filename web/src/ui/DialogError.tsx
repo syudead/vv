@@ -1,8 +1,8 @@
 import { CircleAlert, RotateCw } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
-import { Alert, AlertAction, AlertTitle } from "../ui/shadcn/alert";
-import { Button } from "../ui/shadcn/button";
+import { Alert, AlertAction, AlertTitle } from "./shadcn/alert";
+import { Button } from "./shadcn/button";
 
 export function DialogError({
   message,

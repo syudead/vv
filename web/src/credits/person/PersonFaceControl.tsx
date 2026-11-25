@@ -15,7 +15,7 @@ import {
   UPLOAD_TYPES,
   uploadRefusal,
 } from "../../player/thumbnailUpload/uploadRules";
-import { DialogError } from "../../tags/DialogError";
+import { DialogError } from "../../ui/DialogError";
 import FavoriteToggle from "../../ui/FavoriteToggle";
 import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";

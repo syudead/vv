@@ -117,7 +117,7 @@ as empty spacer rows so the columns stay aligned. The page passes the fixed top
 bar's height (`--spacing-navbar`) to the virtualizer and to
 `scroll-padding-top`, so a focused row never hides under the top bar.
 The organizations admin list (`/organizations`) is built the same way from
-the same pieces in `web/src/tags/`: pages of 100 read from the server, rows
+the shared list pieces in `web/src/recordList/`: pages of 100 read from the server, rows
 drawn near the viewport, and local updates after rename, details, merge and
 delete. The people list (`/people`) shares the paging but is a grid of face
 cards ([people.md](people.md#the-people-grid)).

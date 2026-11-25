@@ -1,25 +1,8 @@
-import type { TagSort } from "../api/tags";
-
-/** Match API TagSort values; natural name order has no direction. */
-export type TagListSort = TagSort;
+import type { TagListSort } from "../api/tags";
 
 export type TagSortKind = "name" | "count" | "created";
 
 export type TagSortDirection = "asc" | "desc";
-
-export const defaultTagListSort: TagListSort = "name";
-
-const sorts: Record<TagListSort, true> = {
-  name: true,
-  countDesc: true,
-  countAsc: true,
-  createdDesc: true,
-  createdAsc: true,
-};
-
-export function isTagListSort(value: unknown): value is TagListSort {
-  return typeof value === "string" && Object.hasOwn(sorts, value);
-}
 
 export const tagSortKinds: readonly { kind: TagSortKind; initial: TagListSort }[] = [
   { kind: "name", initial: "name" },

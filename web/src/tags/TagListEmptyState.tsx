@@ -6,13 +6,12 @@ import {
   Tags as TagsIcon,
   VideoOff,
 } from "lucide-react";
-import type { ReactNode } from "react";
 
 import { t, type UiText } from "../i18n";
-import { EmptyState } from "../ui/patterns/empty-state";
+import type { TagListEmpty } from "../recordList/listView";
+import { TagsEmpty } from "../recordList/TagsEmpty";
 import { Button } from "../ui/shadcn/button";
 import type { TagKindFilter } from "./tagListUrl";
-import type { TagListEmpty } from "./tagListView";
 
 function noKindTitle(kind: TagKindFilter, kindName: string | undefined): UiText {
   if (kind === "none") return t.tags.noKindlessTags;
@@ -124,26 +123,4 @@ export default function TagListEmptyState({
         />
       );
   }
-}
-
-/** Use h2 because the shared state title has no heading semantics. */
-export function TagsEmpty({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon: ReactNode;
-  title: UiText;
-  description?: UiText;
-  action: ReactNode;
-}) {
-  return (
-    <EmptyState
-      icon={icon}
-      title={<h2>{title}</h2>}
-      description={description}
-      action={action}
-    />
-  );
 }

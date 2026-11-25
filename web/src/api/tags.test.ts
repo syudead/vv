@@ -10,11 +10,15 @@ import {
   currentTags,
   confirmTag,
   deleteTag,
+  detachTagSynonym,
   detachVideoTag,
   forgetRejectedTagName,
+  getTag,
   getTags,
   listRejectedTagNamePage,
   mergeTag,
+  moveTagSynonym,
+  promoteTagSynonym,
   refreshTags,
   rejectTag,
   removeTagSynonym,
@@ -321,6 +325,44 @@ describe("タグの変更が成功した後の後始末", () => {
     });
   });
 
+  it.each([
+    {
+      label: "promoteTagSynonym",
+      run: () => promoteTagSynonym(1, "別名"),
+      url: "/api/tags/1/synonyms/promote",
+      body: { name: "別名" },
+    },
+    {
+      label: "moveTagSynonym",
+      run: () => moveTagSynonym(1, "別名", 2),
+      url: "/api/tags/1/synonyms/move",
+      body: { name: "別名", targetId: 2 },
+    },
+    {
+      label: "detachTagSynonym",
+      run: () => detachTagSynonym(1, "別名"),
+      url: "/api/tags/1/synonyms/detach",
+      body: { name: "別名" },
+    },
+  ])(
+    "$labelは名前を送り、成功後に共有の一覧を取り直して一覧の控えを捨てる",
+    async ({ run, url, body }) => {
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+      const fetch = stubMutation(jsonResponse(tag({ id: 1 })), [tag({ id: 2 })]);
+
+      await run();
+      expect(fetch).toHaveBeenNthCalledWith(
+        1,
+        url,
+        expect.objectContaining({ method: "POST", body: JSON.stringify(body) }),
+      );
+      expect(takeListSnapshot(key)).toBeUndefined();
+      await vi.waitFor(() => {
+        expect(currentTags()).toEqual([tag({ id: 2 })]);
+      });
+    },
+  );
+
   it("addTagSynonymは成功後に共有の一覧を取り直し、一覧の控えを捨てる", async () => {
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
     const fetch = stubMutation(jsonResponse({ ...tag({ id: 1 }), synonyms: ["旧名"] }), [
@@ -607,6 +649,35 @@ describe("古いタグを使った操作の後始末（S3、Issue #266 項目5�
     await vi.waitFor(() => {
       expect(currentTags()).toEqual([tag({ id: 3, name: "旧名" })]);
     });
+  });
+
+  it("tag_synonym_not_foundを受けたら共有の一覧を取り直してから投げ直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "tag_synonym_not_found", message: "x" }, 409),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 1, name: "別名" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(promoteTagSynonym(1, "別名")).rejects.toMatchObject({
+      code: "tag_synonym_not_found",
+    });
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([tag({ id: 1, name: "別名" })]);
+    });
+  });
+
+  it("getTagは共有の一覧を通さず、そのタグだけを読む", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(tag({ id: 4, name: "猫" })));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(getTag(4)).resolves.toEqual(tag({ id: 4, name: "猫" }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("/api/tags/4", expect.anything());
+    expect(currentTags()).toBeUndefined();
   });
 
   it("tag_name_takenのような無関係な誤りでは共有の一覧を取り直さない", async () => {
