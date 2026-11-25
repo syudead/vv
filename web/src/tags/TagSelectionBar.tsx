@@ -37,6 +37,13 @@ export interface TagSelectAll {
 
 export type TagBulkPending = "confirm" | "kind" | "dialog" | "selectAll" | null;
 
+/** Why a disabled menu item above cannot be chosen, readable without hover or focus. */
+function MenuReason({ children }: { children: UiText }) {
+  return (
+    <p className="max-w-menu px-2 py-1.5 text-xs text-muted-foreground">{children}</p>
+  );
+}
+
 function SelectAllMenu({ all, disabled }: { all: TagSelectAll; disabled: boolean }) {
   return (
     <DropdownMenu>
@@ -63,9 +70,7 @@ function SelectAllMenu({ all, disabled }: { all: TagSelectAll; disabled: boolean
           {t.tags.selection.allMatching(all.matching)}
         </DropdownMenuItem>
         {all.matchingReason !== undefined && (
-          <p className="max-w-menu px-2 py-1.5 text-xs text-muted-foreground">
-            {all.matchingReason}
-          </p>
+          <MenuReason>{all.matchingReason}</MenuReason>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -187,6 +192,11 @@ export default function TagSelectionBar({
               <Trash2 aria-hidden="true" />
               {t.tags.selection.delete}
             </DropdownMenuItem>
+            {/* A disabled item takes no focus or hover, so its reason is also written out. */}
+            {[tentativeReason, confirmedReason].map(
+              (reason) =>
+                reason !== undefined && <MenuReason key={reason}>{reason}</MenuReason>,
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         {limitReason !== undefined && (

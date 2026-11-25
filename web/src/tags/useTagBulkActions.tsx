@@ -35,14 +35,20 @@ type ApplyLocal = (
   update: (current: TagPageRows | undefined) => TagPageRows | undefined,
 ) => void;
 
-/** Every matching card, read from the shown list's cursor; the selection takes them all. */
-function withRest(page: TagPageRows, rest: readonly Tag[]): TagPageRows {
+/** The shown cards followed by the rest of every matching card; the selection takes them all. */
+function withMatching(page: TagPageRows, matching: readonly Tag[]): TagPageRows {
   return {
     ...page,
-    rows: appendUniqueTags(page.rows, rest),
+    rows: appendUniqueTags(page.rows, matching),
     nextCursor: undefined,
     boundary: undefined,
   };
+}
+
+/** A loaded card the criteria no longer match was changed elsewhere, so the shown cards are stale. */
+function loadedStillMatch(page: TagPageRows, matching: readonly Tag[]): boolean {
+  const ids = new Set(matching.map((tag) => tag.id));
+  return page.rows.every((tag) => ids.has(tag.id));
 }
 
 function kindRefOf(choice: KindChoice) {
@@ -241,31 +247,27 @@ export function useTagBulkActions({
     refresh();
   }
 
-  /** Load the rest of the matching cards from the shown cursor, then select every card. */
+  /** Read every matching card from the top, then select them all. */
   async function selectMatching() {
     const shown = pageRef.current;
     if (pending !== null || shown === undefined) return;
-    if (shown.nextCursor === undefined) {
-      replace(shown.rows.map((tag) => tag.id));
-      return;
-    }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setPending("selectAll");
     try {
-      const rest = await readTagPages(
+      const fresh = await readTagPages(
         shown.query,
         searchRef.current,
-        { cursor: shown.nextCursor, wanted: Infinity, expectAll: shown.totalAll },
+        { cursor: undefined, wanted: Infinity, expectAll: shown.totalAll },
         controller.signal,
       );
       if (controller.signal.aborted || pageRef.current?.query !== shown.query) return;
-      const full = withRest(shown, rest.rows);
+      if (!loadedStillMatch(shown, fresh.rows)) throw new TagListMoved();
       applyLocal((current) =>
-        current?.query === shown.query ? withRest(current, rest.rows) : current,
+        current?.query === shown.query ? withMatching(current, fresh.rows) : current,
       );
-      replace(full.rows.map((tag) => tag.id));
+      replace(fresh.rows.map((tag) => tag.id));
     } catch (failure) {
       if (controller.signal.aborted) return;
       if (failure instanceof TagListMoved) {

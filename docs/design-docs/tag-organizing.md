@@ -65,7 +65,9 @@ Cards are selected as on the library: a check, Shift for a range from the
 previously changed card, a press on a card while anything is selected, and
 Escape to clear. There are no drawn boxes, because the cards fill the grid.
 `Select all` takes the loaded cards or every card the criteria match; the
-second reads the rest of the list in pages of 200 first. The selection bar
+second first reads every matching card from the top in pages of 200, and when
+a loaded card is no longer among them, it says the list changed and reads the
+list again instead of selecting. The selection bar
 merges the selection into one tag, sets or clears its kind, confirms it, and
 rejects or deletes it after a dialog that counts the affected tags and videos
 ([`useTagBulkActions.tsx`](../../web/src/tags/useTagBulkActions.tsx)).

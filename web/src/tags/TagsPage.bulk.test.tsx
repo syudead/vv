@@ -65,7 +65,7 @@ describe("TagsPage カードの選択", () => {
     expect(screen.queryByRole("region", { name: t.tags.selection.region })).toBeNull();
   });
 
-  it("一致するものをすべて選ぶと、残りのページを読み込んでからすべてを選ぶ", async () => {
+  it("一致するものをすべて選ぶと、一致するものを先頭から読み直してからすべてを選ぶ", async () => {
     const user = userEvent.setup();
     // Rows measure one card high, so the first page's end is not drawn and no more is read.
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
@@ -92,8 +92,39 @@ describe("TagsPage カードの選択", () => {
     expect(await within(bar()).findByText(t.tags.selection.count(150))).toBeDefined();
     const rest = server.pageRequests.filter((params) => params.get("limit") === "200");
     expect(rest).toHaveLength(1);
-    expect(rest[0]!.has("cursor")).toBe(true);
+    expect(rest[0]!.has("cursor")).toBe(false);
     expect(server.batchCalls).toEqual([]);
+  });
+
+  it("読み込み済みのカードが別の場所で条件から外れていれば、一致するものとして選ばずに読み直す", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.hasAttribute("data-index") ? 108 : 0;
+    });
+    server.tags = Array.from({ length: 150 }, (_, index) =>
+      tag({ id: index + 1, name: `Tag${String(index + 1).padStart(3, "0")}` }),
+    );
+    install();
+    renderPage({ url: "/tags?q=tag" });
+    await screen.findByTitle("Tag001");
+
+    await check(user, "Tag002");
+    // Tag001 is renamed elsewhere: the count of every tag stays, but it no longer matches the search.
+    server.tags = server.tags.map((item) =>
+      item.id === 1 ? { ...item, name: "Renamed" } : item,
+    );
+    const reads = listPageRequests().length;
+    await user.click(barButton(t.tags.selection.selectAll));
+    await user.click(
+      await screen.findByRole("menuitem", { name: t.tags.selection.allMatching(150) }),
+    );
+
+    expect(await screen.findByText(t.tags.list.changed)).toBeDefined();
+    await waitFor(() => expect(listPageRequests().length).toBe(reads + 1));
+    await waitFor(() => expect(screen.queryByTitle("Tag001")).toBeNull());
+    expect(within(bar()).getByText(t.tags.selection.count(1))).toBeDefined();
   });
 
   it(`${String(maxTagBatch)} を超えて選ぶと、リクエストの前に操作を止めて理由を出す`, async () => {

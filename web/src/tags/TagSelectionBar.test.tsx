@@ -90,6 +90,8 @@ describe("TagSelectionBar", () => {
     await user.click(screen.getByRole("button", { name: t.tags.selection.more }));
     const reject = await screen.findByRole("menuitem", { name: t.tags.selection.reject });
     expect(reject.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByText(t.tags.selection.noTentative)).toBeDefined();
+    expect(screen.queryByText(t.tags.selection.noConfirmed)).toBeNull();
     const remove = screen.getByRole("menuitem", { name: t.tags.selection.delete });
     expect(remove.hasAttribute("aria-disabled")).toBe(false);
   });
