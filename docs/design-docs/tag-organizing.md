@@ -18,9 +18,8 @@ flowchart LR
 
 A committed write that can change the rows of the tag list publishes
 `domain.TagsChanged`, and `/api/events` sends it to owners as `event: tags`
-with `{}` ([`events.go`](../../internal/httpapi/events.go)). The open list
-re-reads the rows it has loaded and only shows a notice when they differ, so
-the list never moves on its own while the owner works in it.
+with `{}` ([`events.go`](../../internal/httpapi/events.go)). The event
+carries no rows; a screen that receives it re-reads what it shows.
 
 | Write | Sends `tags` |
 | --- | --- |
@@ -35,8 +34,10 @@ the list never moves on its own while the owner works in it.
 
 Several changes before a subscriber's next write become one event, as
 `candidates` does, and nothing is replayed after a reconnect. Guests and the
-peer credential receive none; a paired node's tag changes reach the screen
-through `peerItems`.
+peer credential receive none. A paired node's `tags` events are not forwarded;
+its tag changes reach the screen only when it reloads on `peerItems`, which
+fires when the set of connected peer links changes, not while a link stays
+connected.
 
 | Rejected | Why |
 | --- | --- |

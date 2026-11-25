@@ -130,7 +130,7 @@ func (s *TagStore) RenameTagKind(ctx context.Context, id int64, name string) (do
 	return current, nil
 }
 
-// SetTagKindCardFirst changes card order only, so it affects no matches and emits no events.
+// SetTagKindCardFirst changes card order only, so it affects no matches and emits only TagsChanged.
 func (s *TagStore) SetTagKindCardFirst(ctx context.Context, id int64, cardFirst bool) (domain.TagKind, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {

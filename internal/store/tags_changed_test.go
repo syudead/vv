@@ -28,25 +28,44 @@ func TestTagWritesPublishTagsChangedAfterCommit(t *testing.T) {
 	videoID := ids[fixturePath("/media/a.mp4")]
 	genre := presetKindID(t, db, "Genre")
 
+	// committed reads through the read pool, a separate connection that sees only committed rows.
+	committed := func(query string, args ...any) func() bool {
+		return func() bool {
+			var n int
+			if err := db.read.QueryRow(query, args...).Scan(&n); err != nil {
+				t.Error(err)
+			}
+			return n == 1
+		}
+	}
 	for _, write := range []struct {
-		name  string
-		apply func() error
+		name    string
+		apply   func() error
+		visible func() bool
 	}{
-		{"rename", func() error { _, err := db.Tags().RenameTag(ctx, tagID, "旅"); return err }},
-		{"attach", func() error { _, _, err := db.Tags().AttachTagByID(ctx, []int64{videoID}, tagID); return err }},
+		{"rename", func() error { _, err := db.Tags().RenameTag(ctx, tagID, "旅"); return err },
+			committed(`select count(*) from tag_names where tag_id = ? and name = '旅' and canonical = 1`, tagID)},
+		{"attach", func() error { _, _, err := db.Tags().AttachTagByID(ctx, []int64{videoID}, tagID); return err },
+			committed(`select count(*) from video_tags where tag_id = ?`, tagID)},
 		{"set kind", func() error {
 			_, err := db.Tags().BatchTags(ctx, domain.TagBatchRequest{Action: domain.TagBatchSetKind, KindID: genre},
 				[]int64{tagID})
 			return err
-		}},
+		}, committed(`select count(*) from tags where id = ? and kind_id = ?`, tagID, genre)},
 	} {
-		recorder := &eventRecorder{}
-		db.PublishTo(recorder)
+		published := 0
+		db.PublishTo(publisherFunc(func(events ...domain.Event) {
+			n := tagsChangedCount(events)
+			if n > 0 && !write.visible() {
+				t.Errorf("%s: TagsChanged published before the write was committed", write.name)
+			}
+			published += n
+		}))
 		if err := write.apply(); err != nil {
 			t.Fatalf("%s: %v", write.name, err)
 		}
-		if got := tagsChangedCount(recorder.events); got != 1 {
-			t.Errorf("%s: TagsChanged %d times, want 1: %v", write.name, got, recorder.events)
+		if published != 1 {
+			t.Errorf("%s: TagsChanged %d times, want 1", write.name, published)
 		}
 	}
 
