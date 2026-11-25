@@ -1,4 +1,4 @@
-# Implementation Plan: Tag workbench
+# Implementation Plan: Tag cards and tag pages
 
 **Branch**: `feature/070-tag-workbench` | **Parent Issue**: #1480
 
@@ -6,28 +6,33 @@
 
 ## Summary
 
-The tags screen becomes a workbench for organizing tags: a dense list of tags
-beside the selected tag's details, where the synonym operations the Issue asks
-for are the first controls. The screen API gains three synonym operations
-(make a synonym the canonical name, move a synonym to another tag, detach a
-synonym into a new tag), and a `tags` server event lets an open screen say the
-list changed without moving it. The design system replaces `AdminTablePage`
-with a `WorkbenchPage` pattern, the organizations screen moves onto it, and the
-list pieces other screens borrow from `web/src/tags/` move to shared homes.
+The tags screen becomes a grid of tag cards with the kind filter beside the
+title and a strip of what is left to tidy (tentative, no kind, unused), and
+each tag gets a page of its own (`/tags/:id`) where its names, kind and merge
+are organized. The screen API gains a read of one tag for that page and three
+synonym operations (make a synonym the canonical name, move a synonym to
+another tag, detach a synonym into a new tag), and a `tags` server event lets an open screen say the list changed
+without moving it. The design system replaces `AdminTablePage` with a record
+card, a record editor skeleton and kind colours; the organizations screen moves
+onto the same pieces, and the list pieces other screens borrow from
+`web/src/tags/` move to shared homes.
 
 The diagram shows the parts this feature adds or changes.
 
 ```mermaid
 flowchart LR
-  wb[Tag workbench] -->|synonym operations| api[Screen API]
-  wb -->|merge, rename, batch| api
+  list[Tag card list] -->|open| page[Tag page]
+  list -->|batch, merge| api[Screen API]
+  page -->|synonym operations, merge| api
   api --> store[TagStore]
   api -->|canonical name change| peer[Paired VVMDM]
   store -->|after commit| bus[Event bus]
-  bus -->|tags event| wb
-  pattern[WorkbenchPage pattern] --> wb
-  pattern --> orgs[Organizations screen]
-  shared[web/src/recordList] --> wb
+  bus -->|tags event| list
+  bus -->|tags event| page
+  ds[RecordCard, RecordEditorPage, kind colours] --> list
+  ds --> page
+  ds --> orgs[Organizations]
+  shared[web/src/recordList] --> list
   shared --> orgs
   shared --> people[People screen]
 ```
@@ -52,9 +57,10 @@ page patterns; [api/openapi.yaml](../../api/openapi.yaml) for the screen API;
 | Item | Delta |
 | --- | --- |
 | Synonym storage | A synonym is a `tag_names` row with `canonical = 0`; names are unique across canonical names and synonyms. The new operations rewrite rows and add no table or migration |
-| Scale | The workbench stays responsive with 5,000 tags: server pages of 100 rows and a virtualized list, as today ([Tag workbench screen](#tag-workbench-screen)) |
+| Scale | The tag list stays responsive with 5,000 tags: server pages of 100 and a row-virtualized card grid ([Tag list and tag page](#tag-list-and-tag-page)) |
 | Bulk limit | `MaxTagBatch` (20,000) stays the limit for bulk actions and merges |
 | Change notice | There is no tag event today; the screen reloads only after its own writes and on `peerItems` ([Change notice](#change-notice)) |
+| Reading one tag | The screen API has no read of one tag today; `listTags` searches names by substring ([Tag list and tag page](#tag-list-and-tag-page)) |
 | External API and MCP | Unchanged; the new operations are screen API only ([Synonym operations](#synonym-operations)) |
 
 ## Constitution Check
@@ -71,7 +77,7 @@ page patterns; [api/openapi.yaml](../../api/openapi.yaml) for the screen API;
 | Pages never call `fetch` | ARCHITECTURE.md, Web layer | `web/src/api/tags.ts` is the only caller of the new operations |
 | Generated files are not hand-edited | AGENTS.md | `api/openapi.yaml` changes, then `task generate` |
 | Complexity 25 and no copies | AGENTS.md | The pieces credits and settings borrow from `web/src/tags/` are moved, not copied ([Shared list modules](#shared-list-modules)) |
-| Design system first | AGENTS.md, design-system.md | `WorkbenchPage` is added to the registry before a screen uses it, and `AdminTablePage` is removed with its last caller |
+| Design system first | AGENTS.md, design-system.md | `RecordCard`, `RecordEditorPage` and the kind colours are added to the registry before a screen uses them, and `AdminTablePage` is removed with its last caller |
 
 No gate is at stake after Phase 1; `## Complexity Tracking` is left out.
 
@@ -81,7 +87,8 @@ Three owner-only operations under `/api/tags/{id}/synonyms/` change one
 synonym of a tag in one transaction each
 ([contracts/tag-synonym-operations.md](contracts/tag-synonym-operations.md)).
 "Make this tag a synonym of another tag" is the existing merge with the other
-tag as the target; the workbench offers it under that name (requirement 6).
+tag as the target; the tag page offers it as merge into another tag, and the
+list's selection bar as merge into one tag (requirement 6).
 
 The table shows what each operation changes.
 
@@ -110,7 +117,7 @@ committed change to the tag list's rows: tag names, synonyms, kinds, tentative
 state, creation, deletion, merges and video attachments, including automatic
 tagging ([contracts/tags-event.md](contracts/tags-event.md)).
 
-The diagram shows what the open workbench does with the event.
+The diagram shows what the open tag list does with the event.
 
 ```mermaid
 flowchart LR
@@ -127,46 +134,74 @@ flowchart LR
 | Decision | Rejected | Why |
 | --- | --- | --- |
 | A dedicated `tags` event, coalesced per subscriber like `candidates` | Reusing the all-folders `smartFolder` event | That event also fires for people, favorites and watch state, and reaches guests |
-| The workbench re-reads the rows it has loaded, with its criteria, in pages of 200 (`MaxTagPageLimit`), and compares them and the totals with what it shows, and shows a notice to refresh | Reloading on the event | The Issue's edge case forbids moving the list on its own |
-| Same | Re-reading the first page only | A synonym added elsewhere to a loaded tag past the first page changes neither the first page nor the totals, so the notice and the selected tag's pane would stay stale |
+| The list re-reads the cards it has loaded, with its criteria, in pages of 200 (`MaxTagPageLimit`), and compares them and the totals with what it shows, and shows a notice to refresh | Reloading on the event | The Issue's edge case forbids moving the list on its own |
+| Same | Re-reading the first page only | A synonym added elsewhere to a loaded tag past the first page changes neither the first page nor the totals, so the notice would not appear |
 | Same | A vocabulary revision returned by every write and carried by the event | Every write path, including scans that change folder-derived counts, would have to bump it in its transaction; comparing the loaded rows needs no new state, and 5,000 loaded rows are 25 reads after an event |
-| The check waits for the workbench's own writes to settle | Ignoring events for a fixed time after a write | Own writes are applied to the shown rows first, so a later check matches them; a timer either hides other writes or shows a notice for its own |
+| The check waits for the list's own writes to settle | Ignoring events for a fixed time after a write | Own writes are applied to the shown rows first, so a later check matches them; a timer either hides other writes or shows a notice for its own |
 | Folder-derived count changes from a scan send no `tags` event | Sending it on every video change | A scan changes thousands of videos; the existing continuation check (`totalAll`) still catches a list that changed under paging |
 
-## Tag workbench screen
+## Tag list and tag page
 
-`/tags` becomes a `WorkbenchPage`: the list of tags with its search, filters
-and sort beside one pane that shows the selected tag, or the bulk actions when
-several are checked. Kinds and rejected names stay views of the same screen
-(`tab` in the URL). The layout, states and widths are decided in
+`/tags` is a `ListPage` whose body is a grid of tag cards; a card opens the
+tag's page `/tags/:id`, where every operation on one tag lives. Operations on
+several tags stay on the list through the selection bar. Kinds and rejected
+names move to pages of their own (`/tags/kinds`, `/tags/rejected`), reached
+from the list's header. The layout, states and widths are decided in
 `ui-design.md`.
 
-| Decision | Rejected | Why |
-| --- | --- | --- |
-| List beside a detail pane; on a narrow width the pane opens over the list as a sheet | Rows with icon buttons and nested dialogs, as today | Requirement 1 and the Issue's UI quality: operations are found in one place, not per row |
-| Same | A page per tag (`/tags/:id`) | Organizing moves between many tags; each round trip loses the list position and the selection |
-| Same | Rows that expand in place | Variable row heights move the rows below while the virtualized list scrolls, against "positions do not jump" |
-| The pane's first controls are merge, make a synonym of another tag, and the per-synonym operations; delete and reject sit behind a secondary menu | Equal-weight buttons | The Issue's UI quality asks for this order |
-| The selected tag is not in the URL; search, filters, sort and the view stay as today (`q`, `tentative`, `unused`, `kind`, `sort`, `tab`) | Adding `tag=<id>` | Requirement 8 covers the criteria only, and an id kept in history goes stale after a merge or delete |
-| The list keeps server pages of 100 rows and the `@tanstack/react-virtual` virtualizer, scrolling inside its own region so the pane stays visible | Loading every tag at once | A list request without a limit returns every tag with its synonyms; paging keeps the first paint independent of the library size |
-| Bulk selection covers loaded rows and stops at 20,000 before running, as today | Selecting across unloaded pages | Requirement 2 keeps today's behaviour; the Issue's edge case keeps the limit check |
-| A stale target (`tag_not_found`, `tag_synonym_not_found`) shows the reason and reloads the list | Retrying | The Issue's edge case |
+The diagram shows where each operation lives.
 
-## Design-system pattern
-
-`WorkbenchPage` (item `workbench-page`, example `workbench-page-example`)
-replaces `AdminTablePage` in the skeleton table of
-[patterns.md](../../web/registry/rules/patterns.md#choosing-the-skeleton) as
-"Organizes a large set of records: a list beside the selected record's details
-and operations". It composes the existing `Toolbar`, `DataTable`,
-`SelectionBar`, `EmptyState` and shadcn `Sheet`; tokens and shadcn components
-do not change.
+```mermaid
+flowchart LR
+  list[Tag list] -->|select cards| bulk[Selection bar: merge, kind, confirm, reject, delete]
+  list -->|open a card| page[Tag page]
+  page --> names[Names: make main, move, detach, remove, add]
+  page --> kind[Kind]
+  page --> merge[Merge into another tag]
+  page --> acts[Confirm, rename, reject, delete]
+  list -->|header| kinds[Kinds page]
+  list -->|header| rejected[Rejected names page]
+```
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
+| Tags are cards: name, video count, kind colour, synonyms; a card is one fixed height | Table rows, as today | The maintainer's review: rows read as old and plain; cards of one fixed height still show about 24 tags at 1280×820 and keep virtualization simple |
+| Same | A list beside a detail pane (the first design) | Reviewed as an extension of today's screen; the pane crowds both the list and the tag's work |
+| One tag's work is a page of its own, `/tags/:id`, using the whole width | A side panel over the list | The list's own operations (selection bar, filters) cover the many-tag work; one tag's names, kind and merge need the room, and the page has a URL to return to |
+| Opening a card holds an in-memory snapshot of the list (loaded cards, cursor, totals, scroll position) under its criteria, one at a time, as the library's `listSnapshot` does; Back restores it when the URL's criteria match, then runs the change check of [Change notice](#change-notice) | Restoring from the URL's criteria only | The criteria give the first page only; a card opened past it could not be scrolled back to without its loaded pages |
+| Same | Keeping the list mounted behind the page | The library already returns from a video this way and needs no second mounted screen |
+| A write on the tag page drops the snapshot, so Back reloads the list with the same criteria from the top | Restoring the snapshot and patching the written tag into it | A merge, detach or kind change can move cards across pages; the library drops its snapshot after a write for the same reason |
+| The kind filter sits beside the title as one segmented control with counts; tentative, no kind and unused show as a strip of three counts that each apply their filter | The filter popover of today | The counts are what the owner checks first ("how many are left"), and the review asked for the filters next to the header |
+| Search, the filters and sort stay in the URL as today (`q`, `tentative`, `unused`, `kind`, `sort`); `tab` is dropped because kinds and rejected names are pages | Keeping `tab` | Requirement 8 covers the criteria; separate pages have their own URLs |
+| The card grid keeps server pages of 100 and is virtualized by rows (`@tanstack/react-virtual`), with the column count taken from the grid's width | A wrapping grid that keeps every loaded card | The tag list froze with thousands of rows before it was virtualized ([library-ui.md](../../docs/design-docs/library-ui.md)); a fixed card height makes a row the unit |
+| Selecting cards follows the library's selection (check on hover, Shift for a range, the bottom selection bar); bulk selection stops at 20,000 before running, as today | A separate selection mode | One selection model across the app; requirement 2 keeps today's limit |
+| The tag page reads its tag with a new owner-only `GET /api/tags/{id}` (`getTag`) on open and on the `tags` event; `404 tag_not_found` is the gone state ([contracts/tag-synonym-operations.md](contracts/tag-synonym-operations.md)) | Taking the tag from the list's loaded cards, or from `listTags` with its name as `q` | The page opens from its URL without the list; a name search matches substrings and synonyms, and cannot tell a renamed tag from a deleted one |
+| The tag page re-reads its tag on the `tags` event when no own write is in flight, and shows the gone state when the tag no longer exists | A notice to refresh, as on the list | One tag's page has no positions to keep, so updating in place moves nothing |
+| A stale target (`tag_not_found`, `tag_synonym_not_found`) shows the reason, and the page or list reloads | Retrying | The Issue's edge case |
+
+## Design-system pieces
+
+The design system gains a record card, a record editor skeleton and kind
+colours, and loses `AdminTablePage`; tokens other than the kind colours and
+the shadcn components do not change.
+
+| Piece | Item | What it is |
+| --- | --- | --- |
+| `RecordCard` | `record-card` | A fixed-height card for one named record: name, count, a kind colour mark, a line of secondary names, a selection check |
+| `CardGrid size="record"` | `card-grid` | The grid of record cards, at least `card-record` wide |
+| `RecordEditorPage` | `record-editor-page` | A new skeleton for organizing one record: a back link, the title with its figures and a row of actions, a two-column body of its parts, then a `Shelf` of the items it is on |
+| Kind colours | `vv-theme` | Eight colour tokens `kind-1` … `kind-8`, each with a `-soft` fill, for the kind mark, the kind filter and the kind picker |
+
+| Decision | Rejected | Why |
+| --- | --- | --- |
+| A new skeleton, `RecordEditorPage` | Widening `RecordPage` | `RecordPage` is for reading one record and rules out operations on it in its actions; the activity entry depends on that |
+| Same | `ProfilePage` | It puts viewing first and sends work on the subject to another page ([patterns.md, Profile page](../../web/registry/rules/patterns.md#profile-page)); here the work is the point |
+| A kind takes `kind-N` from its id, N = (id − 1) mod 8 + 1, so a kind keeps its colour when others are created or deleted | A colour the owner picks | A picker is a new setting and API field; the Issue asks for none |
+| Same | Its position among the kinds ordered by id | Deleting a kind with a lower id shifts every later kind to another colour |
+| Same | One colour for all kinds | The review chose cards with a kind colour; telling kinds apart at a glance is the reason |
 | Remove `AdminTablePage`, its example and its rules, in the change that moves its last caller | Keeping it for other admin tables | Requirement 9; only the tags and organizations screens use it |
-| Organizations move onto `WorkbenchPage`, with the details dialog's fields (aliases, external ids, parent) in the pane | Keeping organizations on a plain table | Requirement 10; the details are what the pane is for |
-| The people screen keeps `ListPage` with face cards and only stops importing from `web/src/tags/` | Moving people onto `WorkbenchPage` | People are browsed by face ([people.md](../../docs/design-docs/people.md)); rename, merge and delete live on the person page, which acceptance 6 already covers |
+| Organizations move onto the same pieces: a card list at `/organizations` and an organization page `/organizations/:id` holding today's details (names, external ids, parent) with merge and delete | Keeping organizations on a table with a details dialog | Requirement 10 |
+| The people screen keeps `ListPage` with face cards and only stops importing from `web/src/tags/` | Moving people onto record cards | People are browsed by face ([people.md](../../docs/design-docs/people.md)); acceptance 6 is covered by the person page |
 
 ## Shared list modules
 
@@ -210,9 +245,9 @@ plan's tables. No `data-model.md`: no table or entity is added.
 `web/src/history/`, `web/src/preferences/`, `web/src/ui/`, `web/registry*`,
 `web/e2e/tags.e2e.ts`.
 
-**New paths**: `web/src/recordList/`, `web/src/ui/patterns/workbench-page.tsx`,
-`web/src/designSystem/blocks/workbench-page-example.tsx`,
-`docs/design-docs/tag-organizing.md`.
+**New paths**: `web/src/recordList/`, `web/src/ui/RecordCard.tsx`,
+`web/src/ui/patterns/record-editor-page.tsx`, their example blocks under
+`web/src/designSystem/blocks/`, `docs/design-docs/tag-organizing.md`.
 
 **Structure decision**: Follows the existing layout
 ([ARCHITECTURE.md, Web layer](../../ARCHITECTURE.md#web-layer)), plus
@@ -224,25 +259,27 @@ The graph shows the units and what each waits for.
 
 ```mermaid
 flowchart LR
-  ops[Synonym operations API] --> detail[Workbench detail pane]
-  ev[Tags server event] --> list[Workbench list]
-  move[Shared list modules] --> list
-  pat[WorkbenchPage pattern] --> list
-  list --> detail
-  list --> bulk[Workbench bulk actions]
-  list --> views[Workbench kinds and rejected names]
-  move --> orgs[Organizations on WorkbenchPage]
-  pat --> orgs
+  ops[Synonym operations API] --> page[Tag page]
+  ev[Tags server event] --> list[Tag card list]
+  move[Shared list modules] --> views[Kinds and rejected names pages]
+  ds[Record card, editor page, kind colours] --> views
+  views --> list
+  move --> list
+  ds --> list
+  list --> page
+  list --> bulk[Selected tag cards]
+  move --> orgs[Organizations and AdminTablePage removal]
+  ds --> orgs
   list --> orgs
-  detail --> e2e[Workbench e2e]
+  page --> e2e[End to end]
   bulk --> e2e
   views --> e2e
   orgs --> e2e
 ```
 
-### Make a synonym canonical, move it or detach it through the screen API
+### Read one tag and make a synonym canonical, move it or detach it through the screen API
 
-**Scope**: The three operations and the peer `promote` action in
+**Scope**: `getTag`, the three operations and the peer `promote` action in
 [contracts/tag-synonym-operations.md](contracts/tag-synonym-operations.md):
 domain rules, `TagStore` methods, handlers, `api/openapi.yaml` and
 `task generate`, and their wrappers in `web/src/api/tags.ts`. Adds
@@ -255,8 +292,9 @@ of [Synonym operations](#synonym-operations), linked from the index.
 after it, attachments unchanged for promote and move, none on a detached tag,
 and no change with `tag_synonym_not_found` or `tag_not_found` when the synonym
 or target is gone. A video-list test filters by a promoted, moved and detached
-name and gets the tag named in the table. Handler tests cover `move_same_tag`,
-a remote id answering 404, and on a paired pair of test servers that `promote`
+name and gets the tag named in the table. Handler tests cover `getTag` answering
+the `Tag` that `listTags` gives and `404 tag_not_found` for a missing or remote
+id, `move_same_tag`, a remote id answering 404, and on a paired pair of test servers that `promote`
 changes the canonical name on both and `move` only locally. `web/src/api`
 tests assert each wrapper's request.
 
@@ -290,115 +328,129 @@ their tests, and every importer in `web/src/credits/`, `web/src/settings/`,
 settings and history tests unchanged apart from import paths, and
 `task generate-check` passes.
 
-### Add the WorkbenchPage pattern to the design system
+### Add the record card, the record editor page and kind colours to the design system
 
-**Scope**: `web/src/ui/patterns/workbench-page.tsx`, its example block, the
-registry entries, its row in the skeleton table and a `WorkbenchPage` section
-in `patterns.md`, and its showcase entry, following
-[Design-system pattern](#design-system-pattern) and `ui-design.md`.
-`AdminTablePage` stays until the organizations unit.
+**Scope**: `RecordCard` and `CardGrid size="record"` with the `card-record`
+step, the `RecordEditorPage` skeleton, and the `kind-1` … `kind-8` tokens with
+their `-soft` fills, following [Design-system pieces](#design-system-pieces)
+and `ui-design.md`: components, example blocks, registry entries, the rows in
+`patterns.md`, `components.md` and `foundations.md`, the contrast pairs in
+`web/src/theme/tokens.test.ts`, and their showcase entries. `AdminTablePage`
+stays until the organizations unit.
 
 **Dependencies**: None
 
-**Acceptance**: `task generate-check` passes with `workbench-page.json`
-built; the showcase renders the example at the widths `ui-design.md` names,
-reviewed visually (list beside pane, sheet on a narrow width, selection
-state).
+**Acceptance**: `task generate-check` passes with `record-card.json` and
+`record-editor-page.json` built; `tokens.test.ts` checks each kind colour
+against `card`; the showcase renders both examples at the widths
+`ui-design.md` names, reviewed visually (card states, the editor page's two
+columns and their narrow stack).
 
-### Rebuild the tags screen as a workbench list with search, filters and sort
+### Rebuild the tags list as kind-filtered tag cards
 
-**Scope**: The new `/tags` screen on `WorkbenchPage`: list, search,
-filters, sort and their URL, create, empty states for no tags and no matches,
-selection of one tag (pane shows its name, count, kind, tentative state and
-synonyms read-only), the change notice of [Change notice](#change-notice), and
-deletion of the old screen's files and tests, including
-`web/src/testing/tagsPage.tsx`. Updates the tags part of
+**Scope**: `/tags` as a `ListPage` of tag cards: the kind filter with counts
+beside the title, the tidy-up strip (tentative, no kind, unused), search and
+sort in the top bar, their URL, create, the row-virtualized card grid, empty
+states, the change notice of [Change notice](#change-notice), the snapshot
+kept for Back from a tag page, links to the kinds and rejected names pages,
+and deletion of the old screen's files and
+tests, including `web/src/testing/tagsPage.tsx`. Updates the tags part of
 [library-ui.md](../../docs/design-docs/library-ui.md).
 
 **Dependencies**: Send a tags server event when the tag list changes; Move the
-list pieces other screens use out of web/src/tags; Add the WorkbenchPage
-pattern to the design system
+list pieces other screens use out of web/src/tags; Add the record card, the
+record editor page and kind colours to the design system; Give tag kinds and
+rejected names pages of their own
 
 **Acceptance**: Component tests: criteria round-trip through the URL and are
-restored on reload and Back (acceptance 5); an event whose re-read differs in
-a loaded row past the first page shows the notice and leaves the rows in
-place, one whose re-read matches shows nothing, and one during an own write is
-checked after it; the two empty
+restored on reload and Back (acceptance 5); Back from a card opened past the
+first page restores the same loaded cards and scroll position without a
+request for them, and after a write on the tag page reloads with the same
+criteria; a tidy-up count applies its
+filter; an event whose re-read differs in a loaded card past the first page
+shows the notice and leaves the cards in place, one whose re-read matches
+shows nothing, and one during an own write is checked after it; the two empty
 states. A visual review at the `ui-design.md` widths.
 
-### Organize a tag from the workbench detail pane
+### Act on selected tag cards
 
-**Scope**: In the pane: rename, kind, add and remove synonyms, make a synonym
-canonical, move a synonym to another tag, detach a synonym, make this tag a
-synonym of another tag, merge, confirm, reject and delete, with stale-target
-handling.
+**Scope**: Card selection (check, Shift range, select all loaded and all
+matching), the selection bar with merge into one tag, kind, confirm, reject
+and delete, the over-limit stop, and the impact counts before reject, delete
+and merge.
 
-**Dependencies**: Make a synonym canonical, move it or detach it through the
-screen API; Rebuild the tags screen as a workbench list with search, filters
-and sort
+**Dependencies**: Rebuild the tags list as kind-filtered tag cards
+
+**Acceptance**: Component tests assert each bulk request, the cards after it,
+`notFoundIds` handled as stale, and that a selection over 20,000 is stopped
+before any request. A visual review of the selection states.
+
+### Add the tag page with its names, kind and merge
+
+**Scope**: `/tags/:id` on `RecordEditorPage`: the title with rename, the
+actions (confirm, reject, delete), the names with make main, move, detach,
+remove and add, the kind picker, merge into another tag, the row of the tag's
+videos with the link to the library, the gone state, in-place refresh on the
+`tags` event, and stale-target handling.
+
+**Dependencies**: Read one tag and make a synonym canonical, move it or detach
+it through the screen API; Rebuild the tags list as kind-filtered tag cards
 
 **Acceptance**: Component tests with a fake API assert each control's request
-and the row after it: promote shows the new name with the old one as a
-synonym; move removes the synonym from the row; detach adds the new tag;
-make-a-synonym-of removes this tag and shows its names under the target; a
-`tag_synonym_not_found` or `tag_not_found` answer shows the reason and reloads.
-A visual review of the pane's states.
+and the page after it: opening `/tags/:id` directly reads the tag with
+`getTag`, and a `404 tag_not_found` shows the gone state; make main shows the new name with the old one among the
+names; move removes the name; detach links to the new tag; merge returns to the
+list without the tag; a `tag_synonym_not_found` or `tag_not_found` answer
+shows the reason and reloads; an event re-reads the tag. A visual review of
+the page's states.
 
-### Act on the selected tags from the workbench
+### Give tag kinds and rejected names pages of their own
 
-**Scope**: Bulk confirm, reject, delete, set kind and merge for checked tags,
-the select-all and over-limit rules, and the impact counts before reject,
-delete and merge.
+**Scope**: `/tags/kinds` (create, rename, delete, card-first, each kind's
+colour and its link to the filtered list) and `/tags/rejected` (list,
+forget). They replace the current screen's Kinds and Rejected names tabs, which
+become links to them, so both stay reachable until the card list replaces that
+screen and keeps the links in its header.
 
-**Dependencies**: Rebuild the tags screen as a workbench list with search,
-filters and sort
+**Dependencies**: Move the list pieces other screens use out of web/src/tags;
+Add the record card, the record editor page and kind colours to the design
+system
 
-**Acceptance**: Component tests assert each bulk request, the rows after it,
-`notFoundIds` handled as stale, and that a selection over 20,000 is stopped
-before any request. A visual review of the pane with several tags checked.
+**Acceptance**: Component tests: the tags screen links to both pages; deleting
+a kind leaves its tags with no kind in the list; forgetting a rejected name removes it from the page. A visual
+review of both pages.
 
-### Manage tag kinds and rejected names in the workbench
+### Move organizations onto record cards and an organization page and remove AdminTablePage
 
-**Scope**: The kinds view (create, rename, delete, card-first, link to the
-kind's tags) and the rejected names view (list, forget) on the workbench.
-
-**Dependencies**: Rebuild the tags screen as a workbench list with search,
-filters and sort
-
-**Acceptance**: Component tests: deleting a kind leaves its tags with no kind
-in the list; forgetting a rejected name removes it from the view. A visual
-review of both views.
-
-### Move the organizations screen onto WorkbenchPage and remove AdminTablePage
-
-**Scope**: The organizations screen on `WorkbenchPage` with list, search,
-create, rename, merge, delete and the details in the pane; removal of
-`admin-table-page`, its example, its rules and the references in
-`design-system.md`, `library-ui.md` and `people.md`.
+**Scope**: `/organizations` as a list of record cards with search, sort,
+create, selection-free open; `/organizations/:id` on `RecordEditorPage` with
+rename, names, external ids, parent, merge and delete, replacing the details
+dialog; removal of `admin-table-page`, its example, its rules and the
+references in `design-system.md`, `library-ui.md` and `people.md`.
 
 **Dependencies**: Move the list pieces other screens use out of
-web/src/tags; Add the WorkbenchPage pattern to the design system; Rebuild the
-tags screen as a workbench list with search, filters and sort
+web/src/tags; Add the record card, the record editor page and kind colours to
+the design system; Rebuild the tags list as kind-filtered tag cards
 
 **Acceptance**: The organizations component tests cover list, search,
 create, rename, merge and delete (acceptance 6); `grep -r AdminTablePage
 web docs` finds nothing (acceptance 8); `task generate-check` passes. A visual
-review of the organizations screen.
+review of both organization screens.
 
-### Cover the tag workbench end to end
+### Cover the tag screens end to end
 
 **Scope**: Rewrite the tag-screen tests of `web/e2e/tags.e2e.ts` for the
-workbench (the card overflow test there stays), and run
+card list and the tag page (the card overflow test there stays), and run
 [quickstart.md](quickstart.md).
 
-**Dependencies**: Organize a tag from the workbench detail pane; Act on the
-selected tags from the workbench; Manage tag kinds and rejected names in the
-workbench; Move the organizations screen onto WorkbenchPage and remove
+**Dependencies**: Act on selected tag cards; Add the tag page with its names,
+kind and merge; Give tag kinds and rejected names pages of their own; Move
+organizations onto record cards and an organization page and remove
 AdminTablePage
 
 **Acceptance**: The e2e spec, run through `workflow_dispatch` of `ci.yml`,
-shows that after promote the library card shows the new name and a search for
-the old name finds the same videos (acceptance 1), after move tagging a video
-by the moved name attaches the target (acceptance 2), and after detach the new
-tag is listed (acceptance 3). The quickstart's 5,000-tag check is recorded in
-the PR (acceptance 4).
+shows that after make main on the tag page the library card shows the new
+name and a search for the old name finds the same videos (acceptance 1),
+after move tagging a video by the moved name attaches the target
+(acceptance 2), and after detach the new tag is in the list (acceptance 3).
+The quickstart's 5,000-tag check is recorded in the PR (acceptance 4).
