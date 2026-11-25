@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// Verify tag layout in the browser; lower-level suites cover behavior. The fixture count positions the last grid row near the bottom at 1280 x 800; see docs/design-docs/web-testing.md.
+// Verify the tag screens against the real server and browser layout; lower-level suites cover each rule. The fixture count positions the last grid row near the bottom at 1280 x 800; see docs/design-docs/web-testing.md.
 
 const videoCount = 16;
 
@@ -108,240 +108,180 @@ test.describe.serial("video tags", () => {
     expect(removed.status()).toBe(204);
   });
 
-  test.describe("タグ管理画面（issue 271）", () => {
-    /** Find rows through the tag link accessible name. */
-    function tagRowByName(page: Page, name: string) {
-      // Use exact matching to distinguish case-sensitive tag names such as Anime and anime.
-      return page
-        .getByRole("link", { name: `Open the library filtered by ${name}`, exact: true })
-        .locator("xpath=ancestor::*[@data-tag-id][1]");
+  test.describe("タグカードとタグのページ（070-tag-workbench）", () => {
+    async function addSynonym(request: APIRequestContext, tagId: number, name: string) {
+      const response = await request.post(`/api/tags/${String(tagId)}/synonyms`, {
+        headers: mutationHeaders,
+        data: { name },
+      });
+      expect(response.ok()).toBe(true);
     }
 
-    /** Below sm (640 px), Actions replaces the CSS-hidden More actions menu. */
-    function rowMenuName(width: number) {
-      return width < 640 ? "Actions" : "More actions";
+    /** The library card of the video, found after the list has loaded. */
+    function libraryCard(page: Page, videoId: number) {
+      return page.locator(`article[data-video-id="${String(videoId)}"]`);
     }
 
-    /** Scroll until the virtualized row mounts, restarting from the top if needed. Use a deadline so intermediate layout resets cannot be mistaken for the end. */
-    async function revealTagRow(page: Page, name: string) {
-      const row = tagRowByName(page, name);
-      await expect(
-        page.getByRole("link", { name: /^Open the library filtered by / }).first(),
-      ).toBeVisible();
-      await page.evaluate(() => window.scrollTo(0, 0));
-      // Include scrolling into view in each attempt because remeasurement may unmount the row.
-      await expect(async () => {
-        if ((await row.count()) === 0) {
-          await page.evaluate(() => {
-            const before = window.scrollY;
-            window.scrollBy(0, 400);
-            if (window.scrollY === before) window.scrollTo(0, 0);
-          });
-          await expect(row).toBeAttached({ timeout: 300 });
-        }
-        await row.scrollIntoViewIfNeeded({ timeout: 1_000 });
-        await expect(row).toBeVisible({ timeout: 300 });
-      }).toPass({ timeout: 15_000, intervals: [0] });
-      return row;
+    function chip(page: Page, videoId: number, name: string) {
+      return libraryCard(page, videoId).getByRole("button", {
+        name: `Filter by ${name}`,
+        exact: true,
+      });
     }
 
-    test("16b: 仮のタグの行も名前の列の空白を押すと絞り込んだ一覧が開き、長い名前でも目印と操作が行に残る", async ({
+    async function openNameMenu(page: Page, name: string) {
+      await page.getByRole("button", { name: `More actions for "${name}"` }).click();
+    }
+
+    test("受け入れ1: 代表名にしたシノニムをライブラリのカードが出し、旧名の検索でも同じ動画が見つかる", async ({
       page,
       request,
     }) => {
-      // Tentative tags can only be created through the external API.
-      const issued = await request.post("/api/api-tokens", {
-        headers: mutationHeaders,
-        data: { name: "e2e仮のタグ" },
-      });
-      expect(issued.status()).toBe(201);
-      const { secret } = (await issued.json()) as { secret: string };
-      const shortName = "e2e仮移動先";
-      const longName = `e2e仮長い名前${"あ".repeat(80)}`;
+      const before = "e2e入替前の名前";
+      const after = "e2e入替後の名前";
       const a = video("タグ動画A");
       await clearVideoTags(request, a.id);
-      const tagged = await request.post("/api/v1/video-tags", {
-        headers: {
-          Authorization: `Bearer ${secret}`,
-          "Content-Type": "application/json",
-        },
-        data: {
-          videos: [{ id: a.id }],
-          action: "add",
-          tags: [shortName, longName],
-          tentative: true,
-        },
+      const tag = await createTag(request, before);
+      await addSynonym(request, tag.id, after);
+      await attachTag(request, a.id, tag.id);
+
+      await page.goto(`/tags/${String(tag.id)}`);
+      await expect(page.getByRole("heading", { level: 1, name: before })).toBeVisible();
+      await page.getByRole("button", { name: `Make "${after}" the main name` }).click();
+      await expect(page.getByRole("heading", { level: 1, name: after })).toBeVisible();
+      await expect(page.locator(`[data-synonym="${before}"]`)).toBeVisible();
+
+      await page.goto("/");
+      await expect(chip(page, a.id, after)).toBeVisible();
+      await expect(chip(page, a.id, before)).toHaveCount(0);
+
+      await page.goto(`/?q=${encodeURIComponent(before)}`);
+      await expect(libraryCard(page, a.id)).toBeVisible();
+      await expect(page.getByRole("article")).toHaveCount(1);
+    });
+
+    test("受け入れ2: 別のタグへ移したシノニムで動画にタグを付けると、移動先のタグが付く", async ({
+      page,
+      request,
+    }) => {
+      const moved = "e2e移す名前";
+      const source = await createTag(request, "e2e移動元");
+      const target = await createTag(request, "e2e移動先");
+      await addSynonym(request, source.id, moved);
+      const b = video("タグ動画B");
+      await clearVideoTags(request, b.id);
+
+      await page.goto(`/tags/${String(source.id)}`);
+      await openNameMenu(page, moved);
+      await page.getByRole("menuitem", { name: "Move to another tag…" }).click();
+      const dialog = page.getByRole("dialog", { name: `Move "${moved}" to another tag` });
+      await dialog.getByRole("combobox", { name: "Tag to move it to" }).fill(target.name);
+      // Clicking the candidate inside the dialog also catches an overlay that intercepts it.
+      await page.getByRole("option", { name: new RegExp(target.name) }).click();
+      await dialog.getByRole("button", { name: "Move", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page.locator(`[data-synonym="${moved}"]`)).toHaveCount(0);
+
+      const tagged = await request.post("/api/video-tags", {
+        headers: mutationHeaders,
+        data: { videoIds: [b.id], action: "add", tag: { name: moved } },
       });
       expect(tagged.ok()).toBe(true);
 
-      for (const width of [1280, 360]) {
-        await page.setViewportSize({ width, height: 800 });
-        await page.goto("/tags");
-        for (const name of [shortName, longName]) {
-          await revealTagRow(page, name);
-          const row = tagRowByName(page, name);
-          const link = row.getByRole("link", {
-            name: `Open the library filtered by ${name}`,
-            exact: true,
-          });
-          const mark = row.locator("svg.lucide-circle-dashed");
-          await expect(mark).toBeVisible();
-          // The marker stays after the name on the same line; spacing is not part of this assertion.
-          const linkBox = await link.boundingBox();
-          const markBox = await mark.boundingBox();
-          if (linkBox === null || markBox === null) throw new Error("no layout");
-          expect(markBox.x).toBeGreaterThanOrEqual(linkBox.x + linkBox.width);
-          expect(markBox.y).toBeLessThan(linkBox.y + linkBox.height);
-          expect(markBox.y + markBox.height).toBeGreaterThan(linkBox.y);
-
-          const rowBox = await row.boundingBox();
-          const moreBox = await row
-            .getByRole("button", { name: rowMenuName(width) })
-            .boundingBox();
-          if (rowBox === null || moreBox === null) throw new Error("no layout");
-          expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
-        }
-
-        await revealTagRow(page, longName);
-        const longLink = tagRowByName(page, longName).getByRole("link", {
-          name: `Open the library filtered by ${longName}`,
-          exact: true,
-        });
-        expect(
-          await longLink.evaluate((node) => node.scrollWidth > node.clientWidth),
-        ).toBe(true);
-
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= window.innerWidth,
-          ),
-        ).toBe(true);
-      }
-      await page.setViewportSize({ width: 1280, height: 800 });
-
-      // Click the blank area after the short name and marker.
-      await revealTagRow(page, shortName);
-      const row = tagRowByName(page, shortName);
-      const link = row.getByRole("link", {
-        name: `Open the library filtered by ${shortName}`,
-        exact: true,
-      });
-      const href = await link.getAttribute("href");
-      const column = link.locator("xpath=..");
-      const columnBox = await column.boundingBox();
-      const markBox = await row.locator("svg.lucide-circle-dashed").boundingBox();
-      if (columnBox === null || markBox === null) throw new Error("no layout");
-      const x = columnBox.width - 4;
-      expect(columnBox.x + x).toBeGreaterThan(markBox.x + markBox.width);
-      await column.click({ position: { x, y: columnBox.height / 2 } });
-      await expect(page).toHaveURL(`${origin}${String(href)}`);
+      await page.goto(`/tags/${String(target.id)}`);
+      await expect(page.locator(`[data-synonym="${moved}"]`)).toBeVisible();
+      await page.goto("/");
+      await expect(chip(page, b.id, target.name)).toBeVisible();
+      await expect(chip(page, b.id, source.name)).toHaveCount(0);
     });
 
-    test("狭い幅でも見出しの件数は折り返さず、「Kinds」「Rejected names」のリンクを省略せずに本文の中に収め、そのページも横にはみ出さない", async ({
-      page,
-    }) => {
-      // A four-digit count maximizes the heading width.
-      const createdAt = "2026-01-01T00:00:00Z";
-      const items = Array.from({ length: 1000 }, (_, index) => ({
-        id: 900000 + index,
-        name: `e2e狭い幅${String(index).padStart(4, "0")}`,
-        synonyms: [],
-        videoCount: 0,
-        tentative: true,
-        // kind is required; null means unclassified, while omission breaks the badge.
-        kind: null,
-        createdAt,
-      }));
-      // Paginated requests include sort, limit and tentative parameters.
-      await page.route(/\/api\/tags(\?.*)?$/, (route) =>
-        route.request().method() === "GET"
-          ? route.fulfill({
-              json: { items, total: items.length, totalAll: items.length },
-            })
-          : route.fallback(),
-      );
-      await page.route("**/api/tags/rejected-names**", (route) =>
-        route.request().method() === "GET"
-          ? route.fulfill({
-              json: { items: ["e2e却下0"], total: 1 },
-            })
-          : route.fallback(),
-      );
-      for (const width of [320, 360]) {
-        await page.setViewportSize({ width, height: 800 });
-
-        await page.goto("/tags?tentative=1");
-        const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
-        await expect(count).toBeVisible();
-        await expect(page.getByRole("heading", { level: 1, name: "Tags" })).toBeVisible();
-        const fitsWidth = () =>
-          page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-        // A wrapped count produces multiple client rectangles.
-        expect(
-          await count.evaluate((element) => {
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            return new Set(
-              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
-            ).size;
-          }),
-        ).toBe(1);
-        for (const name of ["Kinds", "Rejected names"]) {
-          const link = page.getByRole("link", { name, exact: true });
-          await expect(link).toHaveText(name);
-          const box = await link.boundingBox();
-          if (box === null) throw new Error("no layout");
-          expect(box.x + box.width).toBeLessThanOrEqual(width);
-        }
-        expect(await fitsWidth()).toBe(true);
-
-        await page.getByRole("link", { name: "Rejected names", exact: true }).click();
-        await expect(page).toHaveURL(/\/tags\/rejected$/);
-        await expect(
-          page.getByRole("button", { name: 'Allow "e2e却下0" again' }),
-        ).toBeVisible();
-        expect(await fitsWidth()).toBe(true);
-
-        await page.goto("/tags/kinds");
-        await expect(page.getByRole("textbox", { name: "New kind name" })).toBeVisible();
-        expect(await fitsWidth()).toBe(true);
-      }
-      await page.setViewportSize({ width: 1280, height: 800 });
-    });
-
-    test("B3: 1280幅で統合先の候補を開くと、8行すべてが見える", async ({
+    test("受け入れ3: 独立させたシノニムが新しいタグとして一覧に出て、元のタグからは消える", async ({
       page,
       request,
     }) => {
-      await page.setViewportSize({ width: 1280, height: 800 });
-      await createTag(request, "e2eB3統合元");
-      const names: string[] = [];
-      for (let i = 1; i <= 8; i += 1) {
-        const name = `e2eB3統合先${String(i)}`;
-        names.push(name);
-        await createTag(request, name);
+      const detached = "e2e独立する名前";
+      const source = await createTag(request, "e2e独立元");
+      await addSynonym(request, source.id, detached);
+
+      await page.goto(`/tags/${String(source.id)}`);
+      await openNameMenu(page, detached);
+      await page.getByRole("menuitem", { name: "Make it a tag of its own" }).click();
+      await expect(
+        page.getByText(`"${detached}" is now a tag of its own.`),
+      ).toBeVisible();
+      await expect(page.locator(`[data-synonym="${detached}"]`)).toHaveCount(0);
+
+      // The search also matches synonyms, so one card means the source no longer holds the name.
+      await page.goto(`/tags?q=${encodeURIComponent(detached)}`);
+      const cards = page.locator("a[data-tag-id]");
+      await expect(cards).toHaveCount(1);
+      await expect(cards).toContainText(detached);
+      await expect(cards).not.toHaveAttribute("data-tag-id", String(source.id));
+      await cards.click();
+      await expect(page.getByRole("heading", { level: 1, name: detached })).toBeVisible();
+    });
+
+    test("360幅で一覧、タグのページ、種類と却下した名前のページが横にはみ出さず、40文字の名前と操作の名前を省略しない", async ({
+      page,
+      request,
+    }) => {
+      const longName = `e2e長い名前${"あ".repeat(33)}`;
+      const synonym = `e2e長いシノニム${"い".repeat(30)}`;
+      const tag = await createTag(request, longName);
+      await addSynonym(request, tag.id, synonym);
+      const width = 360;
+      await page.setViewportSize({ width, height: 800 });
+      const fitsWidth = () =>
+        page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      async function expectInside(locator: ReturnType<Page["locator"]>) {
+        await expect(locator).toBeVisible();
+        const box = await locator.boundingBox();
+        if (box === null) throw new Error("no layout");
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
       }
 
       await page.goto("/tags");
-      await revealTagRow(page, "e2eB3統合元");
-      const row = tagRowByName(page, "e2eB3統合元");
-      await row.getByRole("button", { name: "More actions" }).click();
-      await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
-
-      const dialog = page.getByRole("dialog", { name: 'Merge "e2eB3統合元"' });
-      const combo = dialog.getByRole("combobox", { name: "Tag to merge into" });
-      await combo.fill("e2eB3統合先");
-
-      // All eight candidates must remain visible despite the dialog overflow container.
-      for (const name of names) {
-        await expect(page.getByRole("option", { name: new RegExp(name) })).toBeVisible();
+      await expect(page.locator("a[data-tag-id]").first()).toBeVisible();
+      for (const name of ["Kinds", "Rejected names", "New tag"]) {
+        const action = page.getByRole(name === "New tag" ? "button" : "link", {
+          name,
+          exact: true,
+        });
+        await expect(action).toHaveText(name);
+        await expectInside(action);
       }
+      expect(await fitsWidth()).toBe(true);
 
-      // Click the last candidate to detect pointer-event interception too.
-      await page.getByRole("option", { name: new RegExp(names[7]!) }).click();
-      await expect(
-        dialog.getByText(new RegExp(`get the tag "${names[7]!}"`)),
-      ).toBeVisible();
+      await page.goto(`/tags/${String(tag.id)}`);
+      const title = page.getByRole("heading", { level: 1, name: longName });
+      await expect(title).toBeVisible();
+      await expectInside(title);
+      expect(await title.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(
+        true,
+      );
+      const row = page.locator(`[data-synonym="${synonym}"]`);
+      await expectInside(
+        row.getByRole("button", { name: `Make "${synonym}" the main name` }),
+      );
+      await expectInside(
+        row.getByRole("button", { name: `More actions for "${synonym}"` }),
+      );
+      await expectInside(page.getByRole("button", { name: "Delete…" }));
+      expect(await fitsWidth()).toBe(true);
+
+      for (const [path, ready] of [
+        ["/tags/kinds", page.getByRole("textbox", { name: "New kind name" })],
+        [
+          "/tags/rejected",
+          page.getByRole("heading", { level: 1, name: "Rejected names" }),
+        ],
+      ] as const) {
+        await page.goto(path);
+        await expect(ready).toBeVisible();
+        expect(await fitsWidth()).toBe(true);
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
     });
   });
 
