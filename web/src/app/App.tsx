@@ -27,6 +27,7 @@ import {
   deferredRoute,
   matchesBelowPath,
   matchesExactPath,
+  matchesPath,
   prefetchWhenIdle,
 } from "./deferredRoute";
 import LibraryRedirect from "./LibraryRedirect";
@@ -50,6 +51,13 @@ const TagKindsPage = await deferredRoute(
 const RejectedNamesPage = await deferredRoute(
   () => import("../tags/RejectedNamesPage"),
   "/tags/rejected",
+);
+const TagPage = await deferredRoute(
+  () => import("../tags/TagPage"),
+  (pathname) =>
+    matchesBelowPath(pathname, "/tags") &&
+    !matchesPath(pathname, "/tags/kinds") &&
+    !matchesPath(pathname, "/tags/rejected"),
 );
 const PeoplePage = await deferredRoute(
   () => import("../credits/people/PeoplePage"),
@@ -219,6 +227,14 @@ function AppRoutes() {
             element={
               <ShellPage>
                 <RejectedNamesPage />
+              </ShellPage>
+            }
+          />
+          <Route
+            path="/tags/:id"
+            element={
+              <ShellPage>
+                <TagPage />
               </ShellPage>
             }
           />

@@ -35,11 +35,14 @@ function TagCard({
   tag,
   selected,
   selection,
+  backTo,
   onOpen,
 }: {
   tag: Tag;
   selected: boolean;
   selection: TagCardSelection;
+  /** The list's URL with its criteria, so the tag page's back link returns to it. */
+  backTo: string;
   onOpen: (tag: Tag) => void;
 }) {
   const remote = isRemoteId(tag.id);
@@ -57,6 +60,7 @@ function TagCard({
       link={
         <Link
           to={remote ? libraryFilterPath(TAG_PARAM, tag.id) : tagPagePath(tag.id)}
+          state={remote ? undefined : { from: backTo }}
           data-tag-id={tag.id}
           onClick={press}
         />

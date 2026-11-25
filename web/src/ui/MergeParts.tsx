@@ -37,6 +37,7 @@ export function MergeTargetField({
   searching,
   searchError,
   emptyText,
+  layout = "inline",
 }: {
   Command: ComponentType<MergeCommandProps>;
   label: UiText;
@@ -50,6 +51,8 @@ export function MergeTargetField({
   searchError: UiText | null;
   /** Shown when no choice matches; without it an empty list draws no panel at all. */
   emptyText?: UiText;
+  /** `inline` (default) keeps the choices open under the field, as in a dialog; `dropdown` opens them on focus, as on a page. */
+  layout?: "inline" | "dropdown";
 }) {
   const searchErrorId = useId();
   const labelId = useId();
@@ -64,7 +67,7 @@ export function MergeTargetField({
         {label}
       </FieldLabel>
       <Command
-        layout="inline"
+        layout={layout}
         label={label}
         labelledBy={labelId}
         placeholder={null}

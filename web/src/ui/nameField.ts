@@ -1,6 +1,13 @@
-import { useState, type ClipboardEvent, type FormEvent } from "react";
+import {
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 
 import type { UiText } from "../i18n";
+import { isComposingKeyEvent } from "../lib/ime";
 import { newlinePattern } from "../lib/tagName";
 import type { NameRules } from "./NameCommand";
 import { tagNameRules } from "./TagCommand";
@@ -52,4 +59,31 @@ export function useTagNameField(
   }
 
   return { value, setValue, reason, setReason, onPaste, onBeforeInput, trySpelling };
+}
+
+export type TagNameField = ReturnType<typeof useTagNameField>;
+
+/** Bind an input to a name field: Enter submits and, when given, Escape cancels; neither acts mid-composition. */
+export function nameInputProps(
+  field: TagNameField,
+  onEnter: () => void,
+  onEscape?: () => void,
+) {
+  return {
+    value: field.value,
+    onChange: (event: ChangeEvent<HTMLInputElement>) =>
+      field.setValue(event.target.value),
+    onPaste: field.onPaste,
+    onBeforeInput: field.onBeforeInput,
+    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
+      if (isComposingKeyEvent(event)) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onEnter();
+      } else if (event.key === "Escape" && onEscape !== undefined) {
+        event.preventDefault();
+        onEscape();
+      }
+    },
+  };
 }

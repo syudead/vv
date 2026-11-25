@@ -220,7 +220,9 @@ title and the counts of tentative, kindless and unused tags under it; its
 section of rows: a kind's row has its colour mark, its tag count linking to
 `/tags?kind=<id>`, the `First on cards` switch and a `More` menu, and the
 section ends with the `New kind` field; a rejected name's row has
-`Allow again`. The
+`Allow again`. A tag card opens the tag's page `/tags/:id`, a
+`RecordEditorPage` for its names, kind and merge
+([tag-organizing.md](tag-organizing.md#the-tag-page)). The
 organizations page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header sticks under the top bar with the table's column header right under it,
 without a filter, checkbox column or selection bar, and a
