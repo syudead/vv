@@ -152,6 +152,11 @@
   --spacing-profile-facts: 18rem;
   /* The facts card stops at the face's height (15rem at 2:3) from lg and scrolls inside. */
   --spacing-profile-facts-max: 22.5rem;
+  /* QueryResultsPage's query column from lg: two related-thumb frames side by side inside a p-3 card. */
+  --spacing-query-aside: 22.5rem;
+  /* The query preview's greatest height: about half the viewport under the top bar from lg, a third below. */
+  --spacing-query-preview-max: calc((100dvh - 3.25rem) / 2);
+  --spacing-query-preview-max-sm: calc((100dvh - 3.25rem) / 3);
   /* Cap sticky list-aside height beneath the top bar and scroll overflow internally. */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);

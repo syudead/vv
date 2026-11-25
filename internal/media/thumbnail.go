@@ -141,7 +141,7 @@ func thumbnailArgs(videoPath string, offsetSec float64, output, poster string) [
 		return append(args, "-frames:v", "1", "-vf", thumbnailScale, "-q:v", "4", "-y", output)
 	}
 	return append(args,
-		"-filter_complex", "[0:v:0]split=2[t][p];[t]"+thumbnailScale+"[thumbnail];[p]"+frameScale+"[poster]",
+		"-filter_complex", "[0:v:0]split=2[t][p];[t]"+thumbnailScale+"[thumbnail];[p]"+posterScale+"[poster]",
 		"-map", "[thumbnail]", "-frames:v", "1", "-q:v", "4", "-y", output,
 		"-map", "[poster]", "-frames:v", "1", "-q:v", "3", "-y", poster,
 	)

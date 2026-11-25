@@ -4,6 +4,16 @@ import { englishMessages, replaceMessages, t, type MessageSource } from "./messa
 
 afterEach(() => replaceMessages(englishMessages));
 
+describe("t", () => {
+  it("keeps catalog lists as arrays", () => {
+    const people = t.designSystem.pattern.faceGridPeople;
+    expect(Array.isArray(people)).toBe(true);
+    expect(people.map((person) => person.name)).toEqual(
+      englishMessages.designSystem.pattern.faceGridPeople.map((person) => person.name),
+    );
+  });
+});
+
 describe("replaceMessages", () => {
   it("updates existing catalog branches without replacing their identity", () => {
     const common = t.common;

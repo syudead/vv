@@ -84,7 +84,8 @@ file into a handbook.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md). The
   daily Renovate routine runs `.agents/skills/renovate-triage`, which may merge
-  Renovate PRs into `main`, major updates included, under that skill's gates.
+  Renovate PRs, major updates included, and its own vulnerability audit PR
+  into `main` under that skill's gates.
 - SDD work starts when the maintainer hands over a parent Issue or native
   sub-issue URL, and runs `plan → design → plan-to-issues → implement →
   integrate`, with `design` only for `ui` Issues. Use

@@ -5570,7 +5570,7 @@
       "method": "GET",
       "path": "/api/videos/{id}/frame",
       "summary": "Return a frame of the video",
-      "description": "Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.",
+      "description": "Owner-only. Extracts positionMs as PNG with the long edge capped at maxEdge px (2048 when left out), never enlarged, for framing a person's face from a video, which the page crops and sends as the person's face, and for an image search's matched frames. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.",
       "owner": true,
       "response": "image",
       "pathParams": [
@@ -5580,6 +5580,10 @@
         {
           "name": "positionMs",
           "explode": true
+        },
+        {
+          "name": "maxEdge",
+          "explode": true
         }
       ],
       "parameters": {
@@ -5588,6 +5592,12 @@
             "description": "Video ID",
             "format": "int64",
             "minimum": 1,
+            "type": "integer"
+          },
+          "maxEdge": {
+            "description": "The long edge's cap in pixels, never enlarged; 2048 when left out. Outside 64 to 2048 returns 400 invalid_request.",
+            "maximum": 2048,
+            "minimum": 64,
             "type": "integer"
           },
           "positionMs": {
@@ -10369,6 +10379,19 @@
           "kind": "thumbnailEdit"
         }
       ]
+    },
+    {
+      "operationId": "searchByImage",
+      "method": "POST",
+      "path": "/api/image-search",
+      "summary": "Search the library by an uploaded image or video",
+      "description": "Owner-only. Accepts exactly one multipart part, `file`: a PNG, JPEG or still WebP image of at most 64 MiB and 120 million pixels, kept in memory, or any other file read as a video of at most 4 GiB and 3 hours, kept in the data directory's search uploads only until the response. Returns the listed videos, version bundle members collapsed to the representative, whose search index holds the same footage, ordered by match rate, then matched section length, then the newer video, at most 50, with the count of listed file videos not indexed yet. Videos in switched-off media folders are not searched. One search runs at a time; another request waits. No `file` part or a second part returns 400 invalid_request; a file that is neither a readable image nor a video stream of at least one second 400 image_search_unreadable; a flat image or a video with fewer than three non-flat frames sampled once a second 400 image_search_uninformative; a video over 3 hours 400 image_search_too_long with limit in milliseconds; an image over 64 MiB or 120 million pixels or a video over 4 GiB 413 image_search_too_large with the exceeded limit. A cancelled request writes no response and ends any ffmpeg run. Nothing it was given is kept, whatever the outcome.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
     },
     {
       "operationId": "searchPeopleWithPlugin",

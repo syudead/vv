@@ -14,6 +14,8 @@ const (
 	ThumbnailEditMaxInstruction    = 4000
 	ThumbnailEditMaxReferenceBytes = 20 << 20
 	ThumbnailFrameMaxSide          = 2048
+	// VideoFrameMinSide is the smallest long side a caller may ask a video frame for.
+	VideoFrameMinSide = 64
 )
 
 var (

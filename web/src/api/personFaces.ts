@@ -178,9 +178,17 @@ export function listVideoFaceAppearances(
   );
 }
 
-/** A frame of the video at positionMs, as a PNG at most 2048 px on its long side. */
-export function videoFramePath(videoId: number, positionMs: number): string {
-  return `/api/videos/${String(videoId)}/frame?positionMs=${String(positionMs)}`;
+/**
+ * A frame of the video at positionMs, as a PNG at most maxEdge px on its long side (64 to 2048, 2048 when left out).
+ * The server never enlarges the frame.
+ */
+export function videoFramePath(
+  videoId: number,
+  positionMs: number,
+  maxEdge?: number,
+): string {
+  const path = `/api/videos/${String(videoId)}/frame?positionMs=${String(positionMs)}`;
+  return maxEdge === undefined ? path : `${path}&maxEdge=${String(maxEdge)}`;
 }
 
 export function faceCropPath(appearanceId: number): string {

@@ -28,6 +28,7 @@ import {
 } from "../../api/client";
 import { errorText, t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
+import { useNow } from "../../lib/useNow";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
 import { EditorDialog } from "../../ui/patterns/editor-dialog";
 import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
@@ -90,17 +91,6 @@ async function providerMessage(
   } catch {
     return undefined;
   }
-}
-
-function useNow(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-  return now;
 }
 
 /** Polling doubles as a heartbeat for the five-minute session expiry. Pause around mutations to reject stale reads, then resume even after failure. */

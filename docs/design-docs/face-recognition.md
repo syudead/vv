@@ -110,6 +110,12 @@ tag.
 | `face-runtime-linux-amd64.tar.gz`, `face-runtime-linux-arm64.tar.gz` | `mdm-face`; `lib/` with Microsoft's onnxruntime 1.22.0 and the loader, `libc`, `libm`, `libdl`, `libpthread`, `librt`, `libstdc++` and `libgcc_s` of a pinned `debian:trixie` image; their licenses |
 | `face-runtime-windows-amd64.zip`                                     | `mdm-face.exe`, `onnxruntime.dll`, its license                                                                                                                                                      |
 
+onnxruntime comes from Microsoft's `Microsoft.ML.OnnxRuntime` NuGet package,
+pinned by version and SHA-256. One file holds the library of all three
+platforms, and nuget.org does not change or remove a published version; the
+archives of the GitHub release hold the same libraries but stopped being
+downloadable.
+
 On Linux the helper starts as `lib/ld-linux-*.so --library-path lib mdm-face`,
 so it runs under the bundled glibc on any host, Alpine included. Each pull
 request that changes the helper builds the three archives, and the Linux jobs

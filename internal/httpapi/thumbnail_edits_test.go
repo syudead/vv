@@ -25,6 +25,7 @@ type editFakes struct {
 
 	mu        sync.Mutex
 	positions []int64
+	maxSides  []int
 	starts    int
 	startErr  error
 	state     domain.ThumbnailEditState
@@ -91,10 +92,11 @@ func (e editEditor) Output(context.Context, domain.ImageEditJob) ([]byte, error)
 
 type editFrames struct{ f *editFakes }
 
-func (e editFrames) FrameAt(_ context.Context, _ string, positionMs int64) (domain.ThumbnailFrame, error) {
+func (e editFrames) FrameAt(_ context.Context, _ string, positionMs int64, maxSide int) (domain.ThumbnailFrame, error) {
 	e.f.mu.Lock()
 	defer e.f.mu.Unlock()
 	e.f.positions = append(e.f.positions, positionMs)
+	e.f.maxSides = append(e.f.maxSides, maxSide)
 	if e.f.noFrame {
 		return domain.ThumbnailFrame{}, errors.New("ffmpeg: no frame")
 	}
@@ -446,6 +448,23 @@ func TestGetVideoFrameStatuses(t *testing.T) {
 	}
 	if positions := f.edits.positions; positions[len(positions)-1] != 1500 {
 		t.Errorf("positions = %v, want the frame read at 1500", positions)
+	}
+	if sides := f.edits.maxSides; sides[len(sides)-1] != 2048 {
+		t.Errorf("max sides = %v, want 2048 without maxEdge", sides)
+	}
+	if rec := frame("a", "1500&maxEdge=320", f.owner); rec.Code != http.StatusOK {
+		t.Fatalf("frame at maxEdge 320 = %d %s", rec.Code, rec.Body)
+	}
+	if sides := f.edits.maxSides; sides[len(sides)-1] != 320 {
+		t.Errorf("max sides = %v, want 320 from maxEdge", sides)
+	}
+	reads := len(f.edits.positions)
+	for _, edge := range []string{"63", "2049"} {
+		check("maxEdge "+edge, frame("a", "1500&maxEdge="+edge, f.owner),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if len(f.edits.positions) != reads {
+		t.Errorf("frames read = %d, want none for a maxEdge out of range", len(f.edits.positions)-reads)
 	}
 
 	video := decode[gen.Video](t, f.env.get(f.videoPath("b", ""), f.owner))

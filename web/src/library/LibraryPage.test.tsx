@@ -771,7 +771,7 @@ describe("LibraryPage", () => {
     );
   });
 
-  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
+  it("キーボードだけで検索欄 → × → ファイルで検索 → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
     const user = userEvent.setup();
     renderLibrary("/?q=abc&sort=addedDesc");
     await screen.findByRole("link", { name: "動画 1" });
@@ -782,6 +782,10 @@ describe("LibraryPage", () => {
     await user.tab();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Clear search" }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Search by image or video" }),
     );
     await user.tab();
     expect(document.activeElement).toBe(help);

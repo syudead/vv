@@ -156,6 +156,7 @@ var assistantExclusions = slices.Concat(
 		"uploadPersonImage"),
 	excluded("Files the browser sends", "The server holds no such file", pageOrganizations, false,
 		"uploadOrganizationImage"),
+	excluded("Files the browser sends", "The server holds no such file", pageLibrary, false, "searchByImage"),
 	excluded("Drag operations",
 		"They take drag tokens; the group, bundle and playlist tools make the same changes", pageLibrary, false,
 		"organizeReorder", "organizeGroup", "organizeMove", "organizeMerge", "organizeBundle", "organizeUndo"),

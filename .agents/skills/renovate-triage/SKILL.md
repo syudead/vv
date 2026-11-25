@@ -1,6 +1,6 @@
 ---
 name: renovate-triage
-description: Take every open Renovate PR to merged or deferred within one run (failed checks, conflicts, major updates included), reopen deferred updates once their blocker is gone, and watch what this routine merged. Use when the daily Renovate routine fires, or when the maintainer asks to process the open Renovate PRs now.
+description: Take every open Renovate PR to merged or deferred within one run (failed checks, conflicts, major updates included), reopen deferred updates once their blocker is gone, watch what this routine merged, and fix the advisories the vulnerability audit finds. Use when the daily Renovate routine fires, or when the maintainer asks to process the open Renovate PRs now.
 ---
 
 # Renovate triage
@@ -10,9 +10,11 @@ required checks pass ([dependency-updates.md](../../../docs/how-to/dependency-up
 but only on its own schedule and only while it alone has committed to the
 branch. This skill takes every open Renovate PR the rest of the way without a
 person: green ones, ones with a failed check or a conflict, and major updates.
-The maintainer has delegated the merge of these PRs into `main`, major updates
-included, under the gates below. Nothing else is delegated: this skill merges
-only Renovate PRs, and never reverts a merge.
+It also runs the vulnerability audit, which finds the advisories Renovate
+opens no PR for, and fixes what it finds. The maintainer has delegated the merge of Renovate
+PRs, major updates included, and of the routine's own `audit/*` PR into `main`,
+under the gates below. Nothing else is delegated: this skill merges no other
+PR, and never reverts a merge.
 
 The skill is an orchestrator. It derives the state from GitHub, hands each PR
 that needs work to one `renovate-pr-fixer` worker (`renovate_pr_fixer` on
@@ -36,6 +38,8 @@ GitHub is the state. Do not write a state file or a tracking Issue.
 | `deferred` label | Open group Renovate PR | Deferred, but Renovate recreates a closed group PR, so it stays open. Skipped until its head commit changes or its `Revisit when:` holds |
 | `<!-- renovate-triage:deferred -->` | Comment | Posted when the routine defers a PR; carries the reason, the `Revisit when:` condition and the head commit it was deferred at |
 | `<!-- renovate-triage:reopened -->` | Comment | Posted on a deferred PR when the routine took it up again |
+| `security` label | Open PR from `audit/*` by the routine's account | The routine's audit PR; at most one is open |
+| `<!-- renovate-triage:advisories -->` | Comment on the Dependency Dashboard Issue | The advisories the routine could not fix, as of the run that posted it |
 
 A marker counts only in a comment by the account this routine posts as
 (`gh api user`); ignore one from anyone else, since anyone can comment on a
@@ -48,13 +52,13 @@ this skill is processed like any other: remove the label first.
 ### Preflight
 
 Check that the session can read and write PRs, Issues and labels, push to
-`renovate/*` branches, and merge into `main`. Stop and report when one is
-missing; change nothing.
+`renovate/*` and `audit/*` branches, and merge into `main`. Stop and report
+when one is missing; change nothing.
 
 ### Watch what earlier runs merged
 
-List the Renovate PRs (author `app/renovate`) merged in the last 7 days that
-carry a `renovate-triage:merged` comment. For each, read the CI workflow run of
+List the PRs merged in the last 7 days that carry a `renovate-triage:merged`
+comment: Renovate PRs (author `app/renovate`) and the routine's `audit/*` PRs. For each, read the CI workflow run of
 the push to `main` at its merge commit:
 
 - **Green, or still running**: nothing to do.
@@ -198,7 +202,7 @@ the only other cases where a run leaves a PR open.
 
 ### Merge gates
 
-Merge a Renovate PR only when `main` is not treated as broken
+Merge a Renovate PR or the routine's audit PR only when `main` is not treated as broken
 ([Watch what earlier runs merged](#watch-what-earlier-runs-merged)) and all of
 these hold on its current head commit:
 
@@ -206,7 +210,9 @@ these hold on its current head commit:
 - Every check run on the head commit has concluded `success`, `skipped` or
   `neutral`. `Checks`, `Browser E2E (*)` and `Docker image` run on Renovate PRs
   (see the comments in `.github/workflows/ci.yml`), and none of them may be
-  `skipped` when the PR changes code.
+  `skipped` when the PR changes code. On an audit PR only `Checks` runs;
+  `Browser E2E` and `Docker image` run on `main` after the merge, where
+  [the watch](#watch-what-earlier-runs-merged) reads them.
 - For a major update, the PR has the worker's `renovate-triage` comment
   ([references/worker.md, Major updates](references/worker.md#major-updates))
   and its verdict is `safe to merge`.
@@ -218,23 +224,63 @@ these hold on its current head commit:
 Then post `<!-- renovate-triage:merged -->` with one line on what was merged,
 and merge with a merge commit, as the repository does for other PRs.
 
+### Clear the vulnerability audit
+
+Renovate opens no PR for some advisories: one in a transitive npm dependency,
+one without a patched release, one in the Go standard library. `task audit`
+finds them
+([dependency-updates.md](../../../docs/how-to/dependency-updates.md#vulnerability-audit)),
+and this step fixes them. Do it after the Renovate PRs, so that what this run
+merged is not fixed twice.
+
+Start one `audit-fixer` worker (`audit_fixer` on Codex) on every run:
+
+```text
+PR: <number of the open `security` PR from `audit/*` by the routine's account, or ->
+Upkeep: <yes on the first run of the week (Monday in JST), otherwise no>
+Skip: <the findings the latest `renovate-triage:advisories` comment lists as blocked, or ->
+Attempt: <n> of 3
+Follow .agents/skills/renovate-triage/references/audit.md.
+```
+
+| STATUS | Next |
+| --- | --- |
+| `PUSHED` | [Wait for CI](#waiting-for-ci) on the PR, then apply the [merge gates](#merge-gates). On a failed check, run the worker again with the PR number, up to three attempts |
+| `CLEAN` | Nothing to do |
+| `BLOCKED` | Drive the PR the worker pushed, if any, as for `PUSHED`. Then report the blocked finding as below |
+
+An audit PR still red after the third attempt is closed, and its findings
+count as blocked with `Revisit when: the next run`; the next run starts over
+from `main`.
+
+Blocked findings are the only ones a person sees. Compare them with the
+latest `renovate-triage:advisories` comment on the Dependency Dashboard Issue.
+When they differ, or that comment does not exist and a finding is blocked,
+post a new one: the marker, then one line per finding with the advisory link,
+why no fix applies and its `Revisit when:`, or `No blocked advisory.` when
+none is left. When they are the same, post nothing.
+
 ### Report
 
 At the end of the run, when it did anything, add one comment to the Renovate
 "Dependency Dashboard" Issue: one line per PR merged, deferred (with its
 `Revisit when:`), reopened, left open, found to have broken `main` or cleared
 of `needs-human`, each with the PR link and, for a fixed PR, what the fix
-changed. When the run did nothing, post nothing.
+changed. List the audit PR the same way, with the advisories it fixed. When
+the run did nothing, post nothing. The `renovate-triage:advisories` comment
+is separate and follows its own rule.
 
 ## Never
 
-- Merge a PR that is not by `app/renovate`, or revert a merged one.
+- Merge a PR that is neither by `app/renovate` nor the routine's own
+  `security` PR from `audit/*`, or revert a merged one.
 - Skip, disable, loosen or quarantine a test or a check, or re-run a failed
   check to get it green.
 - Change `renovate.json` to stop an update. That is the maintainer's call;
   defer the PR with `Revisit when: a person decides` instead.
 - Leave a PR open labelled `needs-human`, or open with nothing left to try
   without the `deferred` label.
+- Change `task audit` to get the audit green.
 - Change the excluded dependencies in
   [dependency-updates.md](../../../docs/how-to/dependency-updates.md#excluded-dependencies).
 - Push to `main` directly or rewrite a Renovate branch's history.
