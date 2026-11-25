@@ -45,6 +45,54 @@ connected.
 | A vocabulary revision returned by every write | Every write path, including scans that change folder-derived counts, would have to bump it in its transaction |
 | Sending it on every video change | A scan changes thousands of videos; the list's continuation check already catches a list that changed under paging |
 
+## The tag list
+
+`/tags` ([`TagsPage.tsx`](../../web/src/tags/TagsPage.tsx)) is a `ListPage`
+of tag cards read 100 at a time for the criteria in the URL (`q`,
+`tentative`, `unused`, `kind`, `sort`). The kind filter beside the title and
+the strip of tentative, kindless and unused counts apply those criteria. Every
+count in them is of the whole vocabulary, not of the search: a kind's count is
+its `tagCount`, `All` is the list's `totalAll`, and the three tallies are the
+`total` of a one-row page with that filter alone, read again with every first
+page. The cards are drawn a row at a time near the viewport
+([library-ui.md](library-ui.md#no-virtual-scrolling)).
+
+### Back from a tag page
+
+Opening a card keeps the list in memory: the loaded cards, the cursor, the
+totals, the search text and the scroll position, under the criteria
+([`tagListSnapshot.ts`](../../web/src/api/tagListSnapshot.ts)). Back to the
+same criteria shows those cards at that position without reading them, then
+runs the change check below. Only one list is kept, as the library keeps one
+snapshot. Any tag or kind write through the screen API drops it, so Back after
+a write on the tag page reads the list again from the top with the same
+criteria: a merge, detach or kind change can move cards across pages.
+
+### The change notice
+
+A `tags` event does not reload the list; the list re-reads the cards it has
+loaded and says so only when something differs
+([`useTagListChanges.ts`](../../web/src/tags/useTagListChanges.ts)).
+
+```mermaid
+flowchart LR
+  ev[tags event] --> busy{Own write or first page in flight}
+  busy -->|yes| wait[Check once it settles]
+  busy -->|no| check[Re-read the loaded cards]
+  wait --> check
+  check --> same{Cards or totals differ}
+  same -->|no| keep[Nothing]
+  same -->|yes| notice[Tags changed elsewhere]
+  notice -->|Refresh| reload[Read again from the top]
+```
+
+| Rule | Why |
+| --- | --- |
+| The check reads the loaded cards again with the same criteria, in pages of 200 (`MaxTagPageLimit`), and compares each card's names, count, kind and tentative state and the two totals | A synonym added elsewhere to a card past the first page changes neither the first page nor the totals |
+| A difference shows one `FloatingNotice` over the cards and moves nothing; `Refresh` reads the list again from the top | The list must not move under the owner's pointer |
+| An event during the list's own write, or while a first page loads, is checked once that settles | Own writes are applied to the shown cards first, so the later check matches them; a timer would hide other writes or report the list's own |
+| A check whose criteria were replaced by a newer read is dropped, and a new first page clears the notice | The newer read already shows the current rows |
+
 ## Reading one tag and synonym operations
 
 The tag page reads one tag (`getTag`) and changes one synonym at a time with

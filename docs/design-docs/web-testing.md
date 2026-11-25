@@ -67,7 +67,7 @@ component; [Rules out of pages](#rules-out-of-pages) covers that case.
 | Tags sorted by name compare by natural sort key, then by id | Logic ([`listRows.ts`](../../web/src/recordList/listRows.ts)) |
 | A name already used by a tag shows the catalog's reason, not the server's message | Logic ([`tagNameField.ts`](../../web/src/tags/tagNameField.ts)) |
 | Loading more videos sends the previous response's `nextCursor` | Logic ([`useVideos.ts`](../../web/src/api/useVideos.ts)) |
-| A tag row that enters rename mode fills in the name, focuses and selects it | Component ([`TagRow`](../../web/src/tags/TagRow.tsx)) |
+| A pressed tally reports its choice and a pressed one offers to clear it | Component ([`TallyStrip`](../../web/src/ui/TallyStrip.tsx)) |
 | A response that arrives after a newer request does not replace the newer rows | Page |
 | Focus returns to the next row after a delete | Page |
 | A video starts playing after a seek | E2E |
@@ -75,8 +75,8 @@ component; [Rules out of pages](#rules-out-of-pages) covers that case.
 ## Page tests
 
 A page test covers one flow. A page with many flows shares its fake server and
-helpers through a module under `web/src/testing/`, as the tag admin screen does
-with [`tagsPage.tsx`](../../web/src/testing/tagsPage.tsx), and splits its tests
+helpers through a module under `web/src/testing/`, as the tag screens do
+with [`tagScreens.tsx`](../../web/src/testing/tagScreens.tsx), and splits its tests
 into files by topic.
 
 Vitest runs the files of one CI shard in parallel and runs the tests of one file

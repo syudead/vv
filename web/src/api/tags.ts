@@ -1,5 +1,6 @@
 import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import { clearTagListSnapshot } from "./tagListSnapshot";
 import {
   afterSmartFolderMembersChanged,
   type VideoTargetOptions,
@@ -55,6 +56,9 @@ function listTags(): Promise<Tag[]> {
 }
 
 export const tagPageLimit = 100;
+
+/** The server's largest page (`MaxTagPageLimit`), for re-reading the loaded rows in few requests. */
+export const maxTagPageLimit = 200;
 
 export interface TagPageQuery {
   /** Match normalized names and synonyms; empty means no filter. */
@@ -207,6 +211,7 @@ export function afterTagsAppliedByName(): void {
 /** Invalidate snapshots and refresh tags only with subscribers; otherwise defer reads until the next getTags. */
 function afterTagChanged(): void {
   clearListSnapshot();
+  clearTagListSnapshot();
   if (listeners.size > 0) {
     refreshTags().catch(() => undefined);
     return;

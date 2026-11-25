@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { install, renderPage, server, setUpTagsPageServer } from "../testing/tagsPage";
+import { install, renderPage, server, setUpTagsPageServer } from "../testing/tagScreens";
 
 setUpTagsPageServer();
 

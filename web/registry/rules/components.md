@@ -171,8 +171,8 @@ rules.
 
 ### Table
 
-Item `table`. Rows and columns of records, such as the tags in the admin
-screen. A screen never uses it bare: it goes in the `DataTable` section of
+Item `table`. Rows and columns of records, such as the organizations in the
+admin screen. A screen never uses it bare: it goes in the `DataTable` section of
 [patterns.md](patterns.md#sections), which adds the card and its border.
 
 - A row that can be selected starts with a `Checkbox` cell, and the head of
@@ -246,7 +246,7 @@ touch screens never show it.
 ### Tabs
 
 Item `tabs`. Switches between views of the same content in place, such as the
-tag admin lists. `TabsList` with `variant="default"` is the filled segment;
+panels under a video's title. `TabsList` with `variant="default"` is the filled segment;
 `variant="line"` is the underlined row for page-level tabs. A count follows
 the label in `text-2xs text-muted-foreground`.
 

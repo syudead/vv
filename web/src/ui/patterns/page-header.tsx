@@ -56,10 +56,12 @@ export function PageHeader({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {/* With a filter the actions are a list's links and create, wider than a narrow screen
+            leaves beside the title, so the title keeps its width and the actions wrap under it. */}
         <div
           className={
             hasFilter
-              ? "flex min-w-0 flex-1 flex-col gap-1 lg:max-w-1/2 lg:flex-none"
+              ? "flex min-w-0 flex-auto flex-col gap-1 lg:max-w-1/2 lg:flex-none"
               : "flex min-w-0 flex-1 flex-col gap-1"
           }
         >
