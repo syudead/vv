@@ -13,7 +13,8 @@ are organized. The screen API gains a read of one tag for that page and three
 synonym operations (make a synonym the canonical name, move a synonym to
 another tag, detach a synonym into a new tag), and a `tags` server event lets an open screen say the list changed
 without moving it. The design system gains a record card, a record editor
-skeleton and kind colours for the tags screen, and the list pieces other
+skeleton, kind colours and three optional `ListPage` slots for the tags
+screen, and the list pieces other
 screens borrow from `web/src/tags/` move to shared homes. The tags screen is
 the only screen this feature rebuilds ([Scope](#scope)).
 
@@ -29,7 +30,7 @@ flowchart LR
   store -->|after commit| bus[Event bus]
   bus -->|tags event| list
   bus -->|tags event| page
-  ds[RecordCard, RecordEditorPage, kind colours] --> list
+  ds[RecordCard, RecordEditorPage, kind colours, ListPage slots] --> list
   ds --> page
   shared[web/src/recordList, web/src/ui] --> list
   shared -->|imports only| others[People, organizations, settings, history]
@@ -44,14 +45,16 @@ and `/tags/rejected`. No other screen is a target.
 | --- | --- |
 | People, organizations, settings, history | Import paths change when the pieces they borrow leave `web/src/tags/` ([Shared list modules](#shared-list-modules)); behaviour and layout do not |
 | Organizations | Keep `AdminTablePage` and the details dialog; no card list and no `/organizations/:id` page |
-| `AdminTablePage` | Stays in the design system for the organizations screen until that screen's own Issue |
+| Assistant review page | Unchanged; it keeps `AdminTablePage` |
+| `AdminTablePage` | Stays in the design system for the organizations screen and the assistant review page |
+| `ListPage` | Gains optional `filter`, `summary` and `notice` slots that only the tags screen fills; the people screen passes none and does not change |
 
 Three lines of the parent Issue are met in part, and the maintainer decides
 whether to reword them in the Issue.
 
 | Issue line | State after this feature |
 | --- | --- |
-| Requirement 9 and acceptance 8 (no pattern left that copies the old tags screen) | Met for the tags screen only: it no longer uses `AdminTablePage`, and the pattern and its row in the usage table remain for the organizations screen |
+| Requirement 9 and acceptance 8 (no pattern left that copies the old tags screen) | Met for the tags screen only: it no longer uses `AdminTablePage`, and the pattern and its row in the usage table remain for the organizations screen and the assistant review page |
 | Requirement 10 (move the people screen onto the new pattern) | The people screen does not change; it only stops importing from `web/src/tags/` |
 | Acceptance 6 (the people screen's operations work) | Covered by the existing people tests passing unchanged apart from import paths |
 
@@ -95,7 +98,7 @@ page patterns; [api/openapi.yaml](../../api/openapi.yaml) for the screen API;
 | Pages never call `fetch` | ARCHITECTURE.md, Web layer | `web/src/api/tags.ts` is the only caller of the new operations |
 | Generated files are not hand-edited | AGENTS.md | `api/openapi.yaml` changes, then `task generate` |
 | Complexity 25 and no copies | AGENTS.md | The pieces credits and settings borrow from `web/src/tags/` are moved, not copied ([Shared list modules](#shared-list-modules)) |
-| Design system first | AGENTS.md, design-system.md | `RecordCard`, `RecordEditorPage` and the kind colours are added to the registry before the tags screen uses them |
+| Design system first | AGENTS.md, design-system.md | `RecordCard`, `RecordEditorPage`, the kind colours, the `ListPage` slots and the components that fill them are added to the registry before the tags screen uses them |
 
 No gate is at stake after Phase 1; `## Complexity Tracking` is left out.
 
@@ -199,9 +202,11 @@ flowchart LR
 
 ## Design-system pieces
 
-The design system gains a record card, a record editor skeleton and kind
-colours; tokens other than the kind colours and the shadcn components do not
-change. `AdminTablePage` stays ([Scope](#scope)).
+The design system gains a record card, a record editor skeleton, kind colours,
+and three optional `ListPage` slots with the components that fill them; tokens
+other than the kind colours and the shadcn components do not change.
+`AdminTablePage` stays ([Scope](#scope)). `ui-design.md` decides how each
+piece looks.
 
 | Piece | Item | What it is |
 | --- | --- | --- |
@@ -209,6 +214,11 @@ change. `AdminTablePage` stays ([Scope](#scope)).
 | `CardGrid size="record"` | `card-grid` | The grid of record cards, at least `card-record` wide |
 | `RecordEditorPage` | `record-editor-page` | A new skeleton for organizing one record: a back link, the title with its figures and a row of actions, a two-column body of its parts, then a `Shelf` of the items it is on |
 | Kind colours | `vv-theme` | Eight colour tokens `kind-1` … `kind-8`, each with a `-soft` fill, for the kind mark, the kind filter and the kind picker |
+| `ListPage` `filter`, `summary` and `notice` slots | `list-page` | Optional slots for the list's main filter beside the title, a strip of tallies between the header and the body, and a notice over the body that does not move the list |
+| `TallyStrip` | `tally-strip` | Up to three counts that each toggle a filter, for the `summary` slot |
+| `FloatingNotice` | `floating-notice` | One line and one action over the body, for the `notice` slot |
+| `KindMark` | `kind-mark` | A kind's colour as a card's edge (`bar`) or before its name (`dot`) |
+| `KindToggleGroup` | `kind-toggle-group` | A single-choice group of kinds with their marks plus plain choices, for the `filter` slot and the kind picker |
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
@@ -217,7 +227,8 @@ change. `AdminTablePage` stays ([Scope](#scope)).
 | A kind takes `kind-N` from its id, N = (id − 1) mod 8 + 1, so a kind keeps its colour when others are created or deleted | A colour the owner picks | A picker is a new setting and API field; the Issue asks for none |
 | Same | Its position among the kinds ordered by id | Deleting a kind with a lower id shifts every later kind to another colour |
 | Same | One colour for all kinds | The review chose cards with a kind colour; telling kinds apart at a glance is the reason |
-| `AdminTablePage`, its example and its rules stay; the tags screen stops using it | Removing it in this feature | The organizations screen still uses it, and that screen is rebuilt under its own Issue (the parent Issue's out-of-scope list) |
+| `AdminTablePage`, its example and its rules stay; the tags screen stops using it | Removing it in this feature | The organizations screen and the assistant review page still use it, and neither is a target; the organizations screen is rebuilt under its own Issue (the parent Issue's out-of-scope list) |
+| The list's filter, tallies and change notice are optional `ListPage` slots | Building them inside the tags screen | Other lists can take them up later without copying the tags screen; a screen that passes none renders as today |
 | The organizations screen keeps its table and details dialog | A card list at `/organizations` and an organization page `/organizations/:id` | The maintainer limited the feature to the tags screen |
 | The people screen keeps `ListPage` with face cards and only stops importing from `web/src/tags/` | Moving people onto record cards | Same; people are also browsed by face ([people.md](../../docs/design-docs/people.md)) |
 
@@ -230,9 +241,13 @@ only.
 
 | Piece | New home |
 | --- | --- |
-| `usePagedRows`, `useSearchQuery`, `useUrlCriteria`, the generic row helpers and types of `tagPageRows.ts`, the virtual rows and their focus handling, `useAdminTableBand`, `AdminListToolbar`, list notices | `web/src/recordList/` |
-| `DialogError`, `RowMoreMenu`, `RowIconButton`, `RowNameInput`, `MergeTargetField`, `MergeSummary` | `web/src/ui/` as registry components |
-| `TagListSort` and its guard, used by preferences | `web/src/api/tags.ts` |
+| `usePagedRows`, `useSearchQuery`, `moreIdle` and their types, `useUrlCriteria`, the generic row helpers and types of `tagPageRows.ts` with `compareTagsForSort`, `tagListView` and its `TagListEmpty`, the virtual rows and their focus handling, `useAdminTableBand`, `AdminListToolbar`, list notices, `TagsEmpty`, the `TagFieldError` type | `web/src/recordList/` |
+| `DialogError`, `RowMoreMenu` with `TagRowRefs`, `RowIconButton`, `RowNameInput`, `CreateTagRow`, `MergeTargetField`, `MergeSummary` | `web/src/ui/` as registry components |
+| `TagListSort`, its default and its guard, used by preferences | `web/src/api/tags.ts` |
+
+Any other export that a file outside `web/src/tags/` imports when the unit
+starts moves with the piece it belongs to; the unit's acceptance finds one
+left behind.
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
@@ -266,7 +281,9 @@ plan's tables. No `data-model.md`: no table or entity is added.
 `web/e2e/tags.e2e.ts`.
 
 **New paths**: `web/src/recordList/`, `web/src/ui/RecordCard.tsx`,
-`web/src/ui/patterns/record-editor-page.tsx`, their example blocks under
+`web/src/ui/patterns/record-editor-page.tsx`, the `TallyStrip`,
+`FloatingNotice`, `KindMark` and `KindToggleGroup` components under
+`web/src/ui/`, their example blocks under
 `web/src/designSystem/blocks/`, `docs/design-docs/tag-organizing.md`.
 
 **Structure decision**: Follows the existing layout
@@ -338,29 +355,39 @@ their tests, and every importer in `web/src/credits/`, `web/src/settings/`,
 
 **Dependencies**: None
 
-**Acceptance**: No file outside `web/src/tags/` imports from it
-(`grep -r "tags/" web/src --include=*.ts*` outside `src/tags` finds only
-`api/tags`), `task check SCOPE=web` passes with the existing credits, people,
+**Acceptance**: No file outside `web/src/tags/` imports from it except the
+tags screen's own entry points: the `/tags` route in `web/src/app/App.tsx` and
+`TagsPage` in its test fixture `web/src/testing/tagsPage.tsx`
+(`grep -rnE 'from "(\.\./)+tags/|import\("(\.\./)+tags/' web/src --include='*.ts*' | grep -v '^web/src/tags/'`
+finds only those two lines), `task check SCOPE=web` passes with the existing credits, people,
 settings and history tests unchanged apart from import paths, and
 `task generate-check` passes.
 
 ### Add the record card, the record editor page and kind colours to the design system
 
 **Scope**: `RecordCard` and `CardGrid size="record"` with the `card-record`
-step, the `RecordEditorPage` skeleton, and the `kind-1` … `kind-8` tokens with
-their `-soft` fills, following [Design-system pieces](#design-system-pieces)
-and `ui-design.md`: components, example blocks, registry entries, the rows in
+step, the `RecordEditorPage` skeleton, the `kind-1` … `kind-8` tokens with
+their `-soft` fills, the `ListPage` `filter`, `summary` and `notice` slots, and
+the `TallyStrip`, `FloatingNotice`, `KindMark` and `KindToggleGroup`
+components, following [Design-system pieces](#design-system-pieces) and
+`ui-design.md`: components, example blocks, registry entries, the rows in
 `patterns.md`, `components.md` and `foundations.md`, the contrast pairs in
 `web/src/theme/tokens.test.ts`, and their showcase entries. `AdminTablePage`
-and its rows are not changed.
+and its rows are not changed, and a `ListPage` that passes none of the new
+slots renders as before.
 
 **Dependencies**: None
 
-**Acceptance**: `task generate-check` passes with `record-card.json` and
-`record-editor-page.json` built; `tokens.test.ts` checks each kind colour
-against `card`; the showcase renders both examples at the widths
-`ui-design.md` names, reviewed visually (card states, the editor page's two
-columns and their narrow stack).
+**Acceptance**: `task generate-check` passes with `record-card.json`,
+`record-editor-page.json`, `tally-strip.json`, `floating-notice.json`,
+`kind-mark.json` and `kind-toggle-group.json` built and `list-page.json`
+updated; `tokens.test.ts` checks each kind colour against `card` and each
+`kind-N-soft` fill with `foreground` text; component tests show a pressed
+tally and a pressed kind toggle reporting their choice, and the existing
+people screen tests pass unchanged; the showcase renders the examples at the
+widths `ui-design.md` names, reviewed visually (card states, the editor page's
+two columns and their narrow stack, the `ListPage` slots filled at `lg` and
+below).
 
 ### Rebuild the tags list as kind-filtered tag cards
 
