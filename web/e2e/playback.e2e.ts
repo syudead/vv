@@ -340,9 +340,16 @@ test.describe("live MP4 playback", () => {
     expect(await bar.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
 
     // The slider unmutes, so set the level before muting.
-    await page.locator(".vjs-volume-panel").hover();
+    const volumePanel = page.locator(".vjs-volume-panel");
+    await volumePanel.hover();
     const volumeBar = page.locator(".vjs-volume-bar");
     await expect(volumeBar).toBeVisible();
+    // Hover widens the panel over 0.1s; a box measured mid-transition puts the click at the wrong level.
+    await volumePanel.evaluate((element) =>
+      Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+      ),
+    );
     const volumeBox = await volumeBar.boundingBox();
     if (volumeBox === null) throw new Error("volume bar is not visible");
     await page.mouse.click(
