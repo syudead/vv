@@ -298,9 +298,9 @@ external IDs, links and every profile field together, built and left
 as the video details editor is
 ([library-ui.md](library-ui.md#details-editor)): the same band, the same
 `Discard changes?` on `Cancel`, the aside's link and the browser's Back, and
-the same return along the history when the person page opened it. Organizations
-keep the details dialog, whose first group is the same names list
-([Organizations](#organizations-share-the-profile-image-and-favorite-shapes)).
+the same return along the history when the person page opened it.
+Organizations have the same edit page with their own fields
+([organizations.md](organizations.md#the-edit-page-is-the-person-edit-page-with-an-organizations-fields)).
 
 `Save` sends one `PATCH /api/people/{id}` with only the properties that differ
 from the person as loaded, so a change made elsewhere to another property

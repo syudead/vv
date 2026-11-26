@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { RequestFailed } from "../api/client";
-import { problemOf } from "./CreditDetailsDialog";
+import { problemOf } from "./creditEditFields";
 import { nameControl, namesControl } from "./NameRows";
 
 function refusal(field: string): RequestFailed {
@@ -12,7 +12,7 @@ function refusal(field: string): RequestFailed {
 }
 
 describe("problemOf", () => {
-  // names[0] is the display name, the dialog's first row.
+  // names[0] is the display name, the editor's first row.
   const sent = { nameKeys: ["n0", "n1", "n2"], idKeys: [] };
 
   it("places names[i].name and names[i].language on the row sent at i", () => {

@@ -3,7 +3,7 @@ import type { Ref } from "react";
 import { t } from "../../../i18n";
 import { LinkRows } from "../../../player/detailsEditor/BasicsPanel";
 import { IdRows, Problem, saveOnEnter } from "../../../player/detailsEditor/fields";
-import { maxExternalIds } from "../../CreditDetailsDialog";
+import { maxExternalIds } from "../../creditEditFields";
 import { NameRows } from "../../NameRows";
 import type { PersonPanelProps } from "./ProfilePanel";
 
