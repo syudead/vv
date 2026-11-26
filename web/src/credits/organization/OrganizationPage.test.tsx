@@ -505,6 +505,9 @@ describe("OrganizationPage", () => {
       expect(edit.getAttribute("href")).toBe(`${route}/edit`);
     }
     expect(href("Show in library")).toBe(`/?organization=${String(server.routeId)}`);
+    expect(await screen.findByRole("link", { name: /Video 1/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Add to favorites" }));
+    await screen.findByRole("button", { name: "Remove from favorites" });
     await user.click(screen.getByRole("button", { name: "Change logo" }));
     await user.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
     const dialog = await screen.findByRole("dialog", { name: "Upload a logo" });
@@ -523,10 +526,17 @@ describe("OrganizationPage", () => {
 
     expect(await screen.findByText("Organizations list")).toBeTruthy();
     expect(server.writes.map((write) => `${write.method} ${write.url.pathname}`)).toEqual(
-      [`PUT /api${route}/image`, `DELETE /api${route}`],
+      ["PUT /api/favorites", `PUT /api${route}/image`, `DELETE /api${route}`],
     );
+    expect(JSON.parse(String(server.writes[0]?.body))).toMatchObject({
+      organizationIds: [server.routeId],
+    });
     expect(server.requests.some((url) => url.pathname === `/api${route}/children`)).toBe(
       true,
+    );
+    const shelves = server.requests.filter((url) => url.pathname === "/api/videos");
+    expect(new Set(shelves.map((url) => url.searchParams.get("organization")))).toEqual(
+      new Set([String(server.routeId)]),
     );
   });
 

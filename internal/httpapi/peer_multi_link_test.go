@@ -337,35 +337,52 @@ func TestForwardedOrganizationParentJoinsLinksByNameBeforeAnyRename(t *testing.T
 	}
 }
 
-// A parent another link offers can be a child of the edited organization on its own link, which refuses the cycle
-// only once the forward arrives; the rename in the same edit must not have reached the other links by then.
-func TestForwardedOrganizationParentCycleIsRefusedBeforeAnyRename(t *testing.T) {
-	fa, _, fc, b, _ := threeNodes(t)
-	ctx := context.Background()
-	organization := func(f *guestFixture, name string, parent *int64) int64 {
-		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization,
-			domain.CreditInput{Names: namesOf(name), ParentID: parent})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return credit.ID
+// A parent another link offers can be a child of the edited organization on its own link, or gone from it, which
+// that link refuses only once the forward arrives; a rename in the same edit, by either form, must not have reached
+// the other links by then.
+func TestForwardedOrganizationParentRefusalComesBeforeAnyRename(t *testing.T) {
+	cases := []struct {
+		name, rename string
+		parent       func(labelA, missingC int64) int64
+		want         wantError
+	}{
+		{"cycle by names", `"names":[{"name":"Studio West"}]`, func(labelA, _ int64) int64 { return domain.RemoteID(1, labelA) },
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonOrganizationParentCycle}},
+		{"cycle by name", `"name":"Studio West"`, func(labelA, _ int64) int64 { return domain.RemoteID(1, labelA) },
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonOrganizationParentCycle}},
+		{"gone parent", `"name":"Studio West"`, func(_, missingC int64) int64 { return domain.RemoteID(2, missingC) },
+			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound}},
 	}
-	studioA := organization(fa, "Studio", nil)
-	labelA := organization(fa, "Label", nil)
-	studioC := organization(fc, "Studio", nil)
-	organization(fc, "Label", &studioC)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fa, _, fc, b, _ := threeNodes(t)
+			ctx := context.Background()
+			organization := func(f *guestFixture, name string, parent *int64) int64 {
+				credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization,
+					domain.CreditInput{Names: namesOf(name), ParentID: parent})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return credit.ID
+			}
+			studioA := organization(fa, "Studio", nil)
+			labelA := organization(fa, "Label", nil)
+			studioC := organization(fc, "Studio", nil)
+			labelC := organization(fc, "Label", &studioC)
 
-	rec := b.owner(http.MethodPatch, creditPath("/api/organizations", domain.RemoteID(2, studioC), ""),
-		fmt.Sprintf(`{"names":[{"name":"Studio West"}],"parentId":%d}`, domain.RemoteID(1, labelA)))
-	assertErrorBody(t, "node-a's Label under node-c's Studio", rec.Code, rec.Body.Bytes(),
-		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonOrganizationParentCycle})
-	for _, tc := range []struct {
-		node string
-		f    *guestFixture
-		id   int64
-	}{{"node-a", fa, studioA}, {"node-c", fc, studioC}} {
-		if credit, err := tc.f.env.db.Credits().Get(ctx, domain.CreditOrganization, tc.id); err != nil || credit.Name != "Studio" {
-			t.Errorf("%s's Studio = %+v, %v; want it unrenamed", tc.node, credit, err)
-		}
+			rec := b.owner(http.MethodPatch, creditPath("/api/organizations", domain.RemoteID(2, studioC), ""),
+				fmt.Sprintf(`{%s,"parentId":%d}`, tc.rename, tc.parent(labelA, labelC+100)))
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), tc.want)
+			for _, node := range []struct {
+				name string
+				f    *guestFixture
+				id   int64
+			}{{"node-a", fa, studioA}, {"node-c", fc, studioC}} {
+				if credit, err := node.f.env.db.Credits().Get(ctx, domain.CreditOrganization, node.id); err != nil ||
+					credit.Name != "Studio" {
+					t.Errorf("%s's Studio = %+v, %v; want it unrenamed", node.name, credit, err)
+				}
+			}
+		})
 	}
 }

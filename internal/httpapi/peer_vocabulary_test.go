@@ -230,6 +230,34 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 	}
 }
 
+// This node's entry of a link's display name is that entry's own join, so an edit that keeps the name saves the other
+// names, while a new name this node holds is still refused.
+func TestForwardedOrganizationEditKeepingTheNameOfALocalOrganization(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	studio, err := fa.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf("Studio")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Studio", "Label"} {
+		if _, err := fb.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf(name)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := creditPath("/api/organizations", domain.RemoteID(1, studio.ID), "")
+
+	if rec := b.owner(http.MethodPatch, path, `{"names":[{"name":"Studio"},{"name":"スタジオ"}]}`); rec.Code != http.StatusOK {
+		t.Fatalf("other names only: status = %d: %s", rec.Code, rec.Body)
+	}
+	rec := b.owner(http.MethodPatch, path, `{"names":[{"name":"Label"},{"name":"スタジオ"}]}`)
+	assertErrorBody(t, "a name this node holds", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonOrganizationNameTaken})
+	credit, err := fa.env.db.Credits().Get(ctx, domain.CreditOrganization, studio.ID)
+	if err != nil || credit.Name != "Studio" || len(credit.Names) != 2 || credit.Names[1].Name != "スタジオ" {
+		t.Errorf("a's Studio = %+v, %v; want Studio with スタジオ", credit, err)
+	}
+}
+
 // A remote parent's children are read from its own node, each taking the same-named local id or the offset form.
 func TestForwardedOrganizationChildrenTakeTheLocalIDsByName(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)

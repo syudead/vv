@@ -197,10 +197,13 @@ organizations by name, so a parent shown with this node's id or another link's
 goes to the peer's organization of that name. When the peer has none, this node
 answers `404 organization_not_found` with `field: parentId` itself, so the
 owner picks another parent instead of seeing the organization as gone. The
-parent is resolved before a rename reaches the other links, and with a rename
-this node also walks the parent's ancestors on the peer and answers
-`400 organization_parent_cycle` itself, so either refusal leaves every node's
-name as it was.
+parent is resolved before a rename reaches the other links. With a rename, by
+`name` or `names`, this node also walks the parent's ancestors on the peer and
+answers `400 organization_parent_cycle`, or the `404` above when the peer has
+lost the parent, itself, so every refusal leaves every node's name as it was.
+An edit that keeps the display name renames nothing, so this node's
+organization of that name, which is the same joined entry, does not refuse it
+as `409 organization_name_taken`.
 
 | Rejected | Why |
 | --- | --- |

@@ -108,10 +108,9 @@ export function useCreditMergeDelete({
 }
 
 /**
- * The credit's video count as the list sums it across connected links by name; the single read
- * counts this node only. The list shows a name once with the first node's id, so a later link's id
- * is matched by name. A remote id leaves this node's entry of the name alone, so its count is not
- * confirmed. A nameless credit joins no link, and a failed read keeps this node's count.
+ * The credit's video count as the list sums it across links by name, found by id or, for a later
+ * link's id, by name. A remote id's change keeps this node's entry of the name, whose count is taken
+ * out; a nameless credit or a failed read keeps the single read's count of this node only.
  */
 async function linkedVideoCount(kind: CreditKind, credit: Credit): Promise<number> {
   if (credit.name === "") return credit.videoCount;
