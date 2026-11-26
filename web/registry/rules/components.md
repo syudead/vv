@@ -558,7 +558,9 @@ Item `kind-toggle-group`. One choice among kinds and plain choices, acting at
 once: a `ToggleGroup type="single"` of `outline` `sm` `pill` items, one per
 option in the caller's order. An option with `kind` shows its `dot` before
 its name; a `count` follows the name in `text-xs` muted `tabular-nums` (a
-`Skeleton` with `asChild` on a `span` while it loads). A pressed kind is its
+`Skeleton` with `asChild` on a `span` while it loads). An item is at most as
+wide as the row: a longer name wraps inside it, breaking anywhere, while its
+dot and count keep their size. A pressed kind is its
 `kind-N-soft` fill with a `kind-N` edge and `foreground` text; a pressed plain
 choice is the standard `primary-soft`. Pressing the pressed item again
 reports nothing, so one choice always stays pressed.

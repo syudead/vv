@@ -311,6 +311,61 @@ test.describe.serial("video tags", () => {
       expect(await fitsWidth()).toBe(true);
       await page.setViewportSize({ width: 1280, height: 800 });
     });
+
+    test("種類の絞り込みは60文字の種類名を折り返して全文と件数を行内に出し、360幅では末尾の「No kind」まで横スクロールで選べる", async ({
+      page,
+    }) => {
+      // A served list adds the long kind without changing the kinds the other tests share.
+      const longKind = {
+        id: 900_001,
+        name: "長".repeat(60),
+        cardFirst: false,
+        tagCount: 7,
+        createdAt: "2026-01-01T00:00:00Z",
+      };
+      await page.route("**/api/tag-kinds", async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const response = await route.fetch();
+        const list = (await response.json()) as { items: unknown[] };
+        await route.fulfill({ json: { items: [...list.items, longKind] } });
+      });
+      const fitsWidth = () =>
+        page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      const filter = page.locator('[data-slot="page-header-filter"]');
+      const longChip = page.getByRole("radio", { name: new RegExp(`^${longKind.name}`) });
+
+      for (const width of [768, 1280]) {
+        await page.setViewportSize({ width, height: 820 });
+        await page.goto("/tags");
+        await expect(longChip).toBeVisible();
+        const row = await filter.boundingBox();
+        const chip = await longChip.boundingBox();
+        const count = await longChip.getByText(String(longKind.tagCount)).boundingBox();
+        if (row === null || chip === null || count === null) throw new Error("no layout");
+        expect(chip.x + chip.width).toBeLessThanOrEqual(row.x + row.width);
+        expect(count.x + count.width).toBeLessThanOrEqual(chip.x + chip.width);
+        expect(
+          await longChip.evaluate((node) => node.scrollWidth <= node.clientWidth),
+        ).toBe(true);
+        expect(await fitsWidth()).toBe(true);
+      }
+
+      await page.setViewportSize({ width: 360, height: 800 });
+      await page.goto("/tags");
+      const noKind = page.getByRole("radio", { name: /^No kind/ });
+      await expect(longChip).toBeVisible();
+      expect(
+        await noKind.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return box.left >= window.innerWidth;
+        }),
+      ).toBe(true);
+      await noKind.click();
+      await expect(noKind).toHaveAttribute("aria-checked", "true");
+      await expect(page).toHaveURL(/[?&]kind=none/);
+      expect(await fitsWidth()).toBe(true);
+      await page.setViewportSize({ width: 1280, height: 800 });
+    });
   });
 
   // Overflow chips wrap without truncation, stay inside the viewport and scroll internally when needed; see docs/design-docs/library-ui.md.

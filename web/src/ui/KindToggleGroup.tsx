@@ -72,7 +72,8 @@ export function KindToggleGroup({
           key={option.value}
           value={option.value}
           className={cn(
-            "flex-none rounded-full px-3 font-normal first:rounded-full last:rounded-full data-[variant=outline]:border-l",
+            // A long name wraps inside a chip capped at the row's width; the dot and count keep their size.
+            "h-auto min-h-8 max-w-full flex-none rounded-full px-3 py-1 font-normal whitespace-normal first:rounded-full last:rounded-full data-[variant=outline]:border-l",
             option.kind !== undefined &&
               cn(
                 pressed[kindColour(option.kind)],
@@ -81,9 +82,9 @@ export function KindToggleGroup({
           )}
         >
           {option.kind !== undefined && <KindMark kind={option.kind} variant="dot" />}
-          {option.label}
+          <span className="min-w-0 wrap-anywhere">{option.label}</span>
           {option.count !== undefined && (
-            <span className="text-xs text-muted-foreground tabular-nums">
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
               {option.count}
             </span>
           )}
