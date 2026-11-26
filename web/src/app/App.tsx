@@ -61,7 +61,7 @@ const PersonEditPage = await deferredRoute(
   isPersonEditPath,
 );
 const OrganizationsPage = await deferredRoute(
-  () => import("../credits/OrganizationsPage"),
+  () => import("../credits/organizations/OrganizationsPage"),
   (pathname) => matchesExactPath(pathname, "/organizations"),
 );
 const OrganizationPage = await deferredRoute(

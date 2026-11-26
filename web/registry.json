@@ -284,7 +284,7 @@
       "name": "organization-logo",
       "type": "registry:ui",
       "title": "OrganizationLogo",
-      "description": "vv component: an organization's logo drawn whole in a bordered frame, or the Building2 placeholder in the same frame, in the profile shape; OrganizationLogoMark places a mark in a corner.",
+      "description": "vv component: an organization's logo drawn whole in a bordered frame, or the Building2 placeholder in the same frame, in the card and profile shapes, the card placeholder showing the display name; OrganizationLogoMark places a mark in a corner.",
       "docs": "Usage rules: web/registry/rules/components.md#organizationlogo (item vv-rules).",
       "files": [
         {
@@ -1001,7 +1001,7 @@
       "name": "card-grid",
       "type": "registry:ui",
       "title": "CardGrid",
-      "description": "Section: cards at least card-0 to card-3 wide, or card-face for face cards, stretched so both edges line up with the toolbar.",
+      "description": "Section: cards at least card-0 to card-3 wide, card-face for face cards or card-logo for logo cards, stretched so both edges line up with the toolbar.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -1096,7 +1096,7 @@
       "name": "loading-state",
       "type": "registry:ui",
       "title": "LoadingState",
-      "description": "State: Skeleton shapes of the final grid (face circles with size face), table, grouped list or cards in the body slot. Uses skeleton.",
+      "description": "State: Skeleton shapes of the final grid (face circles with size face, logo frames with size logo), table, grouped list or cards in the body slot. Uses skeleton.",
       "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
       "files": [
         {
@@ -1455,6 +1455,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/face-grid-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "logo-grid-example",
+      "type": "registry:block",
+      "title": "Logo grid example",
+      "description": "A grid of organization logo cards, each a logo or its name placeholder with the name and a meta line, and its loading skeletons.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#logo-grid (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/logo-grid-example.tsx",
           "type": "registry:component"
         }
       ]
