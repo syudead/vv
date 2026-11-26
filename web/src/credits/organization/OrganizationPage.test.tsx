@@ -42,6 +42,8 @@ const server = {
   logoFailure: null as string | null,
   /** Who is gone when the merge answers: the target alone, or both organizations. */
   mergeMissing: null as "target" | "both" | null,
+  /** The video count the list sums for Studio across connected links, or null to leave it out. */
+  linkedCount: null as number | null,
 };
 
 /** Answers the page's writes as the server does; null for a read. */
@@ -72,6 +74,15 @@ function respondToWrite(method: string, url: URL): Response | null {
 }
 
 function respond(url: URL): Response {
+  if (
+    url.pathname === "/api/organizations" &&
+    url.searchParams.get("q") === "Studio" &&
+    server.organization !== null &&
+    server.linkedCount !== null
+  ) {
+    const listed = { ...server.organization, videoCount: server.linkedCount };
+    return jsonResponse({ items: [listed], total: 1, totalAll: 1 });
+  }
   if (url.pathname === "/api/organizations") {
     return jsonResponse({
       items: server.others,
@@ -119,6 +130,7 @@ beforeEach(() => {
   server.others = [];
   server.logoFailure = null;
   server.mergeMissing = null;
+  server.linkedCount = null;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
@@ -448,5 +460,33 @@ describe("OrganizationPage", () => {
     expect(location()).toBe("/organizations");
     expect(screen.getByText('Deleted "Studio"')).toBeTruthy();
     expect(server.writes.map((write) => write.method)).toEqual(["DELETE"]);
+  });
+
+  it("confirms a delete with the videos the list counts across connected links", async () => {
+    const user = userEvent.setup();
+    server.organization = organization({ videoCount: 0 });
+    server.linkedCount = 3;
+    renderPage();
+    await chooseMore(user, "Delete");
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Studio"?' });
+
+    expect(
+      within(dialog).getByText(/"Studio" will be removed from 3 videos\./),
+    ).toBeTruthy();
+  });
+
+  it("warns of the videos the list counts across connected links before a merge", async () => {
+    const user = userEvent.setup();
+    server.organization = organization({ videoCount: 0 });
+    server.linkedCount = 3;
+    server.others = [organization({ id: 8, name: "Agency" })];
+    renderPage();
+    await chooseMore(user, "Merge into another organization…");
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "Studio"' });
+    await user.click(await within(dialog).findByRole("option", { name: /Agency/ }));
+
+    expect(
+      within(dialog).getByText(/^The 3 videos with "Studio" get "Agency"/),
+    ).toBeTruthy();
   });
 });

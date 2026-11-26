@@ -94,7 +94,11 @@ replaces only the image revision, so a heart pressed meanwhile keeps its state.
 separator, `Delete`. A merge opens the target's page with
 `Merged into "{name}"`, and a delete opens `/organizations` with
 `Deleted "{name}"`. A missing organization met by any of these actions turns
-the page into its gone state.
+the page into its gone state. Both dialogs state the video count that
+`GET /api/organizations` sums across connected links by name, because a merge
+or delete also changes a link's organization of the same name; the page's own
+read counts this node only. The person page reads `GET /api/people` the same
+way.
 
 The page shares these parts with the person page instead of copying them: the
 `More actions` menu (`CreditMoreMenu`), the merge and delete dialogs with their
@@ -105,6 +109,7 @@ upload refusal (`CreditImageParts`).
 | --- | --- |
 | A `Favorite` button in the actions row | Two pages built from the same parts keep the same action in the same place |
 | Framing the logo before it is saved, as a face is | The logo is never cropped, so there is nothing to frame |
+| Summing the links' counts in `GET /api/organizations/{id}` | The single read stays this node's record, and the list already joins the links |
 
 ## A missing organization turns the page into its gone state
 
