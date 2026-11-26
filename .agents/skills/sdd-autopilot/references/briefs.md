@@ -14,7 +14,7 @@ Every worker ends its reply with this block and nothing after it. Keep each
 line to one line.
 
 ```text
-STATUS: DONE | CLEAN | FIXED | FOREIGN | BLOCKED
+STATUS: DONE | CLEAN | FIXED | FOREIGN | DROPPED | BLOCKED
 BRANCH: <branch or ->
 BASE: <base branch or ->
 HEAD: <commit SHA or ->
@@ -25,7 +25,29 @@ FEATURE_DIR: <specs/NNN-name or ->
 CHECKS: <commands run and their result>
 DEFERRED: <out-of-scope item for the PR body or the maintainer, or none>
 BLOCKER: <what stops this, and whose decision it is, or none>
+BLOCKED_ON: <requester | artifact | recurring | prerequisite | other | ->
 ```
+
+`BLOCKED_ON` tells the orchestrator what a `BLOCKED` needs, without it reading
+the `BLOCKER` text:
+
+- `artifact`: the Plan, `ui-design.md`, another artifact in the feature
+  directory, or a child Issue written from them contradicts the code, another
+  artifact or itself, or leaves undecided something this stage needs, and the
+  parent Issue as written still decides the answer. Only a worker with no PR
+  to correct it in returns this (`plan-to-issues`, `design`, and the
+  integration-PR fixer, for which it is held); the orchestrator then has the
+  Plan revised ([loop.md, Revise the Plan](loop.md#revise-the-plan)). Name
+  the artifact, the section and the fact it contradicts in `BLOCKER`.
+- `recurring`: the same, but the text at fault was itself written by a merged
+  correction of this same point (`git log` of the file on the feature branch
+  shows it). Do not correct it again; name that PR in `BLOCKER`.
+- `requester`: the answer changes what the user gets (Q-6, Q-7 in
+  [spec-quality.md](../../../../docs/product-specs/spec-quality.md)), or the
+  parent Issue itself has to change.
+- `prerequisite`: a child this one depends on is not merged yet.
+- `other`: anything else, such as a check that did not pass with no cause to
+  fix.
 
 ## Stage worker: `plan`, `design`, implementation
 
@@ -43,7 +65,18 @@ Create your sub-branch from origin/<feature> (plan: create the feature branch
 from main first), do the stage's work and checks, commit, push (plan: the new
 feature branch first), and open the PR to <feature> as the stage reference says.
 Put out-of-scope findings in the PR body and in DEFERRED. Return STATUS: DONE.
-If the work needs an approved artifact changed, return BLOCKED without pushing.
+If an artifact in <feature-dir> or the child Issue contradicts the code,
+another artifact or itself, or leaves open something you need, and the parent
+Issue still decides the answer: implement corrects the artifact in this PR
+under the rules of plan.md's "Revising a merged Plan" (a new unit for work
+already done, headings kept), lists the correction under the PR body's
+decisions, and goes on; it ends the PR body with `<!-- sdd-plan-revision -->`
+when it adds, drops or changes a unit other than this one. Design returns
+BLOCKED without pushing, with BLOCKED_ON: artifact. Either returns
+BLOCKED_ON: recurring instead when the return block says so. If the parent
+Issue does not decide it, return
+BLOCKED without pushing, with BLOCKED_ON: requester and the question put in
+terms of what the user gets.
 Implement only: if a PR merged into <feature> already Refs this child, change
 nothing and return DONE with that PR. If a dependency named in the child (its
 `Depends on:` line) is not merged into <feature> yet, change nothing and
@@ -57,12 +90,42 @@ their own branches; stay inside this child's scope.
 Autopilot stage worker. Repository: <owner/repo>.
 Stage: plan-to-issues   Parent Issue: #<parent>
 Feature branch: <feature>   Feature directory: <dir>
+Revisions: <#PR of each merged Plan revision not reconciled yet, or ->
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/plan-to-issues.md.
 Create the missing native sub-issues in Implementation Work order, each
 dependency before the unit that needs it, and start each body with its
-`Depends on:` line. Return STATUS: DONE, or BLOCKED with the
-question the plan does not settle.
+`Depends on:` line. When Revisions names a PR, also reconcile the existing
+children with the revised Plan as the "After a Plan revision" section says,
+then comment `<!-- sdd-children-reconciled -->` on each PR it names, last.
+Return STATUS: DONE, or BLOCKED with the question the plan does not settle
+(BLOCKED_ON: artifact when the Plan should have decided it, recurring when
+a merged revision already answered this same question, requester when the
+parent Issue should).
+```
+
+## Stage worker: Plan revision
+
+```text
+Autopilot stage worker. Repository: <owner/repo>.
+Stage: plan (revision)   Parent Issue: #<parent>
+Feature branch: <feature>   Feature directory: <dir>
+Blocked work: <"plan-to-issues" or "design">
+Blocker: <the blocked worker's BLOCKER line, verbatim; one line per blocker>
+Procedure: .agents/skills/issue-handoff/references/README.md and the
+  "Revising a merged Plan" section of
+  .agents/skills/issue-handoff/references/plan.md.
+The orchestrator selected this revision; do not re-select the stage.
+
+Verify each blocker against the code on origin/<feature>, the artifacts and
+the parent Issue. Revise on a sub-branch from origin/<feature> and open one PR
+to <feature> with Refs #<parent>, with `<!-- sdd-plan-revision -->` as the
+last line of its body. Do not create, edit or close child Issues; a later
+plan-to-issues run reconciles them. Do not edit the parent Issue.
+Return STATUS: DONE with the revision PR and KIND: plan. Return BLOCKED,
+changing nothing, when a blocker is neither a contradiction nor a decision
+the Plan left open (BLOCKED_ON: other, saying why) or when resolving it needs the requirement or an acceptance
+criterion changed (BLOCKED_ON: requester).
 ```
 
 ## Stage worker: integration refresh
@@ -103,7 +166,7 @@ Post the sweep comment on #<pr> as the section says, last.
 Return STATUS: DONE with the sweep PR in PR (or PR: - when nothing needed
 fixing), KIND: integration-fix, and the items left in DEFERRED. Return BLOCKED
 when a failing check or an unmet acceptance criterion needs a requester
-decision or an approved artifact changed.
+decision (BLOCKED_ON: requester) or a feature artifact changed (other).
 ```
 
 ## Review fixer: feature PR
@@ -112,7 +175,14 @@ decision or an approved artifact changed.
 Autopilot review fixer. Repository: <owner/repo>. PR: #<pr> into <base>.
 Head: <sha>. Parent Issue: #<parent>.
 First: if the PR's Refs names neither #<parent> nor one of #<parent>'s native
-sub-issues, change nothing and return FOREIGN.
+sub-issues, change nothing and return FOREIGN. If the child it Refs is closed
+as not planned, change nothing and return DROPPED with the child in REFS.
+<only when the PR head lacks a merged Plan correction, as loop.md says:
+"After a Plan revision: first merge origin/<base> into the head branch even
+without a conflict, then check the PR against the revised artifacts and its
+child Issue as they now read. If the child's `Depends on:` line now names a
+child that is not merged into <base>, push the merge, change nothing else and
+return BLOCKED with BLOCKED_ON: prerequisite naming it.">
 Handle this one round:
 - every check on the head that did not pass (failure, cancelled, timed_out,
   action_required, stale): read its log, find the root cause, fix it
@@ -127,12 +197,22 @@ the repository's commit-message style, push to the same branch, then reply
 once on each thread you handled and resolve it.
 Return FIXED with the new head, or CLEAN if nothing needed changing. Never
 return CLEAN while a check on the head has not passed; when you find no cause
-to fix (a cancelled run, for example), return BLOCKED. Return BLOCKED when a fix
-needs an approved artifact or a requester decision changed, or when an
-unresolved finding repeats one this PR already fixed and resolved.
+to fix (a cancelled run, for example), return BLOCKED. When a fix needs an
+artifact in <feature-dir> changed and the parent Issue still decides the
+answer, change the artifact in this PR with the fix under the rules of
+plan.md's "Revising a merged Plan" (a new unit for work already done,
+headings kept), say so in your reply on the thread and under the PR body's
+decisions, and add `<!-- sdd-plan-revision -->` as the PR body's last line
+when the change adds, drops or changes a unit other than this PR's. Return
+BLOCKED only for the findings you cannot settle: BLOCKED_ON: requester when
+the parent Issue does not decide the answer, recurring as the return block
+defines it, other when a finding repeats one this PR already fixed and
+resolved. Fix every other finding first and push, so one open question does
+not hold the rest; reply on the open thread with the question and leave it
+unresolved.
 Put the Issue the PR references in REFS, and in KIND what the PR is: `plan`
 (it adds or revises <feature-dir>/plan.md), `design` (ui-design.md),
-`implement` (it Refs a child), or `integration-fix` (it Refs the parent and
+`implement` (it Refs a child, even when it also corrects an artifact), or `integration-fix` (it Refs the parent and
 fixes a review of the integration PR, or is the pre-merge sweep's PR).
 ```
 
@@ -152,7 +232,9 @@ Replace the push-and-resolve instruction:
 
 ```text
 This is the integration PR. Ignore any conflict with main; the orchestrator
-refreshes the feature branch itself. Do not push to <feature>.
+refreshes the feature branch itself. Do not push to <feature>. Do not correct
+feature artifacts here: a blocking finding that only an artifact change
+resolves is BLOCKED with BLOCKED_ON: artifact.
 Triage every finding first, as the "Review of the integration PR" section of
 .agents/skills/issue-handoff/references/integrate.md says. A finding that is
 not blocking: reply in one line and resolve it now; when it is a real defect,
