@@ -91,8 +91,10 @@ func TestPageVocabularyContinuesAtTheCursor(t *testing.T) {
 	if _, _, err := PageVocabulary(entries, TagSortCountDesc, next, 2); !errors.Is(err, ErrInvalidCursor) {
 		t.Errorf("a cursor of another sort: err = %v, want ErrInvalidCursor", err)
 	}
-	if _, _, err := PageVocabulary(entries, TagSortName, "v1.name.2", 2); !errors.Is(err, ErrInvalidCursor) {
-		t.Errorf("a position cursor: err = %v, want ErrInvalidCursor", err)
+	for _, cursor := range []string{"v1.name.2", "v2.name.!"} {
+		if _, _, err := PageVocabulary(entries, TagSortName, cursor, 2); !errors.Is(err, ErrInvalidCursor) {
+			t.Errorf("cursor %q: err = %v, want ErrInvalidCursor", cursor, err)
+		}
 	}
 }
 
@@ -106,12 +108,14 @@ func TestPageVocabularyContinuesAfterTheLastEntryWhenEarlierEntriesChange(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A provisional entry joins too; it follows the named entries of its count.
 	changed := []VocabularyEntry[string]{
+		{ID: 6, Provisional: true, Count: 1},
 		vocabularyEntry(5, "a0", 3), vocabularyEntry(2, "b", 1), vocabularyEntry(3, "c", 1), vocabularyEntry(4, "d", 0),
 	}
 	SortVocabulary(changed, TagSortCountDesc)
 	second, _, err := PageVocabulary(changed, TagSortCountDesc, next, 2)
-	if want := []int64{3, 4}; err != nil || !slices.Equal(vocabularyIDs(second), want) {
+	if want := []int64{3, 6}; err != nil || !slices.Equal(vocabularyIDs(second), want) {
 		t.Errorf("after a left and a0 joined: second page = %v, err %v, want %v", vocabularyIDs(second), err, want)
 	}
 }
