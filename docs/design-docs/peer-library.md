@@ -305,7 +305,15 @@ counts. A kind's tag count is the exception: it counts the joined tags of
 that kind, so it matches the tag list filtered by the kind and a tag both nodes
 hold counts once. The connected links are read at once and joined in slot
 order, so a remote-only entry carries the offset of the first link that holds
-it.
+it. A page's cursor holds the sort key of its last entry (sort value, named or
+provisional, name and id), as a single node's keyset cursor does, so an entry
+that leaves the filtered list before the cursor, such as a person unfavorited
+under the favorites filter, does not shift the next page past an entry.
+
+| Rejected | Why |
+| --- | --- |
+| A position in the filtered list as the cursor | An entry leaving before it makes the next page skip one |
+| Reloading the screen from the first page after a local change | It covers the screens' own changes only, not another tab's or node's |
 
 A rename, merge or deletion of a tag, person or organization, making a tag's
 synonym its canonical name (the `promote` action,

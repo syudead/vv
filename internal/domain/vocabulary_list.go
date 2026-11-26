@@ -2,6 +2,8 @@ package domain
 
 import (
 	"cmp"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -68,21 +70,24 @@ func SortVocabulary[T any](entries []VocabularyEntry[T], sort TagSort) {
 	for i := range entries {
 		entries[i].sortKey = NaturalSortKey(entries[i].Name)
 	}
-	slices.SortStableFunc(entries, func(a, b VocabularyEntry[T]) int {
-		if order := compareVocabularyValue(sort, a, b); order != 0 {
-			return order
+	slices.SortStableFunc(entries, func(a, b VocabularyEntry[T]) int { return compareVocabulary(sort, a, b) })
+}
+
+// compareVocabulary is the total order of SortVocabulary; it reads sortKey, which SortVocabulary fills.
+func compareVocabulary[T any](sort TagSort, a, b VocabularyEntry[T]) int {
+	if order := compareVocabularyValue(sort, a, b); order != 0 {
+		return order
+	}
+	if a.Provisional != b.Provisional {
+		if a.Provisional {
+			return 1
 		}
-		if a.Provisional != b.Provisional {
-			if a.Provisional {
-				return 1
-			}
-			return -1
-		}
-		if order := strings.Compare(a.sortKey, b.sortKey); order != 0 {
-			return order
-		}
-		return cmp.Compare(a.ID, b.ID)
-	})
+		return -1
+	}
+	if order := strings.Compare(a.sortKey, b.sortKey); order != 0 {
+		return order
+	}
+	return cmp.Compare(a.ID, b.ID)
 }
 
 // birthKeyUnknownLast stands for an unknown birth date in ageDesc, which lists it after every known one.
@@ -130,32 +135,72 @@ func BirthKey(date string) (key int64, ok bool) {
 }
 
 // vocabularyCursorPrefix tells a merged vocabulary cursor from a single node's, so a cursor of the other kind
-// is refused.
-const vocabularyCursorPrefix = "v1."
+// is refused; v1 cursors held a position, which skipped an entry after an earlier one left the list.
+const vocabularyCursorPrefix = "v2."
 
-// PageVocabulary returns the sorted entries after cursor, at most limit of them, with the cursor that continues
-// them, empty at the end. A zero limit returns every entry and ignores cursor. The cursor is the position in
-// the merged list, which each page reads again whole.
+// vocabularyCursor is the sort key of the last entry of a page.
+type vocabularyCursor struct {
+	ID          int64  `json:"i"`
+	Name        string `json:"n,omitempty"`
+	Provisional bool   `json:"p,omitempty"`
+	Count       int    `json:"c,omitempty"`
+	CreatedAt   int64  `json:"t,omitempty"`
+	BirthKey    int64  `json:"b,omitempty"`
+}
+
+// PageVocabulary returns the entries SortVocabulary sorted after cursor, at most limit of them, with the cursor
+// that continues them, empty at the end. A zero limit returns every entry and ignores cursor. The cursor holds
+// the sort key of the page's last entry, so an entry that leaves or joins the list before it, such as an
+// unfavorited one under a favorites filter, moves no other entry across the page boundary.
 func PageVocabulary[T any](entries []VocabularyEntry[T], sort TagSort, cursor string, limit int) ([]VocabularyEntry[T], string, error) {
 	if limit <= 0 {
 		return entries, "", nil
 	}
+	prefix := vocabularyCursorPrefix + string(sort) + "."
 	start := 0
 	if cursor != "" {
-		rest, ok := strings.CutPrefix(cursor, vocabularyCursorPrefix+string(sort)+".")
-		if !ok {
-			return nil, "", fmt.Errorf("%w: not a cursor of this merged list and sort", ErrInvalidCursor)
+		after, err := decodeVocabularyCursor[T](cursor, prefix)
+		if err != nil {
+			return nil, "", err
 		}
-		position, err := strconv.Atoi(rest)
-		if err != nil || position < 0 {
-			return nil, "", fmt.Errorf("%w: cannot read the position", ErrInvalidCursor)
-		}
-		start = min(position, len(entries))
+		start, _ = slices.BinarySearchFunc(entries, after, func(entry, after VocabularyEntry[T]) int {
+			if compareVocabulary(sort, entry, after) <= 0 {
+				return -1
+			}
+			return 1
+		})
 	}
 	end := min(start+limit, len(entries))
 	next := ""
 	if end < len(entries) {
-		next = vocabularyCursorPrefix + string(sort) + "." + strconv.Itoa(end)
+		next = encodeVocabularyCursor(entries[end-1], prefix)
 	}
 	return entries[start:end], next, nil
+}
+
+func encodeVocabularyCursor[T any](last VocabularyEntry[T], prefix string) string {
+	raw, _ := json.Marshal(vocabularyCursor{
+		ID: last.ID, Name: last.Name, Provisional: last.Provisional,
+		Count: last.Count, CreatedAt: last.CreatedAt, BirthKey: last.BirthKey,
+	})
+	return prefix + base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeVocabularyCursor[T any](cursor, prefix string) (VocabularyEntry[T], error) {
+	rest, ok := strings.CutPrefix(cursor, prefix)
+	if !ok {
+		return VocabularyEntry[T]{}, fmt.Errorf("%w: not a cursor of this merged list and sort", ErrInvalidCursor)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(rest)
+	var key vocabularyCursor
+	if err == nil {
+		err = json.Unmarshal(raw, &key)
+	}
+	if err != nil {
+		return VocabularyEntry[T]{}, fmt.Errorf("%w: cannot read the sort key", ErrInvalidCursor)
+	}
+	return VocabularyEntry[T]{
+		ID: key.ID, Name: key.Name, Provisional: key.Provisional, Count: key.Count, CreatedAt: key.CreatedAt,
+		BirthKey: key.BirthKey, sortKey: NaturalSortKey(key.Name),
+	}, nil
 }
