@@ -16,7 +16,7 @@ function countOf(value: number | undefined) {
   return value === undefined ? countSkeleton : formatNumber(value);
 }
 
-/** The kind filter beside the title; every count is of the whole vocabulary, not of the search. */
+/** The kind filter under the title; every count is of the whole vocabulary, not of the search. */
 export function TagKindFilterGroup({
   kind,
   kinds,

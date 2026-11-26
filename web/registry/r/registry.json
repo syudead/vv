@@ -337,7 +337,7 @@
       "name": "kind-toggle-group",
       "type": "registry:ui",
       "title": "KindToggleGroup",
-      "description": "vv component: a single-choice ToggleGroup of pill sm items, kinds with their dots and plain choices, each with an optional count; a pressed kind is its kind-N-soft fill with a kind-N edge. One line, or wrapping. Uses toggle-group and kind-mark.",
+      "description": "vv component: a single-choice ToggleGroup of pill sm items, kinds with their dots and plain choices, each with an optional count; a pressed kind is its kind-N-soft fill with a kind-N edge. One line below md that wraps from md, or always wrapping. Uses toggle-group and kind-mark.",
       "docs": "Usage rules: web/registry/rules/components.md#kindtogglegroup (item vv-rules).",
       "files": [
         {
@@ -1102,12 +1102,16 @@
       "name": "page-header",
       "type": "registry:ui",
       "title": "PageHeader",
-      "description": "Section: page title, count, description, leading (Back), the list page's filter between the title and the actions, and the main action.",
+      "description": "Section: page title, count, description, leading (Back), the main action, and the list page's filter on its own row under them (wrapping from md, one scrolling line with edge fades below md).",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
           "path": "src/ui/patterns/page-header.tsx",
           "type": "registry:ui"
+        },
+        {
+          "path": "src/hooks/useScrollEdges.ts",
+          "type": "registry:hook"
         }
       ]
     },
