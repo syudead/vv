@@ -6,20 +6,19 @@ import {
   Tags as TagsIcon,
   VideoOff,
 } from "lucide-react";
-import type { ReactNode } from "react";
 
 import { t, type UiText } from "../i18n";
-import { EmptyState } from "../ui/patterns/empty-state";
+import type { TagListEmpty } from "../recordList/listView";
+import { TagsEmpty } from "../recordList/TagsEmpty";
 import { Button } from "../ui/shadcn/button";
 import type { TagKindFilter } from "./tagListUrl";
-import type { TagListEmpty } from "./tagListView";
 
 function noKindTitle(kind: TagKindFilter, kindName: string | undefined): UiText {
   if (kind === "none") return t.tags.noKindlessTags;
   return kindName === undefined ? t.tags.noFilterMatches : t.tags.noKindTags(kindName);
 }
 
-/** Describe the conditions of the received rows, not a pending query. */
+/** Describe the conditions of the received rows, not a pending query; Show all tags clears the search and every filter. */
 export default function TagListEmptyState({
   empty,
   appliedSearch,
@@ -28,8 +27,6 @@ export default function TagListEmptyState({
   kindName,
   onCreate,
   onShowAll,
-  onShowAllAndSearch,
-  onClearSearch,
 }: {
   empty: TagListEmpty;
   appliedSearch: string;
@@ -38,11 +35,9 @@ export default function TagListEmptyState({
   kindName: string | undefined;
   onCreate: () => void;
   onShowAll: () => void;
-  onShowAllAndSearch: () => void;
-  onClearSearch: () => void;
 }) {
-  const showAll = (onClick: () => void) => (
-    <Button variant="outline" size="sm" onClick={onClick}>
+  const showAll = (
+    <Button variant="outline" size="sm" onClick={onShowAll}>
       {t.tags.clearSearch}
     </Button>
   );
@@ -67,7 +62,7 @@ export default function TagListEmptyState({
           icon={<VideoOff aria-hidden="true" />}
           title={appliedTentative ? t.tags.noUnusedTentative : t.tags.noUnused.title}
           description={appliedTentative ? undefined : t.tags.noUnused.description}
-          action={showAll(onShowAll)}
+          action={showAll}
         />
       );
     case "noUnusedMatch":
@@ -79,7 +74,7 @@ export default function TagListEmptyState({
               ? t.tags.noUnusedTentativeMatches(appliedSearch)
               : t.tags.noUnusedMatches(appliedSearch)
           }
-          action={showAll(onShowAllAndSearch)}
+          action={showAll}
         />
       );
     case "noTentative":
@@ -88,7 +83,7 @@ export default function TagListEmptyState({
           icon={<CircleDashed aria-hidden="true" />}
           title={t.tags.noTentative.title}
           description={t.tags.noTentative.description}
-          action={showAll(onShowAll)}
+          action={showAll}
         />
       );
     case "noTentativeMatch":
@@ -96,7 +91,7 @@ export default function TagListEmptyState({
         <TagsEmpty
           icon={<SearchX aria-hidden="true" />}
           title={t.tags.noTentativeMatches(appliedSearch)}
-          action={showAll(onShowAllAndSearch)}
+          action={showAll}
         />
       );
     case "noKind":
@@ -104,7 +99,7 @@ export default function TagListEmptyState({
         <TagsEmpty
           icon={<Shapes aria-hidden="true" />}
           title={noKindTitle(appliedKind, kindName)}
-          action={showAll(onShowAll)}
+          action={showAll}
         />
       );
     case "noKindMatch":
@@ -112,7 +107,7 @@ export default function TagListEmptyState({
         <TagsEmpty
           icon={<SearchX aria-hidden="true" />}
           title={t.tags.noFilterMatches}
-          action={showAll(onShowAllAndSearch)}
+          action={showAll}
         />
       );
     case "noMatch":
@@ -120,30 +115,8 @@ export default function TagListEmptyState({
         <TagsEmpty
           icon={<SearchX aria-hidden="true" />}
           title={t.tags.noMatches(appliedSearch)}
-          action={showAll(onClearSearch)}
+          action={showAll}
         />
       );
   }
-}
-
-/** Use h2 because the shared state title has no heading semantics. */
-export function TagsEmpty({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon: ReactNode;
-  title: UiText;
-  description?: UiText;
-  action: ReactNode;
-}) {
-  return (
-    <EmptyState
-      icon={icon}
-      title={<h2>{title}</h2>}
-      description={description}
-      action={action}
-    />
-  );
 }

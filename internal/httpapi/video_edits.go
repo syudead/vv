@@ -106,6 +106,9 @@ func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) applyVideoEdit(ctx context.Context, videoIDs []int64, edit domain.VideoEdit) (domain.VideoEditResult, error) {
+	if namesNewTags(edit.TagsAdd) {
+		defer s.holdTagNames()()
+	}
 	if edit.Public == nil {
 		return s.videoEdits.Apply(ctx, videoIDs, edit)
 	}

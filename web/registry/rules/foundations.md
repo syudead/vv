@@ -12,30 +12,34 @@ generate. The reasons are in
 Pick the colour by the role, never by how it looks. `accent` is the hover and
 highlighted-row fill, as in shadcn/ui; the cyan brand colour is `primary`.
 
-| Token                                           | Use it for                                                             |
-| ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `navbar`                                        | Top bar and sidebar                                                    |
-| `background` / `foreground`                     | The page and its body text                                             |
-| `muted` / `muted-foreground`                    | Field fills; secondary text, metadata, help text                       |
-| `card` / `card-foreground`                      | Cards, list rows, sections                                             |
-| `popover` / `popover-foreground`                | Menus, popovers, dialogs, toasts, the selection bar                    |
-| `secondary` / `secondary-foreground`            | Secondary buttons, chips, the current sidebar entry                    |
-| `accent` / `accent-foreground`                  | Hover and highlighted menu rows                                        |
-| `primary` / `primary-foreground`                | The one main action per area, selected marks, progress                 |
-| `primary-hover`, `primary-active`               | Hover and pressed states of `primary` fills                            |
-| `primary-soft`                                  | Selected rows and active filter chips, with `primary` text             |
-| `border`                                        | Dividers and the edges of cards and sections                           |
-| `input`                                         | Edges of controls (fields, checkboxes, outline buttons)                |
-| `ring`                                          | Keyboard focus                                                         |
-| `destructive`, `warning`, `success`             | Text and icons of danger, caution, done, always with words and an icon |
-| `destructive-strong` / `destructive-foreground` | The fill of a destructive button and its text                          |
-| `*-soft` (`destructive`, `warning`, `success`)  | The fill behind a status message                                       |
-| `favorite`                                      | The favorite heart only                                                |
-| `favorite-soft`                                 | The fill behind the favorite pill when on                              |
-| `overlay`                                       | Behind dialogs and over thumbnails (duration, progress)                |
+| Token                                           | Use it for                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------- |
+| `navbar`                                        | Top bar and sidebar                                                       |
+| `background` / `foreground`                     | The page and its body text                                                |
+| `muted` / `muted-foreground`                    | Field fills; secondary text, metadata, help text                          |
+| `card` / `card-foreground`                      | Cards, list rows, sections                                                |
+| `popover` / `popover-foreground`                | Menus, popovers, dialogs, toasts, the selection bar                       |
+| `secondary` / `secondary-foreground`            | Secondary buttons, chips, the current sidebar entry                       |
+| `accent` / `accent-foreground`                  | Hover and highlighted menu rows                                           |
+| `primary` / `primary-foreground`                | The one main action per area, selected marks, progress                    |
+| `primary-hover`, `primary-active`               | Hover and pressed states of `primary` fills                               |
+| `primary-soft`                                  | Selected rows and active filter chips, with `primary` text                |
+| `border`                                        | Dividers and the edges of cards and sections                              |
+| `input`                                         | Edges of controls (fields, checkboxes, outline buttons)                   |
+| `ring`                                          | Keyboard focus                                                            |
+| `destructive`, `warning`, `success`             | Text and icons of danger, caution, done, always with words and an icon    |
+| `destructive-strong` / `destructive-foreground` | The fill of a destructive button and its text                             |
+| `*-soft` (`destructive`, `warning`, `success`)  | The fill behind a status message                                          |
+| `favorite`                                      | The favorite heart only                                                   |
+| `favorite-soft`                                 | The fill behind the favorite pill when on                                 |
+| `kind-1` … `kind-8`                             | A tag kind's mark (`KindMark`), always beside the kind's name             |
+| `kind-1-soft` … `kind-8-soft`                   | The fill of a pressed kind in a `KindToggleGroup`, with `foreground` text |
+| `overlay`                                       | Behind dialogs and over thumbnails (duration, progress)                   |
 
 Cyan (`primary`, `ring`) appears only on actions, selection, focus, progress
-and the brand mark. A new text or surface pair is added to the contrast pairs
+and the brand mark. A kind takes `kind-N` from its id, N = (id − 1) mod 8 +
+1, so it keeps its colour when other kinds come and go; the eight hues stay
+clear of `primary`, `destructive` and `favorite`. A new text or surface pair is added to the contrast pairs
 in `web/src/theme/tokens.test.ts` in the same change.
 
 ## Type
@@ -59,7 +63,8 @@ title, and no `font-bold`.
 
 Spacing and sizes share one 4px scale: `0`, `px`, `0.5`, `1`, `1.5`, `2`, `3`,
 `4`, `5`, `6`, `8`, `9`, `10`, `12`, `16`. A layout constant uses its named
-step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `card-face`, `card-logo`, `face-popover`,
+step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `card-face`, `card-logo`,
+`card-record` (a record card's minimum width), `record-card` (its fixed height), `face-popover`,
 `list-thumb-cell`, `list-thumb`, `list-number`, `list-number-wide`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `viewport-inset`, `chip-label`,
@@ -82,7 +87,7 @@ video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value. A value no step can name becomes a named utility in
 `tokens.css` (`grid-cols-term`, `grid-cols-list-aside`, `grid-cols-form-page`, `grid-cols-settings-page`,
-`grid-cols-profile-page`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`, `bottom-indicator`).
+`grid-cols-profile-page`, `grid-cols-record-editor`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`, `bottom-indicator`, `mask-scroll-edges`).
 Ratios are `aspect-video`, `aspect-square` and `aspect-portrait` (2:3, the
 person page's face).
 `style` carries only values known at run time (a position, a ratio, a measured

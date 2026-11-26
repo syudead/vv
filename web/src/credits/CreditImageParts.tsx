@@ -4,7 +4,7 @@ import { isCreditGone } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
 import { formatBytes } from "../lib/format";
 import { UPLOAD_MAX_BYTES, uploadRefusal } from "../player/thumbnailUpload/uploadRules";
-import { DialogError } from "../tags/DialogError";
+import { DialogError } from "../ui/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 

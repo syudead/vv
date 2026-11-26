@@ -1093,6 +1093,7 @@ const (
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
 	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
 	ErrorCodeTagNotTentative             ErrorCode = "tag_not_tentative"
+	ErrorCodeTagSynonymNotFound          ErrorCode = "tag_synonym_not_found"
 	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 	ErrorCodeWorkInfoFetchStale          ErrorCode = "work_info_fetch_stale"
@@ -1202,6 +1203,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeTagNotTentative:
 		return true
+	case ErrorCodeTagSynonymNotFound:
+		return true
 	case ErrorCodeUnauthenticated:
 		return true
 	case ErrorCodeUnsupportedMediaDirectory:
@@ -1267,6 +1270,7 @@ const (
 	ErrorReasonMissingModels                 ErrorReason = "missing_models"
 	ErrorReasonMixedNodes                    ErrorReason = "mixed_nodes"
 	ErrorReasonModel                         ErrorReason = "model"
+	ErrorReasonMoveSameTag                   ErrorReason = "move_same_tag"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
 	ErrorReasonNetworkError                  ErrorReason = "network_error"
@@ -1446,6 +1450,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonMixedNodes:
 		return true
 	case ErrorReasonModel:
+		return true
+	case ErrorReasonMoveSameTag:
 		return true
 	case ErrorReasonNameIsSynonym:
 		return true
@@ -2135,10 +2141,11 @@ func (e PeerLinkStateState) Valid() bool {
 
 // Defines values for PeerVocabularyRequestAction.
 const (
-	PeerVocabularyRequestActionDelete PeerVocabularyRequestAction = "delete"
-	PeerVocabularyRequestActionMerge  PeerVocabularyRequestAction = "merge"
-	PeerVocabularyRequestActionRename PeerVocabularyRequestAction = "rename"
-	PeerVocabularyRequestActionUnname PeerVocabularyRequestAction = "unname"
+	PeerVocabularyRequestActionDelete  PeerVocabularyRequestAction = "delete"
+	PeerVocabularyRequestActionMerge   PeerVocabularyRequestAction = "merge"
+	PeerVocabularyRequestActionPromote PeerVocabularyRequestAction = "promote"
+	PeerVocabularyRequestActionRename  PeerVocabularyRequestAction = "rename"
+	PeerVocabularyRequestActionUnname  PeerVocabularyRequestAction = "unname"
 )
 
 // Valid indicates whether the value is a known member of the PeerVocabularyRequestAction enum.
@@ -2147,6 +2154,8 @@ func (e PeerVocabularyRequestAction) Valid() bool {
 	case PeerVocabularyRequestActionDelete:
 		return true
 	case PeerVocabularyRequestActionMerge:
+		return true
+	case PeerVocabularyRequestActionPromote:
 		return true
 	case PeerVocabularyRequestActionRename:
 		return true
@@ -6228,6 +6237,15 @@ type MergeTagRequest struct {
 	SourceIds []int64 `json:"sourceIds"`
 }
 
+// MoveTagSynonymRequest defines model for MoveTagSynonymRequest.
+type MoveTagSynonymRequest struct {
+	// Name A synonym of the source tag, normalized like a tag name
+	Name string `json:"name"`
+
+	// TargetId The tag that receives the synonym
+	TargetId int64 `json:"targetId"`
+}
+
 // NetworkSettings Windows desktop LAN access settings
 type NetworkSettings struct {
 	// Addresses When lanAccess=true, http://<address>:<port>/ for every active non-loopback IPv4 address; otherwise empty
@@ -6774,24 +6792,24 @@ type PeerState struct {
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
 type PeerVocabularyRequest struct {
-	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only
+	// Action `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only
 	Action PeerVocabularyRequestAction `json:"action"`
 
 	// Into The merge destination, created when absent; required for merge
 	Into *string                   `json:"into,omitempty"`
 	Kind PeerVocabularyRequestKind `json:"kind"`
 
-	// Name The current canonical name; required for rename, delete and unname
+	// Name The current canonical name; required for rename, promote, delete and unname
 	Name *string `json:"name,omitempty"`
 
-	// NewName Required for rename
+	// NewName Required for rename and promote
 	NewName *string `json:"newName,omitempty"`
 
 	// Sources The names merged into `into`; required for merge
 	Sources *[]string `json:"sources,omitempty"`
 }
 
-// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only
+// PeerVocabularyRequestAction `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only
 type PeerVocabularyRequestAction string
 
 // PeerVocabularyRequestKind defines model for PeerVocabularyRequest.Kind.
@@ -8040,6 +8058,30 @@ type TagRef struct {
 
 // TagSort name uses natural-name order; countDesc/countAsc use video count; createdDesc/createdAsc use creation time. Ties use natural-name order, then ID.
 type TagSort string
+
+// TagSynonymDetachResponse defines model for TagSynonymDetachResponse.
+type TagSynonymDetachResponse struct {
+	// Created One management-screen or candidate entry.
+	Created Tag `json:"created"`
+
+	// Source One management-screen or candidate entry.
+	Source Tag `json:"source"`
+}
+
+// TagSynonymMoveResponse defines model for TagSynonymMoveResponse.
+type TagSynonymMoveResponse struct {
+	// Source One management-screen or candidate entry.
+	Source Tag `json:"source"`
+
+	// Target One management-screen or candidate entry.
+	Target Tag `json:"target"`
+}
+
+// TagSynonymRequest defines model for TagSynonymRequest.
+type TagSynonymRequest struct {
+	// Name A synonym of the tag, normalized like a tag name
+	Name string `json:"name"`
+}
 
 // ThumbnailEdit defines model for ThumbnailEdit.
 type ThumbnailEdit struct {
@@ -10561,6 +10603,15 @@ type MergeTagJSONRequestBody = MergeTagRequest
 // AddTagSynonymJSONRequestBody defines body for AddTagSynonym for application/json ContentType.
 type AddTagSynonymJSONRequestBody = AddTagSynonymRequest
 
+// DetachTagSynonymJSONRequestBody defines body for DetachTagSynonym for application/json ContentType.
+type DetachTagSynonymJSONRequestBody = TagSynonymRequest
+
+// MoveTagSynonymJSONRequestBody defines body for MoveTagSynonym for application/json ContentType.
+type MoveTagSynonymJSONRequestBody = MoveTagSynonymRequest
+
+// PromoteTagSynonymJSONRequestBody defines body for PromoteTagSynonym for application/json ContentType.
+type PromoteTagSynonymJSONRequestBody = TagSynonymRequest
+
 // RunThumbnailEditMultipartRequestBody defines body for RunThumbnailEdit for multipart/form-data ContentType.
 type RunThumbnailEditMultipartRequestBody = RunThumbnailEditRequest
 
@@ -10953,7 +11004,7 @@ type ServerInterface interface {
 	// ApplyPeerFetchedWorkInfo Apply work information the peer fetched for a video of this node
 	// (POST /api/peer/videos/{id}/fetched-work-info)
 	ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
-	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization, or unname a person, by name
+	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization, promote a tag's synonym, or unname a person, by name
 	// (POST /api/peer/vocabulary)
 	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
 	// ClearPeople Delete every person and all face data
@@ -11181,6 +11232,9 @@ type ServerInterface interface {
 	// DeleteTag Delete a tag
 	// (DELETE /api/tags/{id})
 	DeleteTag(w http.ResponseWriter, r *http.Request, id TagId)
+	// GetTag Read one tag
+	// (GET /api/tags/{id})
+	GetTag(w http.ResponseWriter, r *http.Request, id TagId)
 	// RenameTag Rename a tag's canonical name
 	// (PATCH /api/tags/{id})
 	RenameTag(w http.ResponseWriter, r *http.Request, id TagId)
@@ -11199,6 +11253,15 @@ type ServerInterface interface {
 	// AddTagSynonym Add a synonym to tag id
 	// (POST /api/tags/{id}/synonyms)
 	AddTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// DetachTagSynonym Detach a synonym of tag id into a new tag
+	// (POST /api/tags/{id}/synonyms/detach)
+	DetachTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// MoveTagSynonym Move a synonym of tag id to another tag
+	// (POST /api/tags/{id}/synonyms/move)
+	MoveTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// PromoteTagSynonym Make a synonym of tag id its canonical name
+	// (POST /api/tags/{id}/synonyms/promote)
+	PromoteTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
 	// GetThumbnailEditReadiness Return thumbnail-edit readiness
 	// (GET /api/thumbnail-edits/readiness)
 	GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request)
@@ -16541,6 +16604,32 @@ func (siw *ServerInterfaceWrapper) DeleteTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetTag operation middleware
+func (siw *ServerInterfaceWrapper) GetTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTag(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RenameTag operation middleware
 func (siw *ServerInterfaceWrapper) RenameTag(w http.ResponseWriter, r *http.Request) {
 
@@ -16704,6 +16793,84 @@ func (siw *ServerInterfaceWrapper) AddTagSynonym(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddTagSynonym(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DetachTagSynonym operation middleware
+func (siw *ServerInterfaceWrapper) DetachTagSynonym(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DetachTagSynonym(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveTagSynonym operation middleware
+func (siw *ServerInterfaceWrapper) MoveTagSynonym(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveTagSynonym(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PromoteTagSynonym operation middleware
+func (siw *ServerInterfaceWrapper) PromoteTagSynonym(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PromoteTagSynonym(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -19498,10 +19665,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags/{id}", wrapper.GetTag)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tags/{id}", wrapper.RenameTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/merge", wrapper.MergeTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}/synonyms", wrapper.RemoveTagSynonym)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms", wrapper.AddTagSynonym)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms/promote", wrapper.PromoteTagSynonym)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms/move", wrapper.MoveTagSynonym)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms/detach", wrapper.DetachTagSynonym)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/confirm", wrapper.ConfirmTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/reject", wrapper.RejectTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/rejected-names", wrapper.ForgetRejectedTagName)

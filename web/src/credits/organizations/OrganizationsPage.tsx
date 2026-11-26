@@ -9,7 +9,7 @@ import {
 } from "../../api/credits";
 import { t } from "../../i18n";
 import { readListSortPreferences } from "../../preferences/tagListPreferences";
-import { isTagListSort } from "../../tags/tagListOrder";
+import { isTagListSort } from "../../api/tags";
 import { CreditGridPage } from "../CreditGridPage";
 import {
   type CreditGridCriteria,

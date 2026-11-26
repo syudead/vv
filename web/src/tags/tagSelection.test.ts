@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Tag } from "../api/tags";
-import {
-  countSelectable,
-  keepLoaded,
-  selectAllCheck,
-  selectedKinds,
-  withoutIds,
-} from "./tagSelection";
+import { idsBetween, keepLoaded, selectedKinds, withoutIds } from "./tagSelection";
 
 function tag(id: number, tentative = false): Tag {
   return {
@@ -22,27 +16,20 @@ function tag(id: number, tentative = false): Tag {
 }
 
 describe("keepLoaded", () => {
-  it("読み込んだ行に無い id と改名中の行を外し、何も外れなければ同じ集合を返す", () => {
+  it("読み込んだカードに無い id を外し、何も外れなければ同じ集合を返す", () => {
     const rows = [tag(1), tag(2), tag(3)];
-    const current = new Set([1, 2, 9]);
-    expect([...keepLoaded(current, rows, 2)]).toEqual([1]);
+    expect([...keepLoaded(new Set([1, 2, 9]), rows)]).toEqual([1, 2]);
     const kept = new Set([1, 3]);
-    expect(keepLoaded(kept, rows, 2)).toBe(kept);
+    expect(keepLoaded(kept, rows)).toBe(kept);
   });
 });
 
-describe("countSelectable と selectAllCheck", () => {
-  it("改名中の行は「すべて選ぶ」の対象に数えない", () => {
-    const rows = [tag(1), tag(2), tag(3)];
-    expect(countSelectable(rows, null)).toBe(3);
-    expect(countSelectable(rows, 2)).toBe(2);
-    expect(countSelectable(rows, 9)).toBe(3);
-  });
-
-  it("選んだ数が対象の数に届けば選択済み、途中なら中間", () => {
-    expect(selectAllCheck(0, 3)).toBe(false);
-    expect(selectAllCheck(2, 3)).toBe("indeterminate");
-    expect(selectAllCheck(3, 3)).toBe(true);
+describe("idsBetween", () => {
+  it("一覧の順で両端を含む範囲を返し、どちらかが読み込まれていなければ空", () => {
+    const rows = [tag(1), tag(2), tag(3), tag(4)];
+    expect(idsBetween(rows, 3, 1)).toEqual([1, 2, 3]);
+    expect(idsBetween(rows, 2, 2)).toEqual([2]);
+    expect(idsBetween(rows, 2, 9)).toEqual([]);
   });
 });
 

@@ -3,8 +3,8 @@ import {
   TagListChanged,
   TagLoadingMore,
   TagLoadMoreFailed,
-} from "../tags/TagListNotices";
-import type { MoreState } from "../tags/useTagPage";
+} from "../recordList/TagListNotices";
+import type { MoreState } from "../recordList/usePagedRows";
 import { kindTexts } from "./creditRows";
 
 export function CreditListTail({

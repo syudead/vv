@@ -91,7 +91,7 @@ func (s *TagStore) CreateTagKind(ctx context.Context, name string) (domain.TagKi
 	if err != nil {
 		return domain.TagKind{}, err
 	}
-	if err := s.db.commitEvents(ctx, tx); err != nil {
+	if err := s.db.commitEvents(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot create the tag kind: %w", err)
 	}
 	return kind, nil
@@ -123,14 +123,14 @@ func (s *TagStore) RenameTagKind(ctx context.Context, id int64, name string) (do
 	if _, err := tx.ExecContext(ctx, `update tag_kinds set name = ? where id = ?`, normalized, id); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot rename the tag kind (id=%d): %w", id, err)
 	}
-	if err := s.db.commitEvents(ctx, tx); err != nil {
+	if err := s.db.commitEvents(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot rename the tag kind: %w", err)
 	}
 	current.Name = normalized
 	return current, nil
 }
 
-// SetTagKindCardFirst changes card order only, so it affects no matches and emits no events.
+// SetTagKindCardFirst changes card order only, so it affects no matches and emits only TagsChanged.
 func (s *TagStore) SetTagKindCardFirst(ctx context.Context, id int64, cardFirst bool) (domain.TagKind, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -145,7 +145,7 @@ func (s *TagStore) SetTagKindCardFirst(ctx context.Context, id int64, cardFirst 
 	if err != nil {
 		return domain.TagKind{}, err
 	}
-	if err := s.db.commitEvents(ctx, tx); err != nil {
+	if err := s.db.commitEvents(ctx, tx, domain.TagsChanged{}); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot update the tag kind (id=%d): %w", id, err)
 	}
 	return kind, nil
@@ -170,7 +170,7 @@ func (s *TagStore) DeleteTagKind(ctx context.Context, id int64) error {
 	if affected == 0 {
 		return domain.ErrTagKindNotFound
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, domain.TagsChanged{}); err != nil {
 		return fmt.Errorf("cannot delete the tag kind (id=%d): %w", id, err)
 	}
 	return nil

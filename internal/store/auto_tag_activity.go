@@ -293,6 +293,7 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 	var events []domain.Event
 	if len(affected) > 0 {
 		events = append(events, domain.AutoTagApplied{VideoIDs: affected})
+		c.tagsChanged()
 	}
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.ActivityEntry{}, fmt.Errorf("cannot undo the auto-tagging tag (tag=%d): %w", tagID, err)

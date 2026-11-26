@@ -1,5 +1,6 @@
 import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import { clearTagListSnapshot } from "./tagListSnapshot";
 import {
   afterSmartFolderMembersChanged,
   type VideoTargetOptions,
@@ -21,8 +22,27 @@ export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
 export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
 export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
 export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
+export type TagSynonymMoveResponse = components["schemas"]["TagSynonymMoveResponse"];
+export type TagSynonymDetachResponse = components["schemas"]["TagSynonymDetachResponse"];
 export type TagList = components["schemas"]["TagList"];
 export type TagSort = components["schemas"]["TagSort"];
+
+/** Match API TagSort values; natural name order has no direction. */
+export type TagListSort = TagSort;
+
+export const defaultTagListSort: TagListSort = "name";
+
+const sorts: Record<TagListSort, true> = {
+  name: true,
+  countDesc: true,
+  countAsc: true,
+  createdDesc: true,
+  createdAsc: true,
+};
+
+export function isTagListSort(value: unknown): value is TagListSort {
+  return typeof value === "string" && Object.hasOwn(sorts, value);
+}
 
 /** Batch updates are atomic: disable oversized selections instead of silently splitting requests. */
 export const maxVideoTagsSelection = 20000;
@@ -36,6 +56,9 @@ function listTags(): Promise<Tag[]> {
 }
 
 export const tagPageLimit = 100;
+
+/** The server's largest page (`MaxTagPageLimit`), for re-reading the loaded rows in few requests. */
+export const maxTagPageLimit = 200;
 
 export interface TagPageQuery {
   /** Match normalized names and synonyms; empty means no filter. */
@@ -167,7 +190,8 @@ function refreshOnStaleTagError(error: unknown): never {
     error instanceof RequestFailed &&
     (error.code === "tag_not_found" ||
       error.code === "tag_merge_required" ||
-      error.code === "tag_not_tentative")
+      error.code === "tag_not_tentative" ||
+      error.code === "tag_synonym_not_found")
   ) {
     refreshTags().catch(() => undefined);
   }
@@ -187,6 +211,7 @@ export function afterTagsAppliedByName(): void {
 /** Invalidate snapshots and refresh tags only with subscribers; otherwise defer reads until the next getTags. */
 function afterTagChanged(): void {
   clearListSnapshot();
+  clearTagListSnapshot();
   if (listeners.size > 0) {
     refreshTags().catch(() => undefined);
     return;
@@ -278,6 +303,55 @@ export async function mergeTag(
   }).catch(refreshOnStaleTagError);
   afterTagChanged();
   return merged;
+}
+
+/** Reads one tag past the shared cache, so a tag page opened from its URL sees the current tag. */
+export function getTag(id: number, signal?: AbortSignal): Promise<Tag> {
+  return request<Tag>(`/api/tags/${String(id)}`, { signal });
+}
+
+async function changeTagSynonym<T>(
+  id: number,
+  operation: "promote" | "move" | "detach",
+  body: { name: string; targetId?: number },
+  signal?: AbortSignal,
+): Promise<T> {
+  const result = await request<T>(`/api/tags/${String(id)}/synonyms/${operation}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  }).catch(refreshOnStaleTagError);
+  afterTagChanged();
+  return result;
+}
+
+/** Makes the synonym name the canonical name of tag id; the old canonical name becomes a synonym. */
+export function promoteTagSynonym(
+  id: number,
+  name: string,
+  signal?: AbortSignal,
+): Promise<Tag> {
+  return changeTagSynonym<Tag>(id, "promote", { name }, signal);
+}
+
+/** Moves the synonym name of tag id to targetId; explicit attachments stay on id. */
+export function moveTagSynonym(
+  id: number,
+  name: string,
+  targetId: number,
+  signal?: AbortSignal,
+): Promise<TagSynonymMoveResponse> {
+  return changeTagSynonym<TagSynonymMoveResponse>(id, "move", { name, targetId }, signal);
+}
+
+/** Detaches the synonym name of tag id into a new confirmed tag without attachments. */
+export function detachTagSynonym(
+  id: number,
+  name: string,
+  signal?: AbortSignal,
+): Promise<TagSynonymDetachResponse> {
+  return changeTagSynonym<TagSynonymDetachResponse>(id, "detach", { name }, signal);
 }
 
 /** Supply mergeTagId only after confirming the conflicting tag; unexpected conflicts return tag_merge_required. */

@@ -550,7 +550,9 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 	if _, err := groups.TagGroup(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	if want := []domain.Event{domain.GroupsChanged{GroupIDs: []int64{parent, top}}, domain.ActivityChanged{}}; !reflect.DeepEqual(recorder.events, want) {
+	if want := []domain.Event{
+		domain.GroupsChanged{GroupIDs: []int64{parent, top}}, domain.ActivityChanged{}, domain.TagsChanged{},
+	}; !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("tag: events = %+v, want %+v", recorder.events, want)
 	}
 	if groupExists(t, db, top) {

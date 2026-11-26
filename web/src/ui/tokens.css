@@ -61,6 +61,27 @@
   --color-favorite: #ff6f9c;
   --color-favorite-soft: #3d1f2b;
 
+  /*
+   * A tag kind's mark (kind-N) and its pressed fill (kind-N-soft); N = (id - 1) mod 8 + 1, so a kind
+   * keeps its colour. Hues stay clear of primary, destructive and favorite; always beside the kind's name.
+   */
+  --color-kind-1: #7da2ff;
+  --color-kind-1-soft: #1d2a4a;
+  --color-kind-2: #f2914a;
+  --color-kind-2-soft: #45291a;
+  --color-kind-3: #b3d65c;
+  --color-kind-3-soft: #2f3a1a;
+  --color-kind-4: #b894ff;
+  --color-kind-4-soft: #33264d;
+  --color-kind-5: #e6c84f;
+  --color-kind-5-soft: #403818;
+  --color-kind-6: #52c787;
+  --color-kind-6-soft: #173826;
+  --color-kind-7: #e389d6;
+  --color-kind-7-soft: #422240;
+  --color-kind-8: #c8a684;
+  --color-kind-8-soft: #3b3026;
+
   /* The only translucent color, for backdrops and thumbnail overlays. */
   --color-overlay: rgb(0 0 0 / 0.88);
 
@@ -110,6 +131,10 @@
   --spacing-card-1: 17.5rem;
   --spacing-card-2: 22.5rem;
   --spacing-card-3: 30rem;
+  /* Record card minimum: two columns at 360px, six at 1280px beside the sidebar rail. */
+  --spacing-card-record: 10rem;
+  /* A record card's fixed height: a name line, a detail line and a line of badges inside p-3. */
+  --spacing-record-card: 6rem;
   /* Face card minimum: three columns at 360px, eight or nine at 1280px with the full sidebar. */
   --spacing-card-face: 6.5rem;
   /* Logo card minimum: two columns at 360px, six at 1280px with the full sidebar. */
@@ -162,6 +187,8 @@
   /* Cap sticky list-aside height beneath the top bar and scroll overflow internally. */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);
+  /* The width over which a horizontal scroller fades out at a side that hides content. */
+  --spacing-scroll-fade: 2rem;
   /* Fit Video conversion with text-sm and px-2 on one line. */
   --spacing-settings-nav: 10rem;
   --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
@@ -325,6 +352,27 @@
   top: var(--data-table-head-top, 0px);
 }
 
+/* Fades a horizontal scroller's side that hides content, as useScrollEdges marks it with data-scroll-start/end. */
+@utility mask-scroll-edges {
+  --scroll-fade-start: black;
+  --scroll-fade-end: black;
+  mask-image: linear-gradient(
+    to right,
+    var(--scroll-fade-start),
+    black var(--spacing-scroll-fade),
+    black calc(100% - var(--spacing-scroll-fade)),
+    var(--scroll-fade-end)
+  );
+
+  &[data-scroll-start] {
+    --scroll-fade-start: transparent;
+  }
+
+  &[data-scroll-end] {
+    --scroll-fade-end: transparent;
+  }
+}
+
 /* Use a named utility because content-sized grid columns cannot be represented by spacing tokens. */
 @utility grid-cols-term {
   grid-template-columns: auto 1fr;
@@ -338,6 +386,11 @@
 /* Named grid utility for the list body's flexible content and fixed-width aside. */
 @utility grid-cols-list-aside {
   grid-template-columns: minmax(0, 1fr) var(--spacing-list-aside);
+}
+
+/* Named grid utility for RecordEditorPage's main and side columns in the ratio 8:5. */
+@utility grid-cols-record-editor {
+  grid-template-columns: minmax(0, 8fr) minmax(0, 5fr);
 }
 
 /* Named grid utility for the fixed-width aside and 5:6 form panels. */

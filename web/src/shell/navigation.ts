@@ -61,7 +61,14 @@ export function navEntries(): readonly NavEntry[] {
       to: "/playlists",
       ownerOnly: true,
     },
-    { id: "tags", label: t.shell.nav.tags, icon: Tags, to: "/tags", ownerOnly: true },
+    {
+      id: "tags",
+      label: t.shell.nav.tags,
+      icon: Tags,
+      to: "/tags",
+      matchDescendants: true,
+      ownerOnly: true,
+    },
     {
       id: "people",
       label: t.shell.nav.people,

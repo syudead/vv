@@ -7,7 +7,7 @@ import { CardGrid, type CardGridSize } from "./card-grid";
 export interface LoadingStateProps {
   label: string;
   layout: "grid" | "table" | "grouped" | "cards" | "rows";
-  /** grid only; face draws circles with a line under them, logo landscape frames with two. */
+  /** grid only; face draws circles with a line under them, logo landscape frames with two, record fixed-height record cards. */
   size?: CardGridSize;
   count?: number;
 }
@@ -22,28 +22,7 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
       {layout === "rows" ? (
         <ResultRowsSkeleton keys={keys} />
       ) : layout === "grid" ? (
-        <CardGrid size={size}>
-          {keys.map((key) =>
-            size === "face" ? (
-              <div key={key} className="flex flex-col items-center gap-2 p-1">
-                <Skeleton className="aspect-square w-full rounded-full" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            ) : size === "logo" ? (
-              <div key={key} className="flex flex-col gap-2 p-1">
-                <Skeleton className="aspect-video w-full rounded-md" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
-            ) : (
-              <div key={key} className="flex flex-col gap-2">
-                <Skeleton className="aspect-video w-full" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
-            ),
-          )}
-        </CardGrid>
+        <GridSkeleton keys={keys} size={size} />
       ) : layout === "cards" ? (
         <div className="flex flex-col gap-2">
           {keys.map((key) => (
@@ -87,6 +66,49 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
         </div>
       )}
     </div>
+  );
+}
+
+/** Cards of the final grid: face circles, logo frames, fixed-height record cards or video cards. */
+function GridSkeleton({ keys, size }: { keys: number[]; size: CardGridSize }) {
+  return (
+    <CardGrid size={size}>
+      {keys.map((key) => {
+        if (size === "face")
+          return (
+            <div key={key} className="flex flex-col items-center gap-2 p-1">
+              <Skeleton className="aspect-square w-full rounded-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          );
+        if (size === "logo")
+          return (
+            <div key={key} className="flex flex-col gap-2 p-1">
+              <Skeleton className="aspect-video w-full rounded-md" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          );
+        if (size === "record")
+          return (
+            <div
+              key={key}
+              className="flex h-record-card flex-col gap-2 rounded-md border border-border bg-card p-3"
+            >
+              <Skeleton className="h-4 w-3/4 bg-muted" />
+              <Skeleton className="h-3 w-1/2 bg-muted" />
+              <Skeleton className="mt-auto h-6 w-1/3 bg-muted" />
+            </div>
+          );
+        return (
+          <div key={key} className="flex flex-col gap-2">
+            <Skeleton className="aspect-video w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        );
+      })}
+    </CardGrid>
   );
 }
 

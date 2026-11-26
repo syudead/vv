@@ -104,18 +104,16 @@ page read before its first request; other pages now fetch it three seconds
 after they finish loading, once idle, so opening a video stays immediate
 without the download competing with the first screen.
 
-The tag admin list (`/tags`) is the measured exception: with thousands of tags,
-opening, search and scrolling froze, so it draws only the rows near the
-viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
-reason above applies there: it is one column, and rows arrive 100 at a time
-from the server for the current conditions. The document stays the scroll
-owner, the list keeps the focused row drawn, and Tab crosses the edge of the
-drawn range, so keyboard order reaches every row. The screen is the admin
-table page pattern: the header, tabs and toolbar scroll with the page, the
-rows are the body of a `DataTable`, and rows outside the drawn range are kept
-as empty spacer rows so the columns stay aligned. The page passes the fixed top
-bar's height (`--spacing-navbar`) to the virtualizer and to
-`scroll-padding-top`, so a focused row never hides under the top bar.
+The tag list (`/tags`) is the measured exception: with thousands of tags,
+opening, search and scrolling froze, so it draws only the rows of cards near
+the viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
+reason above applies there: every card is one fixed height, so a row of the
+grid is the unit, and cards arrive 100 at a time from the server for the
+current conditions. The column count is read from the grid's width and the
+`card-record` step, as `CardGrid` lays the cards out, and changes with the
+window. The document stays the scroll owner, and the row holding focus stays
+drawn while the page scrolls. The tag screens are in
+[tag-organizing.md](tag-organizing.md#the-tag-list).
 The people list (`/people`) and the organizations list (`/organizations`)
 share the paging but are grids of cards: face cards
 ([people.md](people.md#the-people-grid)) and logo cards
@@ -210,9 +208,17 @@ is a band stuck under the top bar, so the parent folders stay one click away at
 any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
-The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
-header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar, and the table's column header sticks right under them. The people
+The tags page is a `ListPage` of tag cards with the kind filter on its own
+row under the title and the header's links (wrapping from `md`, one
+sideways-scrolling line faded at a hidden side below `md`) and the counts of tentative, kindless and unused tags under it; its
+`Kinds` and `Rejected names` links in the header open `/tags/kinds` and
+`/tags/rejected`, each a `SettingsPage` with a back link to `/tags` and one
+section of rows: a kind's row has its colour mark, its tag count linking to
+`/tags?kind=<id>`, the `First on cards` switch and a `More` menu, and the
+section ends with the `New kind` field; a rejected name's row has
+`Allow again`. A tag card opens the tag's page `/tags/:id`, a
+`RecordEditorPage` for its names, kind and merge
+([tag-organizing.md](tag-organizing.md#the-tag-page)). The people
 and organizations pages are `ListPage`s of face and logo cards with the search,
 the favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the
@@ -275,8 +281,8 @@ the width where it joins the row.
 | Below `md`   | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
 | Below `sm`   | One full-width column at any zoom; zoom hidden                                                                           |
 
-The tags page uses the same row with search, filter and sort; below `md` its
-sort moves into the icon-only `Sort` popover.
+The tags page uses the same row with search and sort; below `md` its sort
+moves into the icon-only `Sort` popover.
 
 The count sits in the row above the grid for search results,
 and in the section heading for a folder's direct contents.
@@ -626,7 +632,7 @@ Video card behaviour:
 
 | Case                                         | Behaviour                                                                                                                                                                      |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds tab of `/tags`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
+| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds page, `/tags/kinds`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked  |
 | Tag pressed in the library                   | Filters by the tag                                                                                                                                                             |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>`                                                                                                                                                             |
 | Tags that do not fit the row                 | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full |
@@ -1330,16 +1336,16 @@ The list routes (`GET /api/videos`, `GET /api/library` and
 `GET /api/folders/{rootId}/videos`) take these conditions, each ANDed with the
 others:
 
-| Parameter      | Keeps                                                                                  | Guest                                             |
-| -------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `query`        | Videos the search expression matches (see below)                                       | Allowed; matches only the title and relative path |
-| `tag`          | Videos that carry every listed tag                                                     | `400 guest_filter_not_allowed`                    |
-| `favorite`     | Favorite videos and favorite groups                                                    | `400 guest_filter_not_allowed`                    |
-| `person`       | Videos linked to that person in any role                                               | `400 guest_filter_not_allowed`                    |
-| `personRole`   | With `person`, only videos linked to that person in this role (not `GET /api/library`) | `400 guest_filter_not_allowed`                    |
-| `organization` | Videos linked to that organization in any role                                         | `400 guest_filter_not_allowed`                    |
-| `organizationRole` | With `organization`, only videos linked to that organization in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed` |
-| `tagKind`      | Videos with at least one tag of that kind, manual or from the folder                   | `400 guest_filter_not_allowed`                    |
+| Parameter          | Keeps                                                                                              | Guest                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `query`            | Videos the search expression matches (see below)                                                   | Allowed; matches only the title and relative path |
+| `tag`              | Videos that carry every listed tag                                                                 | `400 guest_filter_not_allowed`                    |
+| `favorite`         | Favorite videos and favorite groups                                                                | `400 guest_filter_not_allowed`                    |
+| `person`           | Videos linked to that person in any role                                                           | `400 guest_filter_not_allowed`                    |
+| `personRole`       | With `person`, only videos linked to that person in this role (not `GET /api/library`)             | `400 guest_filter_not_allowed`                    |
+| `organization`     | Videos linked to that organization in any role                                                     | `400 guest_filter_not_allowed`                    |
+| `organizationRole` | With `organization`, only videos linked to that organization in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed`                    |
+| `tagKind`          | Videos with at least one tag of that kind, manual or from the folder                               | `400 guest_filter_not_allowed`                    |
 
 `query`, `tag`, `tagKind`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A

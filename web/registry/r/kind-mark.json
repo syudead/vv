@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "kind-mark",
+  "title": "KindMark",
+  "description": "vv component: a tag kind's colour, kind-1 to kind-8 from its id, as a card's start-edge bar or a dot before the kind's name; decorative.",
+  "files": [
+    {
+      "path": "src/ui/KindMark.tsx",
+      "content": "import { cn } from \"@/lib/cn\";\n\n// See web/registry/rules/components.md, KindMark.\n\n/** One of the eight kind colours, `kind-1` … `kind-8`. */\nexport type KindColour = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;\n\n/** A kind's colour from its id, so it keeps its colour when other kinds come and go. */\nexport function kindColour(id: number): KindColour {\n  return (((((Math.trunc(id) - 1) % 8) + 8) % 8) + 1) as KindColour;\n}\n\n// Literal class names, so Tailwind generates every colour.\nconst fill: Record<KindColour, string> = {\n  1: \"bg-kind-1\",\n  2: \"bg-kind-2\",\n  3: \"bg-kind-3\",\n  4: \"bg-kind-4\",\n  5: \"bg-kind-5\",\n  6: \"bg-kind-6\",\n  7: \"bg-kind-7\",\n  8: \"bg-kind-8\",\n};\n\nexport interface KindMarkProps {\n  /** The kind's id. */\n  kind: number;\n  /** `bar`: the start edge of a `RecordCard`; `dot`: before the kind's name. */\n  variant: \"bar\" | \"dot\";\n}\n\n/** A kind's colour; decorative, so the kind's name must stand beside it. */\nexport function KindMark({ kind, variant }: KindMarkProps) {\n  const colour = kindColour(kind);\n  return (\n    <span\n      aria-hidden=\"true\"\n      data-slot=\"kind-mark\"\n      data-variant={variant}\n      data-kind-colour={colour}\n      className={cn(\n        fill[colour],\n        variant === \"bar\"\n          ? \"absolute inset-y-0 start-0 w-1\"\n          : \"inline-block size-2 shrink-0 rounded-full\",\n      )}\n    />\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#kindmark (item vv-rules).",
+  "type": "registry:ui"
+}

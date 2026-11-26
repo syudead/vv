@@ -1,23 +1,17 @@
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
-import {
-  listTagPage,
-  mergeTag,
-  tagImpact,
-  type Tag,
-  type TagImpactResponse,
-} from "../api/tags";
+import { mergeTag, tagImpact, type Tag, type TagImpactResponse } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import { foldForMatch } from "../lib/foldForMatch";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Badge } from "../ui/shadcn/badge";
 import { Field, FieldTitle } from "../ui/shadcn/field";
 import { Spinner } from "../ui/shadcn/spinner";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
-import { DialogError } from "./DialogError";
-import { MergeSummary, MergeTargetField } from "./MergeParts";
+import { DialogError } from "../ui/DialogError";
+import { MergeSummary, MergeTargetField } from "../ui/MergeParts";
+import { useTagTargetSearch } from "./tagTargetSearch";
 
 /** Search all server tags with exact matches first. Selection merges exclude the chosen target from sources and require refreshed impact counts. */
 export default function MergeTagDialog({
@@ -26,6 +20,7 @@ export default function MergeTagDialog({
   onClose,
   onMerged,
   onStale,
+  track,
 }: {
   /** Freeze nonempty sources when opening. */
   sources: readonly Tag[];
@@ -39,6 +34,8 @@ export default function MergeTagDialog({
     target: Tag,
   ) => void;
   onStale: () => void;
+  /** Runs the merge as one of the caller's own writes, so a change check can wait for it. */
+  track: <T>(write: Promise<T>) => Promise<T>;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
   const mergeButton = useRef<HTMLButtonElement>(null);
@@ -49,10 +46,6 @@ export default function MergeTagDialog({
   const [error, setError] = useState<UiText | null>(null);
   const [impact, setImpact] = useState<TagImpactResponse | null>(null);
   const [countError, setCountError] = useState<UiText | null>(null);
-  const [candidates, setCandidates] = useState<readonly Tag[]>([]);
-  const [exactCandidate, setExactCandidate] = useState<Tag | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<UiText | null>(null);
   // Recount on retry or reselection even if target ID and effective sources are unchanged.
   const [attempt, setAttempt] = useState(0);
   // Focus Merge once per target choice, only after impact counts enable it.
@@ -66,28 +59,9 @@ export default function MergeTagDialog({
     tags: targetTags,
     options,
     exactOption,
-  } = buildTargetOptions(candidates, exactCandidate, excluded, value);
-  // Overfetch row-dialog candidates to keep eight options after excluding sources.
-  const requestLimit = Math.min(targetCandidateLimit + excluded.size, tagPageMaxLimit);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setSearching(true);
-    setSearchError(null);
-    listTagPage({ q: value.trim(), limit: requestLimit }, controller.signal)
-      .then((page) => {
-        if (controller.signal.aborted) return;
-        setCandidates(page.items);
-        setExactCandidate(page.exact ?? null);
-        setSearching(false);
-      })
-      .catch((failure: unknown) => {
-        if (controller.signal.aborted) return;
-        setSearchError(errorText(failure));
-        setSearching(false);
-      });
-    return () => controller.abort();
-  }, [value, requestLimit]);
+    searching,
+    searchError,
+  } = useTagTargetSearch(value, excluded);
 
   const targetId = target?.id ?? null;
   const effective = useMemo(
@@ -157,7 +131,7 @@ export default function MergeTagDialog({
     setError(null);
     setPending(true);
     try {
-      const { tag: merged, notFoundIds } = await mergeTag(target.id, sourceIds);
+      const { tag: merged, notFoundIds } = await track(mergeTag(target.id, sourceIds));
       // All-missing sources performed no merge; close and refresh as for a missing target.
       if (notFoundIds.length >= sourceIds.length) {
         onStale();
@@ -306,57 +280,4 @@ export default function MergeTagDialog({
       {error !== null && <DialogError message={error} />}
     </FormDialog>
   );
-}
-
-const targetCandidateLimit = 8;
-
-const tagPageMaxLimit = 200;
-
-/** Prioritize exact only when it still matches current input; otherwise preserve server order and show matched-synonym hints. */
-function buildTargetOptions(
-  items: readonly Tag[],
-  exact: Tag | null,
-  excluded: ReadonlySet<number>,
-  input: string,
-): { tags: Tag[]; options: TagChoice[]; exactOption: TagChoice | null } {
-  const trimmed = input.trim();
-  const query = foldForMatch(trimmed);
-  const spelled = (tag: Tag) =>
-    trimmed !== "" && (tag.name === trimmed || tag.synonyms.includes(trimmed));
-  const allowed = items.filter((tag) => !excluded.has(tag.id));
-
-  const exactTag =
-    exact !== null && !excluded.has(exact.id) && spelled(exact)
-      ? exact
-      : allowed.find(spelled);
-  const candidates = (
-    exactTag === undefined
-      ? allowed
-      : [exactTag, ...allowed.filter((tag) => tag.id !== exactTag.id)]
-  ).slice(0, targetCandidateLimit);
-
-  const options: TagChoice[] = candidates.map((tag) => {
-    const nameMatch = query === "" || foldForMatch(tag.name).includes(query);
-    const synonymHit = nameMatch
-      ? undefined
-      : tag.synonyms.find((synonym) => foldForMatch(synonym).includes(query));
-    return {
-      id: String(tag.id),
-      label: tag.name,
-      hint:
-        synonymHit !== undefined ? t.tags.mergeDialog.synonymHint(synonymHit) : undefined,
-      meta: t.tags.mergeDialog.videoCount(tag.videoCount),
-    };
-  });
-
-  const exactOption: TagChoice | null =
-    exactTag === undefined
-      ? null
-      : {
-          id: String(exactTag.id),
-          label: exactTag.name,
-          meta: t.tags.mergeDialog.videoCount(exactTag.videoCount),
-        };
-
-  return { tags: candidates, options, exactOption };
 }

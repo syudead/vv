@@ -1,8 +1,8 @@
 import { type CreditSort, listPeople, type Person } from "../../api/credits";
 import { t, type UiText } from "../../i18n";
 import { readStoredSort } from "../../preferences/tagListPreferences";
-import { isTagListSort } from "../../tags/tagListOrder";
-import type { RowsPage } from "../../tags/useTagPage";
+import { isTagListSort } from "../../api/tags";
+import type { RowsPage } from "../../recordList/usePagedRows";
 import {
   type CreditGridCriteria,
   parseCreditGridCriteria,

@@ -17,6 +17,8 @@ import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { QueryResultsPageExample } from "./blocks/query-results-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
+import { RecordEditorPageExample } from "./blocks/record-editor-page-example";
+import { RecordListExample } from "./blocks/record-list-example";
 import { RecordPageExample } from "./blocks/record-page-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
 import { ShelfExample } from "./blocks/shelf-example";
@@ -151,6 +153,37 @@ export default function Patterns() {
         ]}
       >
         <RecordPageExample />
+      </Pattern>
+      <Pattern
+        id="record-list"
+        name={p.names.recordList}
+        items={[
+          "list-page",
+          "kind-toggle-group",
+          "tally-strip",
+          "floating-notice",
+          "record-card",
+          "card-grid",
+          "record-list-example",
+        ]}
+      >
+        <RecordListExample />
+        <div className="border-t border-border">
+          <RecordListExample loading />
+        </div>
+      </Pattern>
+      <Pattern
+        id="record-editor-page"
+        name={p.names.recordEditorPage}
+        items={[
+          "record-editor-page",
+          "page-section",
+          "kind-toggle-group",
+          "shelf",
+          "record-editor-page-example",
+        ]}
+      >
+        <RecordEditorPageExample />
       </Pattern>
       <Pattern
         id="detail-page"

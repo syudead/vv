@@ -1,6 +1,6 @@
 import type { CreditKind, CreditSort } from "../api/credits";
 import type { UiText } from "../i18n";
-import type { ListRow, PageRows } from "../tags/tagPageRows";
+import type { ListRow, PageRows } from "../recordList/listRows";
 import { normalizeQuery } from "../videoList/listCriteria";
 import { kindTexts } from "./creditRows";
 

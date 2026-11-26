@@ -35,7 +35,7 @@ import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, unplayableText } from "../lib/format";
 import { VideoThumbnail } from "../player/RelatedVideos";
-import { DialogError } from "../tags/DialogError";
+import { DialogError } from "../ui/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";

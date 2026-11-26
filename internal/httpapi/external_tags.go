@@ -36,6 +36,7 @@ func (e *externalServer) MergeTags(w http.ResponseWriter, r *http.Request) {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer e.s.holdTagNames()()
 	outcome, err := e.s.tags.MergeTags(r.Context(), body.TargetId, body.SourceIds)
 	if err != nil {
 		e.writeTagError(w, err, "Could not merge the tags.")
@@ -59,6 +60,7 @@ func (e *externalServer) RenameTag(w http.ResponseWriter, r *http.Request) {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer e.s.holdTagNames()()
 	tag, err := e.s.tags.RenameTag(r.Context(), body.Id, body.Name)
 	if err != nil {
 		e.writeTagError(w, err, "Could not rename the tag.")
@@ -82,6 +84,7 @@ func (e *externalServer) UpdateTagSynonyms(w http.ResponseWriter, r *http.Reques
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer e.s.holdTagNames()()
 	var tag domain.Tag
 	var err error
 	if body.Action == extgen.TagSynonymsRequestActionAdd {
@@ -123,6 +126,7 @@ func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer e.s.holdTagNames()()
 	outcome, err := e.s.tags.BatchTags(r.Context(), req, body.Ids)
 	if errors.Is(err, domain.ErrTagKindNotFound) {
 		e.writeTagKindError(w, err)

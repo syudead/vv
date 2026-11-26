@@ -51,6 +51,7 @@ var (
 	keptAnalysis      = keptOperation{reason: "Starts an analysis on the peer from here."}
 	keptPlugin        = keptOperation{reason: "The plugin and its kept result are this node's.", here: true}
 	keptVocabulary    = keptOperation{reason: "Applied on both nodes by name, whichever node the id names.", here: true, peer: true}
+	keptLocalTag      = keptOperation{reason: "The tag page and its synonym edits act on this node's tags; a remote id answers 404 tag_not_found.", here: true}
 	keptThumbnailEdit = keptOperation{
 		reason: "This node's ComfyUI edits the peer's frame or thumbnail; the apply uploads the result to the peer.", here: true,
 	}
@@ -74,12 +75,16 @@ var keptOperations = map[string]keptOperation{
 	"POST /api/people/{id}/plugin-fetches/{fetchId}/apply":                  keptPlugin,
 	"GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index}":          keptPlugin,
 
-	"DELETE /api/tags/{id}":              keptVocabulary,
-	"POST /api/tags/{id}/merge":          keptVocabulary,
-	"DELETE /api/people/{id}":            keptVocabulary,
-	"POST /api/people/{id}/merge":        keptVocabulary,
-	"DELETE /api/organizations/{id}":     keptVocabulary,
-	"POST /api/organizations/{id}/merge": keptVocabulary,
+	"GET /api/tags/{id}":                   keptLocalTag,
+	"POST /api/tags/{id}/synonyms/promote": keptLocalTag,
+	"POST /api/tags/{id}/synonyms/move":    keptLocalTag,
+	"POST /api/tags/{id}/synonyms/detach":  keptLocalTag,
+	"DELETE /api/tags/{id}":                keptVocabulary,
+	"POST /api/tags/{id}/merge":            keptVocabulary,
+	"DELETE /api/people/{id}":              keptVocabulary,
+	"POST /api/people/{id}/merge":          keptVocabulary,
+	"DELETE /api/organizations/{id}":       keptVocabulary,
+	"POST /api/organizations/{id}/merge":   keptVocabulary,
 }
 
 // slowRemoteOperations wait on the peer extracting a frame or fitting an image, so they have no response timeout,

@@ -57,8 +57,9 @@ func TestMergedTagListJoinsByNameAndForwardsARemoteOnlyTag(t *testing.T) {
 	// Both nodes hold guestSecretTag on two videos; 猫 is b's alone on three, 犬 a's alone on one.
 	cat := tagOn(t, fb, "猫", "c", "d", "e")
 	dog := tagOn(t, fa, "犬", "c")
-	localKind := kindOn(t, fb, "動物", cat.ID)
-	kindOn(t, fa, "動物", dog.ID)
+	// guestSecretTag is 動物 on both nodes, so it is one tag of that kind.
+	localKind := kindOn(t, fb, "動物", cat.ID, fb.tagID)
+	kindOn(t, fa, "動物", dog.ID, fa.tagID)
 	remoteKind := kindOn(t, fa, "色")
 
 	list := decode[gen.TagList](t, b.owner(http.MethodGet, "/api/tags?sort=countDesc", ""))
@@ -88,8 +89,12 @@ func TestMergedTagListJoinsByNameAndForwardsARemoteOnlyTag(t *testing.T) {
 	}
 	if want := []int64{localKind.ID, domain.RemoteID(1, remoteKind.ID)}; len(kindIDs) < 2 ||
 		!slices.Equal(kindIDs[len(kindIDs)-2:], want) || slices.ContainsFunc(kindIDs[:len(kindIDs)-2], domain.IsRemoteID) ||
-		kinds.Items[len(kindIDs)-2].TagCount != 2 {
-		t.Errorf("kinds = %+v, want the seeded kinds, then ids %v with 動物 counting both nodes' tags", kinds.Items, want)
+		kinds.Items[len(kindIDs)-2].TagCount != 3 {
+		t.Errorf("kinds = %+v, want the seeded kinds, then ids %v with 動物 counting the 3 joined tags", kinds.Items, want)
+	}
+	ofKind := decode[gen.TagList](t, b.owner(http.MethodGet, "/api/tags?kind="+strconv.FormatInt(localKind.ID, 10), ""))
+	if ofKind.Total != 3 {
+		t.Errorf("tags of 動物 = %d, want 3, its count", ofKind.Total)
 	}
 
 	filter := url.Values{"tag": {strconv.FormatInt(remoteDog, 10)}}

@@ -1,7 +1,7 @@
 import { Pencil, RotateCcw, Trash2 } from "lucide-react";
 
 import { t } from "../i18n";
-import { RowMoreMenu } from "../tags/TagRow";
+import { RowMoreMenu } from "../ui/RowMoreMenu";
 import { DropdownMenuItem, DropdownMenuSeparator } from "../ui/shadcn/dropdown-menu";
 
 /**

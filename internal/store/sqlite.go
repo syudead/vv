@@ -69,6 +69,12 @@ type changes struct {
 	activity     bool
 	// A local media folder was added, replaced or deleted.
 	mediaFolders bool
+	// The rows of the tag list may have changed.
+	tags bool
+}
+
+func (c *changes) tagsChanged() {
+	c.tags = true
 }
 
 func (c *changes) mediaFoldersChanged() {
@@ -155,6 +161,9 @@ func (c *changes) events() []domain.Event {
 	}
 	if c.mediaFolders {
 		events = append(events, domain.MediaFoldersChanged{})
+	}
+	if c.tags {
+		events = append(events, domain.TagsChanged{})
 	}
 	events = append(events, groupsChangedEvents(c.groups)...)
 	return append(events, smartFoldersChangedEvents(c.smartFolders)...)

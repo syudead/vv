@@ -17,8 +17,9 @@ import {
 import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
-import { DialogError } from "./DialogError";
-import { tagFieldError, useTagNameField, type TagFieldError } from "./tagNameField";
+import { DialogError } from "../ui/DialogError";
+import { tagFieldError } from "./tagNameField";
+import { useTagNameField, type TagFieldError } from "../ui/nameField";
 
 function isTagNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_found";

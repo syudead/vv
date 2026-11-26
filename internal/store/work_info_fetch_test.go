@@ -103,7 +103,7 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
-	want := []domain.Event{domain.ActivityChanged{}, domain.VideoOverrideChanged{VideoID: ids["b"]},
+	want := []domain.Event{domain.ActivityChanged{}, domain.TagsChanged{}, domain.VideoOverrideChanged{VideoID: ids["b"]},
 		domain.VideoOverrideChanged{VideoID: ids["a"]}}
 	if !slices.Equal(recorder.events, want) {
 		t.Fatalf("events = %v; want %v", recorder.events, want)

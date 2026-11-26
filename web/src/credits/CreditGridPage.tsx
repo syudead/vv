@@ -14,16 +14,16 @@ import { creditNameReason } from "../lib/creditName";
 import NameDialog, { type NameDialogWords } from "../library/NameDialog";
 import { writeListSortPreferences } from "../preferences/tagListPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
-import { TagLoadFailed, TagStaleList } from "../tags/TagListNotices";
-import type { TagListSort } from "../tags/tagListOrder";
-import { useUrlCriteria } from "../tags/tagListUrl";
-import { AdminListToolbar } from "../tags/TagToolbar";
+import { TagLoadFailed, TagStaleList } from "../recordList/TagListNotices";
+import type { TagListSort } from "../api/tags";
+import { useUrlCriteria } from "../recordList/useUrlCriteria";
+import { AdminListToolbar } from "../recordList/AdminListToolbar";
 import {
   type FetchRowsPage,
   moreIdle,
   usePagedRows,
   useSearchQuery,
-} from "../tags/useTagPage";
+} from "../recordList/usePagedRows";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ListPage } from "../ui/patterns/list-page";

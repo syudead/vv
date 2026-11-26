@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "row-more-menu",
+  "title": "RowMoreMenu",
+  "description": "vv component: the Ellipsis button at a row's end that opens a dropdown-menu of the row's other actions, with TagRowRefs, the row's focus targets. Uses button, dropdown-menu and tooltip.",
+  "dependencies": [
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "src/ui/RowMoreMenu.tsx",
+      "content": "import { Ellipsis } from \"lucide-react\";\nimport type { ReactNode, Ref } from \"react\";\n\nimport { Button } from \"./shadcn/button\";\nimport {\n  DropdownMenu,\n  DropdownMenuContent,\n  DropdownMenuTrigger,\n} from \"./shadcn/dropdown-menu\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"./shadcn/tooltip\";\n\nexport interface TagRowRefs {\n  nameLink: HTMLAnchorElement | null;\n  renameButton: HTMLButtonElement | null;\n  synonymsButton: HTMLButtonElement | null;\n  menuButton: HTMLButtonElement | null;\n  actionsButton: HTMLButtonElement | null;\n}\n\n/** describedBy names why the trigger is disabled; className places it in the row's layout. */\nexport function RowMoreMenu({\n  buttonRef,\n  label,\n  disabled,\n  describedBy,\n  className,\n  children,\n}: {\n  buttonRef: Ref<HTMLButtonElement>;\n  label: string;\n  disabled: boolean;\n  describedBy?: string;\n  className?: string;\n  children: ReactNode;\n}) {\n  return (\n    <DropdownMenu>\n      <Tooltip>\n        <TooltipTrigger asChild>\n          <DropdownMenuTrigger asChild>\n            <Button\n              ref={buttonRef}\n              variant=\"ghost\"\n              size=\"icon-sm\"\n              aria-label={label}\n              aria-describedby={describedBy}\n              disabled={disabled}\n              className={className}\n            >\n              <Ellipsis aria-hidden=\"true\" />\n            </Button>\n          </DropdownMenuTrigger>\n        </TooltipTrigger>\n        <TooltipContent>{label}</TooltipContent>\n      </Tooltip>\n      <DropdownMenuContent align=\"end\">{children}</DropdownMenuContent>\n    </DropdownMenu>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#rowmoremenu (item vv-rules).",
+  "type": "registry:ui"
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "row-icon-button",
+  "title": "RowIconButton",
+  "description": "vv component: a ghost icon-sm action in a list row, named by its tooltip. Uses button and tooltip.",
+  "files": [
+    {
+      "path": "src/ui/RowIconButton.tsx",
+      "content": "import type { ComponentProps } from \"react\";\n\nimport { Button } from \"./shadcn/button\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"./shadcn/tooltip\";\n\nexport function RowIconButton({\n  label,\n  ...props\n}: Omit<ComponentProps<typeof Button>, \"variant\" | \"size\" | \"aria-label\"> & {\n  label: string;\n}) {\n  return (\n    <Tooltip>\n      <TooltipTrigger asChild>\n        <Button variant=\"ghost\" size=\"icon-sm\" aria-label={label} {...props} />\n      </TooltipTrigger>\n      <TooltipContent>{label}</TooltipContent>\n    </Tooltip>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#rowiconbutton (item vv-rules).",
+  "type": "registry:ui"
+}

@@ -34,8 +34,8 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
   The parent Issue is never changed here
 - closing, without merging it, an implementation PR whose unit that
   correction dropped
-- merging a feature-branch PR on the reviews it has when the requested
-  automated review does not arrive
+- merging a feature-branch PR on the reviews it has, without requesting or
+  waiting for a review
 
 The integration PR is never merged here. Before handing it over, the run makes
 it as ready as it can: after the initial review pass, a pre-merge sweep runs
