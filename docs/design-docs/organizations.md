@@ -131,8 +131,15 @@ separator, `Delete`. A merge opens the target's page with
 the page into its gone state. Both dialogs state the video count that
 `GET /api/organizations` sums across connected links by name, because a merge
 or delete also changes a link's organization of the same name; the page's own
-read counts this node only. The person page reads `GET /api/people` the same
-way.
+read counts this node only. The list shows a name once with the first node's
+id, so a later link's id finds its entry by name. A remote id's merge or delete
+leaves this node's organization of the name as it is, so that organization's
+own count is taken out. The person page reads `GET /api/people` the same way.
+
+Every action, the logo, the children and the shelves address the route's id,
+as the edit page's save does: a remote organization read by its offset id
+answers with the id of this node's organization of its name, and that id would
+write or read another record than the one shown.
 
 The page shares these parts with the person page instead of copying them: the
 `More actions` menu (`CreditMoreMenu`), the merge and delete dialogs with their
@@ -190,8 +197,13 @@ organizations by name, so a parent shown with this node's id or another link's
 goes to the peer's organization of that name. When the peer has none, this node
 answers `404 organization_not_found` with `field: parentId` itself, so the
 owner picks another parent instead of seeing the organization as gone. The
-parent is resolved before a rename reaches the other links, so that refusal
-leaves every node's name as it was.
+parent is resolved before a rename reaches the other links. With a rename, by
+`name` or `names`, this node also walks the parent's ancestors on the peer and
+answers `400 organization_parent_cycle`, or the `404` above when the peer has
+lost the parent, itself, so every refusal leaves every node's name as it was.
+An edit that keeps the display name renames nothing, so this node's
+organization of that name, which is the same joined entry, does not refuse it
+as `409 organization_name_taken`.
 
 | Rejected | Why |
 | --- | --- |

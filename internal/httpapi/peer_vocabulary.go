@@ -298,7 +298,8 @@ func (s *server) remoteOrganizationPatch(w http.ResponseWriter, r *http.Request)
 	}
 	if patch.ParentId != nil {
 		parentID, ok := s.peerOrganizationID(w, r, *patch.ParentId)
-		if !ok {
+		if _, renames := forwardedDisplayName(domain.CreditOrganization, patch, raw); !ok ||
+			(renames && !s.peerParentAcyclic(w, r, parentID)) {
 			return false
 		}
 		var fields map[string]json.RawMessage
@@ -319,6 +320,44 @@ func (s *server) remoteOrganizationPatch(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(raw)), int64(len(raw))
+	return true
+}
+
+// peerParentAcyclic refuses parentID, an id of the link r reaches, when that link lacks it or it is the edited
+// organization or one inside it there. The link checks this too, but only after a rename in the same edit has
+// written the other links.
+func (s *server) peerParentAcyclic(w http.ResponseWriter, r *http.Request, parentID int64) bool {
+	edited, _, _ := remotePath(r.URL.EscapedPath(), "/api/organizations/")
+	edited, slot := domain.FromRemoteID(edited), s.requestSlot(r)
+	seen := map[int64]bool{}
+	for current := parentID; !seen[current]; {
+		if current == edited {
+			failure, _ := workInfoFailureOf(domain.ErrCreditParentCycle)
+			s.writeWorkInfoFailure(w, failure)
+			return false
+		}
+		seen[current] = true
+		var organization gen.Organization
+		err := s.peerGet(r, slot, "/api/organizations/"+strconv.FormatInt(current, 10), url.Values{}, &organization)
+		var refusal *peerRefusal
+		switch {
+		case errors.As(err, &refusal) && refusal.status == http.StatusNotFound && current == parentID:
+			s.parentNotFound(w, "The parent organization was not found.")
+			return false
+		case errors.As(err, &refusal) && refusal.status == http.StatusNotFound:
+			// An ancestor deleted meanwhile ends the chain, which then cannot reach the edited organization.
+			return true
+		case errors.Is(err, domain.ErrPeerUnreachable):
+			s.peerUnreachable(w)
+			return false
+		case err != nil:
+			s.internalError(w, "Could not read the organizations of the other VVMDM.", err)
+			return false
+		case organization.Parent == nil:
+			return true
+		}
+		current = organization.Parent.Id
+	}
 	return true
 }
 
