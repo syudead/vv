@@ -1,8 +1,4 @@
-import {
-  defaultTagListSort,
-  isTagListSort,
-  type TagListSort,
-} from "../tags/tagListOrder";
+import { defaultTagListSort, isTagListSort, type TagListSort } from "../api/tags";
 
 /** Persist only sort order, never filters or queries; credits use separate keys with the same shape. */
 export interface TagListPreferences {

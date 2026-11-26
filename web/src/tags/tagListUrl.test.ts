@@ -11,17 +11,14 @@ describe("tagListUrl", () => {
         unusedOnly: false,
         kind: null,
         sort: "countAsc",
-        tab: "tags",
       },
       hasExplicitSort: false,
     });
   });
 
-  it("q・tentative・unused・sort・tab を読み、解釈できない値は既定にする", () => {
+  it("q・tentative・unused・sort を読み、解釈できない値は既定にする", () => {
     const parsed = parseTagListCriteria(
-      new URLSearchParams(
-        "q=%20anime%20&tentative=1&unused=1&sort=createdAsc&tab=rejected",
-      ),
+      new URLSearchParams("q=%20anime%20&tentative=1&unused=1&sort=createdAsc"),
       "name",
     );
     expect(parsed).toEqual({
@@ -31,24 +28,22 @@ describe("tagListUrl", () => {
         unusedOnly: true,
         kind: null,
         sort: "createdAsc",
-        tab: "rejected",
       },
       hasExplicitSort: true,
     });
 
     const broken = parseTagListCriteria(
-      new URLSearchParams("tentative=yes&sort=sizeDesc&tab=other"),
+      new URLSearchParams("tentative=yes&sort=sizeDesc"),
       "name",
     );
     expect(broken.criteria).toMatchObject({
       tentativeOnly: false,
       sort: "name",
-      tab: "tags",
     });
     expect(broken.hasExplicitSort).toBe(false);
   });
 
-  it("書くときは偽の絞り込みと「Tags」のタブを省き、sort はいつも書く", () => {
+  it("書くときは偽の絞り込みを省き、sort はいつも書く", () => {
     expect(
       serializeTagListCriteria({
         query: "",
@@ -56,7 +51,6 @@ describe("tagListUrl", () => {
         unusedOnly: false,
         kind: null,
         sort: "name",
-        tab: "tags",
       }).toString(),
     ).toBe("sort=name");
     expect(
@@ -66,14 +60,13 @@ describe("tagListUrl", () => {
         unusedOnly: true,
         kind: null,
         sort: "countDesc",
-        tab: "rejected",
       }).toString(),
-    ).toBe("q=a+b&tentative=1&unused=1&sort=countDesc&tab=rejected");
+    ).toBe("q=a+b&tentative=1&unused=1&sort=countDesc");
   });
 
-  it("tab=kinds と kind（正の整数か none）を読み書きし、ほかの kind は絞り込まない", () => {
-    const parsed = parseTagListCriteria(new URLSearchParams("kind=12&tab=kinds"), "name");
-    expect(parsed.criteria).toMatchObject({ kind: "12", tab: "kinds" });
+  it("kind（正の整数か none）を読み書きし、ほかの kind は絞り込まない", () => {
+    const parsed = parseTagListCriteria(new URLSearchParams("kind=12"), "name");
+    expect(parsed.criteria).toMatchObject({ kind: "12" });
     expect(
       parseTagListCriteria(new URLSearchParams("kind=none"), "name").criteria.kind,
     ).toBe("none");
@@ -89,8 +82,7 @@ describe("tagListUrl", () => {
         unusedOnly: false,
         kind: "none",
         sort: "name",
-        tab: "kinds",
       }).toString(),
-    ).toBe("tentative=1&kind=none&sort=name&tab=kinds");
+    ).toBe("tentative=1&kind=none&sort=name");
   });
 });

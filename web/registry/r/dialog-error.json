@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "dialog-error",
+  "title": "DialogError",
+  "description": "vv component: a failed request inside a dialog or a section, as a destructive alert with an optional Retry. Uses alert and button.",
+  "dependencies": [
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "src/ui/DialogError.tsx",
+      "content": "import { CircleAlert, RotateCw } from \"lucide-react\";\n\nimport { t, type UiText } from \"../i18n\";\nimport { Alert, AlertAction, AlertTitle } from \"./shadcn/alert\";\nimport { Button } from \"./shadcn/button\";\n\nexport function DialogError({\n  message,\n  onRetry,\n}: {\n  message: UiText;\n  onRetry?: () => void;\n}) {\n  return (\n    <Alert variant=\"destructive\">\n      <CircleAlert aria-hidden=\"true\" />\n      <AlertTitle>{message}</AlertTitle>\n      {onRetry !== undefined && (\n        <AlertAction>\n          <Button variant=\"outline\" size=\"sm\" onClick={onRetry}>\n            <RotateCw aria-hidden=\"true\" />\n            {t.common.retry}\n          </Button>\n        </AlertAction>\n      )}\n    </Alert>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#dialogerror (item vv-rules).",
+  "type": "registry:ui"
+}

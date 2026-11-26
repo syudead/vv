@@ -2040,7 +2040,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rename, merge or delete a tag, person or organization, or unname a person, by name
+         * Rename, merge or delete a tag, person or organization, promote a tag's synonym, or unname a person, by name
          * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; `unname` empties the person's names, its other names included; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
          */
         post: operations["applyPeerVocabulary"];
@@ -2466,7 +2466,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read one tag
+         * @description Returns the Tag that listTags gives for the same tag: names, video count, tentative state and kind. A missing tag (deleted, or merged into another tag) or a remote id (at or above 2^40) returns 404 tag_not_found.
+         */
+        get: operations["getTag"];
         put?: never;
         post?: never;
         /** Delete a tag */
@@ -2519,6 +2523,66 @@ export interface paths {
          * @description Returns 204 without changes when name is not a synonym of id.
          */
         delete: operations["removeTagSynonym"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{id}/synonyms/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a synonym of tag id its canonical name
+         * @description The synonym `name` becomes the canonical name and the old canonical name a synonym; attachments do not change and the tag becomes confirmed. A `name` breaking the tag-name rule returns 400 invalid_request with its reason; a missing tag or a remote id (at or above 2^40) returns 404 tag_not_found; a `name` that is not a synonym of id now, its canonical name included, returns 409 tag_synonym_not_found. While this node reads others, the tag of the canonical name is changed on every read VVMDM first, as renameTag is, and keeps the old canonical name as a synonym there; a read VVMDM where an earlier promote already applied is left as it is, so repeating a promote that stopped after the read VVMDMs completes it. A new name another tag there holds returns 409 tag_name_taken with `tagName` and `peer`, and a read VVMDM that is not connected returns 409 conflict with peer_unreachable. Nothing changes on an error.
+         */
+        post: operations["promoteTagSynonym"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{id}/synonyms/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a synonym of tag id to another tag
+         * @description The synonym `name` leaves tag id and becomes a synonym of `targetId`, which becomes confirmed; explicit attachments and the tentative state of id do not change, and videos under a folder of that name follow the name. Applies to this node only. A `name` breaking the tag-name rule, or `targetId` equal to id (move_same_tag), returns 400 invalid_request; a missing or remote id or `targetId` returns 404 tag_not_found; a `name` that is not a synonym of id now returns 409 tag_synonym_not_found. Nothing changes on an error.
+         */
+        post: operations["moveTagSynonym"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{id}/synonyms/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detach a synonym of tag id into a new tag
+         * @description Removes the synonym `name` from tag id and creates a confirmed tag with it as the canonical name, no kind and no explicit attachments; videos under a folder of that name follow the name. Applies to this node only. A `name` breaking the tag-name rule returns 400 invalid_request; a missing or remote id returns 404 tag_not_found; a `name` that is not a synonym of id now returns 409 tag_synonym_not_found. Nothing changes on an error.
+         */
+        post: operations["detachTagSynonym"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4270,7 +4334,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant and background are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant/tags events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. tags carries an empty object to owners after a committed change to the rows of the tag list (tag names, synonyms, kinds, tentative state, creation, deletion, merges and video attachments, including automatic tagging), coalesced like candidates; a scan's folder-derived count changes do not send it, and a link's tags events are not forwarded (the link's changes arrive through peer); refetch the loaded rows. background carries an empty object to owners when the background work pause switch, the running work or a remaining count changes, at most once a second with one trailing event for changes within that second; refetch GET /api/background. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity, assistant, tags and background are owner-only; a peer-credential stream receives no tags.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -5873,6 +5937,27 @@ export interface components {
              * @description ID of the tag whose merge was approved.
              */
             mergeTagId?: number;
+        };
+        TagSynonymRequest: {
+            /** @description A synonym of the tag, normalized like a tag name */
+            name: string;
+        };
+        MoveTagSynonymRequest: {
+            /** @description A synonym of the source tag, normalized like a tag name */
+            name: string;
+            /**
+             * Format: int64
+             * @description The tag that receives the synonym
+             */
+            targetId: number;
+        };
+        TagSynonymMoveResponse: {
+            source: components["schemas"]["Tag"];
+            target: components["schemas"]["Tag"];
+        };
+        TagSynonymDetachResponse: {
+            source: components["schemas"]["Tag"];
+            created: components["schemas"]["Tag"];
         };
         /** @description Tag reference with exactly one of id or name; both or neither return 400 invalid_request. */
         TagInput: {
@@ -8768,13 +8853,13 @@ export interface components {
             /** @enum {string} */
             kind: "tag" | "person" | "organization";
             /**
-             * @description `unname` empties a person's names, making it provisional; it takes kind `person` only
+             * @description `unname` empties a person's names, making it provisional; it takes kind `person` only. `promote` makes `newName` the canonical name of the tag named `name` and keeps `name` as its synonym: a synonym `newName` of that tag swaps with `name`, and otherwise `newName` is added; a tag whose canonical name is `newName` and which holds `name` as a synonym, an earlier promote applied, returns `changed: false`; it takes kind `tag` only
              * @enum {string}
              */
-            action: "rename" | "merge" | "delete" | "unname";
-            /** @description The current canonical name; required for rename, delete and unname */
+            action: "rename" | "merge" | "delete" | "unname" | "promote";
+            /** @description The current canonical name; required for rename, promote, delete and unname */
             name?: string;
-            /** @description Required for rename */
+            /** @description Required for rename and promote */
             newName?: string;
             /** @description The merge destination, created when absent; required for merge */
             into?: string;
@@ -8851,7 +8936,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_disabled" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "assistant_busy" | "service_unavailable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "tag_synonym_not_found" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_disabled" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "assistant_busy" | "service_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -8886,7 +8971,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed" | "image_search_unreadable" | "image_search_uninformative" | "image_search_too_long" | "image_search_too_large";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "move_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed" | "image_search_unreadable" | "image_search_uninformative" | "image_search_too_long" | "image_search_too_large";
     };
     responses: {
         /** @description Resource not found */
@@ -13169,6 +13254,30 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    getTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag ID */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     deleteTag: {
         parameters: {
             query?: never;
@@ -13308,6 +13417,99 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    promoteTagSynonym: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag ID */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagSynonymRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    moveTagSynonym: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag ID */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveTagSynonymRequest"];
+            };
+        };
+        responses: {
+            /** @description The source and target after the move */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSynonymMoveResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    detachTagSynonym: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag ID */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagSynonymRequest"];
+            };
+        };
+        responses: {
+            /** @description The source and the created tag */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSynonymDetachResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     confirmTag: {

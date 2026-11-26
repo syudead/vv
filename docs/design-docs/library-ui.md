@@ -104,22 +104,24 @@ page read before its first request; other pages now fetch it three seconds
 after they finish loading, once idle, so opening a video stays immediate
 without the download competing with the first screen.
 
-The tag admin list (`/tags`) is the measured exception: with thousands of tags,
-opening, search and scrolling froze, so it draws only the rows near the
-viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
-reason above applies there: it is one column, and rows arrive 100 at a time
-from the server for the current conditions. The document stays the scroll
-owner, the list keeps the focused row drawn, and Tab crosses the edge of the
-drawn range, so keyboard order reaches every row. The screen is the admin
-table page pattern: the header, tabs and toolbar scroll with the page, the
-rows are the body of a `DataTable`, and rows outside the drawn range are kept
-as empty spacer rows so the columns stay aligned. The page passes the fixed top
-bar's height (`--spacing-navbar`) to the virtualizer and to
-`scroll-padding-top`, so a focused row never hides under the top bar.
-The organizations admin list (`/organizations`) is built the same way from
-the same pieces in `web/src/tags/`: pages of 100 read from the server, rows
-drawn near the viewport, and local updates after rename, details, merge and
-delete. The people list (`/people`) shares the paging but is a grid of face
+The tag list (`/tags`) is the measured exception: with thousands of tags,
+opening, search and scrolling froze, so it draws only the rows of cards near
+the viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
+reason above applies there: every card is one fixed height, so a row of the
+grid is the unit, and cards arrive 100 at a time from the server for the
+current conditions. The column count is read from the grid's width and the
+`card-record` step, as `CardGrid` lays the cards out, and changes with the
+window. The document stays the scroll owner, and the row holding focus stays
+drawn while the page scrolls. The tag screens are in
+[tag-organizing.md](tag-organizing.md#the-tag-list).
+The organizations admin list (`/organizations`) is built from the shared
+list pieces in `web/src/recordList/`: pages of 100 read from the server, rows
+of a `DataTable` drawn near the viewport, and local updates after rename,
+details, merge and delete. The list keeps the focused row drawn, and Tab
+crosses the edge of the drawn range, so keyboard order reaches every row; rows
+outside the drawn range are empty spacer rows so the columns stay aligned. The
+page passes the fixed top bar's height (`--spacing-navbar`) to the virtualizer
+and to `scroll-padding-top`, so a focused row never hides under the top bar. The people list (`/people`) shares the paging but is a grid of face
 cards ([people.md](people.md#the-people-grid)).
 
 ### The window owns scrolling
@@ -211,11 +213,20 @@ is a band stuck under the top bar, so the parent folders stay one click away at
 any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
-The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
-header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar, and the table's column header sticks right under them. The
-organizations page is an `AdminTablePage` with the same header and column
-header, without the filter, tabs, checkbox column and selection bar, and a
+The tags page is a `ListPage` of tag cards with the kind filter on its own
+row under the title and the header's links (wrapping from `md`, one
+sideways-scrolling line faded at a hidden side below `md`) and the counts of tentative, kindless and unused tags under it; its
+`Kinds` and `Rejected names` links in the header open `/tags/kinds` and
+`/tags/rejected`, each a `SettingsPage` with a back link to `/tags` and one
+section of rows: a kind's row has its colour mark, its tag count linking to
+`/tags?kind=<id>`, the `First on cards` switch and a `More` menu, and the
+section ends with the `New kind` field; a rejected name's row has
+`Allow again`. A tag card opens the tag's page `/tags/:id`, a
+`RecordEditorPage` for its names, kind and merge
+([tag-organizing.md](tag-organizing.md#the-tag-page)). The
+organizations page is an `AdminTablePage`: a centered `max-w-4xl` column whose
+header sticks under the top bar with the table's column header right under it,
+without a filter, checkbox column or selection bar, and a
 details dialog (the names list, external IDs and the parent) in place of the synonyms
 dialog. The people page is a `ListPage` of face cards with the search, the
 favorites filter and the sort in the top bar.
@@ -279,8 +290,8 @@ the width where it joins the row.
 | Below `md`   | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
 | Below `sm`   | One full-width column at any zoom; zoom hidden                                                                           |
 
-The tags page uses the same row with search, filter and sort; below `md` its
-sort moves into the icon-only `Sort` popover.
+The tags page uses the same row with search and sort; below `md` its sort
+moves into the icon-only `Sort` popover.
 
 The count sits in the row above the grid for search results,
 and in the section heading for a folder's direct contents.
@@ -630,7 +641,7 @@ Video card behaviour:
 
 | Case                                         | Behaviour                                                                                                                                                                      |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds tab of `/tags`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
+| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds page, `/tags/kinds`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
 | Tag pressed in the library                   | Filters by the tag                                                                                                                                                             |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>`                                                                                                                                                             |
 | Tags that do not fit the row                 | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full |

@@ -1,7 +1,7 @@
 import { Unplug } from "lucide-react";
 
 import { t } from "../i18n";
-import { DialogError } from "../tags/DialogError";
+import { DialogError } from "../ui/DialogError";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 
 import { PageLinkText } from "./PageLink";

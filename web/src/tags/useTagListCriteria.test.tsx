@@ -21,7 +21,7 @@ function Probe() {
 }
 
 describe("useTagListCriteria apply", () => {
-  it("描き直す前に同じタブへ続けて積んでも、履歴の項目は1つだけ増える", async () => {
+  it("描き直す前に同じ条件を続けて積んでも、履歴の項目は1つだけ増える", async () => {
     render(
       <MemoryRouter initialEntries={["/tags?sort=name"]}>
         <Probe />
@@ -29,10 +29,10 @@ describe("useTagListCriteria apply", () => {
     );
 
     await act(async () => {
-      apply({ tab: "rejected" }, "push");
-      apply({ tab: "rejected" }, "push");
+      apply({ unusedOnly: true }, "push");
+      apply({ unusedOnly: true }, "push");
     });
-    expect(screen.getByRole("status").textContent).toBe("?sort=name&tab=rejected");
+    expect(screen.getByRole("status").textContent).toBe("?unused=1&sort=name");
 
     await act(async () => {
       void navigate(-1);

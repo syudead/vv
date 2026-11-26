@@ -110,11 +110,13 @@ func (s *TagStore) commitTagChanges(
 	return s.db.commit(ctx, tx, c)
 }
 
-// Record owner activity for the keys one tag change affected; tag changes can change smart-folder matches.
+// Record owner activity for the keys one tag change affected; tag changes can change smart-folder matches and the
+// tag list's counts.
 func recordTagChange(
 	ctx context.Context, tx *sql.Tx, c *changes, kind domain.ActivityKind, changed []string, tagID int64, now time.Time,
 ) error {
 	c.matchesChanged()
+	c.tagsChanged()
 	return recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges(changed, tagID), now)
 }
 

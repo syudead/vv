@@ -1,1109 +1,398 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { __resetTagsForTest, getTags, subscribeTags } from "../api/tags";
-import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
+import { emitServerEvent } from "../api/fakeEventSource";
+import { confirmTag } from "../api/tags";
 import {
-  jsonResponse,
-  tag,
-  server,
-  heldGetReleases,
+  historyBack,
   hold,
   install,
+  kindsLink,
   probe,
   renderPage,
+  server,
   setUpTagsPageServer,
-} from "../testing/tagsPage";
+  tag,
+} from "../testing/tagScreens";
 
 setUpTagsPageServer();
 
-describe("TagsPage", () => {
-  it("一覧を本数つきで出し、件数の行に総数が出る", async () => {
-    install();
-    renderPage();
+const genre = { id: 1, name: "Genre", cardFirst: false };
 
-    expect(await screen.findByTitle("旅行")).toBeDefined();
-    expect(screen.getByTitle("Anime")).toBeDefined();
-    expect(screen.getByText("Synonyms: アニメ")).toBeDefined();
-    expect(screen.getByText("3 tags")).toBeDefined();
-    const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-    expect(dramaRow.textContent).toContain("0 videos");
-  });
+/** List pages, as opposed to the one-row tally reads and the change check's re-reads. */
+function listPageRequests(): URLSearchParams[] {
+  return server.pageRequests.filter((params) => params.get("limit") === "100");
+}
 
-  it("検索は名前とシノニムのどちらでも、大文字小文字を区別せず絞り込む（受け入れ条件18）", async () => {
+function rereads(): URLSearchParams[] {
+  return server.pageRequests.filter(
+    (params) => params.get("limit") !== "100" && params.get("limit") !== "1",
+  );
+}
+
+function card(name: string): HTMLElement {
+  return screen.getByTitle(name).closest<HTMLElement>("[data-tag-id]")!;
+}
+
+/** Nine tags read three at a time, so every page loads and the last cards are past the first page. */
+function nineTagsInPagesOfThree() {
+  server.tags = Array.from({ length: 9 }, (_, index) =>
+    tag({ id: index + 1, name: `Tag${String(index + 1)}` }),
+  );
+  server.pageLimitOverride = 3;
+}
+
+describe("TagsPage 条件と URL", () => {
+  it("URL の条件で読み、種類を押すと URL に積み、戻ると前の条件で読み直す", async () => {
     const user = userEvent.setup();
+    server.tags = [tag({ id: 9, name: "Robot", kind: genre, tentative: true })];
     install();
-    renderPage();
-    await screen.findByTitle("旅行");
+    renderPage({ url: "/tags?q=rob&tentative=1&kind=1&sort=countDesc" });
 
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "アニ");
-    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
-    expect(screen.getByTitle("Anime")).toBeDefined();
-    expect(screen.queryByTitle("旅行")).toBeNull();
-    expect(screen.queryByTitle("Drama")).toBeNull();
+    await screen.findByTitle("Robot");
+    const first = listPageRequests()[0]!;
+    expect(Object.fromEntries(first)).toMatchObject({
+      q: "rob",
+      tentative: "true",
+      kind: "1",
+      sort: "countDesc",
+    });
+    const filter = screen.getByRole("radiogroup", { name: "Kind" });
+    expect(
+      within(filter)
+        .getByRole("radio", { name: /^Genre/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    const tallies = screen.getByRole("group", { name: "What is left to tidy" });
+    expect(
+      within(tallies)
+        .getByRole("button", { name: /Tentative/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
 
-    await user.clear(search);
-    await user.type(search, "ani");
-    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
-    expect(screen.getByTitle("Anime")).toBeDefined();
+    await user.click(within(filter).getByRole("radio", { name: /^All/ }));
+    await waitFor(() => expect(probe.search).toBe("?q=rob&tentative=1&sort=countDesc"));
+    await waitFor(() => expect(listPageRequests().at(-1)!.has("kind")).toBe(false));
 
-    await user.clear(search);
-    expect(await screen.findByText("3 tags")).toBeDefined();
-    expect(screen.getByTitle("旅行")).toBeDefined();
+    await historyBack();
+    expect(probe.search).toBe("?q=rob&tentative=1&kind=1&sort=countDesc");
+    await waitFor(() => expect(listPageRequests().at(-1)!.get("kind")).toBe("1"));
   });
 
-  it("検索はライブラリと同じ照合形で、全角・半角やかなの違いを同じものとして照らす（受け入れ条件8）", async () => {
+  it("仮・種類なし・未使用の数は語彙全体の数で、押すとその絞り込みになる", async () => {
     const user = userEvent.setup();
     server.tags = [
-      tag({ id: 1, name: "action", synonyms: [] }),
-      tag({ id: 2, name: "Anime", synonyms: ["アニメ"] }),
-      tag({ id: 3, name: "旅行" }),
+      tag({ id: 1, name: "Robot", kind: genre, videoCount: 2 }),
+      tag({ id: 2, name: "Draft", tentative: true }),
+      tag({ id: 3, name: "Plain", videoCount: 1 }),
     ];
     install();
-    renderPage();
-    await screen.findByTitle("旅行");
+    renderPage({ url: "/tags?q=rob" });
+    const tallies = await screen.findByRole("group", { name: "What is left to tidy" });
 
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "ＡＣＴＩＯＮ");
-    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
-    expect(screen.getByTitle("action")).toBeDefined();
-    expect(screen.queryByTitle("Anime")).toBeNull();
-
-    await user.clear(search);
-    await user.type(search, "あにめ");
-    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
-    expect(screen.getByTitle("Anime")).toBeDefined();
-    expect(screen.queryByTitle("action")).toBeNull();
-
-    await user.clear(search);
-    await user.type(search, "ｱｸｼｮﾝ");
-    expect(await screen.findByText('No tags match "ｱｸｼｮﾝ"')).toBeDefined();
-  });
-
-  it("検索で一致が無いときは、タグが無い状態と別の表示になり、そこから入力を消せる", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "存在しない語");
-
-    expect(await screen.findByText('No tags match "存在しない語"')).toBeDefined();
-    expect(screen.queryByText("No tags yet")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "Show all tags" }));
-    expect(document.activeElement).toBe(search);
-    expect(await screen.findByTitle("旅行")).toBeDefined();
-  });
-
-  it("タグが1つも無いときは空の状態を出し、検索の入力はdisabledのまま", async () => {
-    server.tags = [];
-    install();
-    renderPage();
-
-    expect(await screen.findByText("No tags yet")).toBeDefined();
+    const noKind = within(tallies).getByRole("button", { name: /No kind/ });
+    await waitFor(() => expect(noKind.textContent).toMatch(/^2/));
     expect(
-      screen.getByRole("searchbox", { name: "Search tags" }).hasAttribute("disabled"),
-    ).toBe(true);
-  });
-
-  it("新しいタグを作ると本数0で名前順の位置に入り、名前へフォーカスが移る（受け入れ条件9）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    expect(document.activeElement).toBe(input);
-    await user.type(input, "Banana");
-    await user.keyboard("{Enter}");
-
-    const created = await screen.findByRole("link", {
-      name: "Open the library filtered by Banana",
-    });
-    await waitFor(() => expect(document.activeElement).toBe(created));
-    expect(screen.getByText("4 tags")).toBeDefined();
-  });
-
-  it("既存の名前と重なる作成は理由を出し、入力を残す", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "旅行");
-    await user.keyboard("{Enter}");
-
-    expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
-    expect((input as HTMLInputElement).value).toBe("旅行");
-  });
-
-  it("作成の行は、空の名前と長すぎる名前に理由を出して作らない", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    await user.click(screen.getByRole("button", { name: "Create" }));
-    expect(await screen.findByText("Enter a name")).toBeDefined();
-
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    fireEvent.change(input, { target: { value: "あ".repeat(101) } });
-    expect(
-      await screen.findByText("Use 100 characters or fewer (currently 101)"),
-    ).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Create" }));
-    expect(screen.getByText("3 tags")).toBeDefined();
-  });
-
-  it("タグの名前は、そのタグだけで絞り込んだライブラリ一覧を開く（受け入れ条件16）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-
-    const link = await screen.findByRole("link", {
-      name: "Open the library filtered by 旅行",
-    });
-    expect(link.getAttribute("href")).toBe("/?tag=1");
-    await user.click(link);
-    expect(probe.search).toBe("?tag=1");
-  });
-
-  it("改名すると新しい名前で表示され、既存名との重なりは理由を出す（受け入れ条件10）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    expect(document.activeElement).toBe(input);
-
-    await user.clear(input);
-    await user.type(input, "アニメ");
-    await user.keyboard("{Enter}");
-    expect(
-      await screen.findByText('"アニメ" is already a synonym of the tag "Anime".'),
-    ).toBeDefined();
-
-    await user.clear(input);
-    await user.type(input, "旅行2024");
-    await user.keyboard("{Enter}");
-
-    expect(await screen.findByTitle("旅行2024")).toBeDefined();
-    expect(screen.queryByTitle("旅行")).toBeNull();
-  });
-
-  it("改名中にEscを押すと、何も変えずに戻り、フォーカスが「改名」へ戻る（N3）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    const renameButton = within(row).getByRole("button", { name: "Rename" });
-    await user.click(renameButton);
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(input);
-    await user.type(input, "捨てる名前");
-    await user.keyboard("{Escape}");
-
-    expect(await screen.findByTitle("旅行")).toBeDefined();
-    expect(screen.queryByTitle("捨てる名前")).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(renameButton));
-  });
-
-  it("作成中にEscを押すと、何も作らずフォーカスが「新しいタグ」へ戻る（N3）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const createButton = screen.getByRole("button", { name: "New tag" });
-    await user.click(createButton);
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "捨てる名前");
-    await user.keyboard("{Escape}");
-
-    expect(screen.queryByRole("textbox", { name: "New tag name" })).toBeNull();
-    expect(document.activeElement).toBe(createButton);
-  });
-
-  it("別のタブで消したタグを改名しようとすると、もう無いことが伝わり一覧が取り直される", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-
-    server.tags = server.tags.filter((t) => t.name !== "旅行");
-
-    await user.clear(input);
-    await user.type(input, "旅行2024");
-    await user.keyboard("{Enter}");
-
-    expect(
-      await screen.findByText("This tag no longer exists, so the list was reloaded"),
-    ).toBeDefined();
-    expect(screen.queryByTitle("旅行")).toBeNull();
-    expect(screen.getByText("2 tags")).toBeDefined();
-  });
-
-  it("削除の確認は外れる本数を示し、確定すると消えて次の行の改名へフォーカスが移る（受け入れ条件11）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Anime");
-
-    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-
-    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Anime"' });
-    expect(
-      within(dialog).getByText(
-        "This tag will be removed from 3 videos. This can't be undone.",
-      ),
-    ).toBeDefined();
-
-    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => expect(screen.queryByTitle("Anime")).toBeNull());
-    expect(await screen.findByText('Deleted "Anime"')).toBeDefined();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(
-          screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!,
-        ).getByRole("button", { name: "Rename" }),
-      ),
-    );
-  });
-
-  it("0本のタグの削除確認は「どの動画にも付いていません」と出す", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Drama");
-
-    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-
-    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Drama"' });
-    expect(within(dialog).getByText("This tag isn't on any videos.")).toBeDefined();
-  });
-
-  it("削除の確認でEscを押すと何も変わらず、フォーカスがその行の「その他の操作」へ戻る（B2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Drama");
-
-    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-    const menuButton = within(row).getByRole("button", { name: "More actions" });
-    await user.click(menuButton);
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    await screen.findByRole("alertdialog", { name: 'Delete "Drama"' });
-
-    await user.keyboard("{Escape}");
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByTitle("Drama")).toBeDefined();
-    // The menu item unmounts on close; restore focus explicitly to its row's menu trigger.
-    await waitFor(() => expect(document.activeElement).toBe(menuButton));
-  });
-
-  it("削除の確認の「キャンセル」を押しても、フォーカスがその行の「その他の操作」へ戻る（B2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Drama");
-
-    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-    const menuButton = within(row).getByRole("button", { name: "More actions" });
-    await user.click(menuButton);
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Drama"' });
-
-    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(menuButton));
-  });
-
-  it("別のタブで消したタグの削除を試みると、もう無いことが伝わり次の行の改名へフォーカスが移る（B2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Anime");
-
-    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Anime"' });
-
-    server.tags = server.tags.filter((t) => t.name !== "Anime");
-
-    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-
-    expect(
-      await screen.findByText("This tag no longer exists, so the list was reloaded"),
-    ).toBeDefined();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(
-          screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!,
-        ).getByRole("button", { name: "Rename" }),
-      ),
-    );
-  });
-
-  it("キーボードだけで検索の入力に届く（本文で最初のTab）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.tab();
-    expect(document.activeElement).toBe(
-      screen.getByRole("searchbox", { name: "Search tags" }),
-    );
-  });
-
-  it("読み込みに失敗すると再試行でき、成功すると一覧が出る", async () => {
-    const fetchMock = vi.fn<typeof fetch>();
-    let first = true;
-    fetchMock.mockImplementation((input) => {
-      const url = new URL(String(input), "http://localhost");
-      if (url.pathname === "/api/tags" && first) {
-        first = false;
-        return Promise.resolve(
-          jsonResponse({ code: "internal", message: "failed" }, 500),
-        );
-      }
-      return Promise.resolve(jsonResponse({ items: server.tags }));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderPage();
-    expect(await screen.findByText("Couldn't load the tags")).toBeDefined();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByTitle("旅行")).toBeDefined();
-  });
-
-  it("IME変換中のEnterとEscは、作成・改名・検索のどの入力でも無視される（B1）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const createInput = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(createInput, "IME作成中");
-    fireEvent.keyDown(createInput, { key: "Enter", keyCode: 229 });
-    expect(screen.queryByTitle("IME作成中")).toBeNull();
-    fireEvent.keyDown(createInput, { key: "Escape", keyCode: 229 });
-    expect(screen.getByRole("textbox", { name: "New tag name" })).toBeDefined();
-    fireEvent.keyDown(createInput, { key: "Enter" });
-    expect(await screen.findByTitle("IME作成中")).toBeDefined();
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const renameInput = await screen.findByRole("textbox", {
-      name: 'New name for "旅行"',
-    });
-    await user.clear(renameInput);
-    await user.type(renameInput, "旅行2024");
-    fireEvent.keyDown(renameInput, { key: "Enter", keyCode: 229 });
-    expect(screen.queryByTitle("旅行2024")).toBeNull();
-    fireEvent.keyDown(renameInput, { key: "Escape", keyCode: 229 });
-    expect(screen.getByRole("textbox", { name: 'New name for "旅行"' })).toBeDefined();
-    fireEvent.keyDown(renameInput, { key: "Enter" });
-    expect(await screen.findByTitle("旅行2024")).toBeDefined();
-
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "存在しない語");
-    fireEvent.keyDown(search, { key: "Escape", keyCode: 229 });
-    expect((search as HTMLInputElement).value).toBe("存在しない語");
-    fireEvent.keyDown(search, { key: "Escape" });
-    expect((search as HTMLInputElement).value).toBe("");
-  });
-
-  it("作成中はaria-busyだけを付けて入力をdisabledにせず、tag_name_taken後もフォーカスと値が残る（B3）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "旅行");
-
-    hold.nextMutation = true;
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
-    expect(input.hasAttribute("disabled")).toBe(false);
-    expect(document.activeElement).toBe(input);
-
-    hold.release?.();
-
-    expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
-    expect(document.activeElement).toBe(input);
-    expect((input as HTMLInputElement).value).toBe("旅行");
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBeNull());
-  });
-
-  it("改名中はaria-busyだけを付けて入力をdisabledにせず、tag_name_taken後もフォーカスと値が残る（B3）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(input);
-    await user.type(input, "アニメ");
-
-    hold.nextMutation = true;
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
-    expect(input.hasAttribute("disabled")).toBe(false);
-    expect(document.activeElement).toBe(input);
-
-    hold.release?.();
-
-    expect(
-      await screen.findByText('"アニメ" is already a synonym of the tag "Anime".'),
-    ).toBeDefined();
-    expect(document.activeElement).toBe(input);
-    expect((input as HTMLInputElement).value).toBe("アニメ");
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBeNull());
-  });
-
-  it("改名中も本数・改名・その他の操作は出したままで、同じ行の要素のままになる（B4）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Anime");
-
-    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-
-    const input = await screen.findByRole("textbox", { name: 'New name for "Anime"' });
-    expect(input.closest("[data-tag-id]")).toBe(row);
-    expect(row.textContent).toContain("3 videos");
-    expect(within(row).getByRole("button", { name: "Rename" })).toBeDefined();
-    expect(within(row).getByRole("button", { name: "More actions" })).toBeDefined();
-  });
-
-  it("tag_name_taken以外の改名の失敗はtext-sm・role=alertで、tag_name_takenはrole=alert無しで出す（N2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-
-    server.failNextPatch = true;
-    await user.clear(input);
-    await user.type(input, "旅行2024");
-    await user.keyboard("{Enter}");
-
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Something went wrong on the server.");
-    expect(alert.className).toContain("text-sm");
-
-    await user.clear(input);
-    await user.type(input, "アニメ");
-    await user.keyboard("{Enter}");
-
-    const taken = await screen.findByText(
-      '"アニメ" is already a synonym of the tag "Anime".',
-    );
-    expect(taken.getAttribute("role")).toBeNull();
-    expect(taken.className).toContain("text-xs");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
-  });
-
-  it("通信失敗は作成・改名・シノニム追加の名前入力を無効扱いせず、alertで伝える", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const createInput = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(createInput, "未登録");
-    server.failNextCreate = true;
-    await user.keyboard("{Enter}");
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Something went wrong on the server.",
-    );
-    expect(createInput.getAttribute("aria-invalid")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const renameInput = screen.getByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(renameInput);
-    await user.type(renameInput, "旅行2024");
-    server.failNextPatch = true;
-    await user.keyboard("{Enter}");
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Something went wrong on the server.",
-    );
-    expect(renameInput.getAttribute("aria-invalid")).toBeNull();
-    await user.keyboard("{Escape}");
-
-    const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(dramaRow).getByRole("button", { name: "Synonyms" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
-    const synonymInput = within(dialog).getByRole("textbox", { name: "Add synonym" });
-    await user.type(synonymInput, "別名");
-    server.failNextSynonymsPost = true;
-    await user.keyboard("{Enter}");
-    expect((await within(dialog).findByRole("alert")).textContent).toBe(
-      "Something went wrong on the server.",
-    );
-    expect(synonymInput.getAttribute("aria-invalid")).toBeNull();
-  });
-
-  it("空白だけの検索は絞り込み中として数えない（N5）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "   ");
-
-    expect(screen.getByText("3 tags")).toBeDefined();
-    expect(screen.queryByText(/ of 3 tags/)).toBeNull();
-  });
-
-  it("作成の後に一覧を取り直さず、共有の保持の購読者が無ければ全件の GET も送らない（R-12）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    expect(server.getCalls).toBe(1);
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "Banana");
-    await user.keyboard("{Enter}");
-    await screen.findByTitle("Banana");
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(server.getCalls).toBe(1);
-    expect(server.fullGetCalls).toBe(0);
-  });
-
-  it("共有の保持の購読者がいれば、操作のあとに全件の GET が送られる（R-12）", async () => {
-    const user = userEvent.setup();
-    install();
-    const unsubscribe = subscribeTags(() => undefined);
-    try {
-      renderPage();
-      await screen.findByTitle("旅行");
-      expect(server.fullGetCalls).toBe(0);
-
-      const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-      await user.click(within(row).getByRole("button", { name: "More actions" }));
-      await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-      await user.click(
-        within(await screen.findByRole("alertdialog")).getByRole("button", {
-          name: "Delete",
-        }),
-      );
-      await waitFor(() => expect(screen.queryByTitle("Drama")).toBeNull());
-      await waitFor(() => expect(server.fullGetCalls).toBe(1));
-      expect(server.getCalls).toBe(1);
-    } finally {
-      unsubscribe();
-    }
-  });
-
-  it("購読者が無ければ、操作のあとに共有の保持を捨てて次の getTags が取り直す（R-12）", async () => {
-    const user = userEvent.setup();
-    install();
-    await getTags();
-    expect(server.fullGetCalls).toBe(1);
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    await user.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", {
-        name: "Delete",
-      }),
-    );
-    await waitFor(() => expect(screen.queryByTitle("Drama")).toBeNull());
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(server.fullGetCalls).toBe(1);
-
-    const refreshed = await getTags();
-    expect(server.fullGetCalls).toBe(2);
-    expect(refreshed.map((item) => item.name)).not.toContain("Drama");
-  });
-
-  it("tag_not_foundの取り直しに失敗しても、一覧を空白にせず今の一覧を残す（N6）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-
-    server.tags = server.tags.filter((t) => t.name !== "旅行");
-    server.failNextGet = true;
-
-    await user.clear(input);
-    await user.type(input, "旅行2024");
-    await user.keyboard("{Enter}");
-
-    expect(
-      await screen.findByText("This tag no longer exists, so the list was reloaded"),
-    ).toBeDefined();
-    expect(screen.getByTitle("Anime")).toBeDefined();
-    expect(screen.getByTitle("Drama")).toBeDefined();
-    expect(screen.queryByText("Couldn't load the tags")).toBeNull();
-  });
-
-  it("改名中に検索でその行が一致しなくなっても行は消えず、打っている途中の名前が残る（Devinの指摘1）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(input);
-    await user.type(input, "捨てない下書き");
-
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "Anime");
-
-    const stillInput = screen.getByRole("textbox", { name: 'New name for "旅行"' });
-    expect(stillInput).toBe(input);
-    expect((stillInput as HTMLInputElement).value).toBe("捨てない下書き");
-    expect(screen.getByText("1 of 3 tags")).toBeDefined();
-  });
-
-  it("改名の送信中はEscで閉じない。閉じたあとに応答が届いて状態を書き換えることも無い（Devinの指摘2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(input);
-    await user.type(input, "旅行2024");
-
-    hold.nextMutation = true;
-    await user.keyboard("{Enter}");
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
-
-    await user.keyboard("{Escape}");
-    expect(screen.getByRole("textbox", { name: 'New name for "旅行"' })).toBeDefined();
-
-    hold.release?.();
-    expect(await screen.findByTitle("旅行2024")).toBeDefined();
-  });
-
-  it("作成の送信中はEscで閉じず、キャンセルのボタンもdisabledのまま（Devinの指摘2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "Banana");
-
-    hold.nextMutation = true;
-    await user.keyboard("{Enter}");
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
-
-    expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(
-      true,
-    );
-    await user.keyboard("{Escape}");
-    expect(screen.getByRole("textbox", { name: "New tag name" })).toBeDefined();
-
-    hold.release?.();
-    expect(await screen.findByTitle("Banana")).toBeDefined();
-  });
-
-  it("改名の送信中はほかの行の改名も「新しいタグ」も始められない。応答が届けば再び始められる（Devinの指摘2）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(input);
-    await user.type(input, "旅行2024");
-
-    hold.nextMutation = true;
-    await user.keyboard("{Enter}");
-    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
-
-    const animeRow = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
-    const animeRenameButton = within(animeRow).getByRole("button", { name: "Rename" });
-    expect(animeRenameButton.hasAttribute("disabled")).toBe(true);
-    await user.click(animeRenameButton);
-    expect(screen.queryByRole("textbox", { name: 'New name for "Anime"' })).toBeNull();
-
-    expect(screen.getByRole("button", { name: "New tag" }).hasAttribute("disabled")).toBe(
-      true,
+      within(tallies).getByRole("button", { name: /Tentative/ }).textContent,
+    ).toMatch(/^1/);
+    expect(within(tallies).getByRole("button", { name: /Unused/ }).textContent).toMatch(
+      /^1/,
     );
 
-    hold.release?.();
-    expect(await screen.findByTitle("旅行2024")).toBeDefined();
-    await user.click(within(animeRow).getByRole("button", { name: "Rename" }));
+    await user.click(noKind);
+    await waitFor(() => expect(probe.search).toBe("?q=rob&kind=none&sort=name"));
+    expect(noKind.getAttribute("aria-pressed")).toBe("true");
+    const filter = screen.getByRole("radiogroup", { name: "Kind" });
     expect(
-      await screen.findByRole("textbox", { name: 'New name for "Anime"' }),
-    ).toBeDefined();
-  });
-
-  it("作成の失敗の表示は、入力を打ち直すと消える（Devinの指摘3）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "旅行");
-    await user.keyboard("{Enter}");
-
-    expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
-
-    await user.type(input, "2024");
-    expect(screen.queryByText('A tag named "旅行" already exists.')).toBeNull();
-  });
-
-  it("改名の失敗の表示は、入力を打ち直すと消える（Devinの指摘3）", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
-    await user.click(within(row).getByRole("button", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
-    await user.clear(input);
-    await user.type(input, "アニメ");
-    await user.keyboard("{Enter}");
-
-    expect(
-      await screen.findByText('"アニメ" is already a synonym of the tag "Anime".'),
-    ).toBeDefined();
-
-    await user.type(input, "2024");
-    expect(
-      screen.queryByText('"アニメ" is already a synonym of the tag "Anime".'),
-    ).toBeNull();
+      within(filter)
+        .getByRole("radio", { name: /^No kind/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
   });
 });
 
-describe("TagsPage の英語の文言", () => {
-  const userData = ["旅行", "Anime", "アニメ", "Drama", "存在しない語", "新規"];
-
-  function rowOf(name: string): HTMLElement {
-    return screen.getByTitle(name).closest<HTMLElement>("[data-tag-id]")!;
-  }
-
-  it("疑似ロケールで、一覧・検索・作成・改名・メニューの文言がカタログから出る", async () => {
-    enablePseudoLocale();
+describe("TagsPage 続きの読み込み", () => {
+  it("描画する行が同じでも、切り替えた条件のページに続きがあれば読み込む", async () => {
     const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-    expectCatalogTextOnly(document.body, userData);
-
-    const search = screen.getByRole("searchbox");
-    await user.type(search, "ani");
-    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
-    expectCatalogTextOnly(document.body, userData);
-
-    await user.clear(search);
-    await user.type(search, "存在しない語");
-    await screen.findByRole("heading", { level: 2, name: /match/ });
-    expectCatalogTextOnly(document.body, userData);
-    await user.clear(search);
-    await screen.findByTitle("旅行");
-
-    await user.click(screen.getByRole("button", { name: /New tag/ }));
-    const create = await screen.findByRole("textbox", { name: /New tag name/ });
-    await user.type(create, "x".repeat(101));
-    expectCatalogTextOnly(document.body, userData);
-    await user.clear(create);
-    await user.type(create, "旅行");
-    await user.keyboard("{Enter}");
-    await screen.findByText(/already exists/);
-    expectCatalogTextOnly(document.body, userData);
-    await user.keyboard("{Escape}");
-
-    await user.click(within(rowOf("Anime")).getByRole("button", { name: /Rename/ }));
-    await screen.findByRole("textbox", { name: /New name for/ });
-    expectCatalogTextOnly(document.body, userData);
-    await user.keyboard("{Escape}");
-
-    await user.click(
-      within(rowOf("Anime")).getByRole("button", { name: /More actions/ }),
+    server.tags = Array.from({ length: 6 }, (_, index) =>
+      tag({
+        id: index + 1,
+        name: `Tag${String(index + 1)}`,
+        kind: index < 3 ? genre : null,
+      }),
     );
-    await screen.findByRole("menu");
-    expectCatalogTextOnly(document.body, userData);
+    server.pageLimitOverride = 3;
+    install();
+    renderPage({ url: "/tags?kind=1&sort=name" });
+    await screen.findByTitle("Tag3");
+
+    const filter = screen.getByRole("radiogroup", { name: "Kind" });
+    await user.click(within(filter).getByRole("radio", { name: /^All/ }));
+
+    expect(await screen.findByTitle("Tag6")).toBeDefined();
+  });
+});
+
+describe("TagsPage キーボード", () => {
+  it("Tab は描画されていない隣の行のカードへ一覧の順に進む", async () => {
+    const user = userEvent.setup();
+    // Rows measure as one card high, so only the rows near the top of the window are drawn.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.hasAttribute("data-index") ? 108 : 0;
+    });
+    server.tags = Array.from({ length: 40 }, (_, index) =>
+      tag({ id: index + 1, name: `Tag${String(index + 1).padStart(2, "0")}` }),
+    );
+    install();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag01");
+    const grid = screen.getByRole("region", { name: "Tags" });
+    const drawn = [...grid.querySelectorAll<HTMLElement>("[data-index]")];
+    const last = Number(drawn.at(-1)!.dataset.index);
+    expect(last).toBeLessThan(39);
+    const name = (row: number) => `Tag${String(row + 1).padStart(2, "0")}`;
+
+    card(name(last)).focus();
+    // The card's selection check comes after its link.
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: `Select "${name(last)}"` }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(card(name(last + 1)));
+  });
+});
+
+describe("TagsPage タグのページから戻る", () => {
+  it("最初のページより先のカードから戻ると、読み込んだカードと位置をそれらのリクエストなしで戻す", async () => {
+    const user = userEvent.setup();
+    nineTagsInPagesOfThree();
+    install();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag9");
+    const pagesBefore = listPageRequests().length;
+    expect(pagesBefore).toBe(3);
+
+    vi.spyOn(window, "scrollY", "get").mockReturnValue(640);
+    await user.click(card("Tag8"));
+    expect(probe.pathname).toBe("/tags/8");
+
+    await historyBack();
+    expect(screen.getByTitle("Tag9")).toBeDefined();
+    expect(listPageRequests()).toHaveLength(pagesBefore);
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 640 });
   });
 
-  it("疑似ロケールで、削除・統合・シノニムの窓の文言がカタログから出る", async () => {
-    enablePseudoLocale();
+  it("タグのページで書き込んだあとに戻ると、同じ条件で先頭から読み直す", async () => {
     const user = userEvent.setup();
+    nineTagsInPagesOfThree();
     install();
-    renderPage();
-    await screen.findByTitle("Anime");
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag9");
+    const pagesBefore = listPageRequests().length;
 
-    await user.click(
-      within(rowOf("Anime")).getByRole("button", { name: /More actions/ }),
+    await user.click(card("Tag8"));
+    await act(async () => {
+      await confirmTag(8);
+    });
+    await historyBack();
+
+    await waitFor(() => expect(listPageRequests().length).toBeGreaterThan(pagesBefore));
+    const reread = listPageRequests()[pagesBefore]!;
+    expect(reread.get("sort")).toBe("name");
+    expect(reread.has("cursor")).toBe(false);
+  });
+});
+
+describe("TagsPage 戻ったあとの読み直し", () => {
+  it("戻ったあとに読み直した一覧は、別の画面から戻っても古いカードに戻らない", async () => {
+    const user = userEvent.setup();
+    nineTagsInPagesOfThree();
+    install();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag9");
+    await user.click(card("Tag8"));
+    await historyBack();
+    await screen.findByTitle("Tag9");
+
+    server.tags[7]!.synonyms = ["Elsewhere"];
+    await emitServerEvent("tags");
+    await user.click(await screen.findByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(within(card("Tag8")).getByText("Elsewhere")).toBeDefined(),
     );
-    await user.click(await screen.findByRole("menuitem", { name: /Delete/ }));
-    await screen.findByRole("alertdialog");
-    expectCatalogTextOnly(document.body, userData);
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    await user.click(within(rowOf("旅行")).getByRole("button", { name: /More actions/ }));
-    await user.click(await screen.findByRole("menuitem", { name: /Merge into/ }));
-    const merge = await screen.findByRole("dialog");
-    const combo = within(merge).getByRole("combobox");
-    await user.type(combo, "アニ");
-    await within(merge).findByRole("option", { name: /Anime/ });
-    expectCatalogTextOnly(document.body, userData);
-    await user.click(within(merge).getByRole("option", { name: /Anime/ }));
-    expectCatalogTextOnly(document.body, userData);
-    server.failNextMerge = true;
-    await user.click(within(merge).getByRole("button", { name: /^⟦Merge⟧$/ }));
-    await within(merge).findByRole("alert");
-    expectCatalogTextOnly(document.body, userData);
-    await user.click(within(merge).getByRole("button", { name: /Cancel/ }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-
-    await user.click(
-      within(rowOf("Anime")).getByRole("button", { name: /^⟦Synonyms⟧$/ }),
+    await user.click(kindsLink());
+    await historyBack();
+    await waitFor(() =>
+      expect(within(card("Tag8")).getByText("Elsewhere")).toBeDefined(),
     );
-    const synonyms = await screen.findByRole("dialog");
-    const input = within(synonyms).getByRole("textbox");
-    await user.type(input, "Anime");
-    await user.keyboard("{Enter}");
-    await within(synonyms).findByText(/this tag's name/);
-    expectCatalogTextOnly(document.body, userData);
-
-    await user.clear(input);
-    await user.type(input, "Drama");
-    await user.keyboard("{Enter}");
-    await within(synonyms).findByText(/is a tag on/);
-    expectCatalogTextOnly(document.body, userData);
   });
 
-  it("疑似ロケールで、空・読み込み中・失敗の状態の文言がカタログから出る", async () => {
-    enablePseudoLocale();
+  it("開発時に effect が繰り返されても、戻ったあとに件数と変更を確かめる", async () => {
+    const user = userEvent.setup();
+    nineTagsInPagesOfThree();
     install();
-    hold.getsFrom = 1;
-    const loading = renderPage();
-    await screen.findAllByRole("status");
-    expectCatalogTextOnly(document.body, userData);
-    loading.unmount();
-    hold.getsFrom = null;
-    heldGetReleases.length = 0;
+    renderPage({ url: "/tags?sort=name", strict: true });
+    await screen.findByTitle("Tag9");
+    await user.click(card("Tag8"));
 
-    __resetTagsForTest();
-    server.failAllGets = true;
-    const failed = renderPage();
-    await screen.findByRole("heading", { level: 2, name: /load/ });
-    expectCatalogTextOnly(document.body, userData);
-    failed.unmount();
+    server.tags[7]!.synonyms = ["Elsewhere"];
+    server.tags[0]!.tentative = true;
+    await historyBack();
 
-    __resetTagsForTest();
-    server.failAllGets = false;
-    server.tags = [];
-    renderPage();
-    await screen.findByRole("heading", { level: 2, name: /No tags yet/ });
-    expectCatalogTextOnly(document.body, userData);
+    expect(await screen.findByText("Tags changed elsewhere")).toBeDefined();
+    const tallies = screen.getByRole("group", { name: "What is left to tidy" });
+    await waitFor(() =>
+      expect(
+        within(tallies).getByRole("button", { name: /Tentative/ }).textContent,
+      ).toMatch(/^1/),
+    );
+  });
+});
+
+describe("TagsPage 変更の通知", () => {
+  it("最初のページより先のカードが読み直しで違えば通知を出し、カードは動かさない", async () => {
+    const user = userEvent.setup();
+    nineTagsInPagesOfThree();
+    install();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag9");
+    const pagesBefore = listPageRequests().length;
+
+    server.tags[7]!.synonyms = ["Elsewhere"];
+    await emitServerEvent("tags");
+
+    expect(await screen.findByText("Tags changed elsewhere")).toBeDefined();
+    expect(within(card("Tag8")).queryByText("Elsewhere")).toBeNull();
+    expect(listPageRequests()).toHaveLength(pagesBefore);
+
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(within(card("Tag8")).getByText("Elsewhere")).toBeDefined(),
+    );
+    expect(screen.queryByText("Tags changed elsewhere")).toBeNull();
   });
 
-  it("件数と本数は 1 と複数で単数・複数を分ける", async () => {
+  it("Refresh は種類の一覧と件数も読み直し、消えた種類の絞り込みを外す", async () => {
     const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 1, name: "Robot", kind: genre }),
+      tag({ id: 2, name: "Plain" }),
+    ];
     install();
-    server.tags = [tag({ id: 1, name: "旅行", videoCount: 1 })];
-    renderPage();
-    await screen.findByTitle("旅行");
-    expect(screen.getByText("1 tag")).toBeDefined();
-    expect(rowOf("旅行").textContent).toContain("1 video");
-    expect(rowOf("旅行").textContent).not.toContain("1 videos");
-
-    await user.click(within(rowOf("旅行")).getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "旅行"' });
-    expect(
-      within(dialog).getByText(
-        "This tag will be removed from 1 video. This can't be undone.",
+    renderPage({ url: "/tags?kind=1&sort=name" });
+    await screen.findByTitle("Robot");
+    const filter = screen.getByRole("radiogroup", { name: "Kind" });
+    await waitFor(() =>
+      expect(within(filter).getByRole("radio", { name: /^Genre/ }).textContent).toMatch(
+        /1$/,
       ),
-    ).toBeDefined();
+    );
+
+    server.tagKinds = server.tagKinds.filter((item) => item.id !== 1);
+    server.tags[0]!.kind = null;
+    await emitServerEvent("tags");
+    await user.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    await waitFor(() =>
+      expect(within(filter).queryByRole("radio", { name: /^Genre/ })).toBeNull(),
+    );
+    await waitFor(() => expect(probe.search).toBe("?sort=name"));
   });
 
-  it("日本語のタグ名とシノニムはそのまま表示され、その綴りで検索できる", async () => {
-    const user = userEvent.setup();
+  it("読み直しが表示と同じなら何も出さない", async () => {
+    nineTagsInPagesOfThree();
     install();
-    renderPage();
-    await screen.findByTitle("旅行");
-    expect(
-      screen.getByRole("link", { name: "Open the library filtered by 旅行" }),
-    ).toBeDefined();
-    expect(screen.getByText("Synonyms: アニメ")).toBeDefined();
+    renderPage({ url: "/tags?sort=name" });
+    await screen.findByTitle("Tag9");
 
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "旅");
-    await waitFor(() => expect(screen.queryByTitle("Anime")).toBeNull());
-    expect(screen.getByTitle("旅行")).toBeDefined();
-    expect(screen.getByText("1 of 3 tags")).toBeDefined();
-
-    await user.clear(search);
-    await user.type(search, "アニメ");
-    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
-    expect(screen.getByTitle("Anime")).toBeDefined();
+    await emitServerEvent("tags");
+    await waitFor(() => expect(rereads().length).toBe(3));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Tags changed elsewhere")).toBeNull();
   });
 
-  it("空のタグ名と長すぎるタグ名のサーバーの拒否を、上限を埋め込んだ英語で出す", async () => {
+  it("自分の書き込み中のイベントは、書き込みが済んでから確かめる", async () => {
     const user = userEvent.setup();
     install();
-    renderPage();
-    await screen.findByTitle("旅行");
+    renderPage({ url: "/tags" });
+    await screen.findByTitle("Anime");
 
     await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = await screen.findByRole("textbox", { name: "New tag name" });
-    server.nextError = {
-      status: 400,
-      body: {
-        code: "invalid_request",
-        reason: "tag_name_empty",
-        message: "server-side message",
-      },
-    };
-    await user.type(input, "新規");
-    await user.keyboard("{Enter}");
-    expect((await screen.findByRole("alert")).textContent).toBe("Enter a tag name.");
+    const dialog = await screen.findByRole("dialog");
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "New tag name" }),
+      "Anime",
+    );
+    hold.nextMutation = true;
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(hold.release).not.toBeNull());
 
-    server.nextError = {
-      status: 400,
-      body: {
-        code: "invalid_request",
-        reason: "tag_name_too_long",
-        limit: 100,
-        message: "server-side message",
-      },
-    };
-    await user.type(input, "2");
-    await user.keyboard("{Enter}");
+    server.tags[0]!.videoCount = 5;
+    await emitServerEvent("tags");
+    expect(rereads()).toHaveLength(0);
+
+    await act(async () => {
+      hold.release!();
+      await Promise.resolve();
+    });
     expect(
-      await screen.findByText("Use a tag name of 100 characters or fewer."),
+      await within(dialog).findByText('A tag named "Anime" already exists.'),
     ).toBeDefined();
+    await waitFor(() => expect(rereads()).toHaveLength(1));
+    expect(await screen.findByText("Tags changed elsewhere")).toBeDefined();
   });
+});
 
-  it("自分の名前・自分のシノニムの登録は、このタグのことだと分かる英語で出す", async () => {
+describe("TagsPage 空の状態", () => {
+  it("タグが 1 つもなければ、作る操作を出す", async () => {
     const user = userEvent.setup();
+    server.tags = [];
     install();
-    renderPage();
-    await screen.findByTitle("Anime");
+    renderPage({ url: "/tags" });
 
-    await user.click(within(rowOf("Anime")).getByRole("button", { name: "Synonyms" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
-    const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
-    await user.type(input, "Anime");
-    await user.keyboard("{Enter}");
-    expect(
-      await within(dialog).findByText('"Anime" is already this tag\'s name.'),
-    ).toBeDefined();
-  });
-
-  it("統合が要る名前の確認は、API の tagName のタグ名で説明する", async () => {
-    const user = userEvent.setup();
-    install();
-    server.tags = [
-      tag({ id: 1, name: "Anime", videoCount: 2 }),
-      tag({ id: 2, name: "ドラマ", synonyms: ["drama"], videoCount: 1 }),
-    ];
-    renderPage();
-    await screen.findByTitle("Anime");
-
-    await user.click(within(rowOf("Anime")).getByRole("button", { name: "Synonyms" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
-    const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
-    // Server name matching trims whitespace but remains binary; errors return the canonical spelling.
-    await user.type(input, "  ドラマ  ");
-    await user.keyboard("{Enter}");
-    expect(
-      await within(dialog).findByText(
-        '"ドラマ" is a tag on 1 video. Merging it into "Anime" adds "Anime" to those videos, and "ドラマ" and its synonyms become synonyms of "Anime". "ドラマ" leaves the tag list.',
-      ),
-    ).toBeDefined();
-  });
-
-  it("同じタグへの統合の拒否を英語で出す", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("旅行");
-
-    await user.click(within(rowOf("旅行")).getByRole("button", { name: "More actions" }));
+    const empty = await screen.findByRole("heading", { name: "No tags yet" });
     await user.click(
-      await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
+      within(empty.closest<HTMLElement>('[data-state="empty"]')!).getByRole("button", {
+        name: "New tag",
+      }),
     );
-    const dialog = await screen.findByRole("dialog", { name: 'Merge "旅行"' });
-    await user.type(within(dialog).getByRole("combobox"), "Anime");
-    await user.click(await within(dialog).findByRole("option", { name: /Anime/ }));
-    server.nextError = {
-      status: 400,
-      body: {
-        code: "invalid_request",
-        reason: "merge_same_tag",
-        message: "server-side message",
-      },
-    };
-    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toBe(
-      "A tag can't be merged into itself.",
+    expect(await screen.findByRole("dialog", { name: "New tag" })).toBeDefined();
+  });
+
+  it("条件に合うタグがなければ、検索とすべての絞り込みを外す操作を出す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage({ url: "/tags?q=zzz&unused=1&sort=name" });
+
+    await screen.findByRole("heading", { name: 'No unused tags match "zzz"' });
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(probe.search).toBe("?sort=name"));
+    expect(await screen.findByTitle("Anime")).toBeDefined();
+  });
+});
+
+describe("TagsPage 新しいタグ", () => {
+  it("作るとそのタグのページを開く", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage({ url: "/tags" });
+    await screen.findByTitle("Anime");
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "New tag name" }),
+      "Robot",
     );
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(probe.pathname).toBe("/tags/100"));
   });
 });

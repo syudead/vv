@@ -1,5 +1,6 @@
 import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import { clearTagListSnapshot } from "./tagListSnapshot";
 import { compareNatural } from "./tagOrder";
 import { refreshTags } from "./tags";
 import type { components } from "./gen/openapi";
@@ -74,11 +75,25 @@ function afterTagKindsChanged(): void {
   if (listeners.size > 0) refreshTagKinds().catch(() => undefined);
 }
 
+type TagKindRefsListener = () => void;
+
+const refsListeners = new Set<TagKindRefsListener>();
+
+/** Notify views that hold tag rows of their own, such as a list read before a kind edit finished. */
+export function subscribeTagKindRefsChanged(listener: TagKindRefsListener): () => void {
+  refsListeners.add(listener);
+  return () => {
+    refsListeners.delete(listener);
+  };
+}
+
 /** Cached tags embed kind names; refresh them and invalidate video-list snapshots after renaming or deletion. */
 function afterTagKindRenamedOrDeleted(): void {
   afterTagKindsChanged();
   clearListSnapshot();
+  clearTagListSnapshot();
   refreshTags().catch(() => undefined);
+  for (const listener of refsListeners) listener();
 }
 
 export function tagKindCountsChanged(): void {
@@ -160,4 +175,5 @@ export function __resetTagKindsForTest(): void {
   generation = 0;
   latestFetch = undefined;
   listeners.clear();
+  refsListeners.clear();
 }

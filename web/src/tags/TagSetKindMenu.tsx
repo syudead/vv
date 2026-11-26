@@ -3,6 +3,7 @@ import type { Ref } from "react";
 
 import type { TagKind } from "../api/tagKinds";
 import { t, type UiText } from "../i18n";
+import { KindMark } from "../ui/KindMark";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -59,7 +60,6 @@ export default function TagSetKindMenu({
             {t.tags.selection.noKinds}
           </DropdownMenuLabel>
         )}
-        {}
         <DropdownMenuRadioGroup value={checked ?? ""}>
           {list.map((kind) => (
             <DropdownMenuRadioItem
@@ -67,6 +67,7 @@ export default function TagSetKindMenu({
               value={String(kind.id)}
               onSelect={() => onChoose(kind)}
             >
+              <KindMark kind={kind.id} variant="dot" />
               <span title={kind.name} className="max-w-chip-label min-w-0 truncate">
                 {kind.name}
               </span>

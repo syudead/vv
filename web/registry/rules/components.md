@@ -171,8 +171,8 @@ rules.
 
 ### Table
 
-Item `table`. Rows and columns of records, such as the tags in the admin
-screen. A screen never uses it bare: it goes in the `DataTable` section of
+Item `table`. Rows and columns of records, such as the organizations in the
+admin screen. A screen never uses it bare: it goes in the `DataTable` section of
 [patterns.md](patterns.md#sections), which adds the card and its border.
 
 - A row that can be selected starts with a `Checkbox` cell, and the head of
@@ -246,7 +246,7 @@ touch screens never show it.
 ### Tabs
 
 Item `tabs`. Switches between views of the same content in place, such as the
-tag admin lists. `TabsList` with `variant="default"` is the filled segment;
+panels under a video's title. `TabsList` with `variant="default"` is the filled segment;
 `variant="line"` is the underlined row for page-level tabs. A count follows
 the label in `text-2xs text-muted-foreground`.
 
@@ -515,6 +515,87 @@ and it always has its number inside, so it is not read as a loading ring or a
 button. Put it in a `ResultRow`'s `mark`. Do not use it for progress; that is
 `Progress`.
 
+### RecordCard
+
+Item `record-card`. One named record, such as a tag, as one link on `card`
+with a `border` line and `rounded-md`, `record-card` high at every width, in a
+`CardGrid size="record"`. Pass a router link with no content as `link`; the
+card's lines become its content.
+
+| Line   | Content                                                                                                                                         | Type                                                                   |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| First  | `name`, truncated with the full name in `title`; `nameMarks` after it (`TentativeMark`); `count` at the line's end, its wording in `countTitle` | Name `text-sm font-medium`; count `text-sm font-semibold tabular-nums` |
+| Second | `detail`: one short phrase, such as the kind's name                                                                                             | `text-xs`, muted, truncated                                            |
+| Third  | `secondary` names as `secondary` `Badge`s on one line; the card's edge cuts what does not fit                                                   | `text-xs`, normal weight                                               |
+
+- `kind` draws a `KindMark` `bar` along the start edge; a record without a
+  kind draws none and keeps the same inset.
+- `tentative` draws the edge dashed in `input`.
+- `selection` adds a `Checkbox` at the bottom end corner, outside the link,
+  shown as the library's card check is: on hover or focus, always where
+  hover is impossible, and on every card while `selectionMode`. A selected
+  card is `primary-soft` with a `primary` edge.
+- Hover is `shadow-card-hover`. A card with no third line keeps its height.
+
+Do not put buttons on the card; every operation on one record belongs on its
+own page. Do not use it for videos, folders or people, which have their own
+cards.
+
+### KindMark
+
+Item `kind-mark`. The mark of a tag kind in its colour, `kind-1` to `kind-8`,
+taken from the kind's id (`kindColour`: N = (id − 1) mod 8 + 1), so a kind
+keeps its colour when others are created or deleted. `variant="bar"` is the
+start edge of a `RecordCard`; `variant="dot"` (`size-2`, `rounded-full`) goes
+before a kind's name. It is decorative: the kind's name always stands on the
+same card, row or control, since more than eight kinds share colours.
+
+Do not use the `kind-*` colours for anything but tag kinds.
+
+### KindToggleGroup
+
+Item `kind-toggle-group`. One choice among kinds and plain choices, acting at
+once: a `ToggleGroup type="single"` of `outline` `sm` `pill` items, one per
+option in the caller's order. An option with `kind` shows its `dot` before
+its name; a `count` follows the name in `text-xs` muted `tabular-nums` (a
+`Skeleton` with `asChild` on a `span` while it loads). An item is at most as
+wide as the row: a longer name wraps inside it, breaking anywhere, while its
+dot and count keep their size. A pressed kind is its
+`kind-N-soft` fill with a `kind-N` edge and `foreground` text; a pressed plain
+choice is the standard `primary-soft`. Pressing the pressed item again
+reports nothing, so one choice always stays pressed.
+
+`layout="scroll"` is for `ListPage`'s `filter`: one line below `md`, which
+the `PageHeader` scrolls and fades at a side that hides choices, and wrapping
+from `md`; `layout="wrap"` always wraps, for a kind picker in a `PageSection` row. Do not use it for choices
+that are not kinds; that is `ToggleGroup`.
+
+### TallyStrip
+
+Item `tally-strip`. Up to three counts in equal columns, `gap-3` apart, for
+`ListPage`'s `summary`: each is a `Toggle` on `card` with a `border` line and
+`rounded-md` that toggles the filter it counts. A tally holds its `count`
+(`text-lg font-semibold tabular-nums`), its `label` (`text-sm font-medium`)
+over a `hint` (`text-xs`, muted, from `md`), and from `lg` a trailing
+`action` word in `primary`. Pressed, it is `primary-soft` with a `primary`
+edge and the trailing word is the strip's `clearLabel`. Without `count` a
+`Skeleton` stands for the number. An `empty` tally (a zero count) is muted,
+has no trailing word and cannot be pressed unless it is pressed.
+
+Do not use it for figures that do not filter the list.
+
+### FloatingNotice
+
+Item `floating-notice`. One line and one `ghost` `sm` action on `popover`,
+`rounded-full` with `shadow-elevated`, appearing with `animate-fade-in`
+(`role="status"`). Put it in `ListPage`'s `notice`, which sticks it under the
+top bar at the body's centre, over the content, so the list does not move.
+Use it for a condition that lasts until the viewer acts, such as the list
+having changed elsewhere with `Refresh`.
+
+Do not use it for a finished action (use `Sonner`) or for an error (use
+`Alert`).
+
 ### ImageUploadDialog
 
 Item `image-upload-dialog`. Every control that takes an image file opens
@@ -647,3 +728,64 @@ no heading.
 
 Do not use either for values other than tag names and the names of people and
 organizations.
+
+### DialogError
+
+Item `dialog-error`. A request that failed inside a dialog, a form section or
+a notice: a `destructive` `Alert` with the reason as its title and, when the
+caller passes `onRetry`, an `outline` `sm` Retry at its end. The dialog stays
+open around it.
+
+Do not use it for a list that failed to load (use `error-state`) or for a
+field's own reason (use `FieldError`).
+
+### RowIconButton
+
+Item `row-icon-button`. One action of a list row as a `ghost` `icon-sm`
+`Button` whose `label` is both its accessible name and its tooltip. A row
+shows its frequent actions this way and puts the rest in a `RowMoreMenu`.
+
+Do not use it outside rows, where a labelled `Button` fits.
+
+### RowMoreMenu
+
+Item `row-more-menu`. The Ellipsis button at a row's end, with its label in a
+tooltip, that opens a `DropdownMenu` aligned to its end; the children are the
+row's other actions as `DropdownMenuItem`s, the destructive one last and,
+when other actions precede it, after a `DropdownMenuSeparator`. `describedBy` names the reason the trigger is disabled.
+`TagRowRefs` names the focus targets of a virtualized admin row: the name
+link, rename, synonyms, the menu and the compact actions button.
+
+Do not use it for a row with a single action; give that action a
+`RowIconButton`.
+
+### RowNameInput
+
+Item `row-name-input`. The rename input that replaces a row's name cell: it
+focuses and selects the name, Enter saves, Escape cancels, and both are
+ignored while saving. The name rules (`rules`, tag names by default) show
+their reason under the input as it is typed; a name already taken shows under
+it too, and any other failure as an alert.
+
+Do not use it for a name that is not edited in place in a row.
+
+### CreateTagRow
+
+Item `create-tag-row`. The first table row of an admin list while a new entry
+is named: an `Input` with Create and Cancel, the same keys and name checks as
+`RowNameInput`, and the failure under it. `label`, `placeholder` and `rules`
+default to the tag's; the credit list passes its own three and the tag-kind
+list its own `label` and `placeholder`.
+
+Do not use it outside a `DataTable`.
+
+### MergeParts
+
+Item `merge-parts`. Two pieces of a dialog that moves one entry, or part of
+it, into another. `MergeTargetField` is the target field: a visible label
+above an `inline` `TagCommand` or `CreditCommand` (passed as `Command`), with
+the search failure under it; the merge dialogs and the dialog that moves faces
+to another person use it. `MergeSummary` is the line of a merge dialog that
+reads source → target, each name truncated.
+
+Do not use them for picks that do not move anything into the chosen entry.

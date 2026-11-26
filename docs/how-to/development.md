@@ -44,7 +44,7 @@ pinned tools are not on `PATH`.
 | Change | Before pushing |
 | --- | --- |
 | Go package | `task check SCOPE=go GO_PACKAGES="./internal/domain/... ./internal/app/..."` |
-| Web feature | `task check SCOPE=web WEB_FILES="src/tags src/testing/tagsPage.tsx" WEB_TESTS="src/tags"` |
+| Web feature | `task check SCOPE=web WEB_FILES="src/tags src/testing/tagScreens.tsx" WEB_TESTS="src/tags"` |
 | Both | Run both scoped commands |
 | Shared dependencies, configuration, or unclear impact | `task check` |
 | Markdown, `docs/`, or `specs/` | `task check-docs`, also for mixed changes |
@@ -126,8 +126,8 @@ build-and-test command. Keep both local and CI-only tasks represented in
 `task e2e-groups-check` fails when a file is in no group or in two. Only the Go groups
 restore the Go build cache, and each saves its own copy on a push to `main`.
 Vitest shards by file, so a test file that grows to dominate a shard is split by
-topic, as `web/src/tags/TagsPage*.test.tsx` are around the shared
-`web/src/testing/tagsPage.tsx`. A push to `main` is a
+topic, as `web/src/tags/TagKindsPage*.test.tsx` are around the shared
+`web/src/testing/tagScreens.tsx`. A push to `main` is a
 merged pull request, so browser E2E and the Docker image build do not run on a
 pull request; `Browser E2E` passes there without running. Renovate PRs (head
 branch `renovate/*`) are the exception: they run both, without publishing the

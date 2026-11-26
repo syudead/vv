@@ -1,9 +1,9 @@
 import { type CreditSort, listPeople, type Person } from "../../api/credits";
 import { t, type UiText } from "../../i18n";
 import { readStoredSort } from "../../preferences/tagListPreferences";
-import { isTagListSort } from "../../tags/tagListOrder";
-import type { PageRows } from "../../tags/tagPageRows";
-import type { RowsPage } from "../../tags/useTagPage";
+import { isTagListSort } from "../../api/tags";
+import type { PageRows } from "../../recordList/listRows";
+import type { RowsPage } from "../../recordList/usePagedRows";
 import { normalizeQuery } from "../../videoList/listCriteria";
 import { creditPageLimit, sortStorageKey } from "../creditRows";
 import { ageRange } from "../person/personFacts";

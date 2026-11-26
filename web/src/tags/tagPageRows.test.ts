@@ -3,17 +3,15 @@ import { describe, expect, it } from "vitest";
 import type { Tag } from "../api/tags";
 import {
   addTag,
-  appendUniqueTags,
-  compareTagsForSort,
   confirmTags,
   matchesTagQuery,
-  placeTag,
   removeTags,
   replaceTag,
   setTagsKind,
   type TagPageRows,
   type TagRowsQuery,
 } from "./tagPageRows";
+import { appendUniqueTags } from "../recordList/listRows";
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return {
@@ -47,62 +45,6 @@ function page(rows: Tag[], overrides: Partial<TagPageRows> = {}): TagPageRows {
 }
 
 const names = (result: TagPageRows) => result.rows.map((item) => item.name);
-
-describe("compareTagsForSort", () => {
-  it("名前の順は名前の自然順の鍵で比べ、同じ鍵は id で決める", () => {
-    const items = [
-      tag({ id: 3, name: "B10" }),
-      tag({ id: 2, name: "ｂ２" }),
-      tag({ id: 1, name: "b2" }),
-      tag({ id: 4, name: "B1" }),
-    ];
-    expect(
-      items.sort((a, b) => compareTagsForSort(a, b, "name")).map((t) => t.id),
-    ).toEqual([4, 1, 2, 3]);
-  });
-
-  it("本数・作った日の順は先にその値で比べ、作った日は秒で比べる", () => {
-    const a = tag({
-      id: 1,
-      name: "B",
-      videoCount: 1,
-      createdAt: "2026-01-01T00:00:00.900Z",
-    });
-    const b = tag({
-      id: 2,
-      name: "A",
-      videoCount: 3,
-      createdAt: "2026-01-01T00:00:00.100Z",
-    });
-    expect(compareTagsForSort(a, b, "countDesc")).toBe(1);
-    expect(compareTagsForSort(a, b, "countAsc")).toBe(-1);
-    expect(compareTagsForSort(a, b, "createdDesc")).toBe(1);
-  });
-});
-
-describe("placeTag と続きの境", () => {
-  const loaded = [tag({ id: 1, name: "A" }), tag({ id: 2, name: "C" })];
-
-  it("続きが無ければ末尾にも置く", () => {
-    expect(
-      placeTag(loaded, tag({ id: 3, name: "D" }), "name", undefined).map((t) => t.name),
-    ).toEqual(["A", "C", "D"]);
-  });
-
-  it("境より後ろに並ぶ行は置かず、境の前なら置く", () => {
-    const boundary = loaded[1];
-    expect(placeTag(loaded, tag({ id: 3, name: "D" }), "name", boundary)).toHaveLength(2);
-    expect(
-      placeTag(loaded, tag({ id: 3, name: "B" }), "name", boundary).map((t) => t.name),
-    ).toEqual(["A", "B", "C"]);
-  });
-
-  it("境の行そのものは、鍵が変わらなければ置き直しても残る", () => {
-    const boundary = loaded[1]!;
-    const confirmed = { ...boundary, tentative: false };
-    expect(placeTag(loaded, confirmed, "name", boundary)).toHaveLength(2);
-  });
-});
 
 describe("操作のあとの反映", () => {
   it("作成は条件に合えば位置に置いて total・totalAll を増やし、合わなければ totalAll だけ", () => {
@@ -232,6 +174,23 @@ describe("操作のあとの反映", () => {
       const result = merge(all[5]!, all[4]!);
       expect(names(result)).toEqual(["A", "B", "C"]);
       expect([result.total, result.totalAll]).toEqual([5, 5]);
+    });
+
+    it("接続先だけの統合先がこのノードの新しい ID で返れば、古い ID のカードを置き換える", () => {
+      const remote = { ...all[3]!, id: 2 ** 40 + 4 };
+      const base = page([all[0]!, remote, all[1]!], {
+        total: 3,
+        totalAll: 3,
+        query: query({ sort: "countDesc" }),
+      });
+      const merged = {
+        ...remote,
+        id: 7,
+        videoCount: remote.videoCount + all[1]!.videoCount,
+      };
+      const result = replaceTag(removeTags(base, [all[1]!]), remote, merged);
+      expect(result.rows.map((item) => item.id)).toEqual([7, 1]);
+      expect([result.total, result.totalAll]).toEqual([2, 2]);
     });
 
     it("統合の前に条件に合わず、統合で合うようになった統合先は total を増やす", () => {

@@ -84,6 +84,7 @@ func (s *server) applyTag(ctx context.Context, videoIDs []int64, edit domain.Vid
 	if input := edit.TagsAdd[0]; input.ID != nil {
 		return s.tags.AttachTagByID(ctx, videoIDs, *input.ID)
 	}
+	defer s.holdTagNames()()
 	return s.tags.AttachTagByName(ctx, videoIDs, *edit.TagsAdd[0].Name)
 }
 

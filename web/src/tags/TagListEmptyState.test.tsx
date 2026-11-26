@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { t } from "../i18n";
 import TagListEmptyState from "./TagListEmptyState";
 import type { TagKindFilter } from "./tagListUrl";
-import type { TagListEmpty } from "./tagListView";
+import type { TagListEmpty } from "../recordList/listView";
 
 function renderEmpty(
   empty: TagListEmpty,
@@ -16,8 +16,6 @@ function renderEmpty(
   const actions = {
     onCreate: vi.fn(),
     onShowAll: vi.fn(),
-    onShowAllAndSearch: vi.fn(),
-    onClearSearch: vi.fn(),
   };
   render(
     <TagListEmptyState
@@ -37,16 +35,11 @@ describe("TagListEmptyState", () => {
     ["tags", false, t.tags.empty.title, "onCreate"],
     ["noUnused", false, t.tags.noUnused.title, "onShowAll"],
     ["noUnused", true, t.tags.noUnusedTentative, "onShowAll"],
-    ["noUnusedMatch", false, t.tags.noUnusedMatches("Gamma"), "onShowAllAndSearch"],
-    [
-      "noUnusedMatch",
-      true,
-      t.tags.noUnusedTentativeMatches("Gamma"),
-      "onShowAllAndSearch",
-    ],
+    ["noUnusedMatch", false, t.tags.noUnusedMatches("Gamma"), "onShowAll"],
+    ["noUnusedMatch", true, t.tags.noUnusedTentativeMatches("Gamma"), "onShowAll"],
     ["noTentative", false, t.tags.noTentative.title, "onShowAll"],
-    ["noTentativeMatch", false, t.tags.noTentativeMatches("Gamma"), "onShowAllAndSearch"],
-    ["noMatch", false, t.tags.noMatches("Gamma"), "onClearSearch"],
+    ["noTentativeMatch", false, t.tags.noTentativeMatches("Gamma"), "onShowAll"],
+    ["noMatch", false, t.tags.noMatches("Gamma"), "onShowAll"],
   ] as const)(
     "%s（仮の絞り込み %s）は題を見出しで出し、ボタンが対応する操作を呼ぶ",
     async (empty, appliedTentative, title, action) => {
@@ -80,7 +73,7 @@ describe("TagListEmptyState", () => {
     const actions = renderEmpty("noKindMatch", true, "1", "Genre");
     expect(screen.getByRole("heading", { name: t.tags.noFilterMatches })).toBeDefined();
     await user.click(screen.getByRole("button", { name: t.tags.clearSearch }));
-    expect(actions.onShowAllAndSearch).toHaveBeenCalledTimes(1);
+    expect(actions.onShowAll).toHaveBeenCalledTimes(1);
   });
 
   it("「Unused only」と「Tentative only」の両方では「0 本のタグ」の説明を出さない", () => {

@@ -32,6 +32,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Seek sprite generation](seek-sprite-generation.md)
 - [Sidecar subtitle files](sidecar-subtitles.md)
 - [Auto-tagging with a decision model](auto-tagging.md)
+- [Tag organizing: the tag-list change notice and synonym operations](tag-organizing.md)
 - [AI layer: classifier port and providers](ai-layer.md)
 - [Judging possible duplicates automatically](duplicate-judging.md)
 - [Image search: finding footage by an image or video](image-search.md)

@@ -59,19 +59,29 @@ func canonicalNames(ctx context.Context, db *sql.DB, query string, ids []int64) 
 // nothing; a new name any tag holds is a *domain.TagNameConflict.
 func (s *TagStore) ApplyTagByName(ctx context.Context, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
 	return applyByName(ctx, s.sql, s.db, change, map[domain.VocabularyAction]byNameAction{
-		domain.VocabularyRename: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := renameTagByName(ctx, tx, change.Name, change.NewName)
-			return outcome, nil, err
-		},
-		domain.VocabularyDelete: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := deleteTagByName(ctx, tx, change.Name)
-			return outcome, nil, err
-		},
-		domain.VocabularyMerge: func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
-			outcome, err := mergeTagsByName(ctx, tx, change.Into, change.Sources)
-			return outcome, nil, err
-		},
+		domain.VocabularyRename: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return renameTagByName(ctx, tx, change.Name, change.NewName)
+		}),
+		domain.VocabularyPromote: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return promoteTagByName(ctx, tx, change.Name, change.NewName)
+		}),
+		domain.VocabularyDelete: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return deleteTagByName(ctx, tx, change.Name)
+		}),
+		domain.VocabularyMerge: tagByName(func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+			return mergeTagsByName(ctx, tx, change.Into, change.Sources)
+		}),
 	})
+}
+
+// tagByName adapts a tag action to byNameAction; a commit of any tag action changes the tag list.
+func tagByName(
+	apply func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, error),
+) byNameAction {
+	return func(ctx context.Context, tx *sql.Tx, change domain.VocabularyChange) (domain.VocabularyOutcome, []domain.Event, error) {
+		outcome, err := apply(ctx, tx, change)
+		return outcome, []domain.Event{domain.TagsChanged{}}, err
+	}
 }
 
 // byNameAction applies one action by name inside tx and returns the events its commit publishes.
@@ -133,6 +143,52 @@ func renameTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (dom
 	}
 	changed, err := renameTagInTx(ctx, tx, id, normalized)
 	return domain.VocabularyOutcome{Changed: changed}, err
+}
+
+// promoteTagByName makes newName the canonical name of the tag named name and keeps name as its synonym, as the
+// local promote does; the nodes may hold different synonyms, so newName is added when the tag lacks it. A tag
+// named newName that already holds name, an earlier promote applied here, changes nothing.
+func promoteTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (domain.VocabularyOutcome, error) {
+	normalized, err := domain.NormalizeTagName(newName)
+	if err != nil {
+		return domain.VocabularyOutcome{}, err
+	}
+	holder, held, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.VocabularyOutcome{}, err
+	}
+	id, found, err := canonicalTagIDByName(ctx, tx, name)
+	switch {
+	case err != nil:
+		return domain.VocabularyOutcome{}, err
+	case !found:
+		return domain.VocabularyOutcome{}, refuseHeldUnlessPromoted(ctx, tx, holder, held, name)
+	case held && holder.tagID == id && holder.isCanonical:
+		return domain.VocabularyOutcome{}, nil
+	case held && holder.tagID != id:
+		return domain.VocabularyOutcome{}, &domain.TagNameConflict{Tag: holder.ref()}
+	case !held:
+		if err := insertTagName(ctx, tx, normalized, id, false); err != nil {
+			return domain.VocabularyOutcome{}, err
+		}
+	}
+	return domain.VocabularyOutcome{Changed: true}, promoteSynonymInTx(ctx, tx, id, normalized)
+}
+
+// refuseHeldUnlessPromoted answers a *domain.TagNameConflict when a tag holds the new name, since the caller
+// promotes its own tag next, unless that tag has it as its canonical name and name as a synonym: an earlier promote
+// applied here.
+func refuseHeldUnlessPromoted(ctx context.Context, tx *sql.Tx, holder nameLookup, held bool, name string) error {
+	if !held {
+		return nil
+	}
+	if normalized, err := domain.NormalizeTagName(name); err == nil && holder.isCanonical {
+		old, found, err := lookupTagName(ctx, tx, normalized)
+		if err != nil || (found && !old.isCanonical && old.tagID == holder.tagID) {
+			return err
+		}
+	}
+	return &domain.TagNameConflict{Tag: holder.ref()}
 }
 
 func deleteTagByName(ctx context.Context, tx *sql.Tx, name string) (domain.VocabularyOutcome, error) {

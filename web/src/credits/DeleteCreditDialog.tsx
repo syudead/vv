@@ -1,6 +1,6 @@
 import type { Credit, CreditKind } from "../api/credits";
 import { t, type UiText } from "../i18n";
-import { DialogError } from "../tags/DialogError";
+import { DialogError } from "../ui/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { creditDisplayName } from "./displayName";

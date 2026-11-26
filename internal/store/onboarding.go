@@ -121,7 +121,11 @@ func (s *OnboardingStore) PickInterests(ctx context.Context, interests []domain.
 		}
 		return added, nil
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	var events []domain.Event
+	if pick.tagsChanged {
+		events = append(events, domain.TagsChanged{})
+	}
+	if err := s.db.commitMatchChange(ctx, tx, events...); err != nil {
 		return nil, fmt.Errorf("cannot pick the interests: %w", err)
 	}
 	return added, nil
@@ -134,6 +138,8 @@ type interestPick struct {
 
 	inserted []int64
 	changed  bool
+	// tagsChanged records a tag created, confirmed or given the interest kind.
+	tagsChanged bool
 
 	genre int64
 }
@@ -177,7 +183,7 @@ func (p *interestPick) tag(ctx context.Context, interest domain.Interest) (int64
 		if err := insertTagName(ctx, p.tx, interest.Synonym, id, false); err != nil {
 			return 0, err
 		}
-		p.changed = true
+		p.changed, p.tagsChanged = true, true
 		return id, p.setGenre(ctx, id)
 	}
 	if lookup.tentative {
@@ -185,10 +191,10 @@ func (p *interestPick) tag(ctx context.Context, interest domain.Interest) (int64
 		if err := confirmTagInTx(ctx, p.tx, lookup.tagID); err != nil {
 			return 0, err
 		}
-		p.changed = true
+		p.changed, p.tagsChanged = true, true
 	}
 	if lookup.kind == nil {
-		p.changed = true
+		p.changed, p.tagsChanged = true, true
 		return lookup.tagID, p.setGenre(ctx, lookup.tagID)
 	}
 	return lookup.tagID, nil

@@ -301,10 +301,15 @@ this node alone, so the two nodes never need reconciling.
 
 Tags, tag kinds, people and organizations with the same name are one entity
 on the screens; their lists merge every node's entries in memory with summed
-counts. The connected links are read at once and joined in slot order, so a
-remote-only entry carries the offset of the first link that holds it.
+counts. A kind's tag count is the exception: it counts the joined tags of
+that kind, so it matches the tag list filtered by the kind and a tag both nodes
+hold counts once. The connected links are read at once and joined in slot
+order, so a remote-only entry carries the offset of the first link that holds
+it.
 
-A rename, merge or deletion of a tag, person or organization, or emptying a
+A rename, merge or deletion of a tag, person or organization, making a tag's
+synonym its canonical name (the `promote` action,
+[tag-organizing.md](tag-organizing.md#promote-reaches-the-paired-nodes)), or emptying a
 named person's names (the `unname` action,
 [credit-names.md](credit-names.md#paired-nodes-share-the-display-name-only)),
 on the reader first checks that every link is `connected`, and otherwise

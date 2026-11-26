@@ -1,7 +1,5 @@
 import type { Tag } from "../api/tags";
 
-/** Select loaded rows only, excluding rows being renamed. */
-
 export function withoutIds(
   current: ReadonlySet<number>,
   ids: ReadonlySet<number>,
@@ -11,32 +9,26 @@ export function withoutIds(
   return next;
 }
 
-/** Preserve the set reference when no IDs are removed. */
+/** Keep only loaded cards selected; preserve the set reference when none is removed. */
 export function keepLoaded(
   current: ReadonlySet<number>,
   rows: readonly Tag[],
-  renamingId: number | null,
 ): ReadonlySet<number> {
   if (current.size === 0) return current;
   const loaded = new Set(rows.map((tag) => tag.id));
   const next = new Set<number>();
   for (const id of current) {
-    if (loaded.has(id) && id !== renamingId) next.add(id);
+    if (loaded.has(id)) next.add(id);
   }
   return next.size === current.size ? current : next;
 }
 
-export function countSelectable(rows: readonly Tag[], renamingId: number | null): number {
-  const renamingLoaded = renamingId !== null && rows.some((tag) => tag.id === renamingId);
-  return rows.length - (renamingLoaded ? 1 : 0);
-}
-
-export function selectAllCheck(
-  selectedCount: number,
-  selectable: number,
-): boolean | "indeterminate" {
-  if (selectedCount === 0) return false;
-  return selectedCount >= selectable ? true : "indeterminate";
+/** The ids of the cards from one to the other in list order, both included; empty when either is not loaded. */
+export function idsBetween(rows: readonly Tag[], from: number, to: number): number[] {
+  const a = rows.findIndex((tag) => tag.id === from);
+  const b = rows.findIndex((tag) => tag.id === to);
+  if (a < 0 || b < 0) return [];
+  return rows.slice(Math.min(a, b), Math.max(a, b) + 1).map((tag) => tag.id);
 }
 
 export interface SelectionSummary {

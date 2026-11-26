@@ -89,6 +89,7 @@ func (s *server) PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 		s.invalidRequest(w, "ids is required.")
 		return
 	}
+	defer s.holdTagNames()()
 	result, err := s.onboarding.PickInterests(r.Context(), *body.IDs)
 	switch {
 	case errors.Is(err, domain.ErrInvalidInterestPick):

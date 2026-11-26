@@ -65,6 +65,7 @@ describe("contrast", () => {
   };
 
   const surfaces = ["navbar", "background", "muted", "card", "popover"];
+  const kinds = ["1", "2", "3", "4", "5", "6", "7", "8"].map((n) => `kind-${n}`);
   // Token roles are documented in design-system.md, Foundations.
   const pairs: [string, string, number][] = [
     ...surfaces.flatMap((surface): [string, string, number][] => [
@@ -106,6 +107,11 @@ describe("contrast", () => {
     ["ring", "background", 4.5],
     ["ring", "card", 4.5],
     ["background", "foreground", 4.5],
+    // A kind's mark on a record card, and the name on its pressed toggle.
+    ...kinds.flatMap((kind): [string, string, number][] => [
+      [kind, "card", 3],
+      ["foreground", `${kind}-soft`, 4.5],
+    ]),
   ];
 
   it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {

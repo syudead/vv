@@ -161,6 +161,7 @@ func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	tag, err := s.tags.CreateTag(r.Context(), body.Name)
 	if err != nil {
 		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
@@ -179,6 +180,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	if !s.renameTagOnPeer(w, r, id, body.Name) {
 		return
 	}
@@ -196,6 +198,7 @@ func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	if !s.deleteOnPeer(w, r, domain.VocabularyTag, id) {
 		return
 	}
@@ -224,6 +227,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	if propagate, ok := s.vocabularyPeer(w, r); !ok || propagate {
 		if propagate {
 			s.mergeOnBothNodes(w, r, id, body.SourceIds, s.tagMergeSide())
@@ -256,6 +260,7 @@ func (s *server) AddTagSynonym(w http.ResponseWriter, r *http.Request, id gen.Ta
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	tag, err := s.tags.AddSynonym(r.Context(), id, body.Name, body.MergeTagId)
 	if err != nil {
 		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
@@ -270,6 +275,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	// Normalize synonym removal exactly like creation; invalid raw names cannot match, while storage still reports a missing tag.
 	name, err := domain.NormalizeTagName(params.Name)
 	if err != nil {
@@ -303,6 +309,7 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	if _, err := s.tags.RejectTag(r.Context(), id); err != nil {
 		s.writeTagError(w, err, "")
 		return
@@ -329,6 +336,7 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	defer s.holdTagNames()()
 	if req.Action == domain.TagBatchDelete {
 		if propagate, ok := s.vocabularyPeer(w, r); !ok || propagate {
 			if propagate {
@@ -524,6 +532,10 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 		s.writeError(w, http.StatusNotFound, codeTagNotFound, "Tag not found.")
 	case errors.Is(err, domain.ErrTagNotTentative):
 		s.writeError(w, http.StatusConflict, codeTagNotTentative, "The tag is already confirmed.")
+	case errors.Is(err, domain.ErrTagSynonymNotFound):
+		s.writeError(w, http.StatusConflict, codeTagSynonymNotFound, "The name is no longer a synonym of the tag.")
+	case errors.Is(err, domain.ErrMoveSameTag):
+		s.invalidRequestReason(w, reasonMoveSameTag, "A synonym cannot move to the tag that holds it.")
 	case errors.As(err, &nameConflict):
 		s.writeTagNameTaken(w, submittedName, nameConflict.Tag)
 	case errors.As(err, &mergeRequired):

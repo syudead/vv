@@ -9,8 +9,8 @@ import {
   moveFaceAppearances,
 } from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
-import { DialogError } from "../../tags/DialogError";
-import { MergeTargetField } from "../../tags/MergeParts";
+import { DialogError } from "../../ui/DialogError";
+import { MergeTargetField } from "../../ui/MergeParts";
 import CreditCommand, { type CreditChoice } from "../../ui/CreditCommand";
 import { FormDialog } from "../../ui/patterns/form-dialog";
 import { Spinner } from "../../ui/shadcn/spinner";
