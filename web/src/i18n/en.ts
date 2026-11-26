@@ -2141,6 +2141,12 @@ export const en = {
       roles: { maker: "Maker", label: "Label" },
       gone: "This organization no longer exists",
       backToOrganizations: "Back to organizations",
+      logo: {
+        change: "Change logo",
+        uploadHint:
+          "PNG, JPEG or still WebP, up to 64 MB. The whole image is shown; it is not cropped.",
+        removeTitle: (name: string) => `Remove the logo of "${name}"?`,
+      },
     },
     organizationEdit: {
       back: "Back to the organization",

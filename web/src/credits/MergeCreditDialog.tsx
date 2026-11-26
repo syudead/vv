@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   type Credit,
   type CreditKind,
+  getCredit,
   isCreditGone,
   mergeCredits,
   type Person,
@@ -23,8 +24,8 @@ import {
 import { useCreditTargetSearch } from "./useCreditTargetSearch";
 
 /**
- * Exclude the source and creation option from merge candidates. Missing records call onStale;
- * cycles and limit errors stay in the dialog.
+ * Exclude the source and creation option from merge candidates. A missing source calls onStale;
+ * a missing target, cycles and limit errors stay in the dialog.
  */
 export default function MergeCreditDialog({
   kind,
@@ -106,8 +107,12 @@ export default function MergeCreditDialog({
       onMerged(merged, target);
     } catch (failure) {
       if (isCreditGone(failure)) {
-        onStale();
-        return;
+        // The merge answers 404 for a missing target, so only a missing source leaves the dialog.
+        if (await isGone(kind, source.id)) {
+          onStale();
+          return;
+        }
+        setTarget(null);
       }
       setError(errorText(failure));
       setPending(false);
@@ -186,4 +191,14 @@ export default function MergeCreditDialog({
       {error !== null && <DialogError message={error} />}
     </FormDialog>
   );
+}
+
+/** Whether a read of the credit answers that it no longer exists; any other failure counts as present. */
+async function isGone(kind: CreditKind, id: number): Promise<boolean> {
+  try {
+    await getCredit(kind, id);
+    return false;
+  } catch (failure) {
+    return isCreditGone(failure);
+  }
 }

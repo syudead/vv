@@ -14,6 +14,8 @@ flowchart LR
   video[Video page work details] -->|organization name| page[Organization page]
   page -->|parent, child| page
   page -->|Show in library| library["Library ?organization=id"]
+  page -->|Merge| target[Target's page]
+  page -->|Delete| list["/organizations"]
   page -->|Edit| edit[Edit page]
   edit -->|Save, Cancel| page
   edit --> patch[PATCH /api/organizations/id]
@@ -29,7 +31,7 @@ flowchart LR
 page's parts, so an owner who knows `/people/:id` finds each region and action
 in the same place. The spread holds the logo (`OrganizationLogo profile`); the
 display name, the other names, the bio and the actions (`Edit`,
-`Show in library`); and a card with `Founded`, `Dissolved`, `Location`, the
+`Show in library`, `More actions`); and a card with `Founded`, `Dissolved`, `Location`, the
 links and the external IDs. An organization without any profile shows
 `No profile yet.` with `Edit`. The page is owner-only, as every organization
 read is.
@@ -76,6 +78,38 @@ so a failed role never reads as a role without videos.
 | --- | --- |
 | One grid with a role switch | It hides that an organization is both maker and label |
 | A link per role to the library | The library has no role filter in its URL; `Show in library` opens every video in any role |
+
+## Actions sit where the person page has them
+
+The favorite heart is on the logo's `top-end` corner and the `Change logo`
+menu on its `bottom-end` corner, with `Upload an image…` and, while a logo
+exists, `Remove logo`; the placeholder itself is an `Add logo` button. An
+uploaded image is saved at once by `PUT /api/organizations/{id}/image`, with
+no framing step, because the logo is drawn whole; the frame shows it when the
+save answers. `Remove logo` asks first. A failed change keeps the previous logo
+and shows `Couldn't change the logo: {reason}` under the frame. The response
+replaces only the image revision, so a heart pressed meanwhile keeps its state.
+
+`More actions` holds `Merge into another organization…` and, after a
+separator, `Delete`. A merge opens the target's page with
+`Merged into "{name}"`, and a delete opens `/organizations` with
+`Deleted "{name}"`. A missing organization met by any of these actions turns
+the page into its gone state. Both dialogs state the video count that
+`GET /api/organizations` sums across connected links by name, because a merge
+or delete also changes a link's organization of the same name; the page's own
+read counts this node only. The person page reads `GET /api/people` the same
+way.
+
+The page shares these parts with the person page instead of copying them: the
+`More actions` menu (`CreditMoreMenu`), the merge and delete dialogs with their
+navigation (`useCreditMergeDelete`), and the image removal confirmation and
+upload refusal (`CreditImageParts`).
+
+| Rejected | Why |
+| --- | --- |
+| A `Favorite` button in the actions row | Two pages built from the same parts keep the same action in the same place |
+| Framing the logo before it is saved, as a face is | The logo is never cropped, so there is nothing to frame |
+| Summing the links' counts in `GET /api/organizations/{id}` | The single read stays this node's record, and the list already joins the links |
 
 ## A missing organization turns the page into its gone state
 

@@ -2,20 +2,22 @@ import { Building2, LibraryBig, Pencil } from "lucide-react";
 import { Link, useParams } from "react-router";
 
 import { useAssistantScreen } from "../../assistant/AssistantProvider";
-import { type Organization, organizationLogoSrc } from "../../api/credits";
+import type { Organization } from "../../api/credits";
 import { t } from "../../i18n";
 import { libraryFilterPath } from "../../library/libraryPath";
-import { OrganizationLogo } from "../../ui/OrganizationLogo";
 import type { Fact } from "../../ui/patterns/fact-list";
 import { ProfilePage } from "../../ui/patterns/profile-page";
 import { Button } from "../../ui/shadcn/button";
 import { CreditGone } from "../CreditGone";
+import { CreditMoreMenu } from "../CreditMoreMenu";
 import { CreditPageStatus } from "../CreditPageStatus";
 import { Bio, creditFactsCard, CreditHeading } from "../CreditProfile";
 import { CreditShelves, type ShelfSubject } from "../CreditShelves";
+import { useCreditMergeDelete } from "../useCreditMergeDelete";
 import { parseCreditId, useRoutedCredit } from "../useCreditRecord";
 import { OrganizationFamily } from "./OrganizationFamily";
-import { organizationEditPath } from "./organizationPath";
+import OrganizationLogoControl from "./OrganizationLogoControl";
+import { organizationEditPath, organizationPath } from "./organizationPath";
 
 const text = t.credits.organizationPage;
 const personText = t.credits.personPage;
@@ -46,7 +48,7 @@ export function OrganizationGone() {
 }
 
 function OrganizationScreen({ id }: { id: number | null }) {
-  const { state, record, reload, markGone } = useRoutedCredit<Organization>(
+  const { state, record, reload, replace, markGone } = useRoutedCredit<Organization>(
     "organization",
     id,
     undefined,
@@ -66,7 +68,13 @@ function OrganizationScreen({ id }: { id: number | null }) {
       />
     );
   }
-  return <OrganizationShown organization={state.credit} markGone={markGone} />;
+  return (
+    <OrganizationShown
+      organization={state.credit}
+      replace={replace}
+      markGone={markGone}
+    />
+  );
 }
 
 function shelfSubject(id: number): ShelfSubject {
@@ -112,8 +120,16 @@ function factsCard(organization: Organization) {
   });
 }
 
-/** The name, other names, bio and actions; the actions are `secondary`, since nothing outranks viewing. */
-function OrganizationIdentity({ organization }: { organization: Organization }) {
+/** The name, other names, bio and actions; the actions are `secondary`, and merging and deleting are in a menu. */
+function OrganizationIdentity({
+  organization,
+  onMerge,
+  onDelete,
+}: {
+  organization: Organization;
+  onMerge: () => void;
+  onDelete: () => void;
+}) {
   const bio = organization.profile.bio;
   return (
     <>
@@ -132,6 +148,7 @@ function OrganizationIdentity({ organization }: { organization: Organization }) 
             {personText.showInLibrary}
           </Link>
         </Button>
+        <CreditMoreMenu kind="organization" onMerge={onMerge} onDelete={onDelete} />
       </div>
     </>
   );
@@ -139,26 +156,42 @@ function OrganizationIdentity({ organization }: { organization: Organization }) 
 
 function OrganizationShown({
   organization,
+  replace,
   markGone,
 }: {
   organization: Organization;
+  replace: (next: Organization | ((current: Organization) => Organization)) => void;
   markGone: () => void;
 }) {
+  const { openMerge, openDelete, dialogs } = useCreditMergeDelete({
+    kind: "organization",
+    credit: organization,
+    pageOf: organizationPath,
+    listPath: "/organizations",
+    markGone,
+  });
   return (
     <ProfilePage
       profileLabel={text.profile}
       face={
-        <OrganizationLogo
-          shape="profile"
-          src={organizationLogoSrc(organization)}
-          alt={details.logoAlt(organization.name)}
+        <OrganizationLogoControl
+          organization={organization}
+          onChanged={replace}
+          onGone={markGone}
         />
       }
-      identity={<OrganizationIdentity organization={organization} />}
+      identity={
+        <OrganizationIdentity
+          organization={organization}
+          onMerge={openMerge}
+          onDelete={openDelete}
+        />
+      }
       facts={factsCard(organization)}
     >
       <OrganizationFamily organization={organization} onGone={markGone} />
       <CreditShelves subject={shelfSubject(organization.id)} keepFailedRole />
+      {dialogs}
     </ProfilePage>
   );
 }
