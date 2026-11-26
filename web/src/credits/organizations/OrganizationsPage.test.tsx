@@ -51,6 +51,9 @@ function respond(method: string, url: URL, body: unknown): Response {
       201,
     );
   }
+  if (url.pathname === "/api/favorites" && method === "PUT") {
+    return jsonResponse({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 });
+  }
   return jsonResponse({ code: "not_found" }, 404);
 }
 
@@ -152,6 +155,30 @@ describe("OrganizationsPage", () => {
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["Add to favorites"]);
+  });
+
+  it("sends a card's heart as the organization's favorite and shows it pressed after the response", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const card = (await screen.findByRole("link", { name: /Studio 2/ })).closest(
+      "article",
+    )!;
+
+    await user.click(within(card).getByRole("button", { name: "Add to favorites" }));
+
+    const pressed = await within(card).findByRole("button", {
+      name: "Remove from favorites",
+    });
+    expect(pressed.getAttribute("aria-pressed")).toBe("true");
+    const favorite = server.sent.find(
+      (request) => request.url.pathname === "/api/favorites",
+    );
+    expect(favorite?.body).toEqual({
+      videoIds: [],
+      groupIds: [],
+      organizationIds: [2],
+      favorite: true,
+    });
   });
 
   it("creates an organization from the dialog and opens its page", async () => {

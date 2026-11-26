@@ -37,6 +37,7 @@ import type { SortOption } from "../videoList/SortControls";
 import { CreditListTail } from "./CreditListStates";
 import {
   creditGridBody,
+  type CreditGridBody,
   type CreditGridCriteria,
   creditGridCountText,
 } from "./creditGrid";
@@ -51,6 +52,60 @@ function validateName(text: string) {
 }
 
 const noPreviewReset = () => undefined;
+
+interface CreditGridEmptyProps {
+  body: CreditGridBody;
+  /** The kind's own state for an empty filtered page; null or undefined shows the empty grid's. */
+  filtered: ReactNode;
+  emptyIcon: ReactNode;
+  emptyTitle: UiText;
+  noMatchesTitle: UiText;
+  noFavorites: UiText;
+  newButton: ReactNode;
+  onClearSearch: () => void;
+}
+
+/** The state shown in place of the cards when the read page has none. */
+function CreditGridEmpty({
+  body,
+  filtered,
+  emptyIcon,
+  emptyTitle,
+  noMatchesTitle,
+  noFavorites,
+  newButton,
+  onClearSearch,
+}: CreditGridEmptyProps) {
+  const ownFiltered = body === "filtered" && filtered != null;
+  if (ownFiltered) return filtered;
+  if (body === "none" || body === "filtered") {
+    return (
+      <EmptyState
+        icon={emptyIcon}
+        title={emptyTitle}
+        description={t.credits.empty.description}
+        action={newButton}
+      />
+    );
+  }
+  if (body === "noMatches") {
+    return (
+      <EmptyState
+        icon={<SearchX aria-hidden="true" />}
+        title={noMatchesTitle}
+        action={
+          <Button variant="outline" size="sm" onClick={onClearSearch}>
+            {t.credits.clearSearch}
+          </Button>
+        }
+      />
+    );
+  }
+  if (body === "noFavorites") {
+    return <EmptyState icon={<Heart aria-hidden="true" />} title={noFavorites} />;
+  }
+  return null;
+}
 
 export interface CreditGridPageProps<
   R extends Credit,
@@ -179,7 +234,6 @@ export function CreditGridPage<
       {texts.newButton}
     </Button>
   );
-  const filtered = body === "filtered" ? (filteredEmpty?.(page!.query) ?? null) : null;
 
   return (
     <ListPage
@@ -249,29 +303,16 @@ export function CreditGridPage<
           title={texts.loadFailed(loadError)}
         />
       )}
-      {(body === "none" || (body === "filtered" && filtered === null)) && (
-        <EmptyState
-          icon={emptyIcon}
-          title={texts.emptyTitle}
-          description={t.credits.empty.description}
-          action={newButton}
-        />
-      )}
-      {body === "noMatches" && (
-        <EmptyState
-          icon={<SearchX aria-hidden="true" />}
-          title={texts.noMatches(appliedSearch)}
-          action={
-            <Button variant="outline" size="sm" onClick={clearSearch}>
-              {t.credits.clearSearch}
-            </Button>
-          }
-        />
-      )}
-      {body === "noFavorites" && (
-        <EmptyState icon={<Heart aria-hidden="true" />} title={noFavorites} />
-      )}
-      {filtered}
+      <CreditGridEmpty
+        body={body}
+        filtered={body === "filtered" ? filteredEmpty?.(page!.query) : undefined}
+        emptyIcon={emptyIcon}
+        emptyTitle={texts.emptyTitle}
+        noMatchesTitle={texts.noMatches(appliedSearch)}
+        noFavorites={noFavorites}
+        newButton={newButton}
+        onClearSearch={clearSearch}
+      />
       {body === "cards" && page !== undefined && (
         <>
           <CardGrid size={cardSize}>
