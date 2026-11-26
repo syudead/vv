@@ -399,10 +399,11 @@ func (s *server) peerTagSynonymBody(w http.ResponseWriter, r *http.Request) bool
 }
 
 // checkRemoteCreditPatch refuses the forwarded rename of the peer's person or organization to a name an entry here
-// holds, and turns an organization's parent into the peer's.
+// holds, and turns an organization's parent into the peer's. The parent goes first: the rename writes the other
+// links at once, and a parent the peer lacks must leave every link as it was.
 func (s *server) checkRemoteCreditPatch(w http.ResponseWriter, r *http.Request) bool {
 	if strings.HasPrefix(r.URL.Path, "/api/organizations/") {
-		return checkRemoteCreditRename(domain.CreditOrganization)(s, w, r) && s.remoteOrganizationPatch(w, r)
+		return s.remoteOrganizationPatch(w, r) && checkRemoteCreditRename(domain.CreditOrganization)(s, w, r)
 	}
 	return checkRemoteCreditRename(domain.CreditPerson)(s, w, r)
 }

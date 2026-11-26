@@ -7,3 +7,7 @@ export function organizationPath(id: number): string {
 export function organizationEditPath(id: number): string {
   return `${organizationPath(id)}/edit`;
 }
+
+export function isOrganizationEditPath(pathname: string): boolean {
+  return /^\/organizations\/[^/]+\/edit\/?$/i.test(pathname);
+}

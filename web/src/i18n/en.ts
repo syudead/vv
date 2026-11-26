@@ -2148,6 +2148,10 @@ export const en = {
         removeTitle: (name: string) => `Remove the logo of "${name}"?`,
       },
     },
+    organizationEdit: {
+      back: "Back to the organization",
+      namesAndParent: "Names and parent",
+    },
     personPage: {
       profile: "Person",
       loading: "Loading…",
