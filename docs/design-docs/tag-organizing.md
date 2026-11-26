@@ -50,7 +50,7 @@ connected.
 
 `/tags` ([`TagsPage.tsx`](../../web/src/tags/TagsPage.tsx)) is a `ListPage`
 of tag cards read 100 at a time for the criteria in the URL (`q`,
-`tentative`, `unused`, `kind`, `sort`). The kind filter beside the title and
+`tentative`, `unused`, `kind`, `sort`). The kind filter under the title and
 the strip of tentative, kindless and unused counts apply those criteria. Every
 count in them is of the whole vocabulary, not of the search: a kind's count is
 its `tagCount`, `All` is the list's `totalAll`, and the three tallies are the

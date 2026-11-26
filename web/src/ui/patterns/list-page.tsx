@@ -10,7 +10,7 @@ export interface ListPageProps {
   toolbar?: ReactNode;
   /** header shares one row from lg upward; stacked is always vertical. */
   toolbarRow?: "stacked" | "header";
-  /** The list's main filter, drawn by the header's PageHeader: between the title and the actions from lg, its own line below. */
+  /** The list's main filter, drawn by the header's PageHeader on its own row under the title and the actions. */
   filter?: ReactNode;
   band?: ReactNode;
   /** One TallyStrip between the header and the body. */

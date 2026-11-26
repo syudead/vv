@@ -185,6 +185,8 @@
   /* Cap sticky list-aside height beneath the top bar and scroll overflow internally. */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);
+  /* The width over which a horizontal scroller fades out at a side that hides content. */
+  --spacing-scroll-fade: 2rem;
   /* Fit Video conversion with text-sm and px-2 on one line. */
   --spacing-settings-nav: 10rem;
   --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
@@ -346,6 +348,27 @@
 /* DataTable supplies the measured sticky-band bottom through --data-table-head-top. */
 @utility top-data-table-head {
   top: var(--data-table-head-top, 0px);
+}
+
+/* Fades a horizontal scroller's side that hides content, as useScrollEdges marks it with data-scroll-start/end. */
+@utility mask-scroll-edges {
+  --scroll-fade-start: black;
+  --scroll-fade-end: black;
+  mask-image: linear-gradient(
+    to right,
+    var(--scroll-fade-start),
+    black var(--spacing-scroll-fade),
+    black calc(100% - var(--spacing-scroll-fade)),
+    var(--scroll-fade-end)
+  );
+
+  &[data-scroll-start] {
+    --scroll-fade-start: transparent;
+  }
+
+  &[data-scroll-end] {
+    --scroll-fade-end: transparent;
+  }
 }
 
 /* Use a named utility because content-sized grid columns cannot be represented by spacing tokens. */

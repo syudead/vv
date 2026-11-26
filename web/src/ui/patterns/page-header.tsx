@@ -1,4 +1,6 @@
-import { createContext, type ReactNode, type Ref, useContext } from "react";
+import { createContext, type ReactNode, type Ref, useContext, useRef } from "react";
+
+import { useScrollEdges } from "@/hooks/useScrollEdges";
 
 // The skeleton owns outer spacing; see web/registry/rules/patterns.md, Page header.
 
@@ -25,6 +27,27 @@ export interface PageHeaderProps {
   titleHidden?: boolean;
   /** Wrap a long title in full instead of truncating it to one line, as a record's name. */
   wrapTitle?: boolean;
+}
+
+/**
+ * The filter's own row under the title and actions at every width, so no choice hides beside them. Below md it is
+ * one line that scrolls sideways and fades at a side that hides choices; from md the group wraps.
+ */
+function PageHeaderFilter({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const edges = useScrollEdges(ref);
+  return (
+    // The inset keeps the shared focus ring inside the scroll area.
+    <div
+      ref={ref}
+      data-slot="page-header-filter"
+      data-scroll-start={edges.start ? "" : undefined}
+      data-scroll-end={edges.end ? "" : undefined}
+      className="-m-1 min-w-0 overflow-x-auto p-1 max-md:mask-scroll-edges md:overflow-x-visible"
+    >
+      {children}
+    </div>
+  );
 }
 
 function titleClass(hidden: boolean, wrap: boolean): string {
@@ -61,7 +84,7 @@ export function PageHeader({
         <div
           className={
             hasFilter
-              ? "flex min-w-0 flex-auto flex-col gap-1 lg:max-w-1/2 lg:flex-none"
+              ? "flex min-w-0 flex-auto flex-col gap-1"
               : "flex min-w-0 flex-1 flex-col gap-1"
           }
         >
@@ -84,15 +107,6 @@ export function PageHeader({
           </div>
           {description && <p className="text-sm text-muted-foreground">{description}</p>}
         </div>
-        {hasFilter && (
-          // Its own line under the title and actions below lg; between them from lg. The inset keeps the shared focus ring inside the scroll area.
-          <div
-            data-slot="page-header-filter"
-            className="order-last -m-1 min-w-0 grow basis-full overflow-x-auto p-1 lg:order-none lg:flex-1 lg:basis-0"
-          >
-            {filter}
-          </div>
-        )}
         {actions && (
           <div
             data-slot="page-header-actions"
@@ -102,6 +116,7 @@ export function PageHeader({
           </div>
         )}
       </div>
+      {hasFilter && <PageHeaderFilter>{filter}</PageHeaderFilter>}
     </header>
   );
 }

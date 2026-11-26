@@ -269,6 +269,15 @@ test.describe.serial("video tags", () => {
         });
         await expectInside(action, name);
       }
+      // The kind filter scrolls inside its own row under the actions instead of widening the page.
+      const kindFilter = page.locator('[data-slot="page-header-filter"]');
+      await expectInside(kindFilter);
+      const actionsBox = await page
+        .locator('[data-slot="page-header-actions"]')
+        .boundingBox();
+      const filterBox = await kindFilter.boundingBox();
+      if (actionsBox === null || filterBox === null) throw new Error("no layout");
+      expect(filterBox.y).toBeGreaterThanOrEqual(actionsBox.y + actionsBox.height);
       expect(await fitsWidth()).toBe(true);
 
       await page.goto(`/tags/${String(tag.id)}`);

@@ -213,8 +213,9 @@ is a band stuck under the top bar, so the parent folders stay one click away at
 any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
-The tags page is a `ListPage` of tag cards with the kind filter beside the
-title and the counts of tentative, kindless and unused tags under it; its
+The tags page is a `ListPage` of tag cards with the kind filter on its own
+row under the title and the header's links (wrapping from `md`, one
+sideways-scrolling line faded at a hidden side below `md`) and the counts of tentative, kindless and unused tags under it; its
 `Kinds` and `Rejected names` links in the header open `/tags/kinds` and
 `/tags/rejected`, each a `SettingsPage` with a back link to `/tags` and one
 section of rows: a kind's row has its colour mark, its tag count linking to

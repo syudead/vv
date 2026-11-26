@@ -24,7 +24,7 @@ export interface KindToggleGroupProps {
   value: string;
   /** Called with the newly pressed choice; pressing the pressed one again reports nothing. */
   onValueChange: (value: string) => void;
-  /** `scroll`: one line, for `ListPage`'s `filter`; `wrap`: wraps, for a kind picker. */
+  /** `scroll`: one line below md that wraps from md, for `ListPage`'s `filter`; `wrap`: wraps, for a kind picker. */
   layout?: "scroll" | "wrap";
   disabled?: boolean;
 }
@@ -62,7 +62,10 @@ export function KindToggleGroup({
         if (next !== "") onValueChange(next);
       }}
       data-slot="kind-toggle-group"
-      className={cn("gap-2", layout === "wrap" ? "flex-wrap" : "w-max flex-nowrap")}
+      className={cn(
+        "gap-2",
+        layout === "wrap" ? "flex-wrap" : "w-max flex-nowrap md:w-auto md:flex-wrap",
+      )}
     >
       {options.map((option) => (
         <ToggleGroupItem

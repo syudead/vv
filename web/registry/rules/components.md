@@ -563,8 +563,9 @@ its name; a `count` follows the name in `text-xs` muted `tabular-nums` (a
 choice is the standard `primary-soft`. Pressing the pressed item again
 reports nothing, so one choice always stays pressed.
 
-`layout="scroll"` keeps one line for `ListPage`'s `filter`; `layout="wrap"`
-wraps, for a kind picker in a `PageSection` row. Do not use it for choices
+`layout="scroll"` is for `ListPage`'s `filter`: one line below `md`, which
+the `PageHeader` scrolls and fades at a side that hides choices, and wrapping
+from `md`; `layout="wrap"` always wraps, for a kind picker in a `PageSection` row. Do not use it for choices
 that are not kinds; that is `ToggleGroup`.
 
 ### TallyStrip
