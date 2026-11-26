@@ -5,10 +5,12 @@ import {
   type Credit,
   type CreditKind,
   deleteCredit,
+  getCredit,
   isCreditGone,
   listCredits,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
+import { isRemoteId } from "../lib/remoteId";
 import { useToast } from "../ui/Toast";
 import DeleteCreditDialog from "./DeleteCreditDialog";
 import { creditDisplayName } from "./displayName";
@@ -107,15 +109,20 @@ export function useCreditMergeDelete({
 
 /**
  * The credit's video count as the list sums it across connected links by name; the single read
- * counts this node only. A nameless credit joins no link, and a failed read keeps this node's count.
+ * counts this node only. The list shows a name once with the first node's id, so a later link's id
+ * is matched by name. A remote id leaves this node's entry of the name alone, so its count is not
+ * confirmed. A nameless credit joins no link, and a failed read keeps this node's count.
  */
 async function linkedVideoCount(kind: CreditKind, credit: Credit): Promise<number> {
   if (credit.name === "") return credit.videoCount;
   try {
     const list = await listCredits(kind, { q: credit.name });
-    return (
-      list.items.find((item) => item.id === credit.id)?.videoCount ?? credit.videoCount
-    );
+    const item =
+      list.items.find((entry) => entry.id === credit.id) ??
+      list.items.find((entry) => entry.name === credit.name);
+    if (item === undefined) return credit.videoCount;
+    if (!isRemoteId(credit.id) || isRemoteId(item.id)) return item.videoCount;
+    return item.videoCount - (await getCredit(kind, item.id)).videoCount;
   } catch {
     return credit.videoCount;
   }

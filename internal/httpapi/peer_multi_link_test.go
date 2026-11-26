@@ -336,3 +336,36 @@ func TestForwardedOrganizationParentJoinsLinksByNameBeforeAnyRename(t *testing.T
 		t.Errorf("node-a's Studio = %+v, %v; want it unrenamed", credit, err)
 	}
 }
+
+// A parent another link offers can be a child of the edited organization on its own link, which refuses the cycle
+// only once the forward arrives; the rename in the same edit must not have reached the other links by then.
+func TestForwardedOrganizationParentCycleIsRefusedBeforeAnyRename(t *testing.T) {
+	fa, _, fc, b, _ := threeNodes(t)
+	ctx := context.Background()
+	organization := func(f *guestFixture, name string, parent *int64) int64 {
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization,
+			domain.CreditInput{Names: namesOf(name), ParentID: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return credit.ID
+	}
+	studioA := organization(fa, "Studio", nil)
+	labelA := organization(fa, "Label", nil)
+	studioC := organization(fc, "Studio", nil)
+	organization(fc, "Label", &studioC)
+
+	rec := b.owner(http.MethodPatch, creditPath("/api/organizations", domain.RemoteID(2, studioC), ""),
+		fmt.Sprintf(`{"names":[{"name":"Studio West"}],"parentId":%d}`, domain.RemoteID(1, labelA)))
+	assertErrorBody(t, "node-a's Label under node-c's Studio", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonOrganizationParentCycle})
+	for _, tc := range []struct {
+		node string
+		f    *guestFixture
+		id   int64
+	}{{"node-a", fa, studioA}, {"node-c", fc, studioC}} {
+		if credit, err := tc.f.env.db.Credits().Get(ctx, domain.CreditOrganization, tc.id); err != nil || credit.Name != "Studio" {
+			t.Errorf("%s's Studio = %+v, %v; want it unrenamed", tc.node, credit, err)
+		}
+	}
+}

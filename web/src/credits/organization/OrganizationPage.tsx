@@ -70,7 +70,9 @@ function OrganizationScreen({ id }: { id: number | null }) {
   }
   return (
     <OrganizationShown
-      organization={state.credit}
+      // A remote organization read by its offset id answers with the id of this node's organization of its
+      // name; every action here addresses the record shown, as the edit page's save does.
+      organization={{ ...state.credit, id: id ?? state.credit.id }}
       replace={replace}
       markGone={markGone}
     />

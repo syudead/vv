@@ -44,14 +44,24 @@ const server = {
   mergeMissing: null as "target" | "both" | null,
   /** The video count the list sums for Studio across connected links, or null to leave it out. */
   linkedCount: null as number | null,
+  /** The id the list shows Studio with. */
+  listedId: 5,
+  /** The id the page is opened by, which the answers may not carry. */
+  routeId: 5,
 };
+
+/** A link's id of its entity `id`, as the server offsets it. */
+function remote(slot: number, id: number): number {
+  return slot * 2 ** 40 + id;
+}
 
 /** Answers the page's writes as the server does; null for a read. */
 function respondToWrite(method: string, url: URL): Response | null {
+  const path = `/api/organizations/${String(server.routeId)}`;
   if (method === "PUT" && url.pathname === "/api/favorites") {
     return jsonResponse({ videoIds: [], groupIds: [] });
   }
-  if (method === "PUT" && url.pathname === "/api/organizations/5/image") {
+  if (method === "PUT" && url.pathname === `${path}/image`) {
     if (server.logoFailure !== null) {
       return jsonResponse({ code: "invalid", message: server.logoFailure }, 400);
     }
@@ -64,23 +74,28 @@ function respondToWrite(method: string, url: URL): Response | null {
     }
     return jsonResponse({ organization: server.others[0], notFoundIds: [] });
   }
-  if (method === "DELETE" && url.pathname === "/api/organizations/5/image") {
+  if (method === "DELETE" && url.pathname === `${path}/image`) {
     return jsonResponse({ code: "invalid", message: "Disk full" }, 400);
   }
-  if (method === "DELETE" && url.pathname === "/api/organizations/5") {
+  if (method === "DELETE" && url.pathname === path) {
     return new Response(null, { status: 204 });
   }
   return null;
 }
 
 function respond(url: URL): Response {
+  const path = `/api/organizations/${String(server.routeId)}`;
   if (
     url.pathname === "/api/organizations" &&
     url.searchParams.get("q") === "Studio" &&
     server.organization !== null &&
     server.linkedCount !== null
   ) {
-    const listed = { ...server.organization, videoCount: server.linkedCount };
+    const listed = {
+      ...server.organization,
+      id: server.listedId,
+      videoCount: server.linkedCount,
+    };
     return jsonResponse({ items: [listed], total: 1, totalAll: 1 });
   }
   if (url.pathname === "/api/organizations") {
@@ -108,8 +123,8 @@ function respond(url: URL): Response {
   if (server.organization === null) {
     return jsonResponse({ code: "not_found", reason: "organization_not_found" }, 404);
   }
-  if (url.pathname === "/api/organizations/5") return jsonResponse(server.organization);
-  if (url.pathname === "/api/organizations/5/children") {
+  if (url.pathname === path) return jsonResponse(server.organization);
+  if (url.pathname === `${path}/children`) {
     return jsonResponse({
       items: server.children,
       total: server.children.length,
@@ -131,6 +146,8 @@ beforeEach(() => {
   server.logoFailure = null;
   server.mergeMissing = null;
   server.linkedCount = null;
+  server.listedId = 5;
+  server.routeId = 5;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
@@ -175,7 +192,7 @@ function Location() {
 function renderPage() {
   return render(
     <ToastProvider>
-      <MemoryRouter initialEntries={["/organizations/5"]}>
+      <MemoryRouter initialEntries={[`/organizations/${String(server.routeId)}`]}>
         <Routes>
           <Route path="/organizations/:id" element={<OrganizationPage />} />
           <Route path="/organizations" element={<p>Organizations list</p>} />
@@ -472,6 +489,74 @@ describe("OrganizationPage", () => {
 
     expect(
       within(dialog).getByText(/"Studio" will be removed from 3 videos\./),
+    ).toBeTruthy();
+  });
+
+  it("addresses a remote organization by the route's id when its read answers with this node's id", async () => {
+    const user = userEvent.setup();
+    server.routeId = remote(1, 5);
+    server.organization = organization({ imageRevision: 1 });
+    renderPage();
+    const route = `/organizations/${String(server.routeId)}`;
+
+    const logo = await screen.findByRole("img", { name: "Logo of Studio" });
+    expect(logo.getAttribute("src")).toBe(`/api${route}/image?v=1`);
+    for (const edit of screen.getAllByRole("link", { name: "Edit" })) {
+      expect(edit.getAttribute("href")).toBe(`${route}/edit`);
+    }
+    expect(href("Show in library")).toBe(`/?organization=${String(server.routeId)}`);
+    await user.click(screen.getByRole("button", { name: "Change logo" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Upload a logo" });
+    await user.upload(
+      within(dialog).getByTestId("image-upload-input"),
+      new File(["png"], "logo.png", { type: "image/png" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("img", { name: "Logo of Studio" }).getAttribute("src"),
+      ).toBe(`/api${route}/image?v=3`),
+    );
+    await chooseMore(user, "Delete");
+    const confirm = await screen.findByRole("alertdialog", { name: 'Delete "Studio"?' });
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Organizations list")).toBeTruthy();
+    expect(server.writes.map((write) => `${write.method} ${write.url.pathname}`)).toEqual(
+      [`PUT /api${route}/image`, `DELETE /api${route}`],
+    );
+    expect(server.requests.some((url) => url.pathname === `/api${route}/children`)).toBe(
+      true,
+    );
+  });
+
+  it("confirms a later link's organization with the count the list shows under the first link's id", async () => {
+    const user = userEvent.setup();
+    server.routeId = remote(2, 5);
+    server.organization = organization({ id: server.routeId, videoCount: 1 });
+    server.listedId = remote(1, 7);
+    server.linkedCount = 21;
+    renderPage();
+    await chooseMore(user, "Delete");
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Studio"?' });
+
+    expect(
+      within(dialog).getByText(/"Studio" will be removed from 21 videos\./),
+    ).toBeTruthy();
+  });
+
+  it("leaves this node's videos out of a remote organization's count, which its delete keeps", async () => {
+    const user = userEvent.setup();
+    server.routeId = remote(1, 5);
+    server.organization = organization({ videoCount: 1 });
+    server.others = [organization({ id: 5, videoCount: 20 })];
+    server.linkedCount = 21;
+    renderPage();
+    await chooseMore(user, "Delete");
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Studio"?' });
+
+    expect(
+      within(dialog).getByText(/"Studio" will be removed from 1 video\./),
     ).toBeTruthy();
   });
 
