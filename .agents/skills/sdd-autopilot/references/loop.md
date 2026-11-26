@@ -81,28 +81,15 @@ branch. `plan-to-issues` produces no PR.
 
 Handle each PR with one review-fix pass:
 
-1. Request the automated review once per PR: only when the PR has no review
-   whose body contains `<!-- pr-review:` and carries none of `ai-review`,
-   `ai-reviewing` and `ai-reviewed`, add the label `ai-review`. Every wake
-   re-enters this step, so the condition is what keeps the PR from being
-   requested twice. A routine outside the repository answers the request: it
-   swaps the label for `ai-reviewing`, posts one review of the head whose body
-   ends with `<!-- pr-review:<head SHA> -->`, and swaps the label for
-   `ai-reviewed`. Never add `ai-reviewing` or `ai-reviewed` yourself.
-2. On the head first handled for this PR, wait for every check to complete and
-   for that marked review. The wait for the review ends without it when the
-   PR carries `ai-reviewed` and no marked review (the routine could not
-   review it), or when 45 minutes pass after the request. Do not stop for
-   that: go to step 3 with the reviews the PR has (the Codex review that runs
-   on every PR, and any other), and name the PR in the final report as merged
-   without the marked review. A missing review has never needed the
-   maintainer; a PR that conflicts with its base is a common cause, and the
-   fixer resolves that: when the PR conflicts with its base, go to step 3
-   at once instead of waiting, and after `FIXED` wait for the checks on the
-   new head before merging, because GitHub ran none on the conflicting one.
-   When a check is still pending an hour after the head
-   was pushed, hold this PR ([Holding one item](#holding-one-item)).
-3. Start a fresh review fixer with the feature-PR brief. It handles every
+1. On the head first handled for this PR, wait for every check to complete.
+   Do not request a review or wait for one: the bot reviewers (Codex, Devin
+   Review) review every PR on their own, and step 2 goes on with the reviews
+   the PR has. When the PR conflicts with its base, go to step 2 at once
+   instead of waiting, and after `FIXED` wait for the checks on the new head
+   before merging, because GitHub ran none on the conflicting one. When a
+   check is still pending an hour after the head was pushed, hold this PR
+   ([Holding one item](#holding-one-item)).
+2. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
    A fixer never returns `CLEAN` while a check on that head is not passing.
@@ -111,15 +98,15 @@ Handle each PR with one review-fix pass:
    parent or one of the parent's native children (for the integration PR, it
    is the feature branch's PR to `main` that `Closes` the parent). Otherwise
    it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which [Bookkeeping after a merge](#bookkeeping-after-a-merge) uses.
-4. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
+3. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
    conflict-free and mergeable, then merge with a merge commit and go to [Bookkeeping after a merge](#bookkeeping-after-a-merge).
-   After `FIXED`, do not request another review, wait for checks or reviews on
+   After `FIXED`, do not wait for checks or reviews on
    the new head, or run another fixer. The one exception: when a parallel
    PR merged into the same base after this PR's checks ran, the combined tree
    was never checked, with or without a textual conflict. Start one fresh
    review fixer that only merges `origin/<base>` into this PR (resolving
    generated files with `task generate`) and pushes, wait for every check on
-   its new head to pass, then merge. Do not request another review for it. If
+   its new head to pass, then merge. If
    GitHub branch protection prevents the merge, hold the PR and report it; do not bypass the protection. `BLOCKED`:
    hold the PR ([Holding one item](#holding-one-item)), unless [Revise the Plan](#revise-the-plan) applies. `FOREIGN`: leave the PR alone, never merge it, and name it in the
    final report; go to [Derive the state](#derive-the-state).
