@@ -7,9 +7,10 @@ import { FrameImage, FrameMark } from "./ImageFrame";
 
 // See web/registry/rules/components.md, OrganizationLogo.
 
-export type OrganizationLogoShape = "profile";
+export type OrganizationLogoShape = "card" | "profile";
 
 const frames: Record<OrganizationLogoShape, string> = {
+  card: "aspect-video w-full rounded-md",
   profile: "aspect-square w-full rounded-md",
 };
 
@@ -19,6 +20,8 @@ export interface OrganizationLogoProps {
   /** The image's alternative text, such as "Logo of {name}". */
   alt: string;
   shape: OrganizationLogoShape;
+  /** The display name a `card` placeholder shows in place of the logo. */
+  name?: string;
   /** Makes the placeholder a button with this name, such as "Add logo". */
   addLabel?: string;
   onAdd?: () => void;
@@ -30,10 +33,20 @@ export function OrganizationLogo({
   src,
   alt,
   shape,
+  name,
   addLabel,
   onAdd,
   children,
 }: OrganizationLogoProps) {
+  // Most cards have no logo, and their names tell them apart where one icon would not.
+  const placeholder =
+    shape === "card" && name !== undefined ? (
+      <span className="line-clamp-3 px-3 text-center text-sm font-semibold break-words text-muted-foreground">
+        {name}
+      </span>
+    ) : (
+      <Building2 aria-hidden="true" className="size-1/3 text-muted-foreground" />
+    );
   return (
     <div
       data-slot="organization-logo"
@@ -48,7 +61,7 @@ export function OrganizationLogo({
         alt={alt}
         // A cropped wordmark cannot be read, so the logo is drawn whole.
         imageClassName="object-contain"
-        icon={<Building2 aria-hidden="true" className="size-1/3 text-muted-foreground" />}
+        icon={placeholder}
         addLabel={addLabel}
         onAdd={onAdd}
       />

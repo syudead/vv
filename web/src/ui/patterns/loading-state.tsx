@@ -7,7 +7,7 @@ import { CardGrid, type CardGridSize } from "./card-grid";
 export interface LoadingStateProps {
   label: string;
   layout: "grid" | "table" | "grouped" | "cards" | "rows";
-  /** grid only; face draws circles with a line under them. */
+  /** grid only; face draws circles with a line under them, logo landscape frames with two. */
   size?: CardGridSize;
   count?: number;
 }
@@ -28,6 +28,12 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
               <div key={key} className="flex flex-col items-center gap-2 p-1">
                 <Skeleton className="aspect-square w-full rounded-full" />
                 <Skeleton className="h-4 w-3/4" />
+              </div>
+            ) : size === "logo" ? (
+              <div key={key} className="flex flex-col gap-2 p-1">
+                <Skeleton className="aspect-video w-full rounded-md" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
               </div>
             ) : (
               <div key={key} className="flex flex-col gap-2">

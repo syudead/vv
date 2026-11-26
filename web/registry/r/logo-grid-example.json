@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "logo-grid-example",
+  "title": "Logo grid example",
+  "description": "A grid of organization logo cards, each a logo or its name placeholder with the name and a meta line, and its loading skeletons.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/logo-grid-example.tsx",
+      "content": "import { t } from \"@/i18n\";\nimport { CardGrid } from \"@/ui/patterns/card-grid\";\nimport { LoadingState } from \"@/ui/patterns/loading-state\";\nimport { OrganizationLogo } from \"@/ui/OrganizationLogo\";\n\n// registry:block logo-grid-example. See web/registry/rules/patterns.md, Logo grid.\n\nexport function LogoGridExample({ loading = false }: { loading?: boolean }) {\n  const p = t.designSystem.pattern;\n  if (loading) {\n    return <LoadingState label={p.logoGridLoading} layout=\"grid\" size=\"logo\" count={3} />;\n  }\n  return (\n    <CardGrid size=\"logo\">\n      {p.logoGridOrganizations.map((organization) => (\n        <a\n          key={organization.name}\n          href=\"#logo-grid\"\n          className=\"flex min-w-0 flex-col gap-2 rounded-md p-1 transition-shadow hover:shadow-card-hover motion-reduce:transition-none\"\n        >\n          <OrganizationLogo\n            alt={organization.name}\n            name={organization.name}\n            shape=\"card\"\n          />\n          <span className=\"flex w-full min-w-0 flex-col\">\n            <span\n              title={organization.name}\n              className=\"w-full truncate text-sm font-medium\"\n            >\n              {organization.name}\n            </span>\n            <span className=\"w-full truncate text-xs text-muted-foreground tabular-nums\">\n              {organization.meta}\n            </span>\n          </span>\n        </a>\n      ))}\n    </CardGrid>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#logo-grid (item vv-rules).",
+  "type": "registry:block"
+}

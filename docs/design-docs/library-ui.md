@@ -116,11 +116,10 @@ rows are the body of a `DataTable`, and rows outside the drawn range are kept
 as empty spacer rows so the columns stay aligned. The page passes the fixed top
 bar's height (`--spacing-navbar`) to the virtualizer and to
 `scroll-padding-top`, so a focused row never hides under the top bar.
-The organizations admin list (`/organizations`) is built the same way from
-the same pieces in `web/src/tags/`: pages of 100 read from the server, rows
-drawn near the viewport, and local updates after rename, details, merge and
-delete. The people list (`/people`) shares the paging but is a grid of face
-cards ([people.md](people.md#the-people-grid)).
+The people list (`/people`) and the organizations list (`/organizations`)
+share the paging but are grids of cards: face cards
+([people.md](people.md#the-people-grid)) and logo cards
+([organizations.md](organizations.md#the-list-is-the-people-grid-with-logo-cards)).
 
 ### The window owns scrolling
 
@@ -213,12 +212,9 @@ page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar, and the table's column header sticks right under them. The
-organizations page is an `AdminTablePage` with the same header and column
-header, without the filter, tabs, checkbox column and selection bar, and a
-details dialog (the names list, external IDs and the parent) in place of the synonyms
-dialog. The people page is a `ListPage` of face cards with the search, the
-favorites filter and the sort in the top bar.
+the top bar, and the table's column header sticks right under them. The people
+and organizations pages are `ListPage`s of face and logo cards with the search,
+the favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.

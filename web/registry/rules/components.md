@@ -494,10 +494,16 @@ cropped wordmark cannot be read.
 
 | Shape     | Frame                                     | Where                                  |
 | --------- | ----------------------------------------- | -------------------------------------- |
+| `card`    | Full width, `aspect-video`, `rounded-md`  | A card of the organizations grid       |
 | `profile` | Full width, `aspect-square`, `rounded-md` | The organization page's profile column |
 
-The placeholder is lucide `Building2` in `muted-foreground`; it also stands in
-when the image fails to load. Pass `onAdd` and `addLabel` to make it a button
+A card is landscape because most logos are wide wordmarks. The `profile`
+placeholder is lucide `Building2` in `muted-foreground`. The `card`
+placeholder is the display name passed as `name`, in `text-sm font-semibold`
+`muted-foreground`, centred, on at most three lines and then cut with an
+ellipsis: logos are added by hand, so most cards have none, and one icon on
+each would not tell them apart. Either placeholder also stands in when the
+image fails to load. Pass `onAdd` and `addLabel` to make it a button
 that adds a logo, as `PersonFace` does. Put marks over the frame as children in
 an `OrganizationLogoMark` (`top-end` or `bottom-end`), the same corner holder
 as `PersonFaceMark`.

@@ -238,7 +238,9 @@ admin lists ([library-ui.md](library-ui.md)), and asks for the next page when
 the end of the grid comes into view. The search, `favorite=true` and the sort,
 including `ageAsc` and `ageDesc`, are sent to the server and kept in the URL;
 the sort is also remembered per browser. `New person` asks for the name in a
-dialog and opens the new person's page. Organizations keep the table.
+dialog and opens the new person's page. Organizations have the same grid with
+logo cards
+([organizations.md](organizations.md#the-list-is-the-people-grid-with-logo-cards)).
 
 | Rejected                             | Why                                                                        |
 | ------------------------------------ | -------------------------------------------------------------------------- |
@@ -541,14 +543,10 @@ nodes by name. `GET /api/videos` narrows `organization` to one role with
 `organizationRole`, as `personRole` narrows `person`
 ([library-ui.md](library-ui.md#list-conditions-applied-by-the-server)).
 
-The organizations table shows a favorite toggle on each row, and the details
-dialog edits the logo, which saves at once, and the profile, which saves with
-the dialog. The dialog's first group is the names list of
-[the edit page](#the-edit-page), with the display name as its first row;
-`Save` sends the list as `names` when it was edited, a reason at `names` stays
-under `Add name`, and an emptied list answers `work_info_empty` there. The
-row's inline `Rename` stays and sends `name`, which respells the display name
-and keeps its language and the other names.
+The organization screens show the favorite on each logo card and on the
+organization page, change the logo on the page, where it saves at once, and
+edit the names and profile on the organization edit page
+([organizations.md](organizations.md)).
 
 | Rejected                                         | Why                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------- |

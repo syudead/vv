@@ -1,9 +1,11 @@
-# Organizations: the organization page and edit page
+# Organizations: the logo grid, the organization page and the edit page
 
-Each organization has a page of its own at `/organizations/:id` that leads with
+`/organizations` is a grid of logo cards, in
+[`web/src/credits/organizations/`](../../web/src/credits/organizations/). Each
+organization has a page of its own at `/organizations/:id` that leads with
 its logo and profile, then its parent and children, then its videos by role,
 and an edit page at `/organizations/:id/edit`. Both live in [`web/src/credits/organization/`](../../web/src/credits/organization/);
-the profile, logo and favorite it shows are stored as
+the profile, logo and favorite they show are stored as
 [people.md](people.md#organizations-share-the-profile-image-and-favorite-shapes)
 describes.
 
@@ -11,6 +13,8 @@ The diagram shows what the pages read and where their links go.
 
 ```mermaid
 flowchart LR
+  grid["Logo grid /organizations"] -->|card, New organization| page
+  grid --> list[GET /api/organizations]
   video[Video page work details] -->|organization name| page[Organization page]
   page -->|parent, child| page
   page -->|Show in library| library["Library ?organization=id"]
@@ -23,6 +27,36 @@ flowchart LR
   page --> children[GET /api/organizations/id/children]
   page --> videos[GET /api/videos?organization=id&organizationRole=role]
 ```
+
+## The list is the people grid with logo cards
+
+`/organizations` is the people grid
+([people.md](people.md#the-people-grid)) with a logo in each card's frame: the
+search, the sort and `Favorites only` in the top bar, `New organization` in the
+header, and the cards read from `GET /api/organizations` 100 at a time, the
+next page asked for when the end of the grid comes into view. The sorts are
+`Name`, `Video count` and `Date created`. `q`, `sort` and `favorite=true` stay
+in the URL, and the sort is also remembered per browser. `New organization`
+asks for the name in the people grid's dialog and opens the new organization's
+page.
+
+A card is one link to the organization page with the logo frame, the name on
+one line and `{n} videos`; the favorite heart over the frame's corner is its
+only control. The frame is landscape and draws the logo whole
+(`OrganizationLogo card`), because most logos are wide wordmarks. Without a
+logo the frame shows the display name on up to three lines: logos are added by
+hand, so most cards have none, and one icon on each would not tell them apart.
+Other names and the parent are on the organization page, not on the card.
+
+The two grids are one component, `CreditGridPage`, given each kind's fetch,
+URL conditions, card and words; the people grid adds its age sorts, its `Name`
+filter and the unnamed-people empty state.
+
+| Rejected | Why |
+| --- | --- |
+| Keeping the admin table with its details dialog | Every action now has a place on the organization page or the edit page, and a card leads with the logo |
+| Square cards as dense as the face grid | A wide wordmark in a face-sized square is a few pixels tall |
+| Copying the people grid for organizations | The paging, URL conditions, states and creation are the same rules for both kinds |
 
 ## The page is the person page with a logo
 
@@ -43,7 +77,7 @@ the facts card.
 
 | Rejected | Why |
 | --- | --- |
-| A side panel beside the organizations list | The details come first, and a page has a URL to return to |
+| A side panel beside the logo grid | The details come first, and a page has a URL to return to |
 | Copying the person page for organizations | The heading, bio, facts card, shelves and states are the same rules; the page shares them with the person page |
 
 ## The family is one shelf of links
