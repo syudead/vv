@@ -79,6 +79,7 @@ func TestVocabularyEntryMatchesFoldedSearch(t *testing.T) {
 
 func TestPageVocabularyContinuesAtTheCursor(t *testing.T) {
 	entries := []VocabularyEntry[string]{vocabularyEntry(1, "a", 0), vocabularyEntry(2, "b", 0), vocabularyEntry(3, "c", 0)}
+	SortVocabulary(entries, TagSortName)
 	first, next, err := PageVocabulary(entries, TagSortName, "", 2)
 	if err != nil || !slices.Equal(vocabularyIDs(first), []int64{1, 2}) || next == "" {
 		t.Fatalf("first page = %v, next %q, err %v", vocabularyIDs(first), next, err)
@@ -89,5 +90,32 @@ func TestPageVocabularyContinuesAtTheCursor(t *testing.T) {
 	}
 	if _, _, err := PageVocabulary(entries, TagSortCountDesc, next, 2); !errors.Is(err, ErrInvalidCursor) {
 		t.Errorf("a cursor of another sort: err = %v, want ErrInvalidCursor", err)
+	}
+	for _, cursor := range []string{"v1.name.2", "v2.name.!"} {
+		if _, _, err := PageVocabulary(entries, TagSortName, cursor, 2); !errors.Is(err, ErrInvalidCursor) {
+			t.Errorf("cursor %q: err = %v, want ErrInvalidCursor", cursor, err)
+		}
+	}
+}
+
+// The cursor keys on the last listed entry, so entries leaving or joining before it shift nothing across pages.
+func TestPageVocabularyContinuesAfterTheLastEntryWhenEarlierEntriesChange(t *testing.T) {
+	entries := []VocabularyEntry[string]{
+		vocabularyEntry(1, "a", 2), vocabularyEntry(2, "b", 1), vocabularyEntry(3, "c", 1), vocabularyEntry(4, "d", 0),
+	}
+	SortVocabulary(entries, TagSortCountDesc)
+	_, next, err := PageVocabulary(entries, TagSortCountDesc, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A provisional entry joins too; it follows the named entries of its count.
+	changed := []VocabularyEntry[string]{
+		{ID: 6, Provisional: true, Count: 1},
+		vocabularyEntry(5, "a0", 3), vocabularyEntry(2, "b", 1), vocabularyEntry(3, "c", 1), vocabularyEntry(4, "d", 0),
+	}
+	SortVocabulary(changed, TagSortCountDesc)
+	second, _, err := PageVocabulary(changed, TagSortCountDesc, next, 2)
+	if want := []int64{3, 6}; err != nil || !slices.Equal(vocabularyIDs(second), want) {
+		t.Errorf("after a left and a0 joined: second page = %v, err %v, want %v", vocabularyIDs(second), err, want)
 	}
 }

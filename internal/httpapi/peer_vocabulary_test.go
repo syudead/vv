@@ -267,3 +267,44 @@ func TestMergedTagListPagesEveryEntryOnce(t *testing.T) {
 		}
 	}
 }
+
+// Unfavoriting a listed person under the favorites filter must not skip the person after the first page.
+func TestMergedFavoritePeopleContinueAfterAnUnfavorite(t *testing.T) {
+	_, fb, b, _ := mergedNodes(t)
+	ids := make([]int64, 101)
+	for i := range ids {
+		credit, err := fb.env.db.Credits().Create(context.Background(), domain.CreditPerson,
+			domain.CreditInput{Names: namesOf(fmt.Sprintf("p%03d", i))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = credit.ID
+	}
+	favorite := func(on bool, ids ...int64) {
+		t.Helper()
+		rec := b.owner(http.MethodPut, "/api/favorites", jsonBody(map[string]any{"personIds": ids, "favorite": on}))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("favorite %v: status = %d: %s", on, rec.Code, rec.Body)
+		}
+	}
+	favorite(true, ids...)
+	first := decode[gen.PersonList](t, b.owner(http.MethodGet, "/api/people?favorite=true&limit=100", ""))
+	if len(first.Items) != 100 || first.NextCursor == nil {
+		t.Fatalf("first page: %d items, next %v", len(first.Items), first.NextCursor)
+	}
+	favorite(false, first.Items[0].Id)
+	second := decode[gen.PersonList](t, b.owner(http.MethodGet,
+		"/api/people?favorite=true&limit=100&cursor="+url.QueryEscape(*first.NextCursor), ""))
+
+	var shown []string
+	for _, person := range append(first.Items[1:], second.Items...) {
+		shown = append(shown, person.Name)
+	}
+	want := make([]string, 0, 100)
+	for i := 1; i <= 100; i++ {
+		want = append(want, fmt.Sprintf("p%03d", i))
+	}
+	if !slices.Equal(shown, want) || second.NextCursor != nil {
+		t.Errorf("remaining favorites = %v (next %v), want p001–p100", shown, second.NextCursor)
+	}
+}
