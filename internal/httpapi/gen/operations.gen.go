@@ -89,6 +89,7 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "GET", Path: "/api/organizations/{id}", Response: "Organization"},
 	{Method: "DELETE", Path: "/api/organizations/{id}"},
 	{Method: "PATCH", Path: "/api/organizations/{id}", Response: "Organization", Request: "CreditPatch", BodyIDs: []string{"parentId"}},
+	{Method: "GET", Path: "/api/organizations/{id}/children", Response: "OrganizationList"},
 	{Method: "GET", Path: "/api/organizations/{id}/image", Streams: true},
 	{Method: "PUT", Path: "/api/organizations/{id}/image", Response: "Organization"},
 	{Method: "DELETE", Path: "/api/organizations/{id}/image", Response: "Organization"},

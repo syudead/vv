@@ -8,9 +8,11 @@ import { ConfirmDialogExample } from "./blocks/confirm-dialog-example";
 import { DetailPageExample } from "./blocks/detail-page-example";
 import { EditorDialogExample } from "./blocks/editor-dialog-example";
 import { FaceGridExample } from "./blocks/face-grid-example";
+import { LogoGridExample } from "./blocks/logo-grid-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
 import { FormPageDialogExample, FormPageExample } from "./blocks/form-page-example";
 import { GroupedListExample } from "./blocks/grouped-list-example";
+import { OrganizationPageExample } from "./blocks/organization-page-example";
 import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { QueryResultsPageExample } from "./blocks/query-results-page-example";
@@ -248,9 +250,19 @@ export default function Patterns() {
       <Pattern
         id="profile-page"
         name={p.names.profilePage}
-        items={["profile-page", "profile-page-example", "shelf", "person-face"]}
+        items={[
+          "profile-page",
+          "profile-page-example",
+          "organization-page-example",
+          "shelf",
+          "person-face",
+          "organization-logo",
+        ]}
       >
         <ProfilePageExample />
+        <div className="border-t border-border">
+          <OrganizationPageExample />
+        </div>
       </Pattern>
       <Pattern
         id="query-results-page"
@@ -279,6 +291,16 @@ export default function Patterns() {
         <div className="flex flex-col gap-6 p-4">
           <FaceGridExample />
           <FaceGridExample loading />
+        </div>
+      </Pattern>
+      <Pattern
+        id="logo-grid"
+        name={p.names.logoGrid}
+        items={["card-grid", "loading-state", "organization-logo", "logo-grid-example"]}
+      >
+        <div className="flex flex-col gap-6 p-4">
+          <LogoGridExample />
+          <LogoGridExample loading />
         </div>
       </Pattern>
     </div>

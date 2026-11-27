@@ -6480,7 +6480,7 @@
             "type": "integer"
           },
           "organizationName": {
-            "description": "Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.",
+            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.",
             "minLength": 1,
             "type": "string"
           },
@@ -6901,7 +6901,7 @@
             "type": "integer"
           },
           "organizationName": {
-            "description": "Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.",
+            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.",
             "minLength": 1,
             "type": "string"
           },
@@ -7032,6 +7032,39 @@
         "properties": {},
         "type": "object"
       }
+    },
+    {
+      "operationId": "listOrganizationChildren",
+      "method": "GET",
+      "path": "/api/organizations/{id}/children",
+      "summary": "List an organization's child organizations",
+      "description": "Owner-only. Every organization whose parent is `id`, one level down, ordered by name then ID; not paged, so `total` and `totalAll` equal the item count and there is no `nextCursor`. An organization without children answers an empty list. Missing organization returns 404 organization_not_found.",
+      "owner": true,
+      "response": "json",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "id": {
+            "description": "Organization ID",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "organization"
+        }
+      ]
     },
     {
       "operationId": "listOrganizations",
@@ -7945,6 +7978,10 @@
           "explode": true
         },
         {
+          "name": "organizationRole",
+          "explode": true
+        },
+        {
           "name": "tagKind",
           "explode": true
         },
@@ -8044,8 +8081,16 @@
             "type": "integer"
           },
           "organizationName": {
-            "description": "Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.",
+            "description": "Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video.",
             "minLength": 1,
+            "type": "string"
+          },
+          "organizationRole": {
+            "description": "Keeps only videos linked to `organization` in this role, including total. Requires `organization` or `organizationName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.",
+            "enum": [
+              "maker",
+              "label"
+            ],
             "type": "string"
           },
           "person": {

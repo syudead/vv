@@ -118,6 +118,18 @@ export function getCredit(
   return request<Credit>(itemPath(kind, id), { signal });
 }
 
+export type OrganizationList = components["schemas"]["OrganizationList"];
+
+/** Every direct child of the organization in name order, unpaged; a missing organization is a 404 RequestFailed. */
+export function listOrganizationChildren(
+  id: number,
+  signal?: AbortSignal,
+): Promise<OrganizationList> {
+  return request<OrganizationList>(`${itemPath("organization", id)}/children`, {
+    signal,
+  });
+}
+
 /** Saved list snapshots show credit names and faces on cards, so a change to them discards the snapshot. */
 export async function afterCreditChange<T>(change: Promise<T>): Promise<T> {
   const result = await change;

@@ -238,7 +238,9 @@ admin lists ([library-ui.md](library-ui.md)), and asks for the next page when
 the end of the grid comes into view. The search, `favorite=true` and the sort,
 including `ageAsc` and `ageDesc`, are sent to the server and kept in the URL;
 the sort is also remembered per browser. `New person` asks for the name in a
-dialog and opens the new person's page. Organizations keep the table.
+dialog and opens the new person's page. Organizations have the same grid with
+logo cards
+([organizations.md](organizations.md#the-list-is-the-people-grid-with-logo-cards)).
 
 | Rejected                             | Why                                                                        |
 | ------------------------------------ | -------------------------------------------------------------------------- |
@@ -298,9 +300,9 @@ external IDs, links and every profile field together, built and left
 as the video details editor is
 ([library-ui.md](library-ui.md#details-editor)): the same band, the same
 `Discard changes?` on `Cancel`, the aside's link and the browser's Back, and
-the same return along the history when the person page opened it. Organizations
-keep the details dialog, whose first group is the same names list
-([Organizations](#organizations-share-the-profile-image-and-favorite-shapes)).
+the same return along the history when the person page opened it.
+Organizations have the same edit page with their own fields
+([organizations.md](organizations.md#the-edit-page-is-the-person-edit-page-with-an-organizations-fields)).
 
 `Save` sends one `PATCH /api/people/{id}` with only the properties that differ
 from the person as loaded, so a change made elsewhere to another property
@@ -451,8 +453,10 @@ under the grid.
 On the video page, each person in the work details row is a `PersonFace chip`
 and the name inside one link to `/people/:id`, named `Open {name}`, so the
 cast opens the person page instead of the filtered library; the chip sits on
-the name's line and keeps the row's height. Organizations keep their text links
-to the filtered library, and the fold after three names is unchanged.
+the name's line and keeps the row's height. Organizations keep text links,
+which open the organization page
+([organizations.md](organizations.md#the-video-page-opens-the-organization-page)),
+and the fold after three names is unchanged.
 
 Wherever a person is chosen, the face comes with the name: a picker's
 candidate rows lead with `PersonFace option` (the video details editor, the
@@ -505,7 +509,8 @@ writes the credits, so a refused name stops the save before the video changes.
 ## Organizations share the profile, image and favorite shapes
 
 An organization keeps a profile, one image (its logo) and an owner favorite,
-stored and merged as a person's are. `CreditStore` reaches both kinds through
+stored and merged as a person's are; its page is described in
+[organizations.md](organizations.md). `CreditStore` reaches both kinds through
 the table names in `creditTables` and a profile codec per kind
 ([`credit_profiles.go`](../../internal/store/credit_profiles.go)), and the
 field-wise patch and merge fill run through one `profileSchema`
@@ -529,14 +534,19 @@ one error mapping. A work-info plugin's `profile` on an organization fills the
 linked organization's empty fields, as a person's does; a plugin's organization
 `image` is not fetched yet.
 
-The organizations table shows a favorite toggle on each row, and the details
-dialog edits the logo, which saves at once, and the profile, which saves with
-the dialog. The dialog's first group is the names list of
-[the edit page](#the-edit-page), with the display name as its first row;
-`Save` sends the list as `names` when it was edited, a reason at `names` stays
-under `Add name`, and an emptied list answers `work_info_empty` there. The
-row's inline `Rename` stays and sends `name`, which respells the display name
-and keeps its language and the other names.
+`GET /api/organizations/{id}/children` lists the organizations whose parent is
+`{id}`, one level down, in name order and unpaged. A parent is a link one node
+records, so a remote id's children are read from its own node and each takes
+the same-named local id, else the offset form, as a forwarded organization
+does ([peer-library.md](peer-library.md)); children are not merged across
+nodes by name. `GET /api/videos` narrows `organization` to one role with
+`organizationRole`, as `personRole` narrows `person`
+([library-ui.md](library-ui.md#list-conditions-applied-by-the-server)).
+
+The organization screens show the favorite on each logo card and on the
+organization page, change the logo on the page, where it saves at once, and
+edit the names and profile on the organization edit page
+([organizations.md](organizations.md)).
 
 | Rejected                                         | Why                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------- |

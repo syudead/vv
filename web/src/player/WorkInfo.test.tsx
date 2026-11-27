@@ -90,7 +90,7 @@ describe("WorkInfo", () => {
     expect(screen.getByRole("button", { name: "Show fewer" })).toBeDefined();
   });
 
-  it("人物は顔と名前で人物ページを開き、顔がなければ代わりの目印、団体はライブラリの絞り込みのまま", () => {
+  it("人物は顔と名前で人物ページを開き、顔がなければ代わりの目印、団体は名前で団体ページを開く", () => {
     renderInfo({
       ...empty,
       people: [
@@ -113,10 +113,9 @@ describe("WorkInfo", () => {
     expect(within(withoutFace).queryByRole("img")).toBeNull();
     expect(withoutFace.querySelector('[data-slot="person-face"]')).not.toBeNull();
 
-    expect(
-      screen.getByRole("link", { name: "Show videos with Studio" }).getAttribute("href"),
-    ).toBe("/?organization=5");
-    expect(screen.queryByRole("link", { name: /Show videos with 顔/ })).toBeNull();
+    const studio = screen.getByRole("link", { name: "Open Studio" });
+    expect(studio.getAttribute("href")).toBe("/organizations/5");
+    expect(studio.textContent).toBe("Studio");
   });
 
   it("仮の人物は空の名前ではなく番号の顔と名前で人物ページを開く", () => {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -226,8 +227,77 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 	rec := b.owner(http.MethodPatch, path, fmt.Sprintf(`{"parentId":%d}`, localOnly))
 	assertErrorBody(t, "相手に無い親", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound})
+	if got := decode[gen.Error](t, rec).Field; got == nil || *got != "parentId" {
+		t.Errorf("相手に無い親: field = %v, want parentId", got)
+	}
 	if got := parentOnA(); got != peerLabel {
 		t.Errorf("拒否の後の a の親 = %d, want %d のまま", got, peerLabel)
+	}
+}
+
+// This node's entry of a link's display name is that entry's own join, so an edit that keeps the name saves the other
+// names, while a new name this node holds is still refused.
+func TestForwardedOrganizationEditKeepingTheNameOfALocalOrganization(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	studio, err := fa.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf("Studio")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Studio", "Label"} {
+		if _, err := fb.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf(name)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := creditPath("/api/organizations", domain.RemoteID(1, studio.ID), "")
+
+	if rec := b.owner(http.MethodPatch, path, `{"names":[{"name":"Studio"},{"name":"スタジオ"}]}`); rec.Code != http.StatusOK {
+		t.Fatalf("other names only: status = %d: %s", rec.Code, rec.Body)
+	}
+	rec := b.owner(http.MethodPatch, path, `{"names":[{"name":"Label"},{"name":"スタジオ"}]}`)
+	assertErrorBody(t, "a name this node holds", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonOrganizationNameTaken})
+	credit, err := fa.env.db.Credits().Get(ctx, domain.CreditOrganization, studio.ID)
+	if err != nil || credit.Name != "Studio" || len(credit.Names) != 2 || credit.Names[1].Name != "スタジオ" {
+		t.Errorf("a's Studio = %+v, %v; want Studio with スタジオ", credit, err)
+	}
+}
+
+// A remote parent's children are read from its own node, each taking the same-named local id or the offset form.
+func TestForwardedOrganizationChildrenTakeTheLocalIDsByName(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	organization := func(f *guestFixture, name string, parent *int64) int64 {
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization,
+			domain.CreditInput{Names: namesOf(name), ParentID: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return credit.ID
+	}
+	organization(fb, "手元だけ", nil)
+	localLabel := organization(fb, "レーベル", nil)
+	series := organization(fa, "系列", nil)
+	peerOnly := organization(fa, "相手だけ", &series)
+	peerLabel := organization(fa, "レーベル", &series)
+	if peerLabel == localLabel {
+		t.Fatalf("レーベルの ID が両方の台で %d; 書き換えを確かめられない", peerLabel)
+	}
+
+	remoteSeries := domain.RemoteID(1, series)
+	rec := b.owner(http.MethodGet, "/api/organizations/"+strconv.FormatInt(remoteSeries, 10)+"/children", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	got := map[string]int64{}
+	for _, child := range decode[gen.OrganizationList](t, rec).Items {
+		got[child.Name] = child.Id
+		if child.Parent == nil || child.Parent.Id != remoteSeries {
+			t.Errorf("%s の親 = %+v, want %d", child.Name, child.Parent, remoteSeries)
+		}
+	}
+	if want := map[string]int64{"レーベル": localLabel, "相手だけ": domain.RemoteID(1, peerOnly)}; !maps.Equal(got, want) {
+		t.Errorf("子団体 = %v, want %v", got, want)
 	}
 }
 

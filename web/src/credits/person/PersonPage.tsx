@@ -1,21 +1,17 @@
 import { ScanFace } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 
 import { useAssistantScreen } from "../../assistant/AssistantProvider";
 import { getFaceRecognitionSettings } from "../../api/client";
-import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
-import { errorText, t, type UiText } from "../../i18n";
-import { ErrorState } from "../../ui/patterns/error-state";
-import { LoadingState } from "../../ui/patterns/loading-state";
+import type { Person } from "../../api/credits";
+import { t } from "../../i18n";
 import { ProfilePage } from "../../ui/patterns/profile-page";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
-import { Skeleton } from "../../ui/shadcn/skeleton";
-import { useToast } from "../../ui/Toast";
-import DeleteCreditDialog from "../DeleteCreditDialog";
+import { CreditPageStatus } from "../CreditPageStatus";
 import { creditDisplayName } from "../displayName";
-import MergeCreditDialog from "../MergeCreditDialog";
+import { useCreditMergeDelete } from "../useCreditMergeDelete";
 import { useFaceCandidates } from "./PersonCandidates";
 import PersonFaceControl from "./PersonFaceControl";
 import { personFacesPath, personPath } from "./personPath";
@@ -45,52 +41,19 @@ function PersonScreen({ id }: { id: number | null }) {
     name: person === undefined ? undefined : creditDisplayName(person),
   });
 
-  if (state.kind === "gone") {
+  if (state.kind !== "ready") {
     return (
-      <ProfilePage
+      <CreditPageStatus
+        state={state}
         profileLabel={text.profile}
-        face={null}
-        identity={null}
-        status={<PersonGone />}
-      >
-        {null}
-      </ProfilePage>
+        faceClassName="aspect-portrait w-full"
+        failedTitle={text.loadFailed}
+        gone={<PersonGone />}
+        onRetry={reload}
+      />
     );
   }
-  if (person === undefined || id === null) {
-    return (
-      <ProfilePage
-        profileLabel={text.profile}
-        face={
-          state.kind === "loading" ? (
-            <Skeleton className="aspect-portrait w-full" />
-          ) : null
-        }
-        identity={state.kind === "loading" ? <IdentitySkeleton /> : null}
-      >
-        {state.kind === "failed" ? (
-          <ErrorState
-            title={text.loadFailed(state.reason)}
-            retryLabel={t.common.retry}
-            onRetry={reload}
-          />
-        ) : (
-          <LoadingState label={text.loading} layout="grid" size={0} count={6} />
-        )}
-      </ProfilePage>
-    );
-  }
-  return <PersonShown person={person} replace={replace} markGone={markGone} />;
-}
-
-function IdentitySkeleton() {
-  return (
-    <>
-      <Skeleton className="h-6 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="h-10 w-full" />
-    </>
-  );
+  return <PersonShown person={state.credit} replace={replace} markGone={markGone} />;
 }
 
 /** Whether face recognition is on; off, unknown or unreadable all hide its entry. */
@@ -142,36 +105,14 @@ function PersonShown({
   replace: (next: Person | ((current: Person) => Person)) => void;
   markGone: () => void;
 }) {
-  const toast = useToast();
-  const navigate = useNavigate();
   const today = useLocalToday();
-  const [merging, setMerging] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deletePending, setDeletePending] = useState(false);
-  const [deleteError, setDeleteError] = useState<UiText | null>(null);
-
-  function merged(target: Credit) {
-    setMerging(false);
-    toast(text.mergedInto(creditDisplayName(target)));
-    void navigate(personPath(target.id));
-  }
-
-  async function performDelete() {
-    setDeleteError(null);
-    setDeletePending(true);
-    try {
-      await deleteCredit("person", person.id);
-      toast(t.credits.deleted(creditDisplayName(person)));
-      void navigate("/people");
-    } catch (failure) {
-      if (isCreditGone(failure)) {
-        markGone();
-        return;
-      }
-      setDeleteError(errorText(failure));
-      setDeletePending(false);
-    }
-  }
+  const { openMerge, openDelete, dialogs } = useCreditMergeDelete({
+    kind: "person",
+    credit: person,
+    pageOf: personPath,
+    listPath: "/people",
+    markGone,
+  });
 
   return (
     <ProfilePage
@@ -185,37 +126,14 @@ function PersonShown({
             <PersonFetchEntry person={person} onApplied={replace} onGone={markGone} />
           }
           facesEntry={<FacesEntry personId={person.id} onGone={markGone} />}
-          onMerge={() => setMerging(true)}
-          onDelete={() => {
-            setDeleteError(null);
-            setDeleting(true);
-          }}
+          onMerge={openMerge}
+          onDelete={openDelete}
         />
       }
       facts={personFactsCard(person, today)}
     >
       <PersonShelves personId={person.id} />
-      {merging && (
-        <MergeCreditDialog
-          kind="person"
-          source={person}
-          onClose={() => setMerging(false)}
-          onMerged={merged}
-          onStale={markGone}
-        />
-      )}
-      {deleting && (
-        <DeleteCreditDialog
-          kind="person"
-          credit={person}
-          pending={deletePending}
-          error={deleteError}
-          onClose={() => {
-            if (!deletePending) setDeleting(false);
-          }}
-          onDelete={() => void performDelete()}
-        />
-      )}
+      {dialogs}
     </ProfilePage>
   );
 }

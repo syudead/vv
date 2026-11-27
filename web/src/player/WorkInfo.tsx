@@ -12,10 +12,10 @@ import {
   workPersonRoles,
 } from "../api/workInfo";
 import { creditDisplayName } from "../credits/displayName";
+import { OrganizationLink } from "../credits/organization/OrganizationLink";
 import { personPath } from "../credits/person/personPath";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { libraryFilterPath } from "../library/libraryPath";
 import { PersonFace } from "../ui/PersonFace";
 import { type Fact, FactList } from "../ui/patterns/fact-list";
 import { Button } from "../ui/shadcn/button";
@@ -54,22 +54,6 @@ export function Item({ label, children }: { label: UiText; children: ReactNode }
       <span className="text-muted-foreground">{label}</span>
       {children}
     </li>
-  );
-}
-
-function OrganizationLink({
-  organization,
-}: {
-  organization: { id: number; name: string };
-}) {
-  return (
-    <Link
-      to={libraryFilterPath("organization", organization.id)}
-      aria-label={t.player.workInfo.showVideosWith(organization.name)}
-      className="text-foreground hover:text-primary"
-    >
-      {organization.name}
-    </Link>
   );
 }
 
@@ -157,7 +141,7 @@ export function FoldButton({
 }
 
 /** Entries joined by commas, the ones past `limit` folded behind `+{n} more`. */
-function FoldedEntries({
+export function FoldedEntries({
   label,
   entries,
   limit = foldLimit,

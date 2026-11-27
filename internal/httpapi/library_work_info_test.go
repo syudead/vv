@@ -104,6 +104,26 @@ func TestListVideosFiltersByPersonRole(t *testing.T) {
 	}
 }
 
+// メーカーA is linked as maker only, so the label shelf of the same organization is empty.
+func TestListVideosFiltersByOrganizationRole(t *testing.T) {
+	f, _, organization := creditFilterFixture(t)
+	for role, want := range map[string][]int64{"maker": {f.ids["ep1"], f.ids["p1"]}, "label": nil} {
+		rec := f.env.get("/api/videos?organizationRole="+role+"&organization="+organization, f.owner)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d: %s", role, rec.Code, rec.Body)
+		}
+		videos := decode[gen.VideoPage](t, rec)
+		var listed []int64
+		for _, video := range videos.Items {
+			listed = append(listed, video.Id)
+		}
+		slices.Sort(listed)
+		if want = slices.Sorted(slices.Values(want)); !slices.Equal(listed, want) || videos.Total != len(want) {
+			t.Errorf("%s: items = %v・total %d, want %v", role, listed, videos.Total, want)
+		}
+	}
+}
+
 func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 	f, person, organization := creditFilterFixture(t)
 	invalid := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
@@ -113,7 +133,10 @@ func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 			assertErrorBody(t, path+"?"+query, rec.Code, rec.Body.Bytes(), invalid)
 		}
 	}
-	for _, query := range []string{"personRole=director", "personRole=cast&person=" + person} {
+	for _, query := range []string{
+		"personRole=director", "personRole=cast&person=" + person,
+		"organizationRole=maker", "organizationRole=distributor&organization=" + organization,
+	} {
 		rec := f.env.get("/api/videos?"+query, f.owner)
 		assertErrorBody(t, "/api/videos?"+query, rec.Code, rec.Body.Bytes(), invalid)
 	}
@@ -126,4 +149,6 @@ func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 	}
 	rec := f.env.get("/api/videos?personRole=director&person=" + person)
 	assertErrorBody(t, "ゲストの personRole", rec.Code, rec.Body.Bytes(), guest)
+	rec = f.env.get("/api/videos?organizationRole=maker&organization=" + organization)
+	assertErrorBody(t, "ゲストの organizationRole", rec.Code, rec.Body.Bytes(), guest)
 }

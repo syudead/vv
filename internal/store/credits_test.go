@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -537,6 +538,50 @@ func TestOrganizationParentCycleIsRefused(t *testing.T) {
 	cleared, err := db.Credits().Update(ctx, domain.CreditOrganization, grandchild.ID, domain.CreditPatch{ParentSet: true})
 	if err != nil || cleared.Parent != nil {
 		t.Fatalf("親を外す = %+v, %v", cleared, err)
+	}
+}
+
+// Only the direct children are listed, in name order with their video counts; a grandchild and an unrelated
+// organization are not.
+func TestOrganizationChildrenListsDirectChildrenByName(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	keys := addLibraryVideos(t, db, 1)
+	parent := createOrganization(t, db, "親", nil)
+	second := createOrganization(t, db, "B", &parent)
+	first := createOrganization(t, db, "A", &parent)
+	createOrganization(t, db, "孫", &second)
+	unrelated := createOrganization(t, db, "無関係", nil)
+	for position, id := range []int64{first.ID, unrelated.ID} {
+		execSQL(t, db, `insert into video_work_organizations (content_key, role, position, organization_id) values (?, 'maker', ?, ?)`,
+			keys[0], position, id)
+	}
+
+	children, err := db.Credits().OrganizationChildren(ctx, domain.AudienceOwner, parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	counts := map[int64]int{}
+	for _, child := range children {
+		got = append(got, child.ID)
+		counts[child.ID] = child.VideoCount
+		if child.Parent == nil || *child.Parent != (domain.CreditRef{ID: parent.ID, Name: "親"}) {
+			t.Errorf("%s の親 = %+v", child.Name, child.Parent)
+		}
+	}
+	if want := []int64{first.ID, second.ID}; !slices.Equal(got, want) {
+		t.Errorf("子 = %v, want %v", got, want)
+	}
+	if want := map[int64]int{first.ID: 1, second.ID: 0}; !maps.Equal(counts, want) {
+		t.Errorf("動画数 = %v, want %v", counts, want)
+	}
+
+	if leaf, err := db.Credits().OrganizationChildren(ctx, domain.AudienceOwner, first.ID); err != nil || len(leaf) != 0 {
+		t.Errorf("子の無い団体 = %v, %v, want 空", leaf, err)
+	}
+	if _, err := db.Credits().OrganizationChildren(ctx, domain.AudienceOwner, parent.ID+1000); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("無い団体 err = %v, want ErrNotFound", err)
 	}
 }
 

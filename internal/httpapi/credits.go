@@ -20,6 +20,8 @@ import (
 type Credits interface {
 	List(ctx context.Context, audience domain.Audience, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
 	Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
+	// OrganizationChildren returns domain.ErrNotFound for a missing organization.
+	OrganizationChildren(ctx context.Context, audience domain.Audience, id int64) ([]domain.Credit, error)
 	Lookup(ctx context.Context, kind domain.CreditKind, source, value string) (domain.Credit, error)
 	Create(ctx context.Context, kind domain.CreditKind, input domain.CreditInput) (domain.Credit, error)
 	Update(ctx context.Context, kind domain.CreditKind, id int64, patch domain.CreditPatch) (domain.Credit, error)
@@ -103,6 +105,20 @@ func (s *server) GetPerson(w http.ResponseWriter, r *http.Request, id gen.Person
 
 func (s *server) GetOrganization(w http.ResponseWriter, r *http.Request, id gen.OrganizationId) {
 	s.getCredit(w, r, organizationsAPI, id)
+}
+
+// ListOrganizationChildren reads this node's children; the remote boundary forwards a remote id to its link.
+func (s *server) ListOrganizationChildren(w http.ResponseWriter, r *http.Request, id gen.OrganizationId) {
+	if !s.creditsConfigured(w) {
+		return
+	}
+	children, err := s.credits.OrganizationChildren(r.Context(), audienceFrom(r.Context()), id)
+	if err != nil {
+		s.writeCreditError(w, organizationsAPI, err)
+		return
+	}
+	page := domain.CreditPage{Items: children, Total: len(children), TotalAll: len(children)}
+	s.writeCreditBody(w, http.StatusOK, organizationsAPI.list(page))
 }
 
 func (s *server) CreatePerson(w http.ResponseWriter, r *http.Request) {

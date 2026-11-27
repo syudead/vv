@@ -423,9 +423,25 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 		case normalized == "":
 			return s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), "")
 		}
-		return s.creditNameFree(w, r.Context(), kind, 0, normalized) &&
-			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized)
+		kept, ok := s.remoteNameKept(w, r, vocabularyKindOf(kind), normalized)
+		return ok && (kept || s.creditNameFree(w, r.Context(), kind, 0, normalized) &&
+			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized))
 	}
+}
+
+// remoteNameKept reports whether name is already the display name of the path's remote entry, as when an edit
+// changes only the other names: that renames nothing, so this node's entry of the name is its own join, not a clash.
+func (s *server) remoteNameKept(w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, name string) (kept, ok bool) {
+	id, _, found := remotePath(r.URL.EscapedPath(), vocabularyListPaths[kind]+"/")
+	if !found {
+		return false, true
+	}
+	names, err := s.vocabularyNames(r, kind, []int64{id})
+	if err != nil {
+		s.vocabularyFailure(w, err)
+		return false, false
+	}
+	return names[id] == name, true
 }
 
 // forwardedDisplayName is the normalized display name a forwarded patch sets, "" for a person's emptied list, and

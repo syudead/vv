@@ -18,6 +18,7 @@ import { BackgroundProvider } from "../shell/BackgroundProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { isOrganizationEditPath } from "../credits/organization/organizationPath";
 import { isPersonFacesPath } from "../credits/person/personPath";
 import { isPersonEditPath } from "../lib/personEditPath";
 import { isVideoEditPath } from "../lib/videoEditPath";
@@ -79,8 +80,17 @@ const PersonEditPage = await deferredRoute(
   isPersonEditPath,
 );
 const OrganizationsPage = await deferredRoute(
-  () => import("../credits/OrganizationsPage"),
-  "/organizations",
+  () => import("../credits/organizations/OrganizationsPage"),
+  (pathname) => matchesExactPath(pathname, "/organizations"),
+);
+const OrganizationPage = await deferredRoute(
+  () => import("../credits/organization/OrganizationPage"),
+  (pathname) =>
+    matchesBelowPath(pathname, "/organizations") && !isOrganizationEditPath(pathname),
+);
+const OrganizationEditPage = await deferredRoute(
+  () => import("../credits/organization/edit/OrganizationEditPage"),
+  isOrganizationEditPath,
 );
 const HistoryPage = await deferredRoute(
   () => import("../history/HistoryPage"),
@@ -271,6 +281,14 @@ function AppRoutes() {
             }
           />
           <Route
+            path="/organizations/:id"
+            element={
+              <ShellPage>
+                <OrganizationPage />
+              </ShellPage>
+            }
+          />
+          <Route
             path="/history"
             element={
               <ShellPage>
@@ -354,6 +372,7 @@ function AppRoutes() {
           <Route path="/videos/:id" element={<VideoPage />} />
           <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
           <Route path="/people/:id/edit" element={<PersonEditPage />} />
+          <Route path="/organizations/:id/edit" element={<OrganizationEditPage />} />
           {DesignSystemPage && (
             <Route
               path="/design-system"

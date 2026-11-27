@@ -36,7 +36,8 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		tagKind: params.TagKind, personRole: params.PersonRole, tagName: params.TagName,
+		tagKind: params.TagKind, personRole: params.PersonRole, organizationRole: params.OrganizationRole,
+		tagName:     params.TagName,
 		tagKindName: params.TagKindName, personName: params.PersonName, organizationName: params.OrganizationName,
 		conditions: conditionParams{
 			minDurationMs: params.MinDurationMs, maxDurationMs: params.MaxDurationMs,
@@ -91,8 +92,10 @@ type videoQueryParams struct {
 	person       *int64
 	organization *int64
 	tagKind      *int64
-	// personRole is accepted only by listVideos and requires person or personName.
-	personRole *gen.WorkPersonRole
+	// personRole is accepted only by listVideos and requires person or personName; organizationRole likewise
+	// requires organization or organizationName.
+	personRole       *gen.WorkPersonRole
+	organizationRole *gen.WorkOrganizationRole
 	// The name filters, which the paired node sends for its own tags, kinds, people and organizations.
 	tagName          *[]string
 	tagKindName      *string
@@ -199,6 +202,14 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 			return false
 		}
 		query.PersonRole = role
+	}
+	if params.organizationRole != nil {
+		role := domain.OrganizationRole(*params.organizationRole)
+		if (query.Organization == 0 && query.OrganizationName == "") || !role.Valid() {
+			s.invalidRequest(w, "organizationRole must be a known role and requires organization.")
+			return false
+		}
+		query.OrganizationRole = role
 	}
 	return true
 }

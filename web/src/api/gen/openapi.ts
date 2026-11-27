@@ -3196,6 +3196,26 @@ export interface paths {
         patch: operations["updateOrganization"];
         trace?: never;
     };
+    "/api/organizations/{id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an organization's child organizations
+         * @description Owner-only. Every organization whose parent is `id`, one level down, ordered by name then ID; not paged, so `total` and `totalAll` equal the item count and there is no `nextCursor`. An organization without children answers an empty list. Missing organization returns 404 organization_not_found.
+         */
+        get: operations["listOrganizationChildren"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{id}/image": {
         parameters: {
             query?: never;
@@ -9136,6 +9156,8 @@ export interface components {
         PersonFilter: number;
         /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonRoleFilter: components["schemas"]["WorkPersonRole"];
+        /** @description Keeps only videos linked to `organization` in this role, including total. Requires `organization` or `organizationName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        OrganizationRoleFilter: components["schemas"]["WorkOrganizationRole"];
         /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
@@ -9156,7 +9178,7 @@ export interface components {
         TagKindNameFilter: string;
         /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
         PersonNameFilter: string;
-        /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+        /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
         OrganizationNameFilter: string;
         /** @description Media folder ID */
         MediaFolderId: number;
@@ -9461,6 +9483,8 @@ export interface operations {
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /** @description Keeps only videos linked to `organization` in this role, including total. Requires `organization` or `organizationName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                organizationRole?: components["parameters"]["OrganizationRoleFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
                 /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
@@ -9479,7 +9503,7 @@ export interface operations {
                 tagKindName?: components["parameters"]["TagKindNameFilter"];
                 /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
                 personName?: components["parameters"]["PersonNameFilter"];
-                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
                 organizationName?: components["parameters"]["OrganizationNameFilter"];
                 /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
                 kind?: "all" | "file" | "virtual";
@@ -9541,7 +9565,7 @@ export interface operations {
                 tagKindName?: components["parameters"]["TagKindNameFilter"];
                 /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
                 personName?: components["parameters"]["PersonNameFilter"];
-                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
                 organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;
@@ -14640,6 +14664,30 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listOrganizationChildren: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Child organizations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationList"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     getOrganizationImage: {
         parameters: {
             query?: {
@@ -15758,7 +15806,7 @@ export interface operations {
                 tagKindName?: components["parameters"]["TagKindNameFilter"];
                 /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
                 personName?: components["parameters"]["PersonNameFilter"];
-                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                /** @description Canonical organization name; follows `organization` semantics for every organization with that name, and on `listVideos`, the only list that takes `organizationRole`, the role applies to it as to `organization`. A name no organization has matches no video. */
                 organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;

@@ -92,23 +92,27 @@ func (s listSpec) searchExprs() []domain.SearchExpr {
 	return exprs
 }
 
-// Match credits on the user-data key in any role unless personRole is set; missing entity IDs match nothing.
+// Match credits on the user-data key in any role unless personRole or organizationRole is set; missing entity
+// IDs match nothing.
 func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
 	// Unidentified content has no user data.
-	link := func(table, alias, match, extra string) string {
-		return `(videos.content_key <> '' and exists (select 1 from ` + table + ` ` + alias + ` where ` + alias +
-			`.content_key = ` + userKey + ` and ` + match + extra + `))`
+	credit := func(table, alias, match string, value any, role string) {
+		extra := ""
+		args = append(args, value)
+		if role != "" {
+			extra = ` and ` + alias + `.role = ?`
+			args = append(args, role)
+		}
+		conditions = append(conditions, `(videos.content_key <> '' and exists (select 1 from `+table+` `+alias+
+			` where `+alias+`.content_key = `+userKey+` and `+match+extra+`))`)
 	}
 	person := func(match string, value any) {
-		role := ""
-		args = append(args, value)
-		if spec.personRole != "" {
-			role = ` and vp.role = ?`
-			args = append(args, string(spec.personRole))
-		}
-		conditions = append(conditions, link("video_work_people", "vp", match, role))
+		credit("video_work_people", "vp", match, value, string(spec.personRole))
+	}
+	organization := func(match string, value any) {
+		credit("video_work_organizations", "vo", match, value, string(spec.organizationRole))
 	}
 	if spec.personID != 0 {
 		person(`vp.person_id = ?`, spec.personID)
@@ -117,13 +121,10 @@ func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 		person(creditNameCondition("vp.person_id", "people_names", "person_id"), spec.personName)
 	}
 	if spec.organizationID != 0 {
-		conditions = append(conditions, link("video_work_organizations", "vo", `vo.organization_id = ?`, ""))
-		args = append(args, spec.organizationID)
+		organization(`vo.organization_id = ?`, spec.organizationID)
 	}
 	if spec.organizationName != "" {
-		conditions = append(conditions, link("video_work_organizations", "vo",
-			creditNameCondition("vo.organization_id", "organization_names", "organization_id"), ""))
-		args = append(args, spec.organizationName)
+		organization(creditNameCondition("vo.organization_id", "organization_names", "organization_id"), spec.organizationName)
 	}
 	return conditions, args
 }

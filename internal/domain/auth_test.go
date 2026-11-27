@@ -204,6 +204,7 @@ func TestCheckVideoQuery(t *testing.T) {
 		{Sort: SortFavoritedDesc},
 		{Person: 1},
 		{Organization: 1},
+		{OrganizationRole: OrganizationMaker},
 		{TagKindID: 1},
 		{VideoConditions: VideoConditions{WatchState: WatchStateUnwatched}},
 	}

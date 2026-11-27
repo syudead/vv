@@ -241,6 +241,42 @@ func TestMergedListSendsALocalTagToThePeerByName(t *testing.T) {
 	}
 }
 
+// The role goes with the organization filter: by name to the peer for a local organization, by id for a remote one.
+func TestMergedListSendsTheOrganizationRoleWithTheOrganization(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	maker := func(f *guestFixture) int64 {
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Names: namesOf("メーカー")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for video, role := range map[string]domain.OrganizationRole{"c": domain.OrganizationMaker, "e": domain.OrganizationLabel} {
+			link := domain.WorkOrganization{Role: role, Organization: domain.CreditRef{ID: credit.ID}}
+			if _, err := f.env.db.WorkInfo().Set(ctx, f.ids[video], domain.WorkInfo{Organizations: []domain.WorkOrganization{link}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return credit.ID
+	}
+	local, remote := maker(fb), domain.RemoteID(1, maker(fa))
+	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
+
+	for _, tc := range []struct {
+		organization int64
+		role         string
+		want         []string
+	}{
+		{local, "maker", []string{"b:c", "a:c"}},
+		{remote, "label", []string{"a:e"}},
+	} {
+		query := url.Values{"organization": {strconv.FormatInt(tc.organization, 10)}, "organizationRole": {tc.role}}
+		if got, totals := pageVideos(t, fa, fb, owner, "/api/videos", query); !slices.Equal(got, tc.want) ||
+			totals[0] != len(tc.want) {
+			t.Errorf("%d %s = %v, totals %v, want %v", tc.organization, tc.role, got, totals, tc.want)
+		}
+	}
+}
+
 func TestMergedListContinuesWithTheLocalPartWhenThePeerStops(t *testing.T) {
 	fa, fb, b, stopA := mergedNodes(t)
 

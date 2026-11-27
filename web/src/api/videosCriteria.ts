@@ -8,6 +8,7 @@ import {
 import type { components } from "./gen/openapi";
 
 type WorkPersonRole = components["schemas"]["WorkPersonRole"];
+type WorkOrganizationRole = components["schemas"]["WorkOrganizationRole"];
 
 /** Select individual-video, mixed-library, or folder-video endpoints while sharing pagination. */
 export type VideosSource = "videos" | "library" | FolderRef;
@@ -26,6 +27,8 @@ export interface VideosCriteria extends VideoConditionParams {
   /** Requires person. */
   personRole?: WorkPersonRole;
   organization?: number;
+  /** Requires organization. */
+  organizationRole?: WorkOrganizationRole;
   tagKind?: number;
 }
 
@@ -40,6 +43,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.person ?? null,
     criteria.personRole ?? null,
     criteria.organization ?? null,
+    criteria.organizationRole ?? null,
     criteria.tagKind ?? null,
     ...videoConditionNames.map((name) => criteria[name] ?? null),
   ]);

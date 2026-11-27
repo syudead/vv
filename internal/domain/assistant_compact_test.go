@@ -16,6 +16,13 @@ func TestAssistantCompactResultKeepsTheFieldsTheModelUses(t *testing.T) {
 				`"title":"Clip"}],"nextCursor":"c2","total":305}`,
 		},
 		{
+			name:      "organization children",
+			operation: "listOrganizationChildren",
+			body: `{"total":1,"totalAll":1,"items":[{"id":4,"name":"子","videoCount":2,` +
+				`"profile":"長いプロフィール","parent":{"id":1,"name":"親"},"externalIds":[]}]}`,
+			want: `{"items":[{"id":4,"name":"子","parent":"親","videoCount":2}],"total":1,"totalAll":1}`,
+		},
+		{
 			name:      "other operation",
 			operation: "getVideo",
 			body:      `{"id":7,"thumbnailUrl":"/t/7"}`,

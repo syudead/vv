@@ -969,6 +969,14 @@ describe("list API client", () => {
     expect(params.get("tagKind")).toBe("7");
   });
 
+  it("sends the organization role with the organization to the video list", async () => {
+    const fetch = stubFetch();
+    await listVideos({ organization: 6, organizationRole: "label" });
+    const params = requestedURL(fetch).searchParams;
+    expect(params.get("organization")).toBe("6");
+    expect(params.get("organizationRole")).toBe("label");
+  });
+
   it("listLibrary keeps smart folder items as summaries", async () => {
     const video = { id: 1 };
     const smartFolder = { id: 9, name: "猫" };

@@ -12,6 +12,8 @@ var assistantCompactFields = map[string][]string{
 	"listTags":          {"id", "name", "synonyms", "videoCount", "tentative", "kind"},
 	"listPeople":        {"id", "name", "names", "videoCount", "favorite", "provisional"},
 	"listOrganizations": {"id", "name", "names", "videoCount", "parent"},
+	// The children read is not paged, so whole profiles of many children would not fit a small model's context.
+	"listOrganizationChildren": {"id", "name", "names", "videoCount", "parent"},
 }
 
 // AssistantCompactResult keeps the fields of each item a list read answers that the model works with, and writes a

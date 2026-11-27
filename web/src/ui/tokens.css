@@ -137,6 +137,8 @@
   --spacing-record-card: 6rem;
   /* Face card minimum: three columns at 360px, eight or nine at 1280px with the full sidebar. */
   --spacing-card-face: 6.5rem;
+  /* Logo card minimum: two columns at 360px, six at 1280px with the full sidebar. */
+  --spacing-card-logo: 9rem;
   /* A performer's face popped from a card: large enough to recognize, inside the narrowest card. */
   --spacing-face-popover: 10rem;
   --spacing-list-thumb-cell: 8rem;

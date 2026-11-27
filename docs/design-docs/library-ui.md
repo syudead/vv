@@ -114,15 +114,10 @@ current conditions. The column count is read from the grid's width and the
 window. The document stays the scroll owner, and the row holding focus stays
 drawn while the page scrolls. The tag screens are in
 [tag-organizing.md](tag-organizing.md#the-tag-list).
-The organizations admin list (`/organizations`) is built from the shared
-list pieces in `web/src/recordList/`: pages of 100 read from the server, rows
-of a `DataTable` drawn near the viewport, and local updates after rename,
-details, merge and delete. The list keeps the focused row drawn, and Tab
-crosses the edge of the drawn range, so keyboard order reaches every row; rows
-outside the drawn range are empty spacer rows so the columns stay aligned. The
-page passes the fixed top bar's height (`--spacing-navbar`) to the virtualizer
-and to `scroll-padding-top`, so a focused row never hides under the top bar. The people list (`/people`) shares the paging but is a grid of face
-cards ([people.md](people.md#the-people-grid)).
+The people list (`/people`) and the organizations list (`/organizations`)
+share the paging but are grids of cards: face cards
+([people.md](people.md#the-people-grid)) and logo cards
+([organizations.md](organizations.md#the-list-is-the-people-grid-with-logo-cards)).
 
 ### The window owns scrolling
 
@@ -223,13 +218,9 @@ section of rows: a kind's row has its colour mark, its tag count linking to
 section ends with the `New kind` field; a rejected name's row has
 `Allow again`. A tag card opens the tag's page `/tags/:id`, a
 `RecordEditorPage` for its names, kind and merge
-([tag-organizing.md](tag-organizing.md#the-tag-page)). The
-organizations page is an `AdminTablePage`: a centered `max-w-4xl` column whose
-header sticks under the top bar with the table's column header right under it,
-without a filter, checkbox column or selection bar, and a
-details dialog (the names list, external IDs and the parent) in place of the synonyms
-dialog. The people page is a `ListPage` of face cards with the search, the
-favorites filter and the sort in the top bar.
+([tag-organizing.md](tag-organizing.md#the-tag-page)). The people
+and organizations pages are `ListPage`s of face and logo cards with the search,
+the favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
@@ -641,7 +632,7 @@ Video card behaviour:
 
 | Case                                         | Behaviour                                                                                                                                                                      |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds page, `/tags/kinds`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
+| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds page, `/tags/kinds`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked  |
 | Tag pressed in the library                   | Filters by the tag                                                                                                                                                             |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>`                                                                                                                                                             |
 | Tags that do not fit the row                 | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full |
@@ -1345,21 +1336,24 @@ The list routes (`GET /api/videos`, `GET /api/library` and
 `GET /api/folders/{rootId}/videos`) take these conditions, each ANDed with the
 others:
 
-| Parameter      | Keeps                                                                                  | Guest                                             |
-| -------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `query`        | Videos the search expression matches (see below)                                       | Allowed; matches only the title and relative path |
-| `tag`          | Videos that carry every listed tag                                                     | `400 guest_filter_not_allowed`                    |
-| `favorite`     | Favorite videos and favorite groups                                                    | `400 guest_filter_not_allowed`                    |
-| `person`       | Videos linked to that person in any role                                               | `400 guest_filter_not_allowed`                    |
-| `personRole`   | With `person`, only videos linked to that person in this role (not `GET /api/library`) | `400 guest_filter_not_allowed`                    |
-| `organization` | Videos linked to that organization in any role                                         | `400 guest_filter_not_allowed`                    |
-| `tagKind`      | Videos with at least one tag of that kind, manual or from the folder                   | `400 guest_filter_not_allowed`                    |
+| Parameter          | Keeps                                                                                              | Guest                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `query`            | Videos the search expression matches (see below)                                                   | Allowed; matches only the title and relative path |
+| `tag`              | Videos that carry every listed tag                                                                 | `400 guest_filter_not_allowed`                    |
+| `favorite`         | Favorite videos and favorite groups                                                                | `400 guest_filter_not_allowed`                    |
+| `person`           | Videos linked to that person in any role                                                           | `400 guest_filter_not_allowed`                    |
+| `personRole`       | With `person`, only videos linked to that person in this role (not `GET /api/library`)             | `400 guest_filter_not_allowed`                    |
+| `organization`     | Videos linked to that organization in any role                                                     | `400 guest_filter_not_allowed`                    |
+| `organizationRole` | With `organization`, only videos linked to that organization in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed`                    |
+| `tagKind`          | Videos with at least one tag of that kind, manual or from the folder                               | `400 guest_filter_not_allowed`                    |
 
 `query`, `tag`, `tagKind`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
 that is not a positive integer is `400 invalid_request`. `personRole` without
-`person`, or with a role outside `WorkPersonRole`, is also `400 invalid_request`.
+`person`, or with a role outside `WorkPersonRole`, is also `400 invalid_request`,
+as is `organizationRole` without `organization` or with a role outside
+`WorkOrganizationRole`.
 
 For the owner, a search term matches a video when it appears in the title or
 relative path of one of its locations, in a name or synonym of one of its
