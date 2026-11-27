@@ -155,7 +155,7 @@ tasks:
     desc: Check documentation links and repository artifact rules.
     cmds:
       # Document discovery uses git ls-files, which the Go test cache does not track.
-      - go test -count=1 ./scripts/sddguard
+      - go test -count=1 ./scripts/docguard
 
   audit:
     desc: Check npm and Go dependencies for known vulnerabilities (the Renovate routine runs it daily).

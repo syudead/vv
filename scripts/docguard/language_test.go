@@ -1,4 +1,4 @@
-package sddguard
+package docguard
 
 import (
 	"os"

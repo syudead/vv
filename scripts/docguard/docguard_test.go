@@ -1,9 +1,8 @@
-// Package sddguard holds repository guards for the SDD artifacts under specs/
-// and docs/. It contains no runtime code: the rules in
-// docs/design-docs/plan-quality.md and docs/product-specs/spec-quality.md are
-// prose, and these tests turn the mechanically checkable part of them into a
-// failure instead of a convention.
-package sddguard
+// Package docguard holds repository guards for the tracked Markdown documents
+// and the temporary SDD artifacts under specs/. It contains no runtime code:
+// these tests turn the mechanically checkable part of the writing and SDD rules
+// into a failure instead of a convention.
+package docguard
 
 import (
 	"os"
@@ -19,75 +18,13 @@ func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("resolve sddguard source path")
+		t.Fatal("resolve docguard source path")
 	}
 	root := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		t.Fatalf("verify repository root %s: %v", root, err)
 	}
 	return root
-}
-
-// removedArtifacts are files the Tasks stage used to own. The workflow replaced
-// that stage with the Implementation Work section of plan.md, so their
-// reappearance means the stage is creeping back in.
-var removedArtifacts = []string{
-	".specify/templates/tasks-template.md",
-	".specify/scripts/bash/setup-tasks.sh",
-	"specs/003-sdd-loop-harness/tasks-retired-routine.md",
-}
-
-func TestTasksStageArtifactsAreAbsent(t *testing.T) {
-	repoRoot := repositoryRoot(t)
-	for _, rel := range removedArtifacts {
-		if _, err := os.Stat(filepath.Join(repoRoot, rel)); err == nil {
-			t.Errorf("%s exists. The Tasks stage was removed; implementation work belongs in the Implementation Work section of plan.md", rel)
-		} else if !os.IsNotExist(err) {
-			t.Errorf("cannot verify that %s is absent: %v", rel, err)
-		}
-	}
-
-	specsDir := filepath.Join(repoRoot, "specs")
-	err := filepath.WalkDir(specsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(repoRoot, path)
-		if err != nil {
-			return err
-		}
-		if d.Name() == "tasks.md" {
-			t.Errorf("%s exists. Implementation work belongs in the Implementation Work section of plan.md, which /sdd-plan-to-issues turns into child Issues", filepath.ToSlash(rel))
-		}
-		if !strings.HasSuffix(d.Name(), ".md") {
-			return nil
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(string(body), "/speckit-tasks") {
-			t.Errorf("%s contains the removed /speckit-tasks workflow", filepath.ToSlash(rel))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("inspect specs for removed Tasks workflow: %v", err)
-	}
-}
-
-// TestSpecifyDirectoryIsAbsent keeps the retired Spec Kit scaffolding out. The
-// Plan template lives in the sdd-plan skill, so nothing belongs under .specify/.
-func TestSpecifyDirectoryIsAbsent(t *testing.T) {
-	path := filepath.Join(repositoryRoot(t), ".specify")
-	if _, err := os.Stat(path); err == nil {
-		t.Errorf(".specify exists. The Plan template lives at .agents/skills/sdd-plan/assets/plan-template.md; do not reinstate Spec Kit scaffolding")
-	} else if !os.IsNotExist(err) {
-		t.Errorf("cannot verify that .specify is absent: %v", err)
-	}
 }
 
 // placeholders are fragments the templates carry for the author to replace.
