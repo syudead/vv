@@ -60,6 +60,10 @@ func (f *fakeTags) ListTags(_ context.Context, _ domain.Audience, query domain.T
 	return domain.TagPage{Items: f.tags, Total: len(f.tags), TotalAll: len(f.tags)}, nil
 }
 
+func (f *fakeTags) TagTallies(context.Context, domain.Audience) (domain.TagTallies, error) {
+	return domain.TagTallies{}, f.err
+}
+
 func (f *fakeTags) CreateTag(_ context.Context, name string) (domain.Tag, error) {
 	f.operation, f.lastName = "create", name
 	// Validate names first, matching the real store, to exercise specific error reasons.

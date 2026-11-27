@@ -2692,6 +2692,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tags/tallies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count the tags left to tidy
+         * @description Owner-only. Counts the whole vocabulary's tentative tags, tags without a kind and tags with zero videos; each equals the total listTags gives for tentative=true, kind=none or unused=true alone. While this node reads others, the counts are over every node's tags joined by name, as listTags joins them, reading each link's tags once.
+         */
+        get: operations["getTagTallies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tag-kinds": {
         parameters: {
             query?: never;
@@ -5929,6 +5949,14 @@ export interface components {
             tagCount: number;
             /** @description Distinct current library videos carrying any of those tags. */
             videoCount: number;
+        };
+        TagTallies: {
+            /** @description Tentative tags. */
+            tentative: number;
+            /** @description Tags without a kind. */
+            noKind: number;
+            /** @description Tags with zero videos. */
+            unused: number;
         };
         AddTagSynonymRequest: {
             name: string;
@@ -13662,6 +13690,26 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getTagTallies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tidy-up counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagTallies"];
+                };
+            };
         };
     };
     listTagKinds: {

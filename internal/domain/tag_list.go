@@ -60,3 +60,22 @@ type TagPage struct {
 	// Exact matches original spelling plus filters and is queried only on a limited first page with nonempty search.
 	Exact *Tag
 }
+
+// TagTallies count the whole vocabulary's tags left to tidy; each equals the list's total for one filter.
+type TagTallies struct {
+	Tentative int
+	NoKind    int
+	Unused    int
+}
+
+// TagTally pairs one count of TagTallies with the list filter whose total it is.
+type TagTally struct {
+	Query TagListQuery
+	Count func(*TagTallies) *int
+}
+
+var TagTallyFilters = []TagTally{
+	{TagListQuery{TentativeOnly: true}, func(t *TagTallies) *int { return &t.Tentative }},
+	{TagListQuery{Kind: TagKindFilter{None: true}}, func(t *TagTallies) *int { return &t.NoKind }},
+	{TagListQuery{UnusedOnly: true}, func(t *TagTallies) *int { return &t.Unused }},
+}

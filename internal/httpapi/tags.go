@@ -52,6 +52,28 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
+// GetTagTallies answers the tidy-up counts; on a node that reads others, every link's tags are read once.
+func (s *server) GetTagTallies(w http.ResponseWriter, r *http.Request) {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	var tallies domain.TagTallies
+	var err error
+	if s.mergesVocabulary(r.Context()) {
+		tallies, err = s.mergedTagTallies(r)
+	} else {
+		tallies, err = s.tags.TagTallies(r.Context(), audienceFrom(r.Context()))
+	}
+	if err != nil {
+		s.internalError(w, "Could not count tags.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	body := gen.TagTallies{Tentative: tallies.Tentative, NoKind: tallies.NoKind, Unused: tallies.Unused}
+	writeJSON(w, http.StatusOK, body, s.logger)
+}
+
 // Storage decodes cursor contents; this boundary validates other query constraints.
 func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsParams) (domain.TagListQuery, bool) {
 	sort := sortParam(params.Sort)

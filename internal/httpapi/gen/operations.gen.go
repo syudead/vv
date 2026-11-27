@@ -193,6 +193,7 @@ var ScreenOperations = []ScreenOperation{
 	{Method: "POST", Path: "/api/tags/impact", Response: "TagImpactResponse", Request: "TagImpactRequest", BodyIDs: []string{"ids"}},
 	{Method: "GET", Path: "/api/tags/rejected-names", Response: "RejectedTagNameList"},
 	{Method: "DELETE", Path: "/api/tags/rejected-names"},
+	{Method: "GET", Path: "/api/tags/tallies", Response: "TagTallies"},
 	{Method: "GET", Path: "/api/tags/{id}", Response: "Tag"},
 	{Method: "DELETE", Path: "/api/tags/{id}"},
 	{Method: "PATCH", Path: "/api/tags/{id}", Response: "Tag", Request: "RenameTagRequest"},

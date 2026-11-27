@@ -8083,6 +8083,18 @@ type TagSynonymRequest struct {
 	Name string `json:"name"`
 }
 
+// TagTallies defines model for TagTallies.
+type TagTallies struct {
+	// NoKind Tags without a kind.
+	NoKind int `json:"noKind"`
+
+	// Tentative Tentative tags.
+	Tentative int `json:"tentative"`
+
+	// Unused Tags with zero videos.
+	Unused int `json:"unused"`
+}
+
 // ThumbnailEdit defines model for ThumbnailEdit.
 type ThumbnailEdit struct {
 	// ElapsedMs Milliseconds since submission, frozen at completion for finished runs; omitted in ready state.
@@ -11220,6 +11232,9 @@ type ServerInterface interface {
 	// ListRejectedTagNames List rejected names
 	// (GET /api/tags/rejected-names)
 	ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params ListRejectedTagNamesParams)
+	// GetTagTallies Count the tags left to tidy
+	// (GET /api/tags/tallies)
+	GetTagTallies(w http.ResponseWriter, r *http.Request)
 	// DeleteTag Delete a tag
 	// (DELETE /api/tags/{id})
 	DeleteTag(w http.ResponseWriter, r *http.Request, id TagId)
@@ -16543,6 +16558,20 @@ func (siw *ServerInterfaceWrapper) ListRejectedTagNames(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetTagTallies operation middleware
+func (siw *ServerInterfaceWrapper) GetTagTallies(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTagTallies(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteTag operation middleware
 func (siw *ServerInterfaceWrapper) DeleteTag(w http.ResponseWriter, r *http.Request) {
 
@@ -19631,6 +19660,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags/rejected-names", wrapper.ListRejectedTagNames)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/batch", wrapper.BatchTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/impact", wrapper.TagImpact)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags/tallies", wrapper.GetTagTallies)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tag-kinds", wrapper.ListTagKinds)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tag-kinds", wrapper.CreateTagKind)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.DeleteTagKind)

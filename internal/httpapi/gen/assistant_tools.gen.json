@@ -5419,6 +5419,19 @@
       ]
     },
     {
+      "operationId": "getTagTallies",
+      "method": "GET",
+      "path": "/api/tags/tallies",
+      "summary": "Count the tags left to tidy",
+      "description": "Owner-only. Counts the whole vocabulary's tentative tags, tags without a kind and tags with zero videos; each equals the total listTags gives for tentative=true, kind=none or unused=true alone. While this node reads others, the counts are over every node's tags joined by name, as listTags joins them, reading each link's tags once.",
+      "owner": true,
+      "response": "json",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "operationId": "getThumbnailEdit",
       "method": "GET",
       "path": "/api/thumbnail-edits/{editId}",

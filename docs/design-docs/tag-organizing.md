@@ -53,11 +53,14 @@ of tag cards read 100 at a time for the criteria in the URL (`q`,
 `tentative`, `unused`, `kind`, `sort`). The kind filter under the title and
 the strip of tentative, kindless and unused counts apply those criteria. Every
 count in them is of the whole vocabulary, not of the search: a kind's count is
-its `tagCount`, `All` is the list's `totalAll`, and the three tallies are the
-`total` of a one-row page with that filter alone. The kinds and the tallies are
-read again with every first page, so `Refresh` also drops a kind deleted
-elsewhere. A `tags` event re-reads neither: the counts follow the list, as the
-cards do. The cards are drawn a row at a time near the viewport
+its `tagCount`, `All` is the list's `totalAll`, and the three tallies come from
+one `GET /api/tags/tallies`, each equal to the list's `total` for that filter
+alone. Reading them in one request rather than as three one-row pages matters
+on a paired node, where every tag list request reads each link's whole tag
+list ([peer-library.md](peer-library.md#vocabulary-by-name)). The kinds and
+the tallies are read again with every first page, so `Refresh` also drops a
+kind deleted elsewhere. A `tags` event re-reads neither: the counts follow
+the list, as the cards do. The cards are drawn a row at a time near the viewport
 ([library-ui.md](library-ui.md#no-virtual-scrolling)).
 
 ### Selection and bulk actions
