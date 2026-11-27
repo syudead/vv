@@ -81,6 +81,26 @@ func (s *TagStore) ListTags(ctx context.Context, audience domain.Audience, query
 	return page, nil
 }
 
+// TagTallies counts each of domain.TagTallyFilters as ListTags filters it, in one read snapshot.
+func (s *TagStore) TagTallies(ctx context.Context, audience domain.Audience) (domain.TagTallies, error) {
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.TagTallies{}, fmt.Errorf("cannot start counting tags: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var tallies domain.TagTallies
+	for _, tally := range domain.TagTallyFilters {
+		listed, args := listedTagsCTE(audience, tally.Query)
+		if err := tx.QueryRowContext(ctx, listed+` select count(*) from listed`, args...).Scan(tally.Count(&tallies)); err != nil {
+			return domain.TagTallies{}, fmt.Errorf("cannot count tags: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.TagTallies{}, fmt.Errorf("cannot finish counting tags: %w", err)
+	}
+	return tallies, nil
+}
+
 // An exact raw name/synonym match can fall outside the naturally sorted first page; retrieve it separately.
 func exactListedTag(ctx context.Context, tx *sql.Tx, audience domain.Audience, query domain.TagListQuery) (*domain.Tag, error) {
 	name := strings.TrimSpace(query.Search)

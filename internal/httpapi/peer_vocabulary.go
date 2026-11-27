@@ -138,10 +138,7 @@ func (s *server) listMergedTags(w http.ResponseWriter, r *http.Request, query do
 		s.internalError(w, "Could not load tags.", err)
 		return
 	}
-	keep := func(entry domain.VocabularyEntry[gen.Tag]) bool {
-		return entry.MatchesSearch(query.Search) && (!query.TentativeOnly || entry.Value.Tentative) &&
-			(!query.UnusedOnly || entry.Count == 0) && tagKindFilterMatches(query.Kind, entry.Value.Kind)
-	}
+	keep := func(entry domain.VocabularyEntry[gen.Tag]) bool { return mergedTagMatches(query, entry) }
 	body := gen.TagList{TotalAll: len(merged)}
 	exactName := strings.TrimSpace(query.Search)
 	if query.Limit > 0 && query.Cursor == "" && exactName != "" {
@@ -159,6 +156,29 @@ func (s *server) listMergedTags(w http.ResponseWriter, r *http.Request, query do
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, body, s.logger)
+}
+
+// mergedTagMatches reports whether the joined entry passes query's filters, as the merged list applies them.
+func mergedTagMatches(query domain.TagListQuery, entry domain.VocabularyEntry[gen.Tag]) bool {
+	return entry.MatchesSearch(query.Search) && (!query.TentativeOnly || entry.Value.Tentative) &&
+		(!query.UnusedOnly || entry.Count == 0) && tagKindFilterMatches(query.Kind, entry.Value.Kind)
+}
+
+// mergedTagTallies counts the joined tags of each tally filter from one read of every node's tags.
+func (s *server) mergedTagTallies(r *http.Request) (domain.TagTallies, error) {
+	merged, err := s.mergedTags(r)
+	if err != nil {
+		return domain.TagTallies{}, err
+	}
+	var tallies domain.TagTallies
+	for _, tally := range domain.TagTallyFilters {
+		for _, entry := range merged {
+			if mergedTagMatches(tally.Query, entry) {
+				*tally.Count(&tallies)++
+			}
+		}
+	}
+	return tallies, nil
 }
 
 // mergedTags are every node's tags joined by name, in this node's id space.

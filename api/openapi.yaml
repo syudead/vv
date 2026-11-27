@@ -3920,6 +3920,19 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/tags/tallies:
+    get:
+      operationId: getTagTallies
+      summary: "Count the tags left to tidy"
+      description: "Owner-only. Counts the whole vocabulary's tentative tags, tags without a kind and tags with zero videos; each equals the total listTags gives for tentative=true, kind=none or unused=true alone. While this node reads others, the counts are over every node's tags joined by name, as listTags joins them, reading each link's tags once."
+      responses:
+        "200":
+          description: "Tidy-up counts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagTallies"
+
   /api/tag-kinds:
     get:
       operationId: listTagKinds
@@ -9977,6 +9990,21 @@ components:
         videoCount:
           type: integer
           description: "Distinct current library videos carrying any of those tags."
+
+    TagTallies:
+      type: object
+      required: [tentative, noKind, unused]
+      additionalProperties: false
+      properties:
+        tentative:
+          type: integer
+          description: "Tentative tags."
+        noKind:
+          type: integer
+          description: "Tags without a kind."
+        unused:
+          type: integer
+          description: "Tags with zero videos."
 
     AddTagSynonymRequest:
       type: object

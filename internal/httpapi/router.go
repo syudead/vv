@@ -82,6 +82,8 @@ type MediaFolderUsage interface {
 // Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
 	ListTags(ctx context.Context, audience domain.Audience, query domain.TagListQuery) (domain.TagPage, error)
+	// TagTallies counts the tags of each domain.TagTallyFilters filter as ListTags totals it.
+	TagTallies(ctx context.Context, audience domain.Audience) (domain.TagTallies, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error
@@ -838,10 +840,10 @@ func requiresPatchJSONBody(path string) bool {
 	if id, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
-	// rejected-names, batch, and impact are literal routes without PATCH operations.
+	// rejected-names, batch, impact and tallies are literal routes without PATCH operations.
 	if id, ok := strings.CutPrefix(path, "/api/tags/"); ok {
 		switch id {
-		case "", "rejected-names", "batch", "impact":
+		case "", "rejected-names", "batch", "impact", "tallies":
 			return false
 		}
 		return !strings.Contains(id, "/")

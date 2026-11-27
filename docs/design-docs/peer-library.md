@@ -303,7 +303,9 @@ Tags, tag kinds, people and organizations with the same name are one entity
 on the screens; their lists merge every node's entries in memory with summed
 counts. A kind's tag count is the exception: it counts the joined tags of
 that kind, so it matches the tag list filtered by the kind and a tag both nodes
-hold counts once. The connected links are read at once and joined in slot
+hold counts once. The tag tallies (`GET /api/tags/tallies`) count the same
+joined tags, with this node's kind and tentative state, from one read of each
+link's tag list. The connected links are read at once and joined in slot
 order, so a remote-only entry carries the offset of the first link that holds
 it.
 

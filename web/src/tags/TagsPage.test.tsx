@@ -20,15 +20,13 @@ setUpTagsPageServer();
 
 const genre = { id: 1, name: "Genre", cardFirst: false };
 
-/** List pages, as opposed to the one-row tally reads and the change check's re-reads. */
+/** List pages, as opposed to the change check's re-reads. */
 function listPageRequests(): URLSearchParams[] {
   return server.pageRequests.filter((params) => params.get("limit") === "100");
 }
 
 function rereads(): URLSearchParams[] {
-  return server.pageRequests.filter(
-    (params) => params.get("limit") !== "100" && params.get("limit") !== "1",
-  );
+  return server.pageRequests.filter((params) => params.get("limit") !== "100");
 }
 
 function card(name: string): HTMLElement {
@@ -99,6 +97,8 @@ describe("TagsPage 条件と URL", () => {
     expect(within(tallies).getByRole("button", { name: /Unused/ }).textContent).toMatch(
       /^1/,
     );
+    expect(server.tallyGets).toBe(1);
+    expect(rereads()).toEqual([]);
 
     await user.click(noKind);
     await waitFor(() => expect(probe.search).toBe("?q=rob&kind=none&sort=name"));

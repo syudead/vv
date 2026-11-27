@@ -126,6 +126,8 @@ export const server = {
   nextId: 100,
   getCalls: 0,
   pageRequests: [] as URLSearchParams[],
+  /** Reads of the tidy-up counts. */
+  tallyGets: 0,
   fullGetCalls: 0,
   failFullGets: false,
   /** Override the requested page limit. */
@@ -445,6 +447,24 @@ export function install() {
         });
       }
       return Promise.resolve(respond());
+    }
+
+    if (path === "/api/tags/tallies" && method === "GET") {
+      server.tallyGets += 1;
+      if (server.failAllGets) {
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      const total = (filter: string) =>
+        pageOf(server.tags, new URLSearchParams(filter)).total;
+      return Promise.resolve(
+        jsonResponse({
+          tentative: total("tentative=true"),
+          noKind: total("kind=none"),
+          unused: total("unused=true"),
+        }),
+      );
     }
 
     if (path === "/api/tags/rejected-names" && method === "GET") {
@@ -918,6 +938,7 @@ export function setUpTagsPageServer() {
     server.nextId = 100;
     server.getCalls = 0;
     server.pageRequests = [];
+    server.tallyGets = 0;
     server.fullGetCalls = 0;
     server.pageLimitOverride = null;
     server.failFullGets = false;

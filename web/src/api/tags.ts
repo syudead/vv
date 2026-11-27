@@ -21,6 +21,7 @@ export type TagBatchCommand =
 export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
 export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
 export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
+export type TagTallyCounts = components["schemas"]["TagTallies"];
 export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
 export type TagSynonymMoveResponse = components["schemas"]["TagSynonymMoveResponse"];
 export type TagSynonymDetachResponse = components["schemas"]["TagSynonymDetachResponse"];
@@ -441,6 +442,11 @@ export function tagImpact(
     body: JSON.stringify({ action, ids: Array.from(ids) }),
     signal,
   });
+}
+
+/** The whole vocabulary's tidy-up counts in one read; bypasses the shared cache. */
+export function getTagTallies(signal?: AbortSignal): Promise<TagTallyCounts> {
+  return request<TagTallyCounts>("/api/tags/tallies", { signal });
 }
 
 /** Paginated rejected names bypass the shared cache. */
