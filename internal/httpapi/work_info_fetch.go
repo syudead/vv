@@ -157,10 +157,8 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			s.peerUnreachable(w)
 			return
 		}
-		for _, target := range answer.Targets {
-			target.VideoId = domain.RemoteID(link.slot, target.VideoId)
-			targets = append(targets, target)
-		}
+		rewriteRemoteFillTargets(&answer, domain.VocabularyJoin{Slot: link.slot})
+		targets = append(targets, answer.Targets...)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoFillTargetList{Targets: targets}, s.logger)

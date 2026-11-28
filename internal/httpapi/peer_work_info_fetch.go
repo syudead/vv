@@ -314,6 +314,12 @@ func (s *server) ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
+func rewriteRemoteFillTargets(list *gen.WorkInfoFillTargetList, join domain.VocabularyJoin) {
+	for i := range list.Targets {
+		list.Targets[i].VideoId = join.Remote(list.Targets[i].VideoId)
+	}
+}
+
 // peerVideoDetail is the peer's video id after an apply, in this node's ids, or the bare id when the peer does
 // not answer, as a local apply answers when it cannot read part of the video.
 func (s *server) peerVideoDetail(r *http.Request, id int64) (gen.Video, error) {

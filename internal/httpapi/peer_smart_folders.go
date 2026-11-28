@@ -184,11 +184,8 @@ func (s *server) CountPeerRuleMatches(w http.ResponseWriter, r *http.Request) {
 func (s *server) withPeerSmartFolders(r *http.Request, local []gen.SmartFolderSummary) []gen.SmartFolderSummary {
 	merged := slices.Clone(local)
 	for _, answer := range linkAnswers[gen.SmartFolderList](s, r, "/api/smart-folders", nil) {
-		join := domain.VocabularyJoin{Slot: answer.slot}
-		for _, folder := range answer.value.SmartFolders {
-			rewriteRemoteSmartFolderSummary(&folder, join)
-			merged = append(merged, folder)
-		}
+		rewriteRemoteSmartFolderList(&answer.value, domain.VocabularyJoin{Slot: answer.slot})
+		merged = append(merged, answer.value.SmartFolders...)
 	}
 	slices.SortStableFunc(merged, func(a, b gen.SmartFolderSummary) int {
 		if order := strings.Compare(domain.NaturalSortKey(a.Name), domain.NaturalSortKey(b.Name)); order != 0 {
@@ -197,6 +194,12 @@ func (s *server) withPeerSmartFolders(r *http.Request, local []gen.SmartFolderSu
 		return cmp.Compare(a.Id, b.Id)
 	})
 	return merged
+}
+
+func rewriteRemoteSmartFolderList(list *gen.SmartFolderList, join domain.VocabularyJoin) {
+	for i := range list.SmartFolders {
+		rewriteRemoteSmartFolderSummary(&list.SmartFolders[i], join)
+	}
 }
 
 // rewriteRemoteSmartFolderSummary keeps the peer's favorite, which lives on the node holding the folder.
@@ -219,6 +222,13 @@ func rewriteRemoteSmartFolderCard(card *gen.LibrarySmartFolder, join domain.Voca
 	}
 	rewriteRemotePreviews(card.Previews, join)
 	rewriteRemoteTags(card.Tags, join)
+}
+
+// rewriteRemoteSmartFolderCards leaves out each card's rule, so the caller takes the rules first.
+func rewriteRemoteSmartFolderCards(cards *gen.SmartFolderCards, join domain.VocabularyJoin) {
+	for i := range cards.Cards {
+		rewriteRemoteSmartFolderCard(&cards.Cards[i], join)
+	}
 }
 
 // cardCount is a card's video count, duration and size.
@@ -340,12 +350,15 @@ func (s *server) addRemoteCards(r *http.Request, slots []int64, ids map[int64][]
 			s.logger.Info("the smart folder cards leave out a linked VVMDM", slog.Int64("slot", slot), slog.Any("error", errs[k]))
 			continue
 		}
+		rules := make([]*gen.PeerSmartRule, len(answers[k].Cards))
+		for i, card := range answers[k].Cards {
+			rules[i] = card.PeerRule
+		}
+		rewriteRemoteSmartFolderCards(&answers[k], join.InSlot(slot))
 		for i := range answers[k].Cards {
 			card := &answers[k].Cards[i]
-			rule := card.PeerRule
-			rewriteRemoteSmartFolderCard(card, join.InSlot(slot))
 			merged.cards[card.Id] = card
-			match := matchWithFavorite(rule)
+			match := matchWithFavorite(rules[i])
 			if match == nil {
 				continue
 			}
@@ -578,7 +591,7 @@ func (s *server) readPeerVideos(
 	if err := s.peerGet(r, slot, "/api/videos", values, &answer); err != nil {
 		return domain.MergeSide[gen.SmartFolderItem]{}, err
 	}
-	rewriteRemoteVideos(answer.Items, match.join.InSlot(slot))
+	rewriteRemoteVideoListing(&answer, match.join.InSlot(slot))
 	return peerSide(videoItems(answer.Items), answer.PeerItems, answer.NextCursor)
 }
 
@@ -619,6 +632,7 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 		s.internalError(w, "Could not load the smart folder.", err)
 		return
 	}
+	rewriteRemoteSmartFolderDetail(&detail, join.InSlot(read.slot))
 	sort := cmp.Or(read.query.Sort, domain.VideoSort(*rule.Sort))
 	own, ok := s.remoteFolderSide(w, r, read, path, values, detail, join.InSlot(read.slot))
 	if !ok {
@@ -636,7 +650,7 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 		page.next = next.Encode()
 	}
 	if read.first {
-		s.remoteFolderDetail(&page, detail, join.InSlot(read.slot))
+		remoteFolderDetail(&page, detail)
 	}
 	s.writeSmartFolderPage(w, read, page)
 }
@@ -691,8 +705,8 @@ func (s *server) remoteSmartFolderAnswer(w http.ResponseWriter, err error) bool 
 	return false
 }
 
-// remoteFolderSide is the link's own items of its folder: the detail's until a page has taken one of them, then
-// the items after the link's cursor.
+// remoteFolderSide is the link's own items of its folder: the rewritten detail's until a page has taken one of them,
+// then the items after the link's cursor.
 func (s *server) remoteFolderSide(w http.ResponseWriter, r *http.Request, read smartFolderRead, path string, values url.Values,
 	detail gen.SmartFolderDetail, join domain.VocabularyJoin,
 ) (domain.MergeSide[gen.SmartFolderItem], bool) {
@@ -707,14 +721,12 @@ func (s *server) remoteFolderSide(w http.ResponseWriter, r *http.Request, read s
 		if !s.remoteSmartFolderAnswer(w, s.peerGet(r, read.slot, path+"/items", values, &page)) {
 			return domain.MergeSide[gen.SmartFolderItem]{}, false
 		}
+		rewriteRemoteSmartFolderItemPage(&page, join)
 		items, peerItems, next = page.Items, page.PeerItems, page.NextCursor
 	}
 	shown := slices.DeleteFunc(slices.Clone(items), func(item gen.SmartFolderItem) bool {
 		return item.Kind == gen.SmartFolderItemKindSmartFolder
 	})
-	for i := range shown {
-		rewriteRemoteSmartFolderItem(&shown[i], join)
-	}
 	side, err := peerSide(shown, peerItems, next)
 	if err != nil {
 		s.internalError(w, "The other VVMDM answered in an unexpected form.", err)
@@ -747,36 +759,52 @@ func (s *server) localMatches(r *http.Request, read smartFolderRead, rule *gen.P
 	}, nil
 }
 
-// remoteFolderDetail sets the first page's folder, trail, settings and child folders from the peer's detail.
-func (s *server) remoteFolderDetail(page *smartFolderPage, detail gen.SmartFolderDetail, join domain.VocabularyJoin) {
-	names := detail.SmartFolder.PeerRule.Names
+// remoteFolderDetail sets the first page's folder, trail, settings and child folders from the rewritten detail.
+func remoteFolderDetail(page *smartFolderPage, detail gen.SmartFolderDetail) {
+	page.folder, page.trail, page.settings = detail.SmartFolder, detail.Trail, detail.Settings
+	for _, item := range detail.Items {
+		if item.Kind == gen.SmartFolderItemKindSmartFolder && item.SmartFolder != nil {
+			page.children = append(page.children, item)
+		}
+	}
+}
+
+// rewriteRemoteSmartFolderDetail joins the rule's entities by the names of the folder's rule by name, which it
+// then leaves out with the rest of that rule, as for a card.
+func rewriteRemoteSmartFolderDetail(detail *gen.SmartFolderDetail, join domain.VocabularyJoin) {
+	var names *[]gen.SmartRuleRefName
+	if detail.SmartFolder.PeerRule != nil {
+		names = detail.SmartFolder.PeerRule.Names
+	}
 	rewriteRemoteSmartFolderCard(&detail.SmartFolder, join)
-	page.folder = detail.SmartFolder
-	page.trail = detail.Trail
-	for i := range page.trail {
-		page.trail[i].Id = join.Remote(page.trail[i].Id)
+	for i := range detail.Trail {
+		detail.Trail[i].Id = join.Remote(detail.Trail[i].Id)
 	}
 	if settings := detail.Settings; settings != nil {
 		rewriteRemoteSmartRule(&settings.Rule, names, join)
 		for i := range settings.Missing {
 			settings.Missing[i].Id = join.Remote(settings.Missing[i].Id)
 		}
-		page.settings = settings
 	}
-	for _, item := range detail.Items {
-		if item.Kind == gen.SmartFolderItemKindSmartFolder && item.SmartFolder != nil {
-			rewriteRemoteSmartFolderSummary(item.SmartFolder, join)
-			page.children = append(page.children, item)
-		}
-	}
+	rewriteRemoteSmartFolderItems(detail.Items, join)
 }
 
-func rewriteRemoteSmartFolderItem(item *gen.SmartFolderItem, join domain.VocabularyJoin) {
-	if item.Video != nil {
-		rewriteRemoteVideo(item.Video, join)
-	}
-	if item.Group != nil {
-		rewriteRemoteGroup(item.Group, join)
+func rewriteRemoteSmartFolderItemPage(page *gen.SmartFolderItemPage, join domain.VocabularyJoin) {
+	rewriteRemoteSmartFolderItems(page.Items, join)
+}
+
+func rewriteRemoteSmartFolderItems(items []gen.SmartFolderItem, join domain.VocabularyJoin) {
+	for i := range items {
+		item := &items[i]
+		if item.Video != nil {
+			rewriteRemoteVideo(item.Video, join)
+		}
+		if item.Group != nil {
+			rewriteRemoteGroup(item.Group, join)
+		}
+		if item.SmartFolder != nil {
+			rewriteRemoteSmartFolderSummary(item.SmartFolder, join)
+		}
 	}
 }
 
@@ -824,9 +852,7 @@ func (e *noPeerEntityError) Error() string {
 	return fmt.Sprintf("the other VVMDM has no %s named %q", e.kind, e.name)
 }
 
-var remoteSmartFolderAnswer = remoteOperation{rewrite: rewriteAs(func(folder *gen.SmartFolderSummary, join domain.VocabularyJoin) {
-	rewriteRemoteSmartFolderSummary(folder, join)
-})}
+var remoteSmartFolderAnswer = remoteOperation{rewrite: rewriteAs(rewriteRemoteSmartFolderSummary)}
 
 // peerSmartRuleIDs is rule in the ids of the link in slot: that link's id loses the offset, and this node's entity
 // takes that link's entity of the same name.

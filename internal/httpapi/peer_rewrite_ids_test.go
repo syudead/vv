@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -31,13 +32,30 @@ var sampleJoin = domain.VocabularyJoin{
 // joinedKinds are the kinds the screens join by name; an id of any other kind takes the offset.
 var joinedKinds = map[string]int64{"tag": 101, "tagKind": 102, "person": 103, "organization": 104}
 
-// answerRewrites are the rewriters merged lists and folder reads apply to a whole answer, outside remoteRewrites.
-var answerRewrites = map[string]remoteRewrite{
-	"VideoPage":      rewriteAs(rewriteRemoteVideoPage),
-	"FolderListing":  rewriteAs(rewriteRemoteFolderListing),
-	"GroupListPage":  rewriteAs(rewriteRemoteGroupList),
-	"OrganizeResult": rewriteAs(rewriteRemoteOrganizeResult),
-	"RelatedVideos":  rewriteAs(rewriteRemoteRelated),
+// answerRewrites are the rewriters that merged lists, folder reads, selection operations and forwarded writes apply
+// to a whole peer answer outside remoteRewrites, by response schema. Code that decodes a peer answer rewrites it with
+// one of these, so that this test reaches every id it rewrites.
+var answerRewrites = map[string][]remoteRewrite{
+	"VideoPage":                 {rewriteAs(rewriteRemoteVideoPage), rewriteAs(rewriteRemoteVideoListing)},
+	"LibraryPage":               {rewriteAs(rewriteRemoteLibraryPage)},
+	"FolderListing":             {rewriteAs(rewriteRemoteFolderListing)},
+	"RootFolderListing":         {rewriteAs(rewriteRemoteRootFolders)},
+	"GroupListPage":             {rewriteAs(rewriteRemoteGroupList)},
+	"OrganizeResult":            {rewriteAs(rewriteRemoteOrganizeResult)},
+	"RelatedVideos":             {rewriteAs(rewriteRemoteRelated)},
+	"WatchHistoryPage":          {rewriteAs(rewriteRemoteWatchHistory)},
+	"SmartFolderList":           {rewriteAs(rewriteRemoteSmartFolderList)},
+	"SmartFolderSummary":        {rewriteAs(rewriteRemoteSmartFolderSummary)},
+	"SmartFolderCards":          {rewriteAs(rewriteRemoteSmartFolderCards)},
+	"SmartFolderDetail":         {rewriteAs(rewriteRemoteSmartFolderDetail)},
+	"SmartFolderItemPage":       {rewriteAs(rewriteRemoteSmartFolderItemPage)},
+	"PersonMergeResponse":       {rewriteAs(rewriteRemotePersonMerge)},
+	"OrganizationMergeResponse": {rewriteAs(rewriteRemoteOrganizationMerge)},
+	"VideoEditResponse":         {rewriteAs(rewriteRemoteVideoEditResponse)},
+	"VideoTagsResponse":         {rewriteAs(rewriteRemoteVideoTagsResponse)},
+	"VideoEditSummary":          {rewriteAs(rewriteRemoteEditSummary)},
+	"VideoTagsSummary":          {rewriteAs(rewriteRemoteTagsSummary)},
+	"WorkInfoFillTargetList":    {rewriteAs(rewriteRemoteFillTargets)},
 }
 
 // droppedIDs are the id fields a rewriter leaves out of the answer, as no id of this node can stand for them.
@@ -47,28 +65,37 @@ var droppedIDs = map[string][]string{
 	"FaceCandidateConfirmation": {"/undoActivityId"},
 	// The grouping is edited on the node that holds the folder.
 	"FolderListing": {"/folder/grouping/groupId", "/folders/*/grouping/groupId"},
+	// A folder's rule by name is for the nodes that read it, which this node has already used.
+	"SmartFolderCards":  {"/cards/*/peerRule/names/*/id"},
+	"SmartFolderDetail": {"/smartFolder/peerRule/names/*/id"},
+	// A request of this node never gives a link a remote part, and editOnPeer reports only the link's tags.
+	"VideoEditResponse": {"/merged/*/personId", "/merged/*/undoActivityId", "/remote/failedVideoIds/*", "/skippedPersonIds/*"},
+	"VideoTagsResponse": {"/remote/failedVideoIds/*"},
 }
 
 // Every id openapi.yaml declares in a rewritten answer comes back in this node's id space for its kind: a vocabulary
-// entry joined by name, any other entity with the offset. A new id field fails here until its rewriter covers it.
+// entry joined by name, any other entity with the offset. A new id field fails here until its rewriter covers it;
+// task generate refuses an id without a kind.
 func TestRemoteRewritesCoverEveryResponseID(t *testing.T) {
-	rewrites := maps.Clone(remoteRewrites)
-	maps.Copy(rewrites, answerRewrites)
+	rewrites := map[string][]remoteRewrite{}
+	for schema, rewrite := range remoteRewrites {
+		rewrites[schema] = []remoteRewrite{rewrite}
+	}
+	for schema, list := range answerRewrites {
+		rewrites[schema] = append(rewrites[schema], list...)
+	}
 	for _, schema := range slices.Sorted(maps.Keys(rewrites)) {
 		ids := gen.ScreenResponseIDs[schema]
-		if rewrites[schema] == nil {
-			if len(ids) > 0 {
-				t.Errorf("%s passes through as the peer sent it but carries ids %v", schema, ids)
+		for _, rewrite := range rewrites[schema] {
+			if rewrite == nil {
+				if len(ids) > 0 {
+					t.Errorf("%s passes through as the peer sent it but carries ids %v", schema, ids)
+				}
+				continue
 			}
-			continue
-		}
-		for _, id := range ids {
-			if id.Kind == "" {
-				t.Errorf("%s %s: no x-vv-entity names its kind", schema, id.Field)
+			for _, problem := range rewrittenIDProblems(rewrite, schema, ids, droppedIDs[schema]) {
+				t.Errorf("%s %s", schema, problem)
 			}
-		}
-		for _, problem := range rewrittenIDProblems(rewrites[schema], ids, droppedIDs[schema]) {
-			t.Errorf("%s %s", schema, problem)
 		}
 	}
 }
@@ -82,18 +109,21 @@ func TestRewrittenIDProblemsNamesEachUncoveredID(t *testing.T) {
 	ids := []gen.ScreenID{{Field: "/id", Kind: "tag"}, {Field: "/kind/id", Kind: "tagKind"}}
 	want := []string{"/id = 103, want 101", "/kind/id is left out of the answer"}
 
-	if got := rewrittenIDProblems(rewrite, ids, nil); !slices.Equal(got, want) {
+	if got := rewrittenIDProblems(rewrite, "Tag", ids, nil); !slices.Equal(got, want) {
 		t.Errorf("problems = %q, want %q", got, want)
 	}
-	got := rewrittenIDProblems(rewrite, ids, []string{"/id", "/kind/id"})
+	got := rewrittenIDProblems(rewrite, "Tag", ids, []string{"/id", "/kind/id"})
 	if want := []string{"/id is kept, though no id of this node stands for it"}; !slices.Equal(got, want) {
 		t.Errorf("problems with dropped ids = %q, want %q", got, want)
 	}
+	if got, want := rewrittenIDProblems(rewrite, "Person", nil, nil), []string{"rewrites gen.Tag, not gen.Person"}; !slices.Equal(got, want) {
+		t.Errorf("problems for another schema = %q, want %q", got, want)
+	}
 }
 
-// rewrittenIDProblems rewrites an answer that holds every id of ids and names each id the result does not carry in
-// this node's id space, unless dropped lists it.
-func rewrittenIDProblems(rewrite remoteRewrite, ids []gen.ScreenID, dropped []string) []string {
+// rewrittenIDProblems rewrites an answer of schema that holds every id of ids and names each id the result does not
+// carry in this node's id space, unless dropped lists it, and a rewriter registered for another schema.
+func rewrittenIDProblems(rewrite remoteRewrite, schema string, ids []gen.ScreenID, dropped []string) []string {
 	var sample any
 	for _, id := range ids {
 		sample = withSampleID(sample, strings.Split(id.Field, "/")[1:])
@@ -105,6 +135,9 @@ func rewrittenIDProblems(rewrite remoteRewrite, ids []gen.ScreenID, dropped []st
 	value, err := rewrite(body, sampleJoin)
 	if err != nil {
 		return []string{"cannot decode the sample answer: " + err.Error()}
+	}
+	if name := reflect.TypeOf(value).Name(); name != schema {
+		return []string{fmt.Sprintf("rewrites gen.%s, not gen.%s", name, schema)}
 	}
 	out, err := json.Marshal(value)
 	if err != nil {

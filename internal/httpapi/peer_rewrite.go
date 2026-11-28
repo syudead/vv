@@ -196,11 +196,29 @@ func rewriteRemoteFolderListing(listing *gen.FolderListing, join domain.Vocabula
 
 // rewriteRemoteVideoPage drops the peer's item cursors, which only a merged list reads.
 func rewriteRemoteVideoPage(page *gen.VideoPage, join domain.VocabularyJoin) {
-	rewriteRemoteVideos(page.Items, join)
+	rewriteRemoteVideoListing(page, join)
 	page.PeerItems = nil
-	if page.MissingTagIds != nil {
-		for i, id := range *page.MissingTagIds {
-			(*page.MissingTagIds)[i] = join.Remote(id)
+}
+
+// rewriteRemoteVideoListing keeps the peer's item cursors for the merged list that reads the page.
+func rewriteRemoteVideoListing(page *gen.VideoPage, join domain.VocabularyJoin) {
+	rewriteRemoteVideos(page.Items, join)
+	rewriteRemoteIDs(page.MissingTagIds, join)
+}
+
+// rewriteRemoteLibraryPage keeps the peer's item cursors for the merged list that reads the page.
+func rewriteRemoteLibraryPage(page *gen.LibraryPage, join domain.VocabularyJoin) {
+	for i := range page.Items {
+		rewriteRemoteLibraryItem(&page.Items[i], join)
+	}
+	rewriteRemoteIDs(page.MissingTagIds, join)
+}
+
+// rewriteRemoteIDs gives each id the offset; a missing entity has no name to join it by.
+func rewriteRemoteIDs(ids *[]int64, join domain.VocabularyJoin) {
+	if ids != nil {
+		for i, id := range *ids {
+			(*ids)[i] = join.Remote(id)
 		}
 	}
 }

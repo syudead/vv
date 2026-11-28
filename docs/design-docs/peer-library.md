@@ -211,22 +211,38 @@ lists, for each JSON response schema, every integer or integer array named
 `id`, `ids`, `*Id` or `*Ids` at any depth, as a JSON pointer with its kind
 (`gen.ScreenResponseIDs`). The kind is read from `x-vv-entity` as the
 [assistant registry](assistant.md) reads it: on the property, on an id array's
-items, or on the enclosing object for that object's own `id`.
+items, or on the enclosing object for that object's own `id`. Generation fails
+on a response id without a kind. An id whose entity a sibling `kind` field
+names takes a kind for that union, such as `assistantLabel`, `smartRuleRef` or
+`credit`; `selectionTarget` is a selection's video, or a group or smart folder
+of a collections delete.
+
+Code that decodes a peer answer rewrites it with a named function for its
+response schema, never with id rewrites inline: the merged video, library and
+watch-history lists, root folders, smart-folder lists, cards, details and item
+pages, credit merges, the tag and edit answers and summaries of a selection,
+and fill targets. A rewriter registered for forwarding, or listed with these in
+the test, is checked against the schema its generated type names.
 `TestRemoteRewritesCoverEveryResponseID` builds an answer holding every listed
-id for each registered rewriter, and for the whole-answer rewriters of the
-merged lists and folder reads, and checks the rewritten answer:
+id for each such rewriter and checks the rewritten answer:
 
 | Field kind | Required after the rewrite |
 | --- | --- |
 | `tag`, `tagKind`, `person`, `organization` in an object with a `name` | The local id of that name |
 | Any other kind, or a vocabulary id without a `name` beside it | The offset form |
 | Listed in the test as dropped, with the reason | Absent from the answer |
-| No `x-vv-entity` | The test fails until the spec names the kind |
 
 A new id field in a rewritten schema therefore fails the test until its
 rewriter covers it, instead of reaching the screens in the peer's ids. The
-rewriters stay hand-written for URLs, dropped fields and the peer's own values,
-which the table does not describe.
+credit matches of a work-info fetch, whose kind is the request's, and the
+related-video pages, whose peer ids rank the list before each video is
+rewritten, are read for the peer's ids and stay outside the test.
+
+The rewriters are hand-written rather than driven from `gen.ScreenResponseIDs`.
+A driver would walk each decoded value by JSON pointer through reflection or a
+second decode of every list page, and would still need hand-written code for
+URLs, dropped fields, the peer's own values and a smart rule joined by the
+names beside it. The test already fails on any id the hand-written code misses.
 Media operations are proxied as byte streams with `Range` and the caching
 headers passed through, since the browser has no session on the peer.
 

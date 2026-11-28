@@ -330,7 +330,7 @@ func (s *server) peerSend(req *http.Request, slot int64, guest, media bool) ([]b
 type mergedRead[T any] struct {
 	path  string
 	local func(q domain.VideoQuery) (listPart[T], error)
-	// peer decodes and rewrites the answer of the link in slot into this node's id space.
+	// peer decodes and rewrites the answer of the link in slot into this node's id space, missing ids included.
 	peer func(r *http.Request, slot int64, query url.Values) (listPart[T], error)
 }
 
@@ -400,8 +400,8 @@ func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mer
 		sides = append(sides, part.side)
 		page.total += part.total
 		for _, id := range part.missing {
-			if remote := domain.RemoteID(part.side.Slot, id); !slices.Contains(page.missing, remote) {
-				page.missing = append(page.missing, remote)
+			if !slices.Contains(page.missing, id) {
+				page.missing = append(page.missing, id)
 			}
 		}
 	}
@@ -466,7 +466,7 @@ func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q doma
 			if err := s.peerGet(r, slot, "/api/videos", query, &answer); err != nil {
 				return listPart[gen.Video]{}, err
 			}
-			rewriteRemoteVideos(answer.Items, join.InSlot(slot))
+			rewriteRemoteVideoListing(&answer, join.InSlot(slot))
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.Video]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err
 		},
@@ -507,9 +507,7 @@ func (s *server) listMergedLibrary(w http.ResponseWriter, r *http.Request, q dom
 			if err := s.peerGet(r, slot, "/api/library", query, &answer); err != nil {
 				return listPart[gen.LibraryItem]{}, err
 			}
-			for i := range answer.Items {
-				rewriteRemoteLibraryItem(&answer.Items[i], join.InSlot(slot))
-			}
+			rewriteRemoteLibraryPage(&answer, join.InSlot(slot))
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.LibraryItem]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err
 		},

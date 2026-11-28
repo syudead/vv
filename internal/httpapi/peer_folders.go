@@ -16,12 +16,7 @@ import (
 func (s *server) withPeerRoots(r *http.Request, local []gen.RootFolder) []gen.RootFolder {
 	folders := local
 	for _, answer := range linkAnswers[gen.RootFolderListing](s, r, "/api/folders", url.Values{}) {
-		join := domain.VocabularyJoin{Slot: answer.slot}
-		for i := range answer.value.Folders {
-			folder := &answer.value.Folders[i]
-			folder.RootId = join.Remote(folder.RootId)
-			rewriteRemotePreviews(folder.Previews, join)
-		}
+		rewriteRemoteRootFolders(&answer.value, domain.VocabularyJoin{Slot: answer.slot})
 		folders = append(folders, answer.value.Folders...)
 	}
 	slices.SortStableFunc(folders, func(a, b gen.RootFolder) int {
@@ -31,6 +26,14 @@ func (s *server) withPeerRoots(r *http.Request, local []gen.RootFolder) []gen.Ro
 		return strings.Compare(a.Name, b.Name)
 	})
 	return folders
+}
+
+func rewriteRemoteRootFolders(listing *gen.RootFolderListing, join domain.VocabularyJoin) {
+	for i := range listing.Folders {
+		folder := &listing.Folders[i]
+		folder.RootId = join.Remote(folder.RootId)
+		rewriteRemotePreviews(folder.Previews, join)
+	}
 }
 
 // forwardRemoteFolder forwards a read under one of the peer's media-folder roots; a folder belongs to one node's
