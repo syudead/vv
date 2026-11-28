@@ -424,6 +424,7 @@ sequenceDiagram
 | --- | --- |
 | The fetch, the apply and the reads of kept covers and person images for a remote id are answered by the reading node, not forwarded | The plugin and the kept result exist only there |
 | The peer matches the fetched credits and returns its own ids, which the reading node joins by name as it joins the video's credits | A match shown as `onVideo` must name the same id as the video's credits |
+| An entry the peer answers as new is matched on the reading node too; one it links to a named local entity, by an external ID or another name, shows that entity and goes to the peer under its display name | The nodes join credits by display name only and keep other names per node, so the peer alone would create a second person for a local person's other name |
 | The peer applies the chosen values with its own apply, in one transaction: the title, tags as tentative assignments, the detail fields merged into its stored work information with credits rematched, and the same-person merges | The result is the same as an apply of the peer's own fetch, including the fields the owner left unchosen |
 | The reading node rechecks its plugin before sending, and the peer skips its plugin check | The peer has no copy of the plugin |
 | The peer refuses the apply with `404` when the video's `contentVersion` has changed since the fetch | A reused id must not receive another video's values, as a local apply checks the content key |

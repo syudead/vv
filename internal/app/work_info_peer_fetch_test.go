@@ -76,3 +76,76 @@ func TestApplyPeerFetchedWorkInfoWritesOnlyTheFetchedContent(t *testing.T) {
 		})
 	}
 }
+
+// fakeWorkInfoPeer is a paired node holding one video, matching credits with its own answers.
+type fakeWorkInfoPeer struct {
+	keyedVideos
+	*fakeCreditMatcher
+	*peerApplyRecorder
+}
+
+func (fakeWorkInfoPeer) UploadThumbnailImage(context.Context, int64, string, []byte) (domain.Video, error) {
+	return domain.Video{}, nil
+}
+
+// Nodes join credits by display name only, so an entry the peer lacks but this node knows by another name or an
+// external ID links this node's entity and reaches the peer's apply under its display name.
+func TestFetchPeerWorkInfoLinksTheEntityThisNodeKnowsByAnotherName(t *testing.T) {
+	e := newFetchEnv()
+	sato := domain.CreditRef{ID: 11, Name: "佐藤みか"}
+	peerAoi := domain.CreditRef{ID: 1<<40 + 3, Name: "Aoi"}
+	maker := domain.CreditRef{ID: 21, Name: "Maker Inc."}
+	e.matcher.answers = map[string]domain.CreditMatch{
+		"Mika Sato": {State: domain.CreditMatchExisting, Credit: &sato},
+		"Aoi":       {State: domain.CreditMatchExisting, Credit: &domain.CreditRef{ID: 12, Name: "Aoi Local"}},
+		"Unnamed":   {State: domain.CreditMatchExisting, Credit: &domain.CreditRef{ID: 13, Provisional: true}},
+		"Maker":     {State: domain.CreditMatchExisting, Credit: &maker},
+	}
+	peer := fakeWorkInfoPeer{
+		keyedVideos: keyedVideos{fetchVideo: "peer-key"},
+		fakeCreditMatcher: &fakeCreditMatcher{answers: map[string]domain.CreditMatch{
+			"Aoi": {State: domain.CreditMatchExisting, Credit: &peerAoi},
+		}},
+		peerApplyRecorder: &peerApplyRecorder{},
+	}
+	performers := []domain.FetchedPerson{
+		{Role: domain.PersonPerformer, Name: "Mika Sato"}, {Role: domain.PersonPerformer, Name: "Aoi"},
+		{Role: domain.PersonPerformer, Name: "Unnamed"}, {Role: domain.PersonPerformer, Name: "Newcomer"},
+	}
+	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: domain.FetchedWorkInfo{
+		People: performers, Organizations: []domain.FetchedOrganization{{Role: domain.OrganizationMaker, Name: "Maker"}},
+	}}
+	ctx := context.Background()
+	result, err := e.plugins.FetchPeerWorkInfo(ctx, peer, fetchVideo, 1, "W-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newMatch := domain.CreditMatch{State: domain.CreditMatchNew}
+	wantPeople := []domain.CreditMatch{
+		{State: domain.CreditMatchExisting, Credit: &sato}, {State: domain.CreditMatchExisting, Credit: &peerAoi},
+		newMatch, newMatch,
+	}
+	if !reflect.DeepEqual(result.PersonMatches, wantPeople) {
+		t.Fatalf("person matches = %+v; want %+v", result.PersonMatches, wantPeople)
+	}
+	if want := [][]string{{"Mika Sato", "Unnamed", "Newcomer"}, {"Maker"}}; !reflect.DeepEqual(e.matcher.names, want) {
+		t.Fatalf("this node matched %v; want only the entries the peer lacks, %v", e.matcher.names, want)
+	}
+
+	_, err = e.plugins.ApplyPeerWorkInfoFetch(ctx, peer, fetchVideo, result.ID, domain.WorkInfoSelection{
+		People: []int{0, 1, 2, 3}, Organizations: []int{0},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, person := range peer.peerApplyRecorder.calls[0].Details.People {
+		names = append(names, person.Name)
+	}
+	if want := []string{"佐藤みか", "Aoi", "Unnamed", "Newcomer"}; !reflect.DeepEqual(names, want) {
+		t.Fatalf("the peer's apply names %v; want %v", names, want)
+	}
+	if got := peer.peerApplyRecorder.calls[0].Details.Organizations; len(got) != 1 || got[0].Name != "Maker Inc." {
+		t.Fatalf("the peer's apply organizations = %+v; want Maker Inc.", got)
+	}
+}
