@@ -190,11 +190,14 @@ describe("ScanProgressIndicator", () => {
       name: /^Scanning 4 of 10 videos done\./,
     });
 
+    vi.useFakeTimers();
+
     fireEvent.pointerEnter(trigger);
-    const dialog = await screen.findByRole("dialog");
+    const dialog = screen.getByRole("dialog");
     fireEvent.pointerLeave(trigger.closest(".fixed")!);
     fireEvent.pointerEnter(dialog);
-    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    // The summary closes 100 ms after the pointer leaves it.
+    act(() => vi.advanceTimersByTime(150));
 
     expect(screen.getByRole("dialog")).toBeDefined();
   });
@@ -204,10 +207,11 @@ describe("ScanProgressIndicator", () => {
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
     );
     renderIndicator();
-    const user = userEvent.setup();
     const trigger = await screen.findByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
 
     await user.hover(trigger);
     expect(await screen.findByRole("dialog")).toBeDefined();
@@ -216,7 +220,7 @@ describe("ScanProgressIndicator", () => {
     expect(document.activeElement).not.toBe(trigger);
 
     await user.hover(screen.getByTestId("location"));
-    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    act(() => vi.advanceTimersByTime(150));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -229,12 +233,14 @@ describe("ScanProgressIndicator", () => {
       name: /^Scanning 4 of 10 videos done\./,
     });
 
+    vi.useFakeTimers();
+
     fireEvent.pointerEnter(trigger);
-    expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(screen.getByRole("dialog")).toBeDefined();
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.pointerMove(trigger);
-    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    act(() => vi.advanceTimersByTime(150));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -261,10 +267,11 @@ describe("ScanProgressIndicator", () => {
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
     );
     renderIndicator();
-    const user = userEvent.setup();
     const trigger = await screen.findByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
 
     await user.hover(trigger);
     expect(await screen.findByRole("dialog")).toBeDefined();
@@ -272,7 +279,7 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByTestId("location").textContent).toBe("/settings/scan#scan-status");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(trigger);
-    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    act(() => vi.advanceTimersByTime(150));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { OwnerAudience } from "../testing/audience";
+import { settle } from "../testing/settle";
 import { ScanNoticeProvider, useScanNotice } from "./ScanNoticeProvider";
 import { forgetFailureKeys } from "./scanIssueMemory";
 import { ScanProvider, useScan } from "./ScanProvider";
@@ -347,6 +348,19 @@ describe("ScanNoticeProvider", () => {
         issues: { failed, substituted: 0, revision: id },
       });
 
+    const issueReads = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).startsWith("/api/scans/current/issues"),
+      ).length;
+
+    /** Run action, then wait until the provider has read that scan's failures and acted on them. */
+    async function afterIssueRead(action: () => Promise<void>) {
+      const before = issueReads();
+      await action();
+      await waitFor(() => expect(issueReads()).toBeGreaterThan(before));
+      await settle();
+    }
+
     function serve(current: () => { id: number; files: string[] }) {
       fetchMock.mockImplementation((input) => {
         const url = String(input);
@@ -410,8 +424,7 @@ describe("ScanNoticeProvider", () => {
       expect(screen.getByTestId("notice").textContent).toBe("none");
 
       id = 63;
-      await emitServerEvent("scan", partial(63, 1));
-      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      await afterIssueRead(() => emitServerEvent("scan", partial(63, 1)));
       expect(screen.getByTestId("notice").textContent).toBe("none");
 
       id = 64;
@@ -429,20 +442,20 @@ describe("ScanNoticeProvider", () => {
       );
 
       await emitServerEvent("scan", watch(80, "running"));
-      await emitServerEvent(
-        "scan",
-        watch(80, "failed", {
-          status: "failed",
-          issues: { failed: 1, substituted: 0, revision: 80 },
-        }),
+      await afterIssueRead(() =>
+        emitServerEvent(
+          "scan",
+          watch(80, "failed", {
+            status: "failed",
+            issues: { failed: 1, substituted: 0, revision: 80 },
+          }),
+        ),
       );
-      await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("80"));
-      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      expect(screen.getByTestId("notice").textContent).toBe("80");
       await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
 
       id = 81;
-      await emitServerEvent("scan", partial(81, 1));
-      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      await afterIssueRead(() => emitServerEvent("scan", partial(81, 1)));
       expect(screen.getByTestId("notice").textContent).toBe("none");
     });
 
@@ -455,19 +468,19 @@ describe("ScanNoticeProvider", () => {
       );
 
       await emitServerEvent("scan", scan(70, "running"));
-      await emitServerEvent(
-        "scan",
-        scan(70, "done", {
-          status: "partial",
-          issues: { failed: 1, substituted: 0, revision: 1 },
-        }),
+      await afterIssueRead(() =>
+        emitServerEvent(
+          "scan",
+          scan(70, "done", {
+            status: "partial",
+            issues: { failed: 1, substituted: 0, revision: 1 },
+          }),
+        ),
       );
-      await act(async () => new Promise((done) => setTimeout(done, 20)));
       await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
 
       id = 71;
-      await emitServerEvent("scan", partial(71, 1));
-      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      await afterIssueRead(() => emitServerEvent("scan", partial(71, 1)));
       expect(screen.getByTestId("notice").textContent).toBe("none");
     });
   });

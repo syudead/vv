@@ -10,6 +10,7 @@ import {
   json,
   renderSettings,
 } from "../testing/settingsPage";
+import { settle } from "../testing/settle";
 
 //
 
@@ -110,7 +111,7 @@ describe("SettingsPage: Auto-tagging page and the Ollama connection", () => {
     await waitFor(() => expect(server.requested).toContain(autoTaggingURL));
     await waitFor(() => expect(server.requested).toContain(ollamaURL));
     // Keep loading until connection availability is known, even if settings arrived first.
-    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    await settle();
     expect(
       screen.getByRole("status", { name: "Loading the auto-tagging settings" }),
     ).toBeDefined();

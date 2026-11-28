@@ -207,10 +207,14 @@ describe("FolderPage drag a video onto a video", () => {
       ((await screen.findByRole("textbox", { name: "Group name" })) as HTMLInputElement)
         .value,
     ).toBe("y");
-    await act(async () => {
-      answerRename();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    const videoReads = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).startsWith("/api/folders/3/videos?"),
+      ).length;
+    const readsBefore = videoReads();
+    act(() => answerRename());
+    // The earlier field's late close rereads the list instead of closing the open field.
+    await waitFor(() => expect(videoReads()).toBeGreaterThan(readsBefore));
 
     expect(screen.getByRole("textbox", { name: "Group name" })).toBeDefined();
     expect(server.writes.map((write) => write.path)).toEqual([

@@ -206,6 +206,44 @@ const sourceFiles = ["src/**/*.{ts,tsx}"];
 const testFiles = ["src/**/*.test.{ts,tsx}", "src/testing/**"];
 
 const controlRule = "no-restricted-syntax";
+
+// Tests observe state or advance fake timers instead of waiting out the clock, and assert behaviour instead of snapshots.
+const e2eFiles = ["e2e/**/*.ts"];
+const waitMessage =
+  "Do not wait out the clock in a test; wait for the state (findBy*, waitFor, Playwright's expect) or advance vi.useFakeTimers (docs/design-docs/testing.md, Load and waiting; docs/design-docs/web-testing.md).";
+const snapshotMessage =
+  "Snapshots and screenshots do not state the behaviour; assert what the user sees instead (docs/design-docs/web-testing.md, Existing tests and E2E tests).";
+const snapshotMatchers = [
+  "toMatchSnapshot",
+  "toMatchInlineSnapshot",
+  "toMatchFileSnapshot",
+  "toThrowErrorMatchingSnapshot",
+  "toThrowErrorMatchingInlineSnapshot",
+  "toHaveScreenshot",
+];
+const delayedTimeout = "[arguments.length>1]:not([arguments.1.value=0])";
+const testRestrictedSyntax = [
+  {
+    selector: `CallExpression[callee.name="setTimeout"]${delayedTimeout}`,
+    message: waitMessage,
+  },
+  {
+    selector: `CallExpression[callee.object.name=/^(window|globalThis|self)$/][callee.property.name="setTimeout"]${delayedTimeout}`,
+    message: waitMessage,
+  },
+  {
+    selector: 'CallExpression[callee.property.name="waitForTimeout"]',
+    message: waitMessage,
+  },
+];
+// Vitest files reject snapshots through vitest/no-restricted-matchers; Playwright files have no such plugin.
+const e2eRestrictedSyntax = [
+  ...testRestrictedSyntax,
+  {
+    selector: `CallExpression[callee.property.name=/^(${snapshotMatchers.join("|")})$/]`,
+    message: snapshotMessage,
+  },
+];
 const restrictedClassesRule = "better-tailwindcss/no-restricted-classes";
 const unknownClassesRule = "better-tailwindcss/no-unknown-classes";
 
@@ -430,6 +468,22 @@ export default [
       "vitest/expect-expect": ["error", { assertFunctionNames: ["expect", "expect*"] }],
       // Vitest accepts a failure message as the second expect argument, used for table-row names.
       "vitest/valid-expect": ["error", { maxArgs: 2 }],
+      "vitest/no-restricted-matchers": [
+        "error",
+        Object.fromEntries(snapshotMatchers.map((matcher) => [matcher, snapshotMessage])),
+      ],
+    },
+  },
+  {
+    files: testFiles,
+    rules: {
+      [controlRule]: ["error", ...testRestrictedSyntax],
+    },
+  },
+  {
+    files: e2eFiles,
+    rules: {
+      [controlRule]: ["error", ...e2eRestrictedSyntax],
     },
   },
   {

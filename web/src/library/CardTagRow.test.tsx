@@ -435,16 +435,15 @@ describe("CardTagRow", () => {
       });
 
       it("フォーカスが来ただけでは開かず、Enter で開いて最初のチップへフォーカスが移る", async () => {
-        const user = userEvent.setup();
+        vi.useFakeTimers();
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
         stubWidths();
         const { onPress } = renderRow({ tags: tags("旅行", "2024", "Anime", "夏") });
 
         screen.getByRole("button", { name: "Filter by 旅行" }).focus();
         await user.tab();
         expect(document.activeElement).toBe(overflow());
-        await act(
-          () => new Promise((resolve) => setTimeout(resolve, HOVER_OPEN_DELAY_MS + 100)),
-        );
+        act(() => vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS * 2));
         expect(screen.queryByRole("dialog")).toBeNull();
 
         await user.keyboard("{Enter}");

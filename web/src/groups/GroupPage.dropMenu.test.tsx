@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -12,6 +12,7 @@ import {
   release,
 } from "../testing/cardDrag";
 import { renderPage, seed, server, setUpGroupPageServer } from "../testing/groupPage";
+import { settle } from "../testing/settle";
 
 setUpGroupPageServer();
 
@@ -70,10 +71,11 @@ describe("GroupPage drop a video on a video", () => {
     const field = await screen.findByRole("textbox", { name: "Group name" });
     await user.clear(field);
     await user.type(field, "Pilot");
+    const groupReads = () => [...server.reads.values()].reduce((sum, n) => sum + n, 0);
+    const readsBefore = groupReads();
     await emitServerEvent("group", { ids: [60, 1] });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    await waitFor(() => expect(groupReads()).toBeGreaterThan(readsBefore));
+    await settle();
 
     const kept = screen.getByRole("textbox", { name: "Group name" });
     expect((kept as HTMLInputElement).value).toBe("Pilot");

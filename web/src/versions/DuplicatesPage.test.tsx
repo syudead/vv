@@ -741,9 +741,9 @@ describe("DuplicatesPage", () => {
     expect(server.listCalls).toBe(1);
     server.holdingList = false;
     server.holdList.shift()?.();
-    await screen.findByText("2 pairs");
-    await waitFor(() => expect(server.listCalls).toBe(2));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // The coalesced read answers with one pair; a third read would start as soon as it is shown.
+    server.candidates = [server.candidates[1]!];
+    await screen.findByText("1 pair");
     expect(server.listCalls).toBe(2);
   });
 
@@ -754,7 +754,7 @@ describe("DuplicatesPage", () => {
     await emitServerEvent("scan", { id: 2, status: "finding" });
     for (let i = 0; i < 5; i++)
       await emitServerEvent("scan", { id: 2, status: "running" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // A scan notice reads the list synchronously, so a wrong read would already be counted.
     expect(server.listCalls).toBe(1);
     await emitServerEvent("scan", { id: 2, status: "done" });
     await waitFor(() => expect(server.listCalls).toBe(2));

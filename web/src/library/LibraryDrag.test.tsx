@@ -18,6 +18,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { dropOn, layoutCards, openedMenu } from "../testing/cardDrag";
+import { settle } from "../testing/settle";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
@@ -301,10 +302,8 @@ describe("LibraryPage drag a video onto a video", () => {
     const field = await screen.findByRole("textbox", { name: "Group name" });
     expect((field as HTMLInputElement).value).toBe("D");
 
-    await act(async () => {
-      answerFirst();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    act(() => answerFirst());
+    await settle();
 
     const kept = screen.getByRole("textbox", { name: "Group name" });
     expect((kept as HTMLInputElement).value).toBe("D");
@@ -348,16 +347,11 @@ describe("LibraryPage drag a video onto a video", () => {
       within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
     );
 
-    await act(async () => {
-      answerFirst();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    act(() => answerFirst());
+    await settle();
     expect(screen.queryByRole("textbox", { name: "Group name" })).toBeNull();
 
-    await act(async () => {
-      answerSecond();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    act(() => answerSecond());
     expect(await screen.findByText(/^Couldn't make the group: /)).toBeDefined();
     const field = await screen.findByRole("textbox", { name: "Group name" });
     expect((field as HTMLInputElement).value).toBe("B");
@@ -404,9 +398,7 @@ describe("LibraryPage drag a video onto a video", () => {
     await user.type(field, "Tri");
     await emitServerEvent("group", { ids: [90] });
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(0));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    await settle();
 
     const kept = screen.getByRole("textbox", { name: "Group name" });
     expect((kept as HTMLInputElement).value).toBe("Tri");
@@ -526,10 +518,8 @@ describe("LibraryPage drag a video onto a video", () => {
     );
     await user.click(screen.getByRole("link", { name: "C" }));
     await waitFor(() => expect(screen.queryByRole("link", { name: "C" })).toBeNull());
-    await act(async () => {
-      answer();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
+    act(() => answer());
+    await settle();
 
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(screen.queryByText(/Bundled 2 videos/)).toBeNull();
