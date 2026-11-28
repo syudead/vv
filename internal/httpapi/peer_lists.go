@@ -265,6 +265,11 @@ func (s *server) peerGet(r *http.Request, slot int64, path string, query url.Val
 // peerCall sends body, when set, as JSON to path on the node of the link in slot as the viewer and decodes a 200
 // or 201 answer into out, when set; a 204 answers nothing, and any other answer is a *peerRefusal.
 func (s *server) peerCall(r *http.Request, slot int64, method, path string, query url.Values, body, out any) error {
+	return s.peerCallContext(r.Context(), slot, method, path, query, body, out)
+}
+
+// peerCallContext is peerCall for the viewer of ctx.
+func (s *server) peerCallContext(ctx context.Context, slot int64, method, path string, query url.Values, body, out any) error {
 	if s.peerLink == nil {
 		return domain.ErrPeerUnreachable
 	}
@@ -277,14 +282,14 @@ func (s *server) peerCall(r *http.Request, slot int64, method, path string, quer
 		payload = bytes.NewReader(raw)
 	}
 	target := url.URL{Path: path, RawQuery: query.Encode()}
-	req, err := http.NewRequestWithContext(r.Context(), method, target.String(), payload)
+	req, err := http.NewRequestWithContext(ctx, method, target.String(), payload)
 	if err != nil {
 		return err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	answer, err := s.peerSend(req, slot, !audienceFrom(r.Context()).IsOwner(), false)
+	answer, err := s.peerSend(req, slot, !audienceFrom(ctx).IsOwner(), false)
 	if err != nil || out == nil || answer == nil {
 		return err
 	}

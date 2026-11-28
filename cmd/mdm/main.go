@@ -421,15 +421,18 @@ func run(opts runOptions) error {
 	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, pluginProxy, ingest, personImages, logger)
 	defer closeWorkInfoPlugins()
 	handler, assistantRunner := httpapi.NewServer(httpapi.Options{
-		Build:            build,
-		Pinger:           db,
-		Videos:           libraryStore,
-		Playback:         playbackStore,
-		Scans:            scans,
-		MediaFolders:     mediaFolders,
-		FolderUsage:      mediaFolders,
-		Tags:             db.Tags(),
-		Credits:          db.Credits(),
+		Build:        build,
+		Pinger:       db,
+		Videos:       libraryStore,
+		Playback:     playbackStore,
+		Scans:        scans,
+		MediaFolders: mediaFolders,
+		FolderUsage:  mediaFolders,
+		Tags:         db.Tags(),
+		Credits:      db.Credits(),
+		Vocabulary: app.NewVocabularyChanges(app.VocabularyChangesOptions{
+			Tags: db.Tags(), Credits: db.Credits(), Joins: libraryStore,
+		}),
 		WorkInfo:         db.WorkInfo(),
 		MediaInfo:        libraryStore,
 		Visibility:       db.Visibility(),

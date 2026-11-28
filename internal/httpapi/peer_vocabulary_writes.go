@@ -8,16 +8,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// While this node reads others, a rename, merge or deletion of a tag, person or organization is applied by name on
-// every link in slot order and then here, once every link is connected and, for a rename, no link holds the new
-// name, so the common failures, a link that is down or a name taken, leave every node unchanged; a failure after
-// some links applied it is answered as is.
+// While this node reads others, the VocabularyChanges use case applies a rename, merge or deletion of a tag, person
+// or organization by name on every link in slot order and then here; this file adapts the links to it and answers
+// its errors (docs/design-docs/peer-library.md#vocabulary-by-name).
 
 // maxPeerVocabularyBody fits a merge of the most sources a merge takes.
 const maxPeerVocabularyBody = 8 << 20
@@ -25,13 +23,6 @@ const maxPeerVocabularyBody = 8 << 20
 var vocabularyListPaths = map[domain.VocabularyKind]string{
 	domain.VocabularyTag: "/api/tags", domain.VocabularyPerson: "/api/people",
 	domain.VocabularyOrganization: "/api/organizations",
-}
-
-func vocabularyKindOf(kind domain.CreditKind) domain.VocabularyKind {
-	if kind == domain.CreditPerson {
-		return domain.VocabularyPerson
-	}
-	return domain.VocabularyOrganization
 }
 
 // ApplyPeerVocabulary applies the peer's change to this node's entry of the same name.
@@ -120,30 +111,6 @@ func creditNameTakenBody(kind domain.CreditKind) gen.Error {
 	}
 }
 
-// vocabularyLinks are the links a rename, merge or deletion writes by name, in slot order: none for the peer's own
-// request or a node that reads none. While a link is not connected nothing is written: it answers 409
-// peer_unreachable naming the first such link in slot order, and ok is false.
-func (s *server) vocabularyLinks(w http.ResponseWriter, r *http.Request) ([]domain.PeerLinkState, bool) {
-	links, err := s.readLinks(r.Context())
-	if err != nil {
-		s.internalError(w, "Could not read the pairing.", err)
-		return nil, false
-	}
-	for _, link := range links {
-		if link.State != domain.PeerConnected {
-			s.peerNotConnected(w, link.Link.Name)
-			return nil, false
-		}
-	}
-	return links, true
-}
-
-// vocabularyPeer reports whether a rename, merge or deletion also goes to the links, as vocabularyLinks checks.
-func (s *server) vocabularyPeer(w http.ResponseWriter, r *http.Request) (propagate, ok bool) {
-	links, ok := s.vocabularyLinks(w, r)
-	return len(links) > 0, ok
-}
-
 // peerNotConnected answers 409 peer_unreachable with name, the link's, in Error.peer when it is known.
 func (s *server) peerNotConnected(w http.ResponseWriter, name string) {
 	s.writeErrorBody(w, http.StatusConflict, gen.Error{
@@ -152,13 +119,143 @@ func (s *server) peerNotConnected(w http.ResponseWriter, name string) {
 	})
 }
 
+func valueOrDefault(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+// linkVocabulary is the links of this node as a change by name reaches them, for the VocabularyChanges use case.
+type linkVocabulary struct{ s *server }
+
+func (s *server) links() domain.VocabularyLinks { return linkVocabulary{s: s} }
+
+func (l linkVocabulary) Links(ctx context.Context) ([]domain.PeerLinkState, error) {
+	return l.s.readLinks(ctx)
+}
+
+func (l linkVocabulary) Entries(ctx context.Context, slot int64, kind domain.VocabularyKind) ([]domain.LinkVocabularyEntry, error) {
+	return l.s.peerEntries(ctx, slot, kind)
+}
+
+func (l linkVocabulary) Apply(ctx context.Context, link domain.PeerLink, change domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+	body := gen.PeerVocabularyRequest{
+		Kind: gen.PeerVocabularyRequestKind(change.Kind), Action: gen.PeerVocabularyRequestAction(change.Action),
+		Name: optionalString(change.Name), NewName: optionalString(change.NewName), Into: optionalString(change.Into),
+	}
+	if len(change.Sources) > 0 {
+		body.Sources = &change.Sources
+	}
+	var result gen.PeerVocabularyResult
+	err := l.s.peerCallContext(ctx, link.Slot, http.MethodPost, "/api/peer/vocabulary", url.Values{}, body, &result)
+	return domain.VocabularyOutcome{Changed: result.Changed, Skipped: result.Skipped}, err
+}
+
+// peerVocabularyItem is an entry of the peer's whole list of a kind, in the peer's id space, as peerEntries reads it;
+// only a tag has synonyms.
+type peerVocabularyItem struct {
+	ID       int64    `json:"id"`
+	Name     string   `json:"name"`
+	Synonyms []string `json:"synonyms"`
+}
+
+// peerRequestEntries is peerEntries for the viewer of r.
+func (s *server) peerRequestEntries(r *http.Request, slot int64, kind domain.VocabularyKind) ([]domain.LinkVocabularyEntry, error) {
+	return s.peerEntries(r.Context(), slot, kind)
+}
+
+func (s *server) peerEntries(ctx context.Context, slot int64, kind domain.VocabularyKind) ([]domain.LinkVocabularyEntry, error) {
+	var answer struct {
+		Items []peerVocabularyItem `json:"items"`
+	}
+	if err := s.peerCallContext(ctx, slot, http.MethodGet, vocabularyListPaths[kind], url.Values{}, nil, &answer); err != nil {
+		return nil, err
+	}
+	entries := make([]domain.LinkVocabularyEntry, len(answer.Items))
+	for i, item := range answer.Items {
+		entries[i] = domain.LinkVocabularyEntry{ID: item.ID, Name: item.Name, Synonyms: item.Synonyms}
+	}
+	return entries, nil
+}
+
+// vocabularyConfigured answers 500 with message and reports false when the vocabulary use case is missing.
+func (s *server) vocabularyConfigured(w http.ResponseWriter, message string) bool {
+	if s.vocabulary == nil {
+		s.internalError(w, message, nil)
+		return false
+	}
+	return true
+}
+
+// holdTagNames takes the tag-name lock of the vocabulary use case and returns its unlock, for a deferred call.
+func (s *server) holdTagNames() (unlock func()) {
+	if s.vocabulary == nil {
+		return func() {}
+	}
+	return s.vocabulary.HoldTagNames()
+}
+
+// writeVocabularyChangeError answers an error of a change by name: a name taken here or on a link, or a link that
+// is down, refused or failed; any other error is the local write's, which fallback answers.
+func (s *server) writeVocabularyChangeError(w http.ResponseWriter, err error, fallback func(http.ResponseWriter, error)) {
+	var taken *domain.VocabularyNameTakenError
+	var link *domain.VocabularyLinkError
+	switch {
+	case errors.As(err, &taken):
+		body := tagNameTakenBody(taken.NewName, domain.TagRef{Name: taken.Holder})
+		if creditKind, ok := taken.Kind.CreditKind(); ok {
+			body = creditNameTakenBody(creditKind)
+		}
+		body.Peer = optionalString(taken.Link)
+		s.writeErrorBody(w, http.StatusConflict, body)
+	case errors.As(err, &link):
+		s.vocabularyLinkFailure(w, link)
+	default:
+		fallback(w, err)
+	}
+}
+
 // vocabularyFailure answers an error of reading or writing a link's vocabulary, naming the link when err does.
 func (s *server) vocabularyFailure(w http.ResponseWriter, err error) {
-	if errors.Is(err, domain.ErrPeerUnreachable) {
-		s.peerNotConnected(w, linkErrorName(err))
-		return
+	s.writeVocabularyChangeError(w, err, func(w http.ResponseWriter, err error) {
+		if errors.Is(err, domain.ErrPeerUnreachable) {
+			s.peerNotConnected(w, linkErrorName(err))
+			return
+		}
+		s.internalError(w, "Could not apply the change on the other VVMDM.", err)
+	})
+}
+
+// vocabularyLinkFailure answers a link's refusal of a change with the link's status and error, its name in
+// Error.peer; a link that is down answers 409 peer_unreachable.
+func (s *server) vocabularyLinkFailure(w http.ResponseWriter, link *domain.VocabularyLinkError) {
+	var refusal *peerRefusal
+	switch {
+	case link.Change != nil && errors.As(link.Err, &refusal) && refusal.problem != nil:
+		problem := *refusal.problem
+		if problem.Reason != nil && *problem.Reason == gen.ErrorReasonTagNameTaken {
+			newName := link.Change.NewName
+			problem = tagNameTakenBody(newName, domain.TagRef{Name: valueOrDefault(problem.TagName, newName)})
+		}
+		problem.Peer = &link.Link
+		s.writeErrorBody(w, refusal.status, problem)
+	case errors.Is(link.Err, domain.ErrPeerUnreachable):
+		s.peerNotConnected(w, link.Link)
+	default:
+		s.internalError(w, "Could not apply the change on the other VVMDM.", link)
 	}
-	s.internalError(w, "Could not apply the change on the other VVMDM.", err)
+}
+
+// vocabularyPeer reports whether a rename, merge or deletion also goes to the links; while a link is not
+// connected nothing is written: it answers 409 peer_unreachable naming the first such link, and ok is false.
+func (s *server) vocabularyPeer(w http.ResponseWriter, r *http.Request) (propagate, ok bool) {
+	propagate, err := s.vocabulary.Propagates(r.Context(), s.links())
+	if err != nil {
+		s.vocabularyFailure(w, err)
+		return false, false
+	}
+	return propagate, true
 }
 
 // sendVocabulary applies change by name on every link in slot order. When a link refuses or fails, it answers w
@@ -172,110 +269,32 @@ func (s *server) sendVocabulary(w http.ResponseWriter, r *http.Request, change d
 func (s *server) sendVocabularyExcept(
 	w http.ResponseWriter, r *http.Request, change domain.VocabularyChange, skip int64,
 ) (domain.VocabularyOutcome, bool) {
-	links, err := s.readLinks(r.Context())
+	outcome, err := s.vocabulary.Send(r.Context(), s.links(), change, skip)
 	if err != nil {
-		s.internalError(w, "Could not read the pairing.", err)
+		s.vocabularyFailure(w, err)
 		return domain.VocabularyOutcome{}, false
 	}
-	var out domain.VocabularyOutcome
-	for _, link := range links {
-		if link.Link.Slot == skip {
-			continue
-		}
-		outcome, ok := s.sendVocabularyTo(w, r, link.Link, change)
-		if !ok {
-			return domain.VocabularyOutcome{}, false
-		}
-		out.Changed = out.Changed || outcome.Changed
-		out.Skipped = append(out.Skipped, outcome.Skipped...)
-	}
-	return out, true
+	return outcome, true
 }
 
-// sendVocabularyTo applies change on link; when link refuses or fails, it answers w naming link and reports false.
-func (s *server) sendVocabularyTo(
-	w http.ResponseWriter, r *http.Request, link domain.PeerLink, change domain.VocabularyChange,
-) (domain.VocabularyOutcome, bool) {
-	body := gen.PeerVocabularyRequest{
-		Kind: gen.PeerVocabularyRequestKind(change.Kind), Action: gen.PeerVocabularyRequestAction(change.Action),
-		Name: optionalString(change.Name), NewName: optionalString(change.NewName), Into: optionalString(change.Into),
-	}
-	if len(change.Sources) > 0 {
-		body.Sources = &change.Sources
-	}
-	var result gen.PeerVocabularyResult
-	err := s.peerCall(r, link.Slot, http.MethodPost, "/api/peer/vocabulary", url.Values{}, body, &result)
-	var refusal *peerRefusal
-	switch {
-	case err == nil:
-		return domain.VocabularyOutcome{Changed: result.Changed, Skipped: result.Skipped}, true
-	case errors.As(err, &refusal) && refusal.problem != nil:
-		problem := *refusal.problem
-		if problem.Reason != nil && *problem.Reason == gen.ErrorReasonTagNameTaken {
-			problem = tagNameTakenBody(change.NewName, domain.TagRef{Name: valueOrDefault(problem.TagName, change.NewName)})
-		}
-		problem.Peer = &link.Name
-		s.writeErrorBody(w, refusal.status, problem)
-	default:
-		s.vocabularyFailure(w, &linkError{name: link.Name, err: err})
-	}
-	return domain.VocabularyOutcome{}, false
-}
-
-func valueOrDefault(value *string, fallback string) string {
-	if value == nil {
-		return fallback
-	}
-	return *value
-}
-
-// vocabularyNames are the canonical names of ids: this node's from its store and each link's from that link's
-// whole list; an id of a slot without a link has no name here.
+// vocabularyNames are the canonical names of ids on this node and the links.
 func (s *server) vocabularyNames(r *http.Request, kind domain.VocabularyKind, ids []int64) (map[int64]string, error) {
-	local, links := domain.SlotIDs(ids)
-	names := map[int64]string{}
-	if len(local) > 0 {
-		var err error
-		if creditKind, ok := kind.CreditKind(); ok {
-			names, err = s.credits.Names(r.Context(), creditKind, local)
-		} else {
-			names, err = s.tags.TagNames(r.Context(), local)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-	for _, slot := range sortedSlots(links) {
-		items, err := s.peerEntries(r, slot, kind)
-		if errors.Is(err, domain.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return nil, s.namedLinkError(r.Context(), slot, err)
-		}
-		for _, item := range items {
-			if item.Name != "" && slices.Contains(links[slot], item.ID) {
-				names[domain.RemoteID(slot, item.ID)] = item.Name
-			}
-		}
-	}
-	return names, nil
+	return s.vocabulary.Names(r.Context(), s.links(), kind, ids)
 }
 
-// peerVocabularyItem is an entry of the peer's whole list of a kind, in the peer's id space, as peerEntries reads it;
-// only a tag has synonyms.
-type peerVocabularyItem struct {
-	ID       int64    `json:"id"`
-	Name     string   `json:"name"`
-	Synonyms []string `json:"synonyms"`
-}
-
-func (s *server) peerEntries(r *http.Request, slot int64, kind domain.VocabularyKind) ([]peerVocabularyItem, error) {
-	var answer struct {
-		Items []peerVocabularyItem `json:"items"`
+// deleteOnPeer deletes every link's entry of id's name and reports whether the local deletion follows; a link's own
+// entry has none here, so it is answered here.
+func (s *server) deleteOnPeer(w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, id int64) bool {
+	deleteHere, err := s.vocabulary.DeleteOnLinks(r.Context(), s.links(), kind, id)
+	switch {
+	case err != nil:
+		s.vocabularyFailure(w, err)
+		return false
+	case !deleteHere:
+		w.Header().Set("Cache-Control", cacheNoStore)
+		w.WriteHeader(http.StatusNoContent)
 	}
-	err := s.peerGet(r, slot, vocabularyListPaths[kind], url.Values{}, &answer)
-	return answer.Items, err
+	return deleteHere
 }
 
 // restoreBody lets the next reader of r read raw again.
@@ -283,71 +302,13 @@ func restoreBody(r *http.Request, raw []byte) {
 	r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(raw)), int64(len(raw))
 }
 
-// renameTagOnPeer renames every link's tag of id's name before RenameTag renames id; it answers w and reports false
-// when the rename stops here. A name the rule refuses, or a tag that is not here, is left to the local rename.
-func (s *server) renameTagOnPeer(w http.ResponseWriter, r *http.Request, id int64, name string) bool {
-	return s.tagNameOnPeer(w, r, id, name, domain.VocabularyRename, func(ctx context.Context, current, normalized string) (send, ok bool) {
-		if current == normalized {
-			return false, true
-		}
-		return true, s.tagNameFree(w, ctx, normalized)
-	})
-}
-
-// tagNameOnPeer sends action, which gives every link's tag of id's canonical name the normalized name, once check
-// says to send it; check answers w itself when ok is false. It answers w and reports false when the change stops
-// here; a name the rule refuses, or a tag that is not here, is left to the local change.
-func (s *server) tagNameOnPeer(
-	w http.ResponseWriter, r *http.Request, id int64, name string, action domain.VocabularyAction,
-	check func(ctx context.Context, current, normalized string) (send, ok bool),
-) bool {
-	normalized, err := domain.NormalizeTagName(name)
-	if err != nil {
-		return true
-	}
-	propagate, ok := s.vocabularyPeer(w, r)
-	if !ok || !propagate {
-		return ok
-	}
-	names, err := s.tags.TagNames(r.Context(), []int64{id})
-	if err != nil {
-		s.internalError(w, "Could not load the tag.", err)
-		return false
-	}
-	current, found := names[id]
+// remoteVocabularyID is the remote id in the path of a forwarded write of kind, 0 when the path names none.
+func remoteVocabularyID(r *http.Request, kind domain.VocabularyKind) int64 {
+	id, _, found := remotePath(r.URL.EscapedPath(), vocabularyListPaths[kind]+"/")
 	if !found {
-		return true
+		return 0
 	}
-	if send, ok := check(r.Context(), current, normalized); !ok || !send {
-		return ok
-	}
-	holderOf := func(items []peerVocabularyItem) (string, bool) {
-		return renameHolder(items, domain.VocabularyTag, current, normalized)
-	}
-	if action == domain.VocabularyPromote {
-		holderOf = func(items []peerVocabularyItem) (string, bool) { return promoteHolder(items, current, normalized) }
-	}
-	if !s.nameFreeOnLinks(w, r, domain.VocabularyTag, normalized, 0, holderOf) {
-		return false
-	}
-	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
-		Kind: domain.VocabularyTag, Action: action, Name: current, NewName: normalized,
-	})
-	return ok
-}
-
-// tagNameFree answers 409 tag_name_taken and reports false when a tag here holds the normalized name.
-func (s *server) tagNameFree(w http.ResponseWriter, ctx context.Context, normalized string) bool {
-	owner, taken, err := s.tags.LookupTagName(ctx, normalized)
-	switch {
-	case err != nil:
-		s.internalError(w, "Could not look up the tag name.", err)
-		return false
-	case taken:
-		s.writeTagNameTaken(w, normalized, owner)
-		return false
-	}
-	return true
+	return id
 }
 
 // checkRemoteTagRename refuses the forwarded rename of a link's tag to a name a tag here holds, and renames the
@@ -355,55 +316,16 @@ func (s *server) tagNameFree(w http.ResponseWriter, ctx context.Context, normali
 func (s *server) checkRemoteTagRename(w http.ResponseWriter, r *http.Request) bool {
 	var body gen.RenameTagRequest
 	raw, ok := s.readJSONBodyRaw(w, r, &body)
-	if !ok {
+	if !ok || !s.vocabularyConfigured(w, "Tag storage is not configured.") {
 		return false
 	}
 	restoreBody(r, raw)
-	normalized, err := domain.NormalizeTagName(body.Name)
-	return err != nil ||
-		(s.tagNameFree(w, r.Context(), normalized) && s.renameOnOtherLinks(w, r, domain.VocabularyTag, normalized))
-}
-
-// renameOnOtherLinks renames, by name, the entry of the path's remote id on every other link before the rename is
-// forwarded to the id's own link, so one name stays one entry on every node; it answers w and reports false when
-// the rename stops. With one link it does nothing, and the forward answers as before. An entry without a name, a
-// provisional person, has nothing to rename elsewhere, so only the new name is checked there; an empty newName
-// unnames a person.
-func (s *server) renameOnOtherLinks(w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, newName string) bool {
-	id, _, found := remotePath(r.URL.EscapedPath(), vocabularyListPaths[kind]+"/")
-	links, err := s.readLinks(r.Context())
-	switch {
-	case !found || err != nil || len(links) < 2:
-		return true
-	case !s.linksAllConnected(w, r):
-		return false
-	}
-	names, err := s.vocabularyNames(r, kind, []int64{id})
+	err := s.vocabulary.RenameRemoteTag(r.Context(), s.links(), remoteVocabularyID(r, domain.VocabularyTag), body.Name)
 	if err != nil {
 		s.vocabularyFailure(w, err)
 		return false
 	}
-	current, named := names[id]
-	_, credit := kind.CreditKind()
-	change := domain.VocabularyChange{Kind: kind, Action: domain.VocabularyRename, Name: current, NewName: newName}
-	switch {
-	case !named && credit && newName != "":
-		return s.renameFreeOnLinks(w, r, kind, "", newName, domain.RemoteSlot(id))
-	case !named || current == newName:
-		return true
-	case newName == "":
-		change = domain.VocabularyChange{Kind: kind, Action: domain.VocabularyUnname, Name: current}
-	case !s.renameFreeOnLinks(w, r, kind, current, newName, 0):
-		return false
-	}
-	_, ok := s.sendVocabularyExcept(w, r, change, domain.RemoteSlot(id))
-	return ok
-}
-
-// linksAllConnected is vocabularyLinks as a check alone.
-func (s *server) linksAllConnected(w http.ResponseWriter, r *http.Request) bool {
-	_, ok := s.vocabularyLinks(w, r)
-	return ok
+	return true
 }
 
 // checkRemoteCreditRename refuses the forwarded rename of a link's person or organization to a name an entry here
@@ -412,36 +334,21 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 	return func(s *server, w http.ResponseWriter, r *http.Request) bool {
 		var body gen.CreditPatch
 		raw, ok := s.readJSONBodyRaw(w, r, &body)
-		if !ok {
+		if !ok || !s.vocabularyConfigured(w, "People and organization storage is not configured.") {
 			return false
 		}
 		restoreBody(r, raw)
 		normalized, ok := forwardedDisplayName(kind, body, raw)
-		switch {
-		case !ok:
+		if !ok {
 			return true
-		case normalized == "":
-			return s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), "")
 		}
-		kept, ok := s.remoteNameKept(w, r, vocabularyKindOf(kind), normalized)
-		return ok && (kept || s.creditNameFree(w, r.Context(), kind, 0, normalized) &&
-			s.renameOnOtherLinks(w, r, vocabularyKindOf(kind), normalized))
+		id := remoteVocabularyID(r, domain.VocabularyKindOf(kind))
+		if err := s.vocabulary.RenameRemoteCredit(r.Context(), s.links(), kind, id, normalized); err != nil {
+			s.vocabularyFailure(w, err)
+			return false
+		}
+		return true
 	}
-}
-
-// remoteNameKept reports whether name is already the display name of the path's remote entry, as when an edit
-// changes only the other names: that renames nothing, so this node's entry of the name is its own join, not a clash.
-func (s *server) remoteNameKept(w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, name string) (kept, ok bool) {
-	id, _, found := remotePath(r.URL.EscapedPath(), vocabularyListPaths[kind]+"/")
-	if !found {
-		return false, true
-	}
-	names, err := s.vocabularyNames(r, kind, []int64{id})
-	if err != nil {
-		s.vocabularyFailure(w, err)
-		return false, false
-	}
-	return names[id] == name, true
 }
 
 // forwardedDisplayName is the normalized display name a forwarded patch sets, "" for a person's emptied list, and
@@ -458,184 +365,10 @@ func forwardedDisplayName(kind domain.CreditKind, body gen.CreditPatch, raw []by
 		return "", false
 	case patch.Names != nil:
 		input, err := domain.NormalizeCredit(kind, domain.CreditInput{Names: *patch.Names})
-		return displayNameOf(input.Names), err == nil
+		return domain.DisplayNameOf(input.Names), err == nil
 	case patch.Name == nil:
 		return "", false
 	}
 	normalized, err := domain.NormalizeCreditName(*patch.Name)
 	return normalized, err == nil && normalized != ""
-}
-
-// creditNameFree answers 409 with the kind's name_taken reason and reports false when an entry here other than id
-// holds the name.
-func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind domain.CreditKind, id int64, name string) bool {
-	join, err := s.vocabularyJoin(ctx, 0)
-	if err != nil {
-		s.internalError(w, "Could not read the names of people and organizations.", err)
-		return false
-	}
-	holders := join.People
-	if kind == domain.CreditOrganization {
-		holders = join.Organizations
-	}
-	if holder, taken := holders[name]; taken && holder != id {
-		s.creditNameTaken(w, kind)
-		return false
-	}
-	return true
-}
-
-// renameFreeOnLinks answers 409, naming the link, and reports false when a link other than the one in skip would
-// refuse renaming its entry of name to newName, because another of its entries holds newName, as its own rule
-// does. It runs before any link is written, so a taken name leaves every node unchanged and the owner can repeat
-// the rename once the name is free. An empty name, a provisional person's, names no entry, so any holder refuses.
-func (s *server) renameFreeOnLinks(
-	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, name, newName string, skip int64,
-) bool {
-	return s.nameFreeOnLinks(w, r, kind, newName, skip, func(items []peerVocabularyItem) (string, bool) {
-		return renameHolder(items, kind, name, newName)
-	})
-}
-
-// nameFreeOnLinks is renameFreeOnLinks with holderOf naming the entry of a link's items that refuses newName.
-func (s *server) nameFreeOnLinks(
-	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, newName string, skip int64,
-	holderOf func(items []peerVocabularyItem) (string, bool),
-) bool {
-	links, err := s.readLinks(r.Context())
-	if err != nil {
-		s.internalError(w, "Could not read the pairing.", err)
-		return false
-	}
-	for _, link := range links {
-		if link.Link.Slot == skip {
-			continue
-		}
-		items, err := s.peerEntries(r, link.Link.Slot, kind)
-		if err != nil {
-			s.vocabularyFailure(w, &linkError{name: link.Link.Name, err: err})
-			return false
-		}
-		holder, taken := holderOf(items)
-		if !taken {
-			continue
-		}
-		body := tagNameTakenBody(newName, domain.TagRef{Name: holder})
-		if creditKind, ok := kind.CreditKind(); ok {
-			body = creditNameTakenBody(creditKind)
-		}
-		body.Peer = &link.Link.Name
-		s.writeErrorBody(w, http.StatusConflict, body)
-		return false
-	}
-	return true
-}
-
-// renameHolder is the canonical name of the entry among items, other than name's, that holds newName as its
-// canonical name or a tag's synonym; a name several entries hold names the lowest id, as the store's rule does.
-func renameHolder(items []peerVocabularyItem, kind domain.VocabularyKind, name, newName string) (string, bool) {
-	var renamed, holder *peerVocabularyItem
-	for i := range items {
-		item := &items[i]
-		if name != "" && item.Name == name && (renamed == nil || item.ID < renamed.ID) {
-			renamed = item
-		}
-		holds := item.Name == newName || (kind == domain.VocabularyTag && slices.Contains(item.Synonyms, newName))
-		if holds && (holder == nil || item.ID < holder.ID) {
-			holder = item
-		}
-	}
-	if holder == nil || (renamed != nil && renamed.ID == holder.ID) {
-		return "", false
-	}
-	return holder.Name, true
-}
-
-// promoteHolder is renameHolder for a tag promote, except that a tag whose canonical name is newName and which holds
-// name as a synonym holds nothing: an earlier promote applied on that link, which its promote answers unchanged.
-func promoteHolder(items []peerVocabularyItem, name, newName string) (string, bool) {
-	for _, item := range items {
-		if item.Name == newName && slices.Contains(item.Synonyms, name) {
-			return "", false
-		}
-	}
-	return renameHolder(items, domain.VocabularyTag, name, newName)
-}
-
-// syncCreditNameOnPeer checks patch against id's entry and, when it changes the display name, renames every link's
-// entry of the current name, or unnames it for a person the patch leaves without names, before the local update.
-// The check runs first so a list the rule refuses changes no node; a provisional person has no name a link could
-// hold, so only the new name is checked on every node.
-func (s *server) syncCreditNameOnPeer(
-	w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64, patch domain.CreditPatch,
-) bool {
-	if patch.Name == nil && patch.Names == nil {
-		return true
-	}
-	propagate, ok := s.vocabularyPeer(w, r)
-	if !ok || !propagate {
-		return ok
-	}
-	current, err := s.credits.Get(r.Context(), api.kind, id)
-	if err != nil {
-		return true
-	}
-	next, err := domain.PatchCredit(current, patch)
-	if err != nil {
-		s.writeCreditError(w, api, err)
-		return false
-	}
-	newName := displayNameOf(next.Names)
-	kind := vocabularyKindOf(api.kind)
-	switch {
-	case newName == current.Name:
-		return true
-	case newName == "":
-		_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{Kind: kind, Action: domain.VocabularyUnname, Name: current.Name})
-		return ok
-	case !s.creditNameFree(w, r.Context(), api.kind, id, newName) ||
-		!s.renameFreeOnLinks(w, r, kind, current.Name, newName, 0):
-		return false
-	case current.Name == "":
-		return true
-	}
-	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
-		Kind: kind, Action: domain.VocabularyRename, Name: current.Name, NewName: newName,
-	})
-	return ok
-}
-
-// displayNameOf is the first entry of normalized names, or "" for a provisional person's empty list.
-func displayNameOf(names []domain.CreditName) string {
-	if len(names) == 0 {
-		return ""
-	}
-	return names[0].Name
-}
-
-// deleteOnPeer deletes every link's entry of id's name and reports whether the local deletion follows; a link's own
-// entry has none here, so it is answered here. An id that names nothing is left to the local deletion's 404.
-func (s *server) deleteOnPeer(w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, id int64) bool {
-	propagate, ok := s.vocabularyPeer(w, r)
-	if !ok || !propagate {
-		return ok
-	}
-	names, err := s.vocabularyNames(r, kind, []int64{id})
-	if err != nil {
-		s.vocabularyFailure(w, err)
-		return false
-	}
-	name, found := names[id]
-	if !found {
-		return true
-	}
-	if _, ok := s.sendVocabulary(w, r, domain.VocabularyChange{Kind: kind, Action: domain.VocabularyDelete, Name: name}); !ok {
-		return false
-	}
-	if domain.IsRemoteID(id) {
-		w.Header().Set("Cache-Control", cacheNoStore)
-		w.WriteHeader(http.StatusNoContent)
-		return false
-	}
-	return true
 }

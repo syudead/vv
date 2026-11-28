@@ -365,12 +365,28 @@ node alone.
 Synonyms, kinds of a tag, tentative state, rejected names, images and links
 stay per node.
 
+The `VocabularyChanges` use case in `internal/app` owns this order, the checks
+before any write and the tag-name lock
+([tag-organizing.md](tag-organizing.md#promote-reaches-the-paired-nodes)); it
+reaches the links through the `domain.VocabularyLinks` port, which the HTTP
+layer implements per request, and answers typed errors
+(`domain.VocabularyLinkError`, `domain.VocabularyNameTakenError`) that the
+screen API maps to its statuses. Merges plan their names in the HTTP layer and
+send them through the same use case.
+
+The external API (`/api/v1` and `/mcp`) writes this node's vocabulary only,
+batch deletion included
+([external-api.md](../how-to/external-api.md)): its token holder sees this
+node's library alone, so a deletion by name would remove entries on a node it
+cannot see.
+
 | Rejected | Why |
 | --- | --- |
 | A node column or a cache of the peer's vocabulary | Pairing would change local data, and a cache goes stale |
 | Applying locally and replaying later | A replay queue needs its own conflict handling |
 | Writing the connected links and skipping the rest | A link that is down would keep the old name, and the screens would show two entries |
 | Undoing the earlier links after a refusal | A deletion or merge has no inverse write |
+| The external API's rename, merge or batch deletion reaching the links | Its caller addresses this node's ids and reads this node's lists only, and the how-to promises a change of this VVMDM only |
 
 ## Collections
 

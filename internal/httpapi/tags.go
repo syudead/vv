@@ -198,17 +198,12 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if s.tags == nil {
-		s.internalError(w, "Tag storage is not configured.", nil)
+	if !s.tagChangesConfigured(w) {
 		return
 	}
-	defer s.holdTagNames()()
-	if !s.renameTagOnPeer(w, r, id, body.Name) {
-		return
-	}
-	tag, err := s.tags.RenameTag(r.Context(), id, body.Name)
+	tag, err := s.vocabulary.RenameTag(r.Context(), s.links(), id, body.Name)
 	if err != nil {
-		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
+		s.writeTagChangeError(w, err, normalizedTagNameOrRaw(body.Name))
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -216,8 +211,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 }
 
 func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
-	if s.tags == nil {
-		s.internalError(w, "Tag storage is not configured.", nil)
+	if !s.tagChangesConfigured(w) {
 		return
 	}
 	defer s.holdTagNames()()
@@ -245,8 +239,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
 	}
-	if s.tags == nil {
-		s.internalError(w, "Tag storage is not configured.", nil)
+	if !s.tagChangesConfigured(w) {
 		return
 	}
 	defer s.holdTagNames()()
@@ -356,6 +349,9 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	if req.Action == domain.TagBatchDelete && !s.vocabularyConfigured(w, "Tag storage is not configured.") {
 		return
 	}
 	defer s.holdTagNames()()
@@ -544,6 +540,20 @@ func normalizedTagNameOrRaw(name string) string {
 	return normalized
 }
 
+// tagChangesConfigured answers 500 and reports false when tag storage or the vocabulary use case is missing.
+func (s *server) tagChangesConfigured(w http.ResponseWriter) bool {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return false
+	}
+	return s.vocabularyConfigured(w, "Tag storage is not configured.")
+}
+
+// writeTagChangeError answers an error of a tag change by name, the local write's as writeTagError does.
+func (s *server) writeTagChangeError(w http.ResponseWriter, err error, submittedName string) {
+	s.writeVocabularyChangeError(w, err, func(w http.ResponseWriter, err error) { s.writeTagError(w, err, submittedName) })
+}
+
 func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName string) {
 	var nameConflict *domain.TagNameConflict
 	var mergeRequired *domain.TagMergeRequired
@@ -594,27 +604,4 @@ func tagNameTakenBody(submittedName string, owner domain.TagRef) gen.Error {
 
 func (s *server) invalidTagName(w http.ResponseWriter, err error, prefix string) {
 	s.writeErrorBody(w, http.StatusBadRequest, tagNameErrorBody(err, prefix))
-}
-
-func tagNameErrorBody(err error, prefix string) gen.Error {
-	body := gen.Error{Code: codeInvalidRequest, Message: prefix + "The tag name cannot be used."}
-	var invalid *domain.InvalidTagNameError
-	if !errors.As(err, &invalid) {
-		return body
-	}
-	var reason gen.ErrorReason
-	switch invalid.Problem {
-	case domain.TagNameEmpty:
-		reason, body.Message = reasonTagNameEmpty, prefix+"Enter a tag name."
-	case domain.TagNameControlCharacters:
-		reason, body.Message = reasonTagNameControlCharacters, prefix+"Tag names cannot contain control characters."
-	case domain.TagNameTooLong:
-		limit := domain.TagNameMaxLength
-		reason, body.Limit = reasonTagNameTooLong, &limit
-		body.Message = prefix + "Tag names must be at most " + strconv.Itoa(limit) + " characters."
-	default:
-		return body
-	}
-	body.Reason = &reason
-	return body
 }

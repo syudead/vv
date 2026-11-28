@@ -232,8 +232,9 @@ already holds `name` as a synonym, an earlier promote applied there, answers
 repeated. A link without either tag answers `changed: false`, and a `newName`
 another of its tags holds answers `409 tag_name_taken`.
 
-One lock on the node holds a promote or a rename of a local tag from the
-links' write through the local write, so two concurrent changes of one tag
+One lock on the node, held by the `VocabularyChanges` use case, holds a
+promote or a rename of a local tag from the links' write through the local
+write, so two concurrent changes of one tag
 send the links the canonical name the earlier one left, not a stale one.
 Every other write here that can take a synonym or a tag away (adding or
 removing a synonym, `move`, `detach`, delete, merge, reject and the batch

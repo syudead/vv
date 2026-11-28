@@ -25,6 +25,23 @@ func (k VocabularyKind) CreditKind() (CreditKind, bool) {
 	return "", false
 }
 
+// VocabularyKindOf is the vocabulary kind of a person or organization.
+func VocabularyKindOf(kind CreditKind) VocabularyKind {
+	if kind == CreditPerson {
+		return VocabularyPerson
+	}
+	return VocabularyOrganization
+}
+
+// DisplayNameOf is the first of normalized names, the name the paired nodes join an entry by, or "" for a
+// provisional person's empty list.
+func DisplayNameOf(names []CreditName) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0].Name
+}
+
 type VocabularyAction string
 
 const (

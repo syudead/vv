@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/mediafs"
 )
@@ -261,7 +262,19 @@ func testServerOptions(opts Options) Options {
 	if opts.Auth == nil {
 		opts.Auth = ownerAuth{}
 	}
+	if opts.Vocabulary == nil {
+		opts.Vocabulary = testVocabulary(opts.Tags, opts.Credits, opts.Videos)
+	}
 	return opts
+}
+
+// testVocabulary is the vocabulary use case cmd/mdm wires, over the test's stores.
+func testVocabulary(tags Tags, credits Credits, videos Library) *app.VocabularyChanges {
+	var joins app.VocabularyJoins
+	if videos != nil {
+		joins = videos
+	}
+	return app.NewVocabularyChanges(app.VocabularyChangesOptions{Tags: tags, Credits: credits, Joins: joins})
 }
 
 // Use ownerAuth to isolate routes; auth_test.go verifies the real boundary.
