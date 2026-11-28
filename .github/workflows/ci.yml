@@ -85,9 +85,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Generation needs shadcn from web/ and openapi-typescript from tools/.
+          # Generation needs shadcn from web/ and openapi-typescript from tools/; check-docs needs remark from tools/.
           - group: go lint
-            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check build-windows-check static-binary-check
+            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check build-windows-check static-binary-check check-docs
             web: true
             tools: true
             golangci: true
@@ -335,28 +335,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: needs.changes.outputs.code == 'false'
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        id: setup-go
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: needs.changes.outputs.code == 'false'
         with:
-          go-version-file: go.mod
-          cache: false
-
-      # Reuse the test job cache without saving a document-only cache.
-      - name: Goのビルドキャッシュを復元する
-        if: needs.changes.outputs.code == 'false'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
-          restore-keys: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
+          node-version: 26
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
 
       - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
         if: needs.changes.outputs.code == 'false'
         with:
           install_args: "task"
+
+      - name: Node開発ツールを取得する
+        if: needs.changes.outputs.code == 'false'
+        run: npm --prefix tools ci
 
       - name: 文書を検査する
         if: needs.changes.outputs.code == 'false'

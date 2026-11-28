@@ -68,6 +68,18 @@ changes. Record the scope and results in the PR; reuse passing results until
 relevant inputs change. After a fix, rerun the failed check and those affected
 by the fix. Format only affected files, or use `task fmt` for a broad rewrite.
 
+`task check-docs` lints every tracked Markdown file except the vendored
+`.agents/skills/shadcn/` with remark (`tools/remark/config.mjs`) and fails on
+any warning. It reports broken relative links and anchors, including anchors in
+other files (remark-validate-links), trailing whitespace, numbered headings
+(W-9), Japanese prose (W-1), a `docs/design-docs/` or `docs/product-specs/`
+document missing from its `index.md`, template placeholders left under
+`specs/`, and links from `ARCHITECTURE.md`, `README.md` or `docs/` into
+`specs/`. Its `sdd-citations-check` fails when a tracked file outside
+`specs/`, code included, cites a path inside a feature's `specs/` directory.
+The task also runs the unit tests of the repository's remark rules, and needs
+the `tools/` npm dependencies that `task setup` installs.
+
 CI runs these additional checks without making them a local pre-push gate;
 `task check-ci` reproduces them together, and each task can run on its own.
 
@@ -116,7 +128,7 @@ flowchart LR
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
 runs full local and CI-only tasks as parallel `Checks (<group>)` jobs: Go lint
-with generation, migration and Windows lint/build checks, Go tests,
+with generation, migration, Windows lint/build and document checks, Go tests,
 Web lint with the SPA build check, and the Vitest suite split into three shards
 (`task test-web-report -- --shard=1/3`). `task test-web` remains an explicit
 build-and-test command. Keep both local and CI-only tasks represented in

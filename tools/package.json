@@ -4,6 +4,18 @@
   "devDependencies": {
     "jscpd": "4.3.0",
     "openapi-typescript": "7.13.0",
-    "typescript": "5.9.3"
+    "remark": "15.0.1",
+    "remark-cli": "12.0.1",
+    "remark-frontmatter": "5.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-lint-no-trailing-spaces": "5.0.0",
+    "remark-validate-links": "13.1.0",
+    "typescript": "5.9.3",
+    "unified-lint-rule": "3.0.1",
+    "unist-util-visit": "5.1.0"
+  },
+  "overrides": {
+    "glob": "^14.0.6",
+    "minimatch@^9": "^11.0.9"
   }
 }

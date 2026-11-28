@@ -153,8 +153,21 @@ tasks:
   check-docs:
     desc: Check documentation links and repository artifact rules.
     cmds:
-      # Document discovery uses git ls-files, which the Go test cache does not track.
-      - go test -count=1 ./scripts/docguard
+      - task: lint-docs
+      - task: sdd-citations-check
+      - node --test tools/remark/*.test.mjs
+
+  lint-docs:
+    desc: Lint tracked Markdown with remark (tools/remark/config.mjs); any warning fails.
+    # Tracked files only, so ignored worktrees cannot add stale findings. The vendored shadcn skill follows upstream rules.
+    cmds:
+      - node tools/node_modules/remark-cli/cli.js --rc-path tools/remark/config.mjs --no-config --no-ignore --no-stdout --frail --quiet $(git ls-files -- '*.md' ':!:.agents/skills/shadcn/')
+
+  sdd-citations-check:
+    desc: Fail when a tracked file outside specs/ cites a feature's temporary SDD artifact.
+    # Covers code comments, API descriptions and generated files as well as Markdown; this file holds the pattern.
+    cmds:
+      - git grep -nIE '(^|[^a-zA-Z0-9_-])specs/[0-9]{3}-[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+' -- . ':!:specs/' ':!:Taskfile.yml' && { echo "Cite permanent design docs instead of temporary SDD artifacts." >&2; exit 1; } || test $? -eq 1
 
   audit:
     desc: Check npm and Go dependencies for known vulnerabilities (the Renovate routine runs it daily).
