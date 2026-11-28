@@ -7,7 +7,7 @@ import { Toolbar } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { CompactSortControls, SortMenu } from "../videoList/SortControls";
+import { sortViewControl } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 export interface FolderToolbarProps {
@@ -65,29 +65,13 @@ export default function FolderToolbar({
         />
       }
       view={[
-        {
-          id: "sort",
-          label: t.list.sort.heading,
-          inlineFrom: "md",
-          control: (
-            <SortMenu
-              sort={sort}
-              onSortChange={onSortChange}
-              onShuffle={onShuffle}
-              disabled={disabled}
-            />
-          ),
-          compact: (
-            <CompactSortControls
-              name="folder-compact-sort"
-              sort={sort}
-              onSortChange={onSortChange}
-              onShuffle={onShuffle}
-              disabled={disabled}
-            />
-          ),
-          compactLabelled: true,
-        },
+        sortViewControl({
+          name: "folder-compact-sort",
+          sort,
+          onSortChange,
+          onShuffle,
+          disabled,
+        }),
         {
           id: "size",
           label: t.list.cardSize,

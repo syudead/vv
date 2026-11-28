@@ -269,9 +269,11 @@ which wraps like the library and reads the next page as its end comes into
 view. The page reads the person with `GET /api/people/{id}` and the videos with
 `GET /api/videos?person={id}`, in the library's default order; each shelf adds
 `personRole`, so totals and paging stay the server's
-([library-ui.md](library-ui.md)). A role without videos draws no shelf, and a
-person without videos shows one empty state. The page is owner-only, as the
-rest of `/people`.
+([library-ui.md](library-ui.md)). The top bar's search, filter and sort apply
+to every shelf
+([library-ui.md](library-ui.md#video-shelves-on-tag-person-and-organization-pages)).
+A role without matching videos draws no shelf, and a person without videos
+shows one empty state. The page is owner-only, as the rest of `/people`.
 
 | Rejected                                   | Why                                                                                     |
 | ------------------------------------------ | --------------------------------------------------------------------------------------- |

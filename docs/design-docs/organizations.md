@@ -102,7 +102,8 @@ The videos follow as one `Shelf` per role with videos, `Maker` then `Label`,
 each reading `GET /api/videos?organization={id}&organizationRole={role}` in the
 library's default order and loading more as its end comes into view, as the
 person page's shelves do
-([people.md](people.md#the-person-page)). A read without the role decides
+([people.md](people.md#the-person-page)), under the top bar's search, filter
+and sort. A read without the role decides
 the loading, failed and empty blocks for the whole list, so an organization
 without videos shows one `No videos yet`. Unlike the person page, a role whose
 first read fails keeps its shelf heading and shows the failure with `Retry`,

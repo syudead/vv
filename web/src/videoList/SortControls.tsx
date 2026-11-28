@@ -33,6 +33,7 @@ import {
 } from "../ui/shadcn/dropdown-menu";
 import { FieldLegend, FieldSet } from "../ui/shadcn/field";
 import { Label } from "../ui/shadcn/label";
+import type { ToolbarViewControl } from "../ui/patterns/toolbar";
 import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import IconToggleGroup from "./IconToggleGroup";
@@ -154,6 +155,21 @@ export function SortMenu({
       disabled={disabled}
     />
   );
+}
+
+/** The sort as a top-bar `Toolbar` view control: the menu from `md`, the radio list in the popover below it. */
+export function sortViewControl(
+  props: SortControlProps & { /** Radio group name, unique on the page. */ name: string },
+): ToolbarViewControl {
+  const { name, ...menu } = props;
+  return {
+    id: "sort",
+    label: t.list.sort.heading,
+    inlineFrom: "md",
+    control: <SortMenu {...menu} />,
+    compact: <CompactSortControls name={name} {...menu} />,
+    compactLabelled: true,
+  };
 }
 
 export function CompactSortControls({

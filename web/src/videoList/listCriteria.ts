@@ -205,6 +205,15 @@ export function hasConditions(criteria: ListCriteria): boolean {
   return criteria.query !== "" || criteria.favorite;
 }
 
+/** Change the sort; random takes a seed other than the current one, and the others take none. */
+export function sortChange(sort: VideoSort): (current: ListCriteria) => ListCriteria {
+  return (current) => ({
+    ...current,
+    sort,
+    seed: sort === "random" ? newSeed(current.seed) : undefined,
+  });
+}
+
 /** Clear filters while retaining sort and seed. */
 export function clearConditions(criteria: ListCriteria): ListCriteria {
   return { ...criteria, query: "", favorite: false };

@@ -1,22 +1,22 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { useEffect, useMemo, useRef } from "react";
+import { Link } from "react-router";
 
-import { listVideos, type Video } from "../api/client";
-import { errorText, t, type UiText } from "../i18n";
+import { useVideos } from "../api/useVideos";
+import { t } from "../i18n";
 import { libraryFilterPath } from "../library/libraryPath";
 import { TAG_PARAM } from "../library/tagCriteria";
 import { Shelf } from "../ui/patterns/shelf";
 import { Button } from "../ui/shadcn/button";
-import { Skeleton } from "../ui/shadcn/skeleton";
-import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
-import { DEFAULT_SORT } from "../videoList/listCriteria";
+import { ShelfToolbar } from "../videoList/ShelfToolbar";
+import { useShelfCriteria } from "../videoList/useShelfCriteria";
+import { ShelfVideos, videoShelfStatus } from "../videoList/VideoShelf";
 
 const text = t.tags.page;
-const shelfLimit = 6;
 
 /**
- * Up to six of the tag's videos in the library's default order, read again when its count or the
- * tag's `revision` changes; the count leaves fileless videos out, so it alone misses their removal.
+ * The tag's videos under the page's search, filter and sort in the top bar, read again in place
+ * when its count or the tag's `revision` changes; the count leaves fileless videos out, so it alone
+ * misses their removal.
  */
 export function TagVideosShelf({
   tagId,
@@ -27,67 +27,42 @@ export function TagVideosShelf({
   videoCount: number;
   revision: number;
 }) {
-  const location = useLocation();
-  const [videos, setVideos] = useState<readonly Video[] | undefined>(undefined);
-  const [error, setError] = useState<UiText | null>(null);
-
+  const shelf = useShelfCriteria();
+  const { query, favorite, sort, seed } = shelf.criteria;
+  const criteria = useMemo(
+    () => ({ query, favorite, sort, seed, tag: [tagId] }),
+    [query, favorite, sort, seed, tagId],
+  );
+  const videos = useVideos(criteria, undefined, "videos");
+  const { refreshInPlace } = videos;
+  const read = useRef({ videoCount, revision });
   useEffect(() => {
-    if (videoCount === 0) {
-      setVideos([]);
+    if (read.current.videoCount === videoCount && read.current.revision === revision)
       return;
-    }
-    const controller = new AbortController();
-    listVideos({
-      tag: [tagId],
-      sort: DEFAULT_SORT,
-      limit: shelfLimit,
-      signal: controller.signal,
-    }).then(
-      (page) => {
-        setVideos(page.items);
-        setError(null);
-      },
-      (failure: unknown) => {
-        if (!controller.signal.aborted) setError(errorText(failure));
-      },
-    );
-    return () => controller.abort();
-  }, [tagId, videoCount, revision]);
+    read.current = { videoCount, revision };
+    refreshInPlace();
+  }, [videoCount, revision, refreshInPlace]);
 
+  const status = videoShelfStatus({
+    videos,
+    filtered: shelf.filtered,
+    emptyTitle: text.notOnVideos,
+    onSearch: () => shelf.toolbar.searchRef.current?.focus(),
+  });
   return (
-    <Shelf
-      title={text.videos}
-      layout={videos !== undefined && videos.length > 0 ? "row" : "grid"}
-      actions={
-        <Button asChild variant="ghost" size="sm">
-          <Link to={libraryFilterPath(TAG_PARAM, tagId)}>{text.openInLibrary}</Link>
-        </Button>
-      }
-    >
-      {error !== null ? (
-        <p className="text-sm text-destructive">{text.videosFailed(error)}</p>
-      ) : videos === undefined ? (
-        <Skeleton className="aspect-video w-card-0" />
-      ) : videos.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{text.notOnVideos}</p>
-      ) : (
-        videos.map((video) => (
-          <Link
-            key={video.id}
-            to={`/videos/${String(video.id)}`}
-            state={{ from: `${location.pathname}${location.search}` }}
-            title={video.title}
-            className="flex min-w-0 flex-col gap-2 rounded-md"
-          >
-            <VideoThumbnail>
-              {video.thumbnailUrl !== undefined && (
-                <VideoThumbnailImage src={video.thumbnailUrl} />
-              )}
-            </VideoThumbnail>
-            <span className="truncate text-sm font-medium">{video.title}</span>
-          </Link>
-        ))
-      )}
-    </Shelf>
+    <>
+      <ShelfToolbar {...shelf.toolbar} />
+      <Shelf
+        title={text.videos}
+        count={status === null ? t.count.videos(videos.total) : undefined}
+        actions={
+          <Button asChild variant="ghost" size="sm">
+            <Link to={libraryFilterPath(TAG_PARAM, tagId)}>{text.openInLibrary}</Link>
+          </Button>
+        }
+      >
+        {status ?? <ShelfVideos videos={videos} />}
+      </Shelf>
+    </>
   );
 }

@@ -1387,6 +1387,28 @@ flowchart LR
 Inserting the representative directly could show a video outside the folder
 or filters ([`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)).
 
+## Video shelves on tag, person and organization pages
+
+The tag, person and organization pages draw their videos with one set of parts
+([`VideoShelf.tsx`](../../web/src/videoList/VideoShelf.tsx)): each `Shelf` is a
+`CardGrid` of `VideoCard`s at card size 0 that reads the next page as its end
+comes into view, under the count of what matched. The top bar holds the page's
+search, `Favorites only` filter and sort
+([`ShelfToolbar.tsx`](../../web/src/videoList/ShelfToolbar.tsx)), kept in the
+URL as the library's are, and every shelf on the page reads with them.
+
+| Rule | Why |
+| --- | --- |
+| The sort starts at the library's default order, not the stored preference | The stored sort is the library's; a record page opened from a link shows the same order every time |
+| A change of the conditions keeps the history entry's state | The tag page's `Back` returns to the list it was opened from, with that list's criteria |
+| Nothing matched under a search or filter shows `No videos match these conditions`, whose button focuses the search | The subject's empty state would say it has no videos |
+| No card size, list view or selection | These pages show what the subject is on; the library does the rest through `Show in library` |
+
+| Rejected | Why |
+| --- | --- |
+| A row of six videos on the tag page and a grid on the profile pages | The same videos looked and behaved differently, and the row reached only six |
+| A sort menu in each shelf's heading | The person and organization pages have one shelf per role, and their orders would differ |
+
 ## Per-device preferences with defaults
 
 Per-device display settings are total functions over `localStorage` that

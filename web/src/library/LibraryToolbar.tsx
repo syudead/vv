@@ -10,11 +10,7 @@ import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox, { type FileSearchField } from "../videoList/SearchBox";
 import type { SearchSuggestions } from "../videoList/SearchSuggestions";
-import {
-  CompactSortControls,
-  SortMenu,
-  type NativeOrder,
-} from "../videoList/SortControls";
+import { type NativeOrder, sortViewControl } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 function viewOptions() {
@@ -126,29 +122,7 @@ export default function LibraryToolbar({
   fileSearch,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
-    {
-      id: "sort",
-      label: t.list.sort.heading,
-      inlineFrom: "md",
-      control: (
-        <SortMenu
-          sort={sort}
-          onSortChange={onSortChange}
-          onShuffle={onShuffle}
-          nativeOrder={nativeOrder}
-        />
-      ),
-      compact: (
-        <CompactSortControls
-          nativeOrder={nativeOrder}
-          name="compact-sort"
-          sort={sort}
-          onSortChange={onSortChange}
-          onShuffle={onShuffle}
-        />
-      ),
-      compactLabelled: true,
-    },
+    sortViewControl({ name: "compact-sort", sort, onSortChange, onShuffle, nativeOrder }),
     ...viewControls(view, onViewChange, zoom, onZoomChange),
   ];
 

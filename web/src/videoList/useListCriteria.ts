@@ -36,13 +36,15 @@ const noExtraParams: readonly string[] = [];
 /**
  * Preserve declared extraParams through every URL rewrite; supply stable extraParams and
  * guestParams arrays. Guests normalize owner-only filters and sorts in the URL without modifying
- * stored preferences.
+ * stored preferences. With keepState each rewrite keeps the history entry's state, such as the
+ * list a record page was opened from.
  */
 export function useListCriteria(
   preferredSort: VideoSort,
   extraParams: readonly string[] = noExtraParams,
   guestParams: readonly string[] = noExtraParams,
   nativeDefault = false,
+  keepState = false,
 ): ListCriteriaState {
   const location = useLocation();
   const navigate = useNavigate();
@@ -118,10 +120,10 @@ export function useListCriteria(
       const search = params.toString();
       navigate(
         { pathname: current.pathname, search: search === "" ? "" : `?${search}` },
-        { replace: mode === "replace" },
+        { replace: mode === "replace", state: keepState ? current.state : undefined },
       );
     },
-    [navigate, extraParams],
+    [navigate, extraParams, keepState],
   );
 
   const needsSeed = parsed.needsSeed;

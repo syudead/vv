@@ -49,7 +49,6 @@ import {
   criteriaKey,
   type HistoryMode,
   type ListCriteriaChange,
-  newSeed,
 } from "../videoList/listCriteria";
 import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
@@ -169,18 +168,14 @@ export default function LibraryPage() {
     [apply, resetPreview],
   );
 
+  const { shuffle, commitQuery, changeSort: applySort } = useListActions(update);
   const changeSort = useCallback(
     (next: VideoSort) => {
-      update((current) => ({
-        ...current,
-        sort: next,
-        seed: next === "random" ? newSeed(current.seed) : undefined,
-      }));
+      applySort(next);
       savePreferences({ ...preferences, sort: next });
     },
-    [preferences, savePreferences, update],
+    [preferences, savePreferences, applySort],
   );
-  const { shuffle, commitQuery } = useListActions(update);
   // Read current tags through a ref to keep bulk-edit callbacks stable across unrelated renders.
   const latestTagIds = useRef(tagIds);
   latestTagIds.current = tagIds;

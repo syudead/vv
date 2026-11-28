@@ -235,28 +235,62 @@ describe("TagPage 接続先のあるとき", () => {
 });
 
 describe("TagPage 動画", () => {
-  it("タグの動画を既定の並び順で 6 本まで読み、それぞれの動画へのリンクを出す", async () => {
+  it("タグの動画をライブラリの既定の並び順でページ単位に読み、カードから各動画へリンクする", async () => {
     server.videos = [video(7, { title: "First" }), video(8, { title: "Second" })];
     await openTag(2);
 
-    const link = await screen.findByRole("link", { name: "First" });
+    const link = await screen.findByRole("link", { name: /First/ });
     expect(link.getAttribute("href")).toBe("/videos/7");
-    expect(screen.getByRole("link", { name: "Second" })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Second/ })).toBeDefined();
     expect(server.videoRequests.map((params) => params.toString())).toEqual([
-      "sort=addedDesc&limit=6&tag=2",
+      "sort=addedDesc&limit=60&tag=2",
     ]);
+  });
+
+  it("上部バーの検索を URL の並び順と合わせて送り、開いた一覧への戻り先を保つ", async () => {
+    const user = userEvent.setup();
+    server.videos = [video(7, { title: "First" })];
+    install();
+    renderPage({
+      url: "/tags/2?sort=titleAsc",
+      state: { from: "/tags?q=an" },
+      tagPage: true,
+      topBar: true,
+    });
+    await screen.findByRole("link", { name: /First/ });
+
+    const topBar = screen.getByTestId("topbar");
+    await user.type(within(topBar).getByLabelText("Search videos"), "first{Enter}");
+
+    await waitFor(() =>
+      expect(server.videoRequests.at(-1)?.toString()).toBe(
+        "query=first&sort=titleAsc&limit=60&tag=2",
+      ),
+    );
+    expect(screen.getByRole("link", { name: "Tags" }).getAttribute("href")).toBe(
+      "/tags?q=an",
+    );
+  });
+
+  it("検索に合う動画がないときは、タグに動画がない状態ではなく一致なしを出す", async () => {
+    server.videos = [];
+    install();
+    renderPage({ url: "/tags/2?q=none", tagPage: true });
+
+    expect(await screen.findByText("No videos match these conditions")).toBeDefined();
+    expect(screen.queryByText("Not on any video")).toBeNull();
   });
 
   it("tags イベントでは件数が同じでも動画を読み直し、消えた動画を外す", async () => {
     server.videos = [video(7, { title: "First" }), video(8, { title: "Fileless" })];
     await openTag(2);
-    await screen.findByRole("link", { name: "Fileless" });
+    await screen.findByRole("link", { name: /Fileless/ });
     server.videos = [video(7, { title: "First" })];
 
     await emitServerEvent("tags");
 
     await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "Fileless" })).toBeNull(),
+      expect(screen.queryByRole("link", { name: /Fileless/ })).toBeNull(),
     );
     expect(server.videoRequests).toHaveLength(2);
   });
