@@ -353,12 +353,15 @@ describe("OrganizationPage", () => {
     }
   });
 
-  it("shows no-match instead of the empty state when the search finds no video", async () => {
+  it("shows no-match instead of the empty state when the search finds no video, and its button focuses the search", async () => {
+    const user = userEvent.setup();
     server.videos = { maker: [], label: [] };
     renderPage("?q=film");
 
     expect(await screen.findByText("No videos match these conditions")).toBeTruthy();
     expect(screen.queryByText("No videos yet")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change search" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("Search videos"));
   });
 
   it("shows the gone state when the organization no longer exists", async () => {

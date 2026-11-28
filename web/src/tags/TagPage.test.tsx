@@ -272,13 +272,18 @@ describe("TagPage 動画", () => {
     );
   });
 
-  it("検索に合う動画がないときは、タグに動画がない状態ではなく一致なしを出す", async () => {
+  it("検索に合う動画がないときは一致なしを出し、そのボタンで上部バーの検索欄に移る", async () => {
+    const user = userEvent.setup();
     server.videos = [];
     install();
-    renderPage({ url: "/tags/2?q=none", tagPage: true });
+    renderPage({ url: "/tags/2?q=none", tagPage: true, topBar: true });
 
     expect(await screen.findByText("No videos match these conditions")).toBeDefined();
     expect(screen.queryByText("Not on any video")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change search" }));
+    expect(document.activeElement).toBe(
+      within(screen.getByTestId("topbar")).getByLabelText("Search videos"),
+    );
   });
 
   it("tags イベントでは件数が同じでも動画を読み直し、消えた動画を外す", async () => {
