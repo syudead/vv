@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackgroundGroup, BackgroundWork } from "../api/background";
 import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { writeDismissedScanId } from "../preferences/scanNoticeSession";
 import { deferred, json } from "../testing/autoImportServer";
 import { OwnerAudience } from "../testing/audience";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -15,7 +16,6 @@ import { BackgroundProvider } from "./BackgroundProvider";
 import { ScanNoticeProvider } from "./ScanNoticeProvider";
 import ScanProgressIndicator from "./ScanProgressIndicator";
 import { ScanProvider } from "./ScanProvider";
-import { writeDismissedScanId } from "./scanNoticeSession";
 
 const statusURL = "/api/background";
 const pauseURL = "/api/background/pause";

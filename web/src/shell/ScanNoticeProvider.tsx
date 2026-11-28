@@ -10,14 +10,6 @@ import {
 } from "react";
 
 import { isAborted } from "../api/client";
-import { useBackgroundPaused } from "./BackgroundProvider";
-import { inProgress, useScan } from "./ScanProvider";
-import {
-  hasNewFailure,
-  previousFailureKeys,
-  readFailureKeys,
-  rememberFailureKeys,
-} from "./scanIssueMemory";
 import {
   dismissedStorageKey,
   emptyScanNoticeSession,
@@ -28,7 +20,15 @@ import {
   writeScanNoticeSession,
   type CompletionNotice,
   type ScanNoticeSession,
-} from "./scanNoticeSession";
+} from "../preferences/scanNoticeSession";
+import { useBackgroundPaused } from "./BackgroundProvider";
+import { inProgress, useScan } from "./ScanProvider";
+import {
+  hasNewFailure,
+  previousFailureKeys,
+  readFailureKeys,
+  rememberFailureKeys,
+} from "./scanIssueMemory";
 
 const completionNoticeDuration = 8000;
 

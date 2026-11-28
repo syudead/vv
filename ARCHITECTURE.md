@@ -320,14 +320,15 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `hooks/` | Hooks the registry components share, such as `use-mobile` |
 | `lib/` | Helpers several flows share: locale-independent formatting, the tag-name rule, IME key handling |
 | `i18n/` | Screen text and locale-dependent formatting ([i18n.md](docs/design-docs/i18n.md)) |
-| `preferences/` | Per-device display settings |
+| `preferences/` | Per-device display settings and the scan notice's state: the only place that reads browser storage |
 | `theme/` | Token tests only, no runtime code |
 
 Pages and components never call `fetch` themselves, so how the server is
-reached changes in one place. The auth gate decides from the session who is
-viewing, sends a guest away from owner-only screens, and reloads the page
-whenever the viewer changes, so nothing read for the previous viewer stays in
-memory.
+reached changes in one place. ESLint fails on `fetch`, `EventSource`,
+`XMLHttpRequest` and `WebSocket` outside `web/src/api` and tests. The auth
+gate decides from the session who is viewing, sends a guest away from
+owner-only screens, and reloads the page whenever the viewer changes, so
+nothing read for the previous viewer stays in memory.
 
 The playback screen (`/videos/:id`) has no shell: it is a two-pane screen
 under its own header band, and keeping that to one routing decision lets the

@@ -692,7 +692,11 @@ Do not use it for landscape images, which fill the frame already.
 Item `brand-home-link`. The VVMDM logo in the top bar, linking to the library:
 the symbol below the `sm` width and the wordmark above it. One per screen.
 
-Do not use the logo images anywhere else.
+The setup and sign-in screens (`auth/CredentialScreen.tsx`) are the one other
+place the logo appears: the wordmark alone as the header's image, named by
+the app's name, with no link, since nothing past the gate opens before the
+viewer signs in. Do not use the logo images anywhere else; ESLint fails on a
+`/brand/` path outside these two files.
 
 ### TagCommand
 

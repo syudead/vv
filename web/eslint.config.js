@@ -16,6 +16,8 @@ const letter =
 const textAttribute = "JSXAttribute[name.name=/^(aria-label|title|placeholder|alt)$/]";
 const catalogMessage =
   "Put user-facing text in the i18n catalog (web/src/i18n) and use t.";
+const localeMessage =
+  "Format dates and numbers with the functions in web/src/i18n (docs/design-docs/i18n.md, Formatting).";
 const i18nRestrictedSyntax = [
   {
     selector: `Literal[value=/${japanese}/]`,
@@ -43,20 +45,165 @@ const i18nRestrictedSyntax = [
   },
   {
     selector: 'Literal[value="ja-JP"]',
-    message: "Format dates and numbers with the functions in web/src/i18n.",
+    message: localeMessage,
   },
   {
-    selector:
-      "CallExpression[arguments.length=0][callee.property.name=/^toLocale(Date|Time)?String$/]",
-    message: "Format dates and numbers with the functions in web/src/i18n.",
+    selector: "CallExpression[callee.property.name=/^toLocale(Date|Time)?String$/]",
+    message: localeMessage,
+  },
+  {
+    selector: 'MemberExpression[object.name="Intl"]',
+    message: localeMessage,
   },
 ];
 
+// Boundaries from ARCHITECTURE.md (Web layer) and the design-system docs. Each flag names the area that may do it; areaFlags lifts it there.
+const brandFiles = ["ui/BrandHomeLink.tsx", "auth/CredentialScreen.tsx"];
+const kindTokenFiles = ["ui/KindMark.tsx", "ui/KindToggleGroup.tsx"];
+const favoriteTokenFiles = ["ui/FavoriteToggle.tsx"];
+
+function areaFlags(file) {
+  const showcase = file.startsWith("designSystem/");
+  const ui = file.startsWith("ui/");
+  return {
+    i18n: !file.startsWith("i18n/"),
+    controls: !ui,
+    demoState: !showcase,
+    brand: !brandFiles.includes(file),
+    network: !file.startsWith("api/"),
+    storage: !file.startsWith("preferences/"),
+    uiInternals: !ui,
+    sheet: file !== "ui/shadcn/sidebar.tsx",
+    kindTokens: !showcase && !kindTokenFiles.includes(file),
+    favoriteTokens: !showcase && !favoriteTokenFiles.includes(file),
+  };
+}
+
+const boundarySyntax = {
+  demoState: [
+    {
+      selector: 'JSXAttribute[name.name="data-demo-state"]',
+      message:
+        "data-demo-state draws a state in the design-system showcase only; screens never set it (docs/design-docs/design-system.md, Components).",
+    },
+  ],
+  // esquery regexes cannot contain a slash, so \x2f stands for it.
+  brand: [
+    {
+      selector: "Literal[value=/^\\x2fbrand\\x2f/]",
+      message:
+        "The logo images belong to BrandHomeLink; do not use them anywhere else (web/registry/rules/components.md, BrandHomeLink).",
+    },
+    {
+      selector: "TemplateElement[value.raw=/^\\x2fbrand\\x2f/]",
+      message:
+        "The logo images belong to BrandHomeLink; do not use them anywhere else (web/registry/rules/components.md, BrandHomeLink).",
+    },
+  ],
+};
+
+function restrictedSyntax(flags) {
+  return [
+    "error",
+    ...(flags.i18n ? i18nRestrictedSyntax : []),
+    ...(flags.controls ? controlRestrictedSyntax : []),
+    ...(flags.demoState ? boundarySyntax.demoState : []),
+    ...(flags.brand ? boundarySyntax.brand : []),
+  ];
+}
+
+const networkMessage =
+  "Only web/src/api talks to the server; call its functions instead (ARCHITECTURE.md, Web layer).";
+const storageMessage =
+  "Per-device storage belongs to web/src/preferences; read and write it through those functions (docs/design-docs/library-ui.md, Per-device preferences with defaults).";
+const networkGlobals = ["fetch", "EventSource", "XMLHttpRequest", "WebSocket"];
+const storageGlobals = ["localStorage", "sessionStorage", "indexedDB"];
+const globalObjects = ["window", "globalThis", "self"];
+
+function restrictedGlobals(flags) {
+  return [
+    "error",
+    ...(flags.network
+      ? networkGlobals.map((name) => ({ name, message: networkMessage }))
+      : []),
+    ...(flags.storage
+      ? storageGlobals.map((name) => ({ name, message: storageMessage }))
+      : []),
+  ];
+}
+
+function restrictedProperties(flags) {
+  const properties = [
+    ...(flags.network ? networkGlobals.map((name) => [name, networkMessage]) : []),
+    ...(flags.storage ? storageGlobals.map((name) => [name, storageMessage]) : []),
+  ];
+  return [
+    "error",
+    ...globalObjects.flatMap((object) =>
+      properties.map(([property, message]) => ({ object, property, message })),
+    ),
+  ];
+}
+
+function restrictedImports(flags) {
+  const paths = [];
+  const patterns = [];
+  if (flags.uiInternals) {
+    paths.push({
+      name: "sonner",
+      message:
+        "Send a notice with useToast from web/src/ui/Toast, which holds the app's one Toaster (web/registry/rules/components.md, Sonner).",
+    });
+    patterns.push({
+      regex: "(?:^|/)NameCommand$",
+      message:
+        "NameCommand is the base of TagCommand and CreditCommand; screens use those, never the base (web/registry/rules/components.md, CreditCommand).",
+    });
+  }
+  if (flags.sheet) {
+    patterns.push({
+      regex: "(?:^|/)(?:shadcn/)?sheet$",
+      message:
+        "Sheet is only the sidebar's narrow-width drawer, rendered by Sidebar; use Dialog (web/registry/rules/components.md, Sheet).",
+    });
+  }
+  return ["error", { paths, patterns }];
+}
+
+function boundaryRules(file) {
+  const flags = areaFlags(file);
+  return {
+    [controlRule]: restrictedSyntax(flags),
+    "no-restricted-globals": restrictedGlobals(flags),
+    "no-restricted-properties": restrictedProperties(flags),
+    "no-restricted-imports": restrictedImports(flags),
+  };
+}
+
+// Later blocks replace a rule's whole option list, so every block recomputes it from the file's areas; nested areas come after their parents.
+const boundaryAreas = [
+  "",
+  "api/",
+  "preferences/",
+  "i18n/",
+  "ui/",
+  "designSystem/",
+  ...brandFiles,
+  "ui/shadcn/sidebar.tsx",
+];
+
+function areaGlob(area) {
+  if (area === "") return sourceFiles;
+  return [area.endsWith("/") ? `src/${area}**` : `src/${area}`];
+}
+
+function areaSample(area) {
+  return area === "" || area.endsWith("/") ? `${area}sample.tsx` : area;
+}
+
 // Centralize design exceptions in design-exceptions.js; src/theme/designExceptions.test.ts validates them.
 const sourceFiles = ["src/**/*.{ts,tsx}"];
-const i18nFiles = ["src/i18n/**"];
 const testFiles = ["src/**/*.test.{ts,tsx}", "src/testing/**"];
-const designSystemFiles = ["src/ui/**"];
 
 const controlRule = "no-restricted-syntax";
 const restrictedClassesRule = "better-tailwindcss/no-restricted-classes";
@@ -128,9 +275,7 @@ function exceptionRules(entry) {
   const rules = {};
   for (const rule of entry.rules) {
     if (rule === controlRule) {
-      rules[rule] = entry.file.startsWith("i18n/")
-        ? "off"
-        : ["error", ...i18nRestrictedSyntax];
+      rules[rule] = restrictedSyntax({ ...areaFlags(entry.file), controls: false });
     } else if (entry.classes === undefined) {
       rules[rule] = "off";
     } else if (rule === restrictedClassesRule) {
@@ -167,20 +312,11 @@ function designSystemConfig() {
         [restrictedClassesRule]: restrictedClasses([], { focus: false }),
       },
     },
-    {
-      files: sourceFiles,
-      ignores: [...i18nFiles, ...testFiles, ...designSystemFiles],
-      rules: {
-        [controlRule]: ["error", ...i18nRestrictedSyntax, ...controlRestrictedSyntax],
-      },
-    },
-    {
-      files: i18nFiles,
+    ...boundaryAreas.map((area) => ({
+      files: areaGlob(area),
       ignores: testFiles,
-      rules: {
-        [controlRule]: ["error", ...controlRestrictedSyntax],
-      },
-    },
+      rules: boundaryRules(areaSample(area)),
+    })),
     ...designExceptions.map((entry) => ({
       files: [`src/${entry.file}`],
       ignores: testFiles,
@@ -239,13 +375,6 @@ export default [
     rules: {
       "no-undef": "off",
       "no-unused-vars": "off",
-    },
-  },
-  {
-    files: sourceFiles,
-    ignores: [...i18nFiles, ...testFiles],
-    rules: {
-      "no-restricted-syntax": ["error", ...i18nRestrictedSyntax],
     },
   },
   ...designSystemConfig(),
