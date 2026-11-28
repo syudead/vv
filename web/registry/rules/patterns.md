@@ -278,7 +278,7 @@ back link, the header, the `notice`, the body, then the shelf.
 | `notice`     | One `Alert`: the reason of a failed or stale operation, or the result of one that made another record, with a link to it                                    | Field errors                           |
 | `main`       | `PageSection`s for the record's lists, such as its names                                                                                                    | Cards; a table                         |
 | `side`       | `PageSection`s for single properties and for operations that take another record, such as merge                                                             | Lists longer than the main column      |
-| children     | One `Shelf` of the items the record is on: a grid of every item, with its search, filter and sort in the top bar                                           | A second list of records               |
+| children     | One `Shelf` of the items the record is on: a grid of every item, with its search, filter and sort in the top bar                                            | A second list of records               |
 | `status`     | One state block in place of everything under `back`, such as the record no longer existing                                                                  | Loading; draw `Skeleton`s in the slots |
 
 - The actions share the title's row and wrap under it when they do not fit.
