@@ -87,7 +87,7 @@ jobs:
         include:
           # Generation needs shadcn from web/ and openapi-typescript from tools/.
           - group: go lint
-            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check e2e-groups-check build-windows-check static-binary-check
+            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check build-windows-check static-binary-check
             web: true
             tools: true
             golangci: true
@@ -363,7 +363,8 @@ jobs:
         run: task check-docs
 
   # Run E2E on main, manual runs and Renovate PRs (which may merge unattended).
-  # Every E2E file must belong to one group; e2e-groups-check enforces this.
+  # Playwright shards whole files by test count, so a new file needs no matrix entry. Seven shards keep
+  # image-search.e2e.ts, the longest file, apart from the files before it.
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
@@ -376,21 +377,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - group: playback
-            files: e2e/playback.e2e.ts
-          - group: home
-            files: e2e/home.e2e.ts e2e/onboarding.e2e.ts
+          - group: shard 1/7
+            args: --project=onboarding --project=e2e --shard=1/7
+          - group: shard 2/7
+            args: --project=onboarding --project=e2e --shard=2/7
+          - group: shard 3/7
+            args: --project=onboarding --project=e2e --shard=3/7
+          - group: shard 4/7
+            args: --project=onboarding --project=e2e --shard=4/7
+          - group: shard 5/7
+            args: --project=onboarding --project=e2e --shard=5/7
+          - group: shard 6/7
+            args: --project=onboarding --project=e2e --shard=6/7
+          - group: shard 7/7
+            args: --project=onboarding --project=e2e --shard=7/7
           # Its own server: the Ollama connection this spec saves cannot be removed again.
           - group: assistant
-            files: e2e/assistant.e2e.ts
-          - group: library
-            files: e2e/folders.e2e.ts e2e/image-search.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
-          - group: peer
-            files: e2e/peer-library.e2e.ts
-          - group: peer-folders
-            files: e2e/peer-folders.e2e.ts
-          - group: pages
-            files: e2e/auth.e2e.ts e2e/background-pause.e2e.ts e2e/drag-organize.e2e.ts e2e/history.e2e.ts e2e/organizations.e2e.ts e2e/scan-progress.e2e.ts e2e/video-tabs.e2e.ts e2e/work-info.e2e.ts
+            args: --project=assistant
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -482,8 +485,8 @@ jobs:
 
       - name: 実ブラウザE2E
         env:
-          E2E_FILES: ${{ matrix.files }}
-        run: task test-e2e -- $E2E_FILES
+          E2E_ARGS: ${{ matrix.args }}
+        run: task test-e2e -- $E2E_ARGS
 
       # Omit coverage flags for E2E: it uploads test results, not coverage.
       - name: テスト結果をCodecovへ送る

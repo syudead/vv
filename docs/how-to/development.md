@@ -75,7 +75,6 @@ CI runs these additional checks without making them a local pre-push gate;
 | --- | --- |
 | `generate-check` | Changing OpenAPI, generators or registry components; run `task generate` first |
 | `migrations-check` | Changing migration SQL |
-| `e2e-groups-check` | Changing E2E files or CI grouping |
 | `lint-go-windows-desktop`, `build-windows-check` | Changing Windows, desktop or cross-platform code |
 | `build-check-web` | Changing bundling, assets or build configuration |
 
@@ -110,20 +109,24 @@ flowchart LR
   docs --> checks[Checks job]
   groups --> checks
   code -->|yes| push{Push to main or Renovate PR?}
-  push -->|yes| more[E2E in four groups and Docker image build]
+  push -->|yes| more[E2E in eight jobs and Docker image build]
   code -->|yes| manual{Manual run?}
-  manual -->|yes| e2e[E2E in four groups]
+  manual -->|yes| e2e[E2E in eight jobs]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
 runs full local and CI-only tasks as parallel `Checks (<group>)` jobs: Go lint
-with generation, migration, E2E grouping and Windows lint/build checks, Go tests,
+with generation, migration and Windows lint/build checks, Go tests,
 Web lint with the SPA build check, and the Vitest suite split into three shards
 (`task test-web-report -- --shard=1/3`). `task test-web` remains an explicit
 build-and-test command. Keep both local and CI-only tasks represented in
-`.github/workflows/ci.yml`. A new
-`web/e2e/*.e2e.ts` file goes into one of the four E2E groups there;
-`task e2e-groups-check` fails when a file is in no group or in two. Only the Go groups
+`.github/workflows/ci.yml`. Browser E2E runs as seven Playwright shards of the
+`onboarding` and `e2e` projects
+(`task test-e2e -- --project=onboarding --project=e2e --shard=1/7`) and one job
+for the `assistant` project, whose saved Ollama connection must not reach other
+specs. Playwright assigns whole files to shards in order by test count, so a new
+`web/e2e/*.e2e.ts` file needs no CI change; a file that grows to dominate a
+shard is split by topic. Only the Go groups
 restore the Go build cache, and each saves its own copy on a push to `main`.
 Vitest shards by file, so a test file that grows to dominate a shard is split by
 topic, as `web/src/tags/TagKindsPage*.test.tsx` are around the shared
@@ -137,7 +140,7 @@ image, because the Renovate routine merges them without a person
 To run browser E2E on a branch before it merges, start the CI workflow by hand
 (`workflow_dispatch`) from the Actions tab or with
 `gh workflow run ci.yml --ref <branch>`. A manual run treats the branch as a
-code change and runs every `Checks` group and the four E2E groups; it does not
+code change and runs every `Checks` group and every E2E job; it does not
 build the Docker image.
 
 The Go and Vitest test groups run the same tests as `task test-go` and

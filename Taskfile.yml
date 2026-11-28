@@ -145,7 +145,6 @@ tasks:
     cmds:
       - task: generate-check
       - task: migrations-check
-      - task: e2e-groups-check
       - task: lint-go-windows-desktop
       - task: build-windows-check
       - task: static-binary-check
@@ -335,11 +334,6 @@ tasks:
     desc: Check that applied migrations have not been changed.
     cmds:
       - bash scripts/migrations-immutable.sh
-
-  e2e-groups-check:
-    desc: Check that every e2e file is in exactly one CI e2e group.
-    cmds:
-      - bash scripts/e2e-groups.sh
 
   build-windows-check:
     desc: Check that the sources still build for Windows.

@@ -51,8 +51,8 @@ hand. Resolve a conflict in the code by keeping both sides' behaviour.
 
 Read the failed job logs of the head commit. Reproduce the failure locally with
 the task the job runs (the job names map to the parts of `task check`, and
-`Browser E2E (<group>)` to `task test-e2e -- <files>` from `ci.yml`). Then find
-the root cause:
+`Browser E2E (<group>)` to `task test-e2e -- <args>` with that group's `args`
+from `ci.yml`). Then find the root cause:
 
 - **The new version changed an API or a behaviour the code relies on**: adapt
   the code, with a focused test where the behaviour is testable. Follow the
