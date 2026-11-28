@@ -1414,6 +1414,10 @@ URL as the library's are, and every shelf on the page reads with them.
 Per-device display settings are total functions over `localStorage` that
 never throw ([`web/src/preferences/`](../../web/src/preferences)): a missing,
 corrupt or unreadable value yields the defaults, and a failed write is ignored.
+The scan indicator's hidden scan and result notice
+([`scanNoticeSession.ts`](../../web/src/preferences/scanNoticeSession.ts)) are
+kept the same way. Nothing outside `web/src/preferences` reads
+`localStorage`, `sessionStorage` or IndexedDB; ESLint fails on it.
 
 A preference is a convenience; a bad stored value or blocked storage must not
 blank the screen.

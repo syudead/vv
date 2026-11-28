@@ -2,6 +2,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetTagsForTest } from "../api/tags";
+import { settle } from "../testing/settle";
 import { useCreditName, useTagNames } from "./filterNames";
 
 function json(body: unknown, status = 200): Response {
@@ -51,7 +52,7 @@ describe("useTagNames", () => {
     await waitFor(() => expect(paths()).toHaveLength(2));
     expect(result.current.get(1)?.name).toBe("猫");
     expect(result.current.has(7)).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
     expect(paths()).toHaveLength(2);
   });
 
@@ -60,7 +61,7 @@ describe("useTagNames", () => {
     const { result } = renderHook(() => useTagNames([1]));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
     expect(result.current.size).toBe(0);
   });
 });
@@ -102,7 +103,7 @@ describe("useCreditName", () => {
     onGone.mockClear();
     const failed = renderHook(() => useCreditName("person", 9, onGone));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
     expect(onGone).not.toHaveBeenCalled();
     expect(failed.result.current).toBeUndefined();
   });
@@ -120,7 +121,7 @@ describe("useCreditName", () => {
     const { unmount } = renderHook(() => useCreditName("person", 1, onGone));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     unmount();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
     expect(onGone).not.toHaveBeenCalled();
   });
 });

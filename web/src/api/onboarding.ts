@@ -13,10 +13,7 @@ export function nextOnboardingStep(step: OnboardingStep): OnboardingStep {
   return ONBOARDING_STEPS[index + 1] ?? "done";
 }
 
-/**
- * toOnboardingStep は応答の段階を、知っている値に揃える。知らない値と欠けた値は `done` と
- * 扱い、どの画面も止めない。
- */
+/** Map the response's step to a known value; an unknown or missing one is `done`, so no screen is blocked. */
 export function toOnboardingStep(value: unknown): OnboardingStep {
   return value === "folders" || value === "scan" || value === "interests"
     ? value
@@ -28,8 +25,8 @@ type Listener = (step: OnboardingStep) => void;
 const listeners = new Set<Listener>();
 
 /**
- * subscribeOnboarding は、この画面から書いた段階を受け取る。戻り値で購読をやめる。
- * 書いた端末では `onboarding` の知らせを待たずに、書いた直後の遷移から新しい段階で振り分ける。
+ * Receive the steps this tab writes; the returned function unsubscribes. The writing device routes by
+ * the new step on the navigation right after the write, without waiting for the `onboarding` event.
  */
 export function subscribeOnboarding(listener: Listener): () => void {
   listeners.add(listener);
@@ -44,10 +41,7 @@ export async function readOnboarding(signal?: AbortSignal): Promise<OnboardingSt
   return toOnboardingStep(body.step);
 }
 
-/**
- * writeOnboarding は段階を書き（PUT /api/onboarding）、書けた段階を購読者へ知らせる。
- * 2 つの端末から書けば、後に書いた方が残る。
- */
+/** Write the step (PUT /api/onboarding) and tell subscribers the written step; the later of two devices' writes wins. */
 export async function writeOnboarding(
   step: OnboardingStep,
   signal?: AbortSignal,
@@ -75,8 +69,8 @@ export async function listInterests(signal?: AbortSignal): Promise<Interest[]> {
 }
 
 /**
- * pickInterests は選んだ分野をタグと棚にする（POST /api/onboarding/interests）。
- * 棚がもうある分野は棚を足さない（research.md R-6）。`ids` は 1〜24 件。
+ * Turn the picked interests into tags and home shelves (POST /api/onboarding/interests); an interest
+ * that already has a shelf gets no second one. `ids` holds 1 to 24 entries.
  */
 export function pickInterests(
   ids: readonly string[],

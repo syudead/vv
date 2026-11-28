@@ -100,7 +100,6 @@ export default function MergeTagDialog({
   }, [target, canSubmit]);
 
   // Restore actionable focus after errors; disabled Merge may have dropped focus to body.
-  // （N4）。
   // React only to errors, not target reselection.
   const restoreFocus = useEffectEvent(() => {
     (target !== null ? mergeButton : cancel).current?.focus();

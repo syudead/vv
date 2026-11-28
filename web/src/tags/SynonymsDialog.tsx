@@ -305,7 +305,8 @@ export default function SynonymsDialog({
                           if (removing.has(name)) return;
                           void removeSynonym(name);
                         }}
-                        className="size-5 rounded-sm"
+                        shape="compact"
+                        className="size-5"
                       >
                         <X aria-hidden="true" />
                       </Button>

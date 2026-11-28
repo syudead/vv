@@ -7,6 +7,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import testingLibrary from "eslint-plugin-testing-library";
 import globals from "globals";
 import designExceptions from "./design-exceptions.js";
+import vv from "./eslint-rules/index.js";
 
 // UI text and formatting belong exclusively to src/i18n.
 const japanese =
@@ -16,6 +17,8 @@ const letter =
 const textAttribute = "JSXAttribute[name.name=/^(aria-label|title|placeholder|alt)$/]";
 const catalogMessage =
   "Put user-facing text in the i18n catalog (web/src/i18n) and use t.";
+const localeMessage =
+  "Format dates and numbers with the functions in web/src/i18n (docs/design-docs/i18n.md, Formatting).";
 const i18nRestrictedSyntax = [
   {
     selector: `Literal[value=/${japanese}/]`,
@@ -43,24 +46,213 @@ const i18nRestrictedSyntax = [
   },
   {
     selector: 'Literal[value="ja-JP"]',
-    message: "Format dates and numbers with the functions in web/src/i18n.",
+    message: localeMessage,
   },
   {
-    selector:
-      "CallExpression[arguments.length=0][callee.property.name=/^toLocale(Date|Time)?String$/]",
-    message: "Format dates and numbers with the functions in web/src/i18n.",
+    selector: "CallExpression[callee.property.name=/^toLocale(Date|Time)?String$/]",
+    message: localeMessage,
+  },
+  {
+    selector: 'MemberExpression[object.name="Intl"]',
+    message: localeMessage,
   },
 ];
 
+// Boundaries from ARCHITECTURE.md (Web layer) and the design-system docs. Each flag names the area that may do it; areaFlags lifts it there.
+const brandFiles = ["ui/BrandHomeLink.tsx", "auth/CredentialScreen.tsx"];
+const kindTokenFiles = ["ui/KindMark.tsx", "ui/KindToggleGroup.tsx"];
+const favoriteTokenFiles = ["ui/FavoriteToggle.tsx"];
+
+function areaFlags(file) {
+  const showcase = file.startsWith("designSystem/");
+  const ui = file.startsWith("ui/");
+  return {
+    i18n: !file.startsWith("i18n/"),
+    controls: !ui,
+    demoState: !showcase,
+    brand: !brandFiles.includes(file),
+    network: !file.startsWith("api/"),
+    storage: !file.startsWith("preferences/"),
+    uiInternals: !ui,
+    sheet: file !== "ui/shadcn/sidebar.tsx",
+    kindTokens: !showcase && !kindTokenFiles.includes(file),
+    favoriteTokens: !showcase && !favoriteTokenFiles.includes(file),
+  };
+}
+
+const boundarySyntax = {
+  demoState: [
+    {
+      selector: 'JSXAttribute[name.name="data-demo-state"]',
+      message:
+        "data-demo-state draws a state in the design-system showcase only; screens never set it (docs/design-docs/design-system.md, Components).",
+    },
+  ],
+  // esquery regexes cannot contain a slash, so \x2f stands for it.
+  brand: [
+    {
+      selector: "Literal[value=/^\\x2fbrand\\x2f/]",
+      message:
+        "The logo images belong to BrandHomeLink; do not use them anywhere else (web/registry/rules/components.md, BrandHomeLink).",
+    },
+    {
+      selector: "TemplateElement[value.raw=/^\\x2fbrand\\x2f/]",
+      message:
+        "The logo images belong to BrandHomeLink; do not use them anywhere else (web/registry/rules/components.md, BrandHomeLink).",
+    },
+  ],
+};
+
+function restrictedSyntax(flags) {
+  return [
+    "error",
+    ...(flags.i18n ? i18nRestrictedSyntax : []),
+    ...(flags.controls ? controlRestrictedSyntax : []),
+    ...(flags.demoState ? boundarySyntax.demoState : []),
+    ...(flags.brand ? boundarySyntax.brand : []),
+  ];
+}
+
+const networkMessage =
+  "Only web/src/api talks to the server; call its functions instead (ARCHITECTURE.md, Web layer).";
+const storageMessage =
+  "Per-device storage belongs to web/src/preferences; read and write it through those functions (docs/design-docs/library-ui.md, Per-device preferences with defaults).";
+const networkGlobals = ["fetch", "EventSource", "XMLHttpRequest", "WebSocket"];
+const storageGlobals = ["localStorage", "sessionStorage", "indexedDB"];
+const globalObjects = ["window", "globalThis", "self"];
+
+function restrictedGlobals(flags) {
+  return [
+    "error",
+    ...(flags.network
+      ? networkGlobals.map((name) => ({ name, message: networkMessage }))
+      : []),
+    ...(flags.storage
+      ? storageGlobals.map((name) => ({ name, message: storageMessage }))
+      : []),
+  ];
+}
+
+function restrictedProperties(flags) {
+  const properties = [
+    ...(flags.network ? networkGlobals.map((name) => [name, networkMessage]) : []),
+    ...(flags.storage ? storageGlobals.map((name) => [name, storageMessage]) : []),
+  ];
+  return [
+    "error",
+    ...globalObjects.flatMap((object) =>
+      properties.map(([property, message]) => ({ object, property, message })),
+    ),
+  ];
+}
+
+function restrictedImports(flags) {
+  const paths = [];
+  const patterns = [];
+  if (flags.uiInternals) {
+    paths.push({
+      name: "sonner",
+      message:
+        "Send a notice with useToast from web/src/ui/Toast, which holds the app's one Toaster (web/registry/rules/components.md, Sonner).",
+    });
+    patterns.push({
+      regex: "(?:^|/)NameCommand$",
+      message:
+        "NameCommand is the base of TagCommand and CreditCommand; screens use those, never the base (web/registry/rules/components.md, CreditCommand).",
+    });
+  }
+  if (flags.sheet) {
+    patterns.push({
+      regex: "(?:^|/)(?:shadcn/)?sheet$",
+      message:
+        "Sheet is only the sidebar's narrow-width drawer, rendered by Sidebar; use Dialog (web/registry/rules/components.md, Sheet).",
+    });
+  }
+  return ["error", { paths, patterns }];
+}
+
+function boundaryRules(file) {
+  const flags = areaFlags(file);
+  return {
+    [controlRule]: restrictedSyntax(flags),
+    "no-restricted-globals": restrictedGlobals(flags),
+    "no-restricted-properties": restrictedProperties(flags),
+    "no-restricted-imports": restrictedImports(flags),
+  };
+}
+
+// Later blocks replace a rule's whole option list, so every block recomputes it from the file's areas; nested areas come after their parents.
+const boundaryAreas = [
+  "",
+  "api/",
+  "preferences/",
+  "i18n/",
+  "ui/",
+  "designSystem/",
+  ...brandFiles,
+  "ui/shadcn/sidebar.tsx",
+];
+
+function areaGlob(area) {
+  if (area === "") return sourceFiles;
+  return [area.endsWith("/") ? `src/${area}**` : `src/${area}`];
+}
+
+function areaSample(area) {
+  return area === "" || area.endsWith("/") ? `${area}sample.tsx` : area;
+}
+
 // Centralize design exceptions in design-exceptions.js; src/theme/designExceptions.test.ts validates them.
 const sourceFiles = ["src/**/*.{ts,tsx}"];
-const i18nFiles = ["src/i18n/**"];
 const testFiles = ["src/**/*.test.{ts,tsx}", "src/testing/**"];
-const designSystemFiles = ["src/ui/**"];
 
 const controlRule = "no-restricted-syntax";
+
+// Tests observe state or advance fake timers instead of waiting out the clock, and assert behaviour instead of snapshots.
+const e2eFiles = ["e2e/**/*.ts"];
+const waitMessage =
+  "Do not wait out the clock in a test; wait for the state (findBy*, waitFor, Playwright's expect) or advance vi.useFakeTimers (docs/design-docs/testing.md, Load and waiting; docs/design-docs/web-testing.md).";
+const snapshotMessage =
+  "Snapshots and screenshots do not state the behaviour; assert what the user sees instead (docs/design-docs/web-testing.md, Existing tests and E2E tests).";
+const snapshotMatchers = [
+  "toMatchSnapshot",
+  "toMatchInlineSnapshot",
+  "toMatchFileSnapshot",
+  "toThrowErrorMatchingSnapshot",
+  "toThrowErrorMatchingInlineSnapshot",
+  "toHaveScreenshot",
+];
+const delayedTimeout = "[arguments.length>1]:not([arguments.1.value=0])";
+const testRestrictedSyntax = [
+  {
+    selector: `CallExpression[callee.name="setTimeout"]${delayedTimeout}`,
+    message: waitMessage,
+  },
+  {
+    selector: `CallExpression[callee.object.name=/^(window|globalThis|self)$/][callee.property.name="setTimeout"]${delayedTimeout}`,
+    message: waitMessage,
+  },
+  {
+    selector: 'CallExpression[callee.property.name="waitForTimeout"]',
+    message: waitMessage,
+  },
+];
+// Vitest files reject snapshots through vitest/no-restricted-matchers; Playwright files have no such plugin.
+const e2eRestrictedSyntax = [
+  ...testRestrictedSyntax,
+  {
+    selector: `CallExpression[callee.property.name=/^(${snapshotMatchers.join("|")})$/]`,
+    message: snapshotMessage,
+  },
+];
 const restrictedClassesRule = "better-tailwindcss/no-restricted-classes";
 const unknownClassesRule = "better-tailwindcss/no-unknown-classes";
+
+const componentRoles =
+  "checkbox|switch|tab|tablist|menu|menuitem|dialog|listbox|option|slider|radio|radiogroup|progressbar";
+const radiusControls =
+  "Button|Toggle|ToggleGroupItem|Input|Textarea|SelectTrigger|Badge|Checkbox|Switch";
+const roundedClass = String.raw`/(^|[\s:!])rounded(-|\s|!|$)/`;
 
 const controlRestrictedSyntax = [
   {
@@ -69,8 +261,23 @@ const controlRestrictedSyntax = [
     message: "Use the design-system component (web/registry/rules/components.md).",
   },
   {
+    selector: "JSXOpeningElement[name.name=/^(label|progress|hr|kbd)$/]",
+    message:
+      "Use the design-system Label, Progress, Separator or Kbd (web/registry/rules/components.md).",
+  },
+  {
     selector: 'JSXAttribute[name.name="role"][value.value="button"]',
     message: "Use the design-system Button (web/registry/rules/components.md).",
+  },
+  {
+    selector: `JSXAttribute[name.name="role"][value.value=/^(${componentRoles})$/]`,
+    message:
+      "A design-system component already has this role: Checkbox, Switch, Tabs, DropdownMenu, Dialog, Select, Command, Slider, RadioGroup or Progress (web/registry/rules/components.md).",
+  },
+  {
+    selector: `JSXOpeningElement[name.name=/^(${radiusControls})$/] > JSXAttribute[name.name="className"] :matches(Literal[value=${roundedClass}], TemplateElement[value.raw=${roundedClass}])`,
+    message:
+      "A screen never sets a radius on a design-system control; use its shape or variant (web/registry/rules/components.md, Button).",
   },
   // Reserve style for runtime measurements and positions; fixed values must use tokens and classes.
   {
@@ -108,16 +315,42 @@ const focusRing = String.raw`(?:^|:)!?outline-(?:none|hidden)!?$|(?:^|:)(?:focus
 const focusMessage =
   "Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).";
 
-function restrictedClasses(allowed = [], { focus = true } = {}) {
+// Single-use colour roles (web/registry/rules/foundations.md): kind-N and favorite belong to their components and the showcase.
+const tokenUtility = (token) => String.raw`!?[a-z-]+-${token}(?:-soft)?(?:\/[0-9]+)?!?$`;
+const kindMessage =
+  "The kind-* colours mark tag kinds only, through KindMark and KindToggleGroup (web/registry/rules/foundations.md; web/registry/rules/components.md, KindMark).";
+const favoriteMessage =
+  "The favorite colours draw the favorite heart only, through FavoriteToggle (web/registry/rules/foundations.md; web/registry/rules/components.md, FavoriteToggle).";
+
+function restrictedClasses(file, allowed = []) {
+  const flags = areaFlags(file);
   // Ignore both v3 prefix and v4 suffix ! markers when matching the allowlist.
   const allow = allowed.length > 0 ? `(?!!?(?:${allowed.join("|")})!?$)` : "";
   const restrict = [
     { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
   ];
-  if (focus)
+  if (!file.startsWith("ui/shadcn/"))
     restrict.push({ pattern: `^${allow}.*?(?:${focusRing})`, message: focusMessage });
+  if (flags.kindTokens)
+    restrict.push({
+      pattern: `^${allow}${variants}${tokenUtility("kind-[1-8]")}`,
+      message: kindMessage,
+    });
+  if (flags.favoriteTokens)
+    restrict.push({
+      pattern: `^${allow}${variants}${tokenUtility("favorite")}`,
+      message: favoriteMessage,
+    });
   return ["error", { restrict }];
 }
+
+const classAreas = [
+  "",
+  "ui/shadcn/",
+  "designSystem/",
+  ...kindTokenFiles,
+  ...favoriteTokenFiles,
+];
 
 function unknownClasses(allowed = []) {
   return ["error", { ignore: allowed.map((pattern) => `^(?:${pattern})$`) }];
@@ -128,15 +361,11 @@ function exceptionRules(entry) {
   const rules = {};
   for (const rule of entry.rules) {
     if (rule === controlRule) {
-      rules[rule] = entry.file.startsWith("i18n/")
-        ? "off"
-        : ["error", ...i18nRestrictedSyntax];
+      rules[rule] = restrictedSyntax({ ...areaFlags(entry.file), controls: false });
     } else if (entry.classes === undefined) {
       rules[rule] = "off";
     } else if (rule === restrictedClassesRule) {
-      rules[rule] = restrictedClasses(entry.classes, {
-        focus: !entry.file.startsWith("ui/shadcn/"),
-      });
+      rules[rule] = restrictedClasses(entry.file, entry.classes);
     } else if (rule === unknownClassesRule) {
       rules[rule] = unknownClasses(entry.classes);
     }
@@ -156,31 +385,19 @@ function designSystemConfig() {
         },
       },
       rules: {
-        [restrictedClassesRule]: restrictedClasses(),
         [unknownClassesRule]: unknownClasses(),
       },
     },
-    {
-      files: ["src/ui/shadcn/**"],
+    ...classAreas.map((area) => ({
+      files: areaGlob(area),
       ignores: testFiles,
-      rules: {
-        [restrictedClassesRule]: restrictedClasses([], { focus: false }),
-      },
-    },
-    {
-      files: sourceFiles,
-      ignores: [...i18nFiles, ...testFiles, ...designSystemFiles],
-      rules: {
-        [controlRule]: ["error", ...i18nRestrictedSyntax, ...controlRestrictedSyntax],
-      },
-    },
-    {
-      files: i18nFiles,
+      rules: { [restrictedClassesRule]: restrictedClasses(areaSample(area)) },
+    })),
+    ...boundaryAreas.map((area) => ({
+      files: areaGlob(area),
       ignores: testFiles,
-      rules: {
-        [controlRule]: ["error", ...controlRestrictedSyntax],
-      },
-    },
+      rules: boundaryRules(areaSample(area)),
+    })),
     ...designExceptions.map((entry) => ({
       files: [`src/${entry.file}`],
       ignores: testFiles,
@@ -218,11 +435,19 @@ export default [
     },
     plugins: {
       "react-hooks": reactHooks,
+      vv,
     },
     rules: {
       ...js.configs.recommended.rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
+      "vv/no-ts-suppression": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}", "e2e/**/*.{ts,mjs}"],
+    rules: {
+      "vv/english-comments": "error",
     },
   },
   {
@@ -241,13 +466,6 @@ export default [
       "no-unused-vars": "off",
     },
   },
-  {
-    files: sourceFiles,
-    ignores: [...i18nFiles, ...testFiles],
-    rules: {
-      "no-restricted-syntax": ["error", ...i18nRestrictedSyntax],
-    },
-  },
   ...designSystemConfig(),
   // Use recommended test rules with the exceptions below; see docs/design-docs/web-testing.md.
   {
@@ -259,6 +477,22 @@ export default [
       "vitest/expect-expect": ["error", { assertFunctionNames: ["expect", "expect*"] }],
       // Vitest accepts a failure message as the second expect argument, used for table-row names.
       "vitest/valid-expect": ["error", { maxArgs: 2 }],
+      "vitest/no-restricted-matchers": [
+        "error",
+        Object.fromEntries(snapshotMatchers.map((matcher) => [matcher, snapshotMessage])),
+      ],
+    },
+  },
+  {
+    files: testFiles,
+    rules: {
+      [controlRule]: ["error", ...testRestrictedSyntax],
+    },
+  },
+  {
+    files: e2eFiles,
+    rules: {
+      [controlRule]: ["error", ...e2eRestrictedSyntax],
     },
   },
   {

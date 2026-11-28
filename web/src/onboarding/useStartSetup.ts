@@ -7,9 +7,9 @@ import { useToast } from "../ui/Toast";
 import { ONBOARDING_PATH } from "./onboardingRoute";
 
 /**
- * useStartSetup はオンボードを始め直す操作である。段階を `folders` に書いてから `/welcome` を
- * 開く（docs/design-docs/home.md「Sidebar and library」）。段階を書かずに開くと、段階が
- * `done` の所有者はゲートがホームへ戻す。書けなかったら理由を通知に出して留まる。
+ * Restart onboarding: write the step `folders`, then open `/welcome` (docs/design-docs/home.md, Sidebar
+ * and library). Without the write, the gate would send an owner whose step is `done` back home; a
+ * failed write shows its reason in a notice and stays.
  */
 export function useStartSetup() {
   const navigate = useNavigate();

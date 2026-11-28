@@ -33,11 +33,11 @@ interface Video {
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-// media-fixtures.mjs の ONBOARDING_VIDEOS と同じ題名。
+// The titles of ONBOARDING_VIDEOS in media-fixtures.mjs.
 const taggedTitle = "オンボード確認A";
 const untaggedTitle = "オンボード確認B";
 const videoTitles = [taggedTitle, untaggedTitle];
-// 選ぶ2つの分野（internal/domain/interest_catalog.json）。Cooking の動画にだけタグを付ける。
+// The two interests picked (internal/domain/interest_catalog.json); only the Cooking video is tagged.
 const cooking = "Cooking";
 const travel = "Travel";
 const interests = [cooking, travel];
@@ -50,8 +50,8 @@ function mediaRoot(): string {
 }
 
 /**
- * deviceContext は、自分でログインした別のブラウザを開く。端末ごとに別のセッションになる。
- * ここで閉じても、ほかの e2e のセッションは続く。
+ * Open another browser that signs in itself, so each device has its own session; closing it leaves
+ * the other suites' sessions signed in.
  */
 async function deviceContext(browser: Browser): Promise<BrowserContext> {
   const context = await browser.newContext({
@@ -71,7 +71,7 @@ async function listMediaFolders(request: APIRequestContext): Promise<MediaFolder
   return (await response.json()) as MediaFolder[];
 }
 
-/** removeOwnMediaFolder は、この e2e のメディアフォルダの登録を外す（前の試行の分も）。 */
+/** Unregister this suite's media folder, including one left by an earlier attempt. */
 async function removeOwnMediaFolder(request: APIRequestContext) {
   for (const folder of await listMediaFolders(request)) {
     if (folder.path !== mediaRoot()) continue;
@@ -83,7 +83,7 @@ async function removeOwnMediaFolder(request: APIRequestContext) {
   }
 }
 
-/** removeInterests は、選んだ分野のスマートフォルダ（スマートフォルダ）とタグを消す。 */
+/** Delete the smart folders and tags of the picked interests. */
 async function removeInterests(request: APIRequestContext) {
   const folders = await request.get("/api/smart-folders");
   expect(folders.status()).toBe(200);
@@ -123,7 +123,7 @@ async function writeStep(request: APIRequestContext, step: string) {
   expect(response.status()).toBe(200);
 }
 
-/** currentStep は手順の帯の、今の手順の項目である。 */
+/** The current step's item in the steps strip. */
 function currentStep(page: Page) {
   return page
     .getByRole("navigation", { name: "Setup steps" })
@@ -131,9 +131,8 @@ function currentStep(page: Page) {
 }
 
 /**
- * addFolderFromPicker は「Add folder」の選択ダイアログでこの e2e のフォルダを選んで足す。
- * ダイアログが読むサーバーのディレクトリの一覧だけを差し替え、足すのは実サーバーに送る
- * （settings.e2e.ts と同じ）。
+ * Pick this suite's folder in the `Add folder` dialog. Only the server's directory listing the dialog
+ * reads is replaced; adding goes to the real server, as in settings.e2e.ts.
  */
 async function addFolderFromPicker(page: Page) {
   const root = mediaRoot();
@@ -162,7 +161,7 @@ async function addFolderFromPicker(page: Page) {
   await expect(page.getByRole("list", { name: "Added folders" })).toContainText(root);
 }
 
-/** waitForVideos は、この e2e の動画が解析とサムネイルを終えるのを待つ。 */
+/** Wait until this suite's videos are probed and have thumbnails. */
 async function waitForVideos(request: APIRequestContext): Promise<Map<string, Video>> {
   let found = new Map<string, Video>();
   await expect
@@ -189,13 +188,13 @@ function interestLink(page: Page, name: string) {
 
 test.describe.serial("onboarding", () => {
   test.beforeAll(async ({ request }) => {
-    // CI のリトライに備え、前の試行が残したものを先に消す。
+    // A CI retry starts by removing what an earlier attempt left.
     await removeInterests(request);
     await removeOwnMediaFolder(request);
   });
 
   test.afterAll(async ({ request }) => {
-    // ほかの e2e は、分野のスマートフォルダもこのフォルダの動画も無いホームから始める。
+    // The other suites start from a home without the interests' smart folders or this folder's videos.
     await removeInterests(request);
     await removeOwnMediaFolder(request);
     await writeStep(request, "done");
@@ -208,7 +207,7 @@ test.describe.serial("onboarding", () => {
     test.setTimeout(240_000);
     expect(await readVideos(request)).toEqual([]);
     expect(await listMediaFolders(request)).toEqual([]);
-    // 新しい所有者の段階（auth.setup.ts は既存の e2e のために done にしている）。
+    // A new owner's step; auth.setup.ts sets it to done for the other suites.
     await writeStep(request, "folders");
 
     await test.step("4: 1台目でフォルダを足して閉じる", async () => {
@@ -296,7 +295,7 @@ test.describe.serial("onboarding", () => {
           },
         });
         expect(tagged.ok()).toBe(true);
-        // 今あるタグに付き、同じ名前の2つ目のタグはできない。
+        // The existing tag is applied; no second tag of the same name is created.
         expect((await tagsNamed(request, cooking)).map(({ id }) => id)).toEqual([
           cookingTag!.id,
         ]);

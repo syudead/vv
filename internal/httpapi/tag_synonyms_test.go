@@ -98,7 +98,7 @@ func TestPromoteChangesTheCanonicalNameOnBothNodesAndMoveStaysLocal(t *testing.T
 	if got := decode[gen.Tag](t, rec); got.Name != "ねこ" || !slices.Equal(got.Synonyms, []string{"にゃんこ", "猫"}) {
 		t.Errorf("promote = %+v, want ねこ with にゃんこ and 猫", got)
 	}
-	// a's 猫 lacks the synonym ねこ, so it gains ねこ as its canonical name and keeps 猫 and its own synonym.
+	// a's `猫` lacks the synonym `ねこ`, so it gains `ねこ` as its canonical name and keeps `猫` and its own synonym.
 	if tag, _ := tagNamed(t, fa, "ねこ"); tag.Name != "ねこ" || !slices.Equal(tag.Synonyms, []string{"にゃんこ", "猫"}) {
 		t.Errorf("a's tag = %+v, want ねこ with にゃんこ and 猫", tag)
 	}

@@ -22,9 +22,8 @@ setup("所有者のアカウントを作ってログインする", async ({ requ
   expect(videos.status()).toBe(200);
   expect(videos.headers()["x-vv-audience"]).toBe("owner");
 
-  // 既存の e2e は自分でメディアフォルダを足すので、オンボードを終えた所有者として走る。
-  // 終えていなければ、フォルダの無い間はどの画面も /welcome へ送られる
-  // （docs/design-docs/home.md・R-4）。
+  // The other suites add their own media folders, so they run as an owner who finished onboarding;
+  // otherwise every screen redirects to /welcome while no folder exists (docs/design-docs/home.md).
   const onboarding = await request.put("/api/onboarding", { data: { step: "done" } });
   expect(onboarding.status()).toBe(200);
 

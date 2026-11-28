@@ -1656,7 +1656,6 @@ describe("LibraryPage", () => {
       expect(screen.getByText("1 video selected")).toBeDefined();
     });
 
-    // （docs/design-docs/library-ui.md）。
     it("一括で外したタグが今の絞り込みに含まれるとき、選択を解除して一覧を取り直す（Devin の指摘4）", async () => {
       const tag = {
         id: 1,

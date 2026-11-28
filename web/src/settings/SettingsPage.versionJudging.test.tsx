@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { installSettingsServer, json, renderSettings } from "../testing/settingsPage";
+import { settle } from "../testing/settle";
 
 // Duplicate judging remains available without Ollama; show a Connections link beneath it.
 //
@@ -85,7 +86,7 @@ describe("SettingsPage: Library page duplicate judging and the Ollama connection
       name: "Judge possible duplicates automatically",
     });
     await waitFor(() => expect(server.requested).toContain(ollamaURL));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await settle();
     expect(connectionNote()).toBeNull();
     expect(screen.queryByText(/Couldn't read the Ollama connection/)).toBeNull();
     expect(judgingSwitch().hasAttribute("aria-disabled")).toBe(false);

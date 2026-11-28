@@ -3,10 +3,9 @@ import { StepsPage } from "@/ui/patterns/steps-page";
 import { Button } from "@/ui/shadcn/button";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/shadcn/toggle-group";
 
-// 手順の画面の見本（registry:block steps-page-example）。3 つの手順の 2 つ目を開いた形で、
-// 中身に分野の切り替えを並べ、下端の左に Skip（ghost の sm）、右に 1 つの主操作（default の sm）を
-// 置く。写した画面は手順・題・中身・操作を自分のものに差し替え、間隔と幅は書かない
-// （web/registry/rules/patterns.md の Steps page）。
+// The steps page sample (registry:block steps-page-example): the second of three steps, with interest
+// toggles as its content, Skip at the bottom left and one main action at the right. A copy replaces the
+// steps, title, content and actions and writes no spacing or widths (web/registry/rules/patterns.md, Steps page).
 
 const stepKeys = ["folders", "topics", "finish"] as const;
 
@@ -42,14 +41,11 @@ export function StepsPageExample() {
         size="sm"
         aria-label={p.topics}
         defaultValue={["travel"]}
-        className="w-full flex-wrap gap-2"
+        spacing="separate"
+        className="w-full flex-wrap"
       >
         {topics.map(([key, name]) => (
-          <ToggleGroupItem
-            key={key}
-            value={key}
-            className="flex-none rounded-md px-3 data-[variant=outline]:border-l"
-          >
+          <ToggleGroupItem key={key} value={key} className="px-3">
             {name}
           </ToggleGroupItem>
         ))}

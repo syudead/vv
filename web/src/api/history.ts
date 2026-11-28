@@ -1,3 +1,4 @@
+import { browserTimeZone } from "../i18n/intl";
 import { apiFetch, PAGE_SIZE, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
@@ -25,10 +26,6 @@ export interface ListWatchHistoryParams extends WatchHistoryConditions {
 
 export interface ListWatchHistoryDatesParams extends WatchHistoryConditions {
   signal?: AbortSignal;
-}
-
-export function browserTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 function setConditions(

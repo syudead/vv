@@ -866,3 +866,37 @@ func TestPosterGoesWithItsThumbnail(t *testing.T) {
 		t.Fatalf("削除の後の poster = %q", got)
 	}
 }
+
+// An encoded image becomes the thumbnail and its source the poster; without a source the old poster goes.
+func TestPublishThumbnailImageWritesTheImageAndItsPoster(t *testing.T) {
+	store := New(t.TempDir())
+	read := func(open func(string) (*os.File, error)) string {
+		t.Helper()
+		file, err := open(key)
+		if errors.Is(err, fs.ErrNotExist) {
+			return ""
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = file.Close() }()
+		data, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+
+	if err := store.PublishThumbnailImage(key, []byte("image"), []byte("source")); err != nil {
+		t.Fatal(err)
+	}
+	if thumbnail, poster := read(store.ThumbnailFile), read(store.PosterFile); thumbnail != "image" || poster != "source" {
+		t.Fatalf("thumbnail, poster = %q, %q; want image, source", thumbnail, poster)
+	}
+	if err := store.PublishThumbnailImage(key, []byte("second"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if thumbnail, poster := read(store.ThumbnailFile), read(store.PosterFile); thumbnail != "second" || poster != "" {
+		t.Fatalf("thumbnail, poster = %q, %q; want second and no poster", thumbnail, poster)
+	}
+}

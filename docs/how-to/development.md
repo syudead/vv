@@ -68,24 +68,41 @@ changes. Record the scope and results in the PR; reuse passing results until
 relevant inputs change. After a fix, rerun the failed check and those affected
 by the fix. Format only affected files, or use `task fmt` for a broad rewrite.
 
+`task check-docs` lints every tracked Markdown file except the vendored
+`.agents/skills/shadcn/` with remark (`tools/remark/config.mjs`) and fails on
+any warning. It reports broken relative links and anchors, including anchors in
+other files (remark-validate-links), trailing whitespace, numbered headings
+(W-9), Japanese prose (W-1), a `docs/design-docs/` or `docs/product-specs/`
+document missing from its `index.md`, template placeholders left under
+`specs/`, and links from `ARCHITECTURE.md`, `README.md` or `docs/` into
+`specs/`. Its `sdd-citations-check` fails when a tracked file outside
+`specs/`, code included, cites a path inside a feature's `specs/` directory.
+The task also runs the unit tests of the repository's remark rules, and needs
+the `tools/` npm dependencies that `task setup` installs.
+
 CI runs these additional checks without making them a local pre-push gate;
 `task check-ci` reproduces them together, and each task can run on its own.
 
 | CI check | Run locally when |
 | --- | --- |
 | `generate-check` | Changing OpenAPI, generators or registry components; run `task generate` first |
+| `lint-api` | Changing OpenAPI; the Spectral rules in `tools/spectral/ruleset.yaml` require English summaries and descriptions and `int64` integer ids |
 | `migrations-check` | Changing migration SQL |
-| `e2e-groups-check` | Changing E2E files or CI grouping |
 | `lint-go-windows-desktop`, `build-windows-check` | Changing Windows, desktop or cross-platform code |
 | `build-check-web` | Changing bundling, assets or build configuration |
 
 `task check-ci` supplements local checks; it does not run them or browser E2E.
 CI also runs full Go and Web suites, coverage/report uploads and quality metrics.
 
-Lint findings are fixed in the code, never silenced: `task check` fails on any
-`//nolint` comment in Go sources (`scripts/nolintguard`) and on any
+Lint findings are fixed in the code, never silenced ([Lint rules](#lint-rules)):
+`task check` fails on any `//nolint` comment in Go sources
+(`scripts/nolintguard`) and on any
 `eslint-disable*` or other inline ESLint configuration comment in `web/`
-(`linterOptions.noInlineConfig`). A change keeps the functions it adds or makes
+(`linterOptions.noInlineConfig`), and on `@ts-ignore`, `@ts-expect-error` and
+`@ts-nocheck` (`vv/no-ts-suppression`). `vv/english-comments` fails on
+Japanese prose in a comment under `web/src` or `web/e2e`, outside backticks,
+following the comment policy in `AGENTS.md`. Both are vv's own rules in
+`web/eslint-rules/`, tested with ESLint's `RuleTester` under Vitest. A change keeps the functions it adds or makes
 more complex at complexity 25 or less and shares code instead of copying it;
 the Codex review raises a breach
 ([Complexity and duplication](../design-docs/complexity-and-duplication.md)).
@@ -110,20 +127,24 @@ flowchart LR
   docs --> checks[Checks job]
   groups --> checks
   code -->|yes| push{Push to main or Renovate PR?}
-  push -->|yes| more[E2E in four groups and Docker image build]
+  push -->|yes| more[E2E in eight jobs and Docker image build]
   code -->|yes| manual{Manual run?}
-  manual -->|yes| e2e[E2E in four groups]
+  manual -->|yes| e2e[E2E in eight jobs]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
 runs full local and CI-only tasks as parallel `Checks (<group>)` jobs: Go lint
-with generation, migration, E2E grouping and Windows lint/build checks, Go tests,
+with generation, migration, Windows lint/build and document checks, Go tests,
 Web lint with the SPA build check, and the Vitest suite split into three shards
 (`task test-web-report -- --shard=1/3`). `task test-web` remains an explicit
 build-and-test command. Keep both local and CI-only tasks represented in
-`.github/workflows/ci.yml`. A new
-`web/e2e/*.e2e.ts` file goes into one of the four E2E groups there;
-`task e2e-groups-check` fails when a file is in no group or in two. Only the Go groups
+`.github/workflows/ci.yml`. Browser E2E runs as seven Playwright shards of the
+`onboarding` and `e2e` projects
+(`task test-e2e -- --project=onboarding --project=e2e --shard=1/7`) and one job
+for the `assistant` project, whose saved Ollama connection must not reach other
+specs. Playwright assigns whole files to shards in order by test count, so a new
+`web/e2e/*.e2e.ts` file needs no CI change; a file that grows to dominate a
+shard is split by topic. Only the Go groups
 restore the Go build cache, and each saves its own copy on a push to `main`.
 Vitest shards by file, so a test file that grows to dominate a shard is split by
 topic, as `web/src/tags/TagKindsPage*.test.tsx` are around the shared
@@ -137,7 +158,7 @@ image, because the Renovate routine merges them without a person
 To run browser E2E on a branch before it merges, start the CI workflow by hand
 (`workflow_dispatch`) from the Actions tab or with
 `gh workflow run ci.yml --ref <branch>`. A manual run treats the branch as a
-code change and runs every `Checks` group and the four E2E groups; it does not
+code change and runs every `Checks` group and every E2E job; it does not
 build the Docker image.
 
 The Go and Vitest test groups run the same tests as `task test-go` and
@@ -186,3 +207,45 @@ When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit
 `internal/httpapi/gen/`, `internal/httpapi/extgen/` or `web/src/api/gen/`
 directly.
+
+## Lint rules
+
+`task lint-go` runs golangci-lint with [`.golangci.yml`](../../.golangci.yml).
+depguard and forbidigo keep imports and calls with the package that owns them
+([ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction)), and
+two analyzers of the repository's own check rules no published linter covers.
+
+| Analyzer | Reports | Rule |
+| --- | --- | --- |
+| `englishcomments` | A comment group with an ideographic comma or full stop, or two Hiragana in a row, outside backticks; directives and generated files are skipped | [Code comments](../../AGENTS.md#code-comments) |
+| `nosleepintests` | `time.Sleep` in a `_test.go` file outside a function literal passed to `synctest.Test` | [Time and synchronization](../design-docs/testing-time.md) |
+
+A test that waits on a real OS process or on kernel file notifications is
+excluded from `nosleepintests` by path in `.golangci.yml`, with the reason
+beside it.
+
+The analyzers are golangci-lint module plugins, compiled into the linter the
+manual way that plugin system documents.
+
+```mermaid
+flowchart LR
+  pins[tools/go.mod and go.sum] --> main[tools/cmd/golangci-lint]
+  analyzers[tools/lint] -->|register| main
+  main -->|go tool, Go build cache| tasks[lint-go, fmt, fmt-check-go, lint-go-windows-desktop]
+  config[.golangci.yml] --> tasks
+```
+
+`tools/cmd/golangci-lint` is the pinned golangci-lint command with
+[`tools/lint`](../../tools/lint) imported, and it is the `golangci-lint` tool of
+`tools/go.mod`. `go -C tools tool -n golangci-lint` builds it with the versions
+`tools/go.sum` pins and keeps it in the Go build cache, so no task needs a
+separate build step, and `task setup` and the session-start hook warm it as
+before. Its version carries a digest of the binary, because golangci-lint keys
+its analysis cache by version and a changed analyzer must not reuse old
+results. `task lint-go` first runs the analyzers' `analysistest` cases, which
+`./...` does not reach in the tools module.
+
+| Rejected | Why |
+| --- | --- |
+| `golangci-lint custom` with `.custom-gcl.yml` | It clones golangci-lint from GitHub on every build and resolves the plugins' dependencies outside `tools/go.sum`, and its binary needs a cache of its own |
+| `scripts/nolintguard` as an analyzer | golangci-lint applies `//nolint:all` to every linter's reports, a plugin's included, so a directive could silence its own check; nolintguard also reads `testdata` and files no build includes |

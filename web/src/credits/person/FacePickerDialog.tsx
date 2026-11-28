@@ -294,7 +294,8 @@ function FaceChoices({
           if (value !== "") onChoose(Number(value));
         }}
         disabled={disabled}
-        className="flex w-full gap-2 overflow-x-auto pb-1 lg:grid lg:grid-cols-5 lg:overflow-visible"
+        spacing="separate"
+        className="flex w-full overflow-x-auto pb-1 lg:grid lg:grid-cols-5 lg:overflow-visible"
       >
         {choices.faces.map((face) => (
           <ToggleGroupItem
@@ -302,7 +303,7 @@ function FaceChoices({
             value={String(face.appearanceId)}
             aria-label={text.face(face.title)}
             title={face.title}
-            className="h-auto flex-none rounded-md p-0.5 first:rounded-md last:rounded-md data-[state=on]:ring-2 data-[state=on]:ring-primary"
+            className="h-auto p-0.5 data-[state=on]:ring-2 data-[state=on]:ring-primary"
           >
             {face.hasCrop ? (
               <img

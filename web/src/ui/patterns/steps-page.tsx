@@ -4,43 +4,38 @@ import { type ReactNode, useId } from "react";
 import { cn } from "@/lib/cn";
 import BrandHomeLink from "@/ui/BrandHomeLink";
 
-// 手順の画面（骨格）。シェルの外の 1 枚の画面で、決まった順の手順を 1 つずつ進める
-// （オンボードのような最初の設定）。上端の帯（navbar の高さ）の左に BrandHomeLink、中央に
-// 手順の帯を置く。帯は手順の名前に番号を添え、今の手順を primary、済んだ手順を印で示す。
-// sm 未満は「Step 2 of 3」と今の名前だけにする。帯の下は max-w-2xl の 1 列を中央に置き
-// （p-4、sm から p-6）、題（h1、text-xl）・説明・中身・失敗の行・下端の行（左に Skip、右に
-// 1 つの default の操作）を縦に並べる。管理画面の密度。
-// 規則は web/registry/rules/patterns.md の Steps page。
+// A page outside the shell for steps taken in a fixed order, one at a time, such as the first setup.
+// The navbar-high band holds BrandHomeLink and the numbered steps strip (the current step in primary,
+// finished ones marked; below sm, `Step 2 of 3` and the current name); below it one centred max-w-2xl
+// column stacks the title, description, content, failure and footer. Rules: web/registry/rules/patterns.md, Steps page.
 
 export interface StepsPageStep {
-  /** 手順を区別する鍵。 */
   key: string;
-  /** 帯に出す手順の名前。 */
+  /** The name shown in the strip. */
   name: ReactNode;
-  /** 読み上げの名前。済んだ手順は済んだことを、今の手順は今であることを含める。 */
+  /** The accessible name, which says when the step is done or current. */
   label: string;
 }
 
 export interface StepsPageProps {
-  /** 手順を進む順に並べたもの。 */
+  /** In the order they are taken. */
   steps: readonly StepsPageStep[];
-  /** 今の手順の位置（steps の添字）。 */
+  /** The current step's index in steps. */
   current: number;
-  /** 手順の帯（nav 要素）の読み上げ名。 */
+  /** The accessible name of the strip's nav. */
   stepsLabel: string;
-  /** sm 未満の帯に今の名前の前に出す位置（「Step 2 of 3」）。 */
+  /** The position shown before the current name below sm (`Step 2 of 3`). */
   progress: ReactNode;
-  /** 手順の題。h1 になる。 */
+  /** Rendered as the h1. */
   title: ReactNode;
-  /** 題の下の説明。 */
   description?: ReactNode;
-  /** 手順の中身。上から並べ、骨格が gap-4 で離す。 */
+  /** Stacked from the top; the skeleton spaces them with gap-4. */
   children?: ReactNode;
-  /** 下端の行の上に置く失敗の Alert。 */
+  /** The failure Alert above the footer. */
   notice?: ReactNode;
-  /** 下端の行の左の `Skip`（ghost の sm）。 */
+  /** The footer's `Skip` at its left, a ghost sm Button. */
   skip: ReactNode;
-  /** 下端の行の右の主操作（default の sm、1 つ）。 */
+  /** The footer's one main action at its right, a default sm Button. */
   action: ReactNode;
 }
 

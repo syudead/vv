@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import type { CheckResult, ComfyUISettings } from "../api/client";
 import ComfyUISection from "./ComfyUISection";
@@ -78,10 +78,15 @@ describe("ComfyUISection", () => {
     fetchMock.mockImplementationOnce(
       () => new Promise<Response>((resolve) => (answer = resolve)),
     );
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     renderSection("/settings#comfyui");
     const heading = screen.getByRole("heading", { level: 2, name: "ComfyUI" });
     await waitFor(() => expect(document.activeElement).toBe(heading));
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // The anchor's last focus retry runs 100 ms after navigation.
+    act(() => vi.advanceTimersByTime(150));
     answer(json(current));
     await screen.findByLabelText("ComfyUI URL");
     expect(document.activeElement).toBe(

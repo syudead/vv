@@ -13,7 +13,6 @@ import {
 } from "@/ui/shadcn/alert-dialog";
 
 // Destructive confirmation uses AlertDialog; see web/registry/rules/patterns.md, Confirm dialog.
-// Confirm dialog。
 //
 // Pass pending for requests so callers close only on success; disable both actions while submitting and retain inline failures.
 

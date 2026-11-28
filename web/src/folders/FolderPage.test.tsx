@@ -316,22 +316,27 @@ describe("FolderPage", () => {
       const card = (await screen.findByRole("link", { name: title })).closest("article");
       if (card === null) throw new Error("card not found");
       fireEvent.pointerEnter(card, { pointerType: "mouse" });
-      await act(() => new Promise((resolve) => setTimeout(resolve, 450)));
+      // The card starts its preview after a 400 ms hover.
+      await act(() => vi.advanceTimersByTimeAsync(400));
     };
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
-    renderFolders("/folders/3/A");
-    await screen.findByRole("link", { name: "x" });
-    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
-    await hover("x");
-    expect(
-      Array.from(document.querySelectorAll("video"), (v) => v.getAttribute("src")),
-    ).toEqual(["/p/1"]);
-    await hover("y");
-    expect(
-      Array.from(document.querySelectorAll("video"), (v) => v.getAttribute("src")),
-    ).toEqual(["/p/2"]);
+    vi.useFakeTimers();
+    try {
+      renderFolders("/folders/3/A");
+      await screen.findByRole("link", { name: "y" });
+      await hover("x");
+      expect(
+        Array.from(document.querySelectorAll("video"), (v) => v.getAttribute("src")),
+      ).toEqual(["/p/1"]);
+      await hover("y");
+      expect(
+        Array.from(document.querySelectorAll("video"), (v) => v.getAttribute("src")),
+      ).toEqual(["/p/2"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("最上位に登録フォルダをパス付きで並べる", async () => {
@@ -1754,7 +1759,7 @@ describe("FolderPage", () => {
           expect(scrollTo).toHaveBeenLastCalledWith({ top: 7000, behavior: "auto" }),
         );
         const calls = scrollTo.mock.calls.length;
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // The restoring layout effect requests the next page synchronously, so a fourth read would already show.
         expect(loadedPages).toBe(3);
         expect(scrollTo.mock.calls.length).toBe(calls);
       } finally {

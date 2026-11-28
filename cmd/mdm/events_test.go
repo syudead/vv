@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/app"
@@ -31,56 +32,45 @@ func newTestBus() *eventbus.Bus {
 }
 
 func TestSubscribeEventsWakesWorkers(t *testing.T) {
-	bus := newTestBus()
-	wakers := map[domain.JobKind]*countingWaker{}
-	workers := map[domain.JobKind]waker{}
-	for _, kind := range domain.JobKinds {
-		wakers[kind] = &countingWaker{}
-		workers[kind] = wakers[kind]
-	}
-	judge := &countingWaker{}
-	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge})
-
-	bus.Publish(domain.JobsQueued{Kinds: []domain.JobKind{domain.JobProbe, domain.JobPreview}})
-	bus.Publish(domain.ProcessingChanged{})
-	bus.Publish(domain.VersionCandidatesChanged{})
-	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobProbe})
-	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobThumbnail})
-	bus.Publish(domain.VideoIngestChanged{VideoID: 1})
-	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobSeekThumbnail})
-	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobPreview})
-	want := map[domain.JobKind]int32{
-		domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
-		// Probe, thumbnail, and video deletion each wake the worker.
-		domain.JobSeekThumbnail: 3,
-	}
-	check := func() bool {
-		if judge.woken.Load() != 2 {
-			return false
+	synctest.Test(t, func(t *testing.T) {
+		bus := newTestBus()
+		wakers := map[domain.JobKind]*countingWaker{}
+		workers := map[domain.JobKind]waker{}
+		for _, kind := range domain.JobKinds {
+			wakers[kind] = &countingWaker{}
+			workers[kind] = wakers[kind]
 		}
+		judge := &countingWaker{}
+		subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge})
+
+		bus.Publish(domain.JobsQueued{Kinds: []domain.JobKind{domain.JobProbe, domain.JobPreview}})
+		bus.Publish(domain.ProcessingChanged{})
+		bus.Publish(domain.VersionCandidatesChanged{})
+		bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobProbe})
+		bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobThumbnail})
+		bus.Publish(domain.VideoIngestChanged{VideoID: 1})
+		bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobSeekThumbnail})
+		bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobPreview})
+		want := map[domain.JobKind]int32{
+			domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
+			// Probe, thumbnail, and video deletion each wake the worker.
+			domain.JobSeekThumbnail: 3,
+		}
+		// Delivery is asynchronous; every subscriber has handled its events once the bubble's goroutines block.
+		synctest.Wait()
+		subs.StopWorkers()
+		bus.Publish(domain.JobsQueued{Kinds: domain.JobKinds})
+		bus.Close()
+
 		for kind, w := range wakers {
-			if w.woken.Load() != want[kind] {
-				return false
+			if got := w.woken.Load(); got != want[kind] {
+				t.Errorf("%s の起床 = %d, want %d", kind, got, want[kind])
 			}
 		}
-		return true
-	}
-	// Delivery is asynchronous.
-	for deadline := time.Now().Add(5 * time.Second); !check() && time.Now().Before(deadline); {
-		time.Sleep(time.Millisecond)
-	}
-	subs.StopWorkers()
-	bus.Publish(domain.JobsQueued{Kinds: domain.JobKinds})
-	bus.Close()
-
-	for kind, w := range wakers {
-		if got := w.woken.Load(); got != want[kind] {
-			t.Errorf("%s の起床 = %d, want %d", kind, got, want[kind])
+		if got := judge.woken.Load(); got != 2 {
+			t.Errorf("重複の判定の起床 = %d, want 2", got)
 		}
-	}
-	if got := judge.woken.Load(); got != 2 {
-		t.Errorf("重複の判定の起床 = %d, want 2", got)
-	}
+	})
 }
 
 type probeOnlyGenerator struct{}

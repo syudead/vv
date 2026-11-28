@@ -13,7 +13,6 @@ import {
   VideoOff,
 } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
-import { toast } from "sonner";
 
 import { t } from "../i18n";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
@@ -87,7 +86,6 @@ import {
   SidebarProvider,
 } from "../ui/shadcn/sidebar";
 import { Skeleton } from "../ui/shadcn/skeleton";
-import { Toaster } from "../ui/shadcn/sonner";
 import { Spinner } from "../ui/shadcn/spinner";
 import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
 import { FloatingNotice } from "../ui/FloatingNotice";
@@ -98,6 +96,7 @@ import { RecordCard, type RecordCardProps } from "../ui/RecordCard";
 import RemoteMark from "../ui/RemoteMark";
 import { TallyStrip } from "../ui/TallyStrip";
 import TentativeMark from "../ui/TentativeMark";
+import { useToast } from "../ui/Toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
   VideoThumbnail,
@@ -173,6 +172,7 @@ function stateList(): { label: string; preview?: Preview }[] {
 
 function Overlays() {
   const o = t.designSystem.overlay;
+  const showToast = useToast();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Item name="Dialog">
@@ -324,11 +324,10 @@ function Overlays() {
 
       <Item name="Sonner">
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={() => toast(o.toastMessage)}>
+          <Button variant="secondary" size="sm" onClick={() => showToast(o.toastMessage)}>
             {o.toast}
           </Button>
         </div>
-        <Toaster position="bottom-right" />
       </Item>
     </div>
   );

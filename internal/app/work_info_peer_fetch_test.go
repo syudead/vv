@@ -113,7 +113,7 @@ func TestFetchPeerWorkInfoLinksTheEntityThisNodeKnowsByAnotherName(t *testing.T)
 		keyedVideos: keyedVideos{fetchVideo: "peer-key"},
 		fakeCreditMatcher: &fakeCreditMatcher{answers: map[string]domain.CreditMatch{
 			"Aoi": {State: domain.CreditMatchExisting, Credit: &peerAoi},
-			// The peer's 佐藤みか joins this node's; its 次郎 holds 太郎 as another name.
+			// The peer's `佐藤みか` joins this node's; its `次郎` holds `太郎` as another name.
 			"佐藤みか": {State: domain.CreditMatchExisting, Credit: &sato},
 			"太郎":   {State: domain.CreditMatchExisting, Credit: &domain.CreditRef{ID: 1<<40 + 5, Name: "次郎"}},
 		}},

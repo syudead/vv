@@ -88,9 +88,9 @@ function itemTexts(wrapper: HTMLElement | null): string[] {
   );
 }
 
-/** video.js batches TextTrackList changes until the next tick. */
+/** video.js batches TextTrackList changes into a zero-delay timer (queueTrigger). */
 async function flush() {
-  await new Promise((resolve) => window.setTimeout(resolve, 5));
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
 describe("字幕ボタンとメニュー", () => {

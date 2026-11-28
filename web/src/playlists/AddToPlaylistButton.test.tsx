@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PlaylistSummary } from "../api/playlists";
 import { t } from "../i18n";
+import { settle } from "../testing/settle";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ToastProvider } from "../ui/Toast";
 import AddToPlaylistButton from "./AddToPlaylistButton";
@@ -432,7 +433,7 @@ describe("AddToPlaylistButton", () => {
     await waitFor(() => expect(optionNames()).toEqual(["Tonight"]));
     held.open();
     await held.promise;
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
     expect(within(dialog).queryByText(/^Couldn't add to the playlist: /)).toBeNull();
     expect(screen.getByRole("dialog", { name: "Add to playlist" })).toBe(dialog);
   });

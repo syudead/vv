@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import type { EncoderAvailability, TranscodingSettings } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
@@ -335,6 +335,10 @@ describe("TranscodingSection", () => {
         ),
       );
     });
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     render(<TranscodingSection pollIntervalMs={5} />);
 
     expect(
@@ -354,7 +358,8 @@ describe("TranscodingSection", () => {
     expect(screen.getByText("Available")).toBeDefined();
     const callsAfterDone = fetchMock.mock.calls.length;
     expect(callsAfterDone).toBe(3);
-    await new Promise((done) => setTimeout(done, 30));
+    // Many poll intervals pass without another read once the checks are done.
+    await act(() => vi.advanceTimersByTimeAsync(50));
     expect(fetchMock.mock.calls.length).toBe(callsAfterDone);
   });
 

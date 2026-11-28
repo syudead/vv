@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"slices"
 
 	"github.com/syudead/vv/internal/domain"
@@ -64,6 +63,9 @@ type ArtifactStore interface {
 	ArtifactRemover
 	// write leaves poster empty when it has no larger image; the store then removes the old poster.
 	PublishThumbnail(contentKey string, write func(output, poster string) error) error
+	// PublishThumbnailImage publishes an applied image the same way, with its stored source as the poster; an image
+	// applied before sources were stored has none, which removes the old poster.
+	PublishThumbnailImage(contentKey string, image, poster []byte) error
 	ThumbnailAvailable(contentKey string) bool
 	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
@@ -288,19 +290,21 @@ func (i *Ingest) publishJobThumbnail(
 		// The applied image was reverted while waiting; unreadable media cannot supply its replacement frame.
 		return sourceErr
 	}
-	if err := i.files.PublishThumbnail(job.ContentKey, func(output, poster string) error {
-		if image != nil {
-			substitution = domain.SubstitutionNone
-			return writeThumbnailImages(output, image, poster, source)
-		}
-		if video.ThumbnailPositionMs != nil {
-			substitution = domain.SubstitutionNone
-			return i.generator.ThumbnailAt(ctx, sourcePath, *video.ThumbnailPositionMs, output, poster)
-		}
-		firstFrame, err := i.generator.Thumbnail(ctx, sourcePath, durationOf(video), output, poster)
-		substitution = domain.SubstitutionOf(firstFrame)
-		return err
-	}); err != nil {
+	if image != nil {
+		substitution = domain.SubstitutionNone
+		err = i.files.PublishThumbnailImage(job.ContentKey, image, source)
+	} else {
+		err = i.files.PublishThumbnail(job.ContentKey, func(output, poster string) error {
+			if video.ThumbnailPositionMs != nil {
+				substitution = domain.SubstitutionNone
+				return i.generator.ThumbnailAt(ctx, sourcePath, *video.ThumbnailPositionMs, output, poster)
+			}
+			firstFrame, err := i.generator.Thumbnail(ctx, sourcePath, durationOf(video), output, poster)
+			substitution = domain.SubstitutionOf(firstFrame)
+			return err
+		})
+	}
+	if err != nil {
 		return err
 	}
 	_, err = i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution)
@@ -467,9 +471,7 @@ func (i *Ingest) applyThumbnailImage(
 		if err != nil {
 			return false, err
 		}
-		if err := i.files.PublishThumbnail(contentKey, func(output, poster string) error {
-			return writeThumbnailImages(output, applied.Image, poster, applied.Source)
-		}); err != nil {
+		if err := i.files.PublishThumbnailImage(contentKey, applied.Image, applied.Source); err != nil {
 			discard()
 			return false, err
 		}
@@ -508,20 +510,6 @@ func (i *Ingest) fitThumbnailImage(
 		return domain.AppliedThumbnailImage{}, err
 	}
 	return domain.AppliedThumbnailImage{Image: fitted, Source: source, Origin: origin}, nil
-}
-
-// The stored source becomes the poster; a row applied before sources were stored has none.
-func writeThumbnailImages(output string, image []byte, poster string, source []byte) error {
-	if err := os.WriteFile(output, image, 0o644); err != nil {
-		return fmt.Errorf("cannot write the thumbnail image: %w", err)
-	}
-	if len(source) == 0 {
-		return nil
-	}
-	if err := os.WriteFile(poster, source, 0o644); err != nil {
-		return fmt.Errorf("cannot write the thumbnail poster: %w", err)
-	}
-	return nil
 }
 
 // Missing videos return ErrNotFound; removed or reassigned source locations return

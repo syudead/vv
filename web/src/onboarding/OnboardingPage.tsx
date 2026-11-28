@@ -10,7 +10,7 @@ import { useOnboardingStep } from "./OnboardingGate";
 import ScanStep from "./ScanStep";
 import { stepFrame, type StepWrite } from "./stepFrame";
 
-/** useStepWrite は段階の書き込みと、その途中か、失敗の理由を持つ。 */
+/** The step write, whether it is in flight, and its failure reason. */
 function useStepWrite(step: OnboardingStep): StepWrite {
   const navigate = useNavigate();
   const [pending, setPending] = useState(false);

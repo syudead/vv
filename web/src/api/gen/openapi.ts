@@ -1008,15 +1008,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * オンボードの段階を返す
-         * @description 段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
-         *     無ければ `folders` である（docs/design-docs/home.md）。所有者だけ。
+         * Get the onboarding step
+         * @description The step is stored in the `onboarding.step` setting. Without it, the step is `done` when a
+         *     media folder exists and `folders` otherwise (docs/design-docs/home.md). Owner only.
          */
         get: operations["getOnboarding"];
         /**
-         * オンボードの段階を書く
-         * @description 名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
-         *     画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。
+         * Set the onboarding step
+         * @description Writes the named step as is, so the later of two devices' writes wins. A changed step sends
+         *     the `onboarding` screen event (docs/design-docs/home.md).
          */
         put: operations["updateOnboarding"];
         post?: never;
@@ -1034,9 +1034,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 分野の一覧を返す
-         * @description Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.
-         *     （docs/design-docs/home.md）。
+         * List onboarding interests
+         * @description Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule
+         *     (docs/design-docs/home.md).
          */
         get: operations["listOnboardingInterests"];
         put?: never;
@@ -5745,17 +5745,17 @@ export interface components {
         };
         Onboarding: {
             /**
-             * @description オンボードの段階（docs/design-docs/home.md）
+             * @description The onboarding step (docs/design-docs/home.md)
              * @enum {string}
              */
             step: "folders" | "scan" | "interests" | "done";
         };
         Interest: {
-            /** @description 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」） */
+            /** @description Stable interest identifier (docs/design-docs/home.md, "Interest catalog") */
             id: string;
-            /** @description タグの名前（英語） */
+            /** @description Tag name in English */
             name: string;
-            /** @description タグの同義語（日本語） */
+            /** @description Tag synonym in Japanese */
             synonym: string;
             /** @description An ordinary root smart folder already matches this interest tag. */
             hasFolder: boolean;
@@ -5769,7 +5769,7 @@ export interface components {
         InterestPickResult: {
             /** @description New smart folders; excludes interests whose matching root folder already existed. */
             folders: components["schemas"]["SmartFolderSummary"][];
-            /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
+            /** @description Number of videos queued for auto-tagging; 0 when auto-tagging is off */
             queued: number;
         };
         StartFaceRecognitionRequest: {
@@ -11075,7 +11075,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の段階 */
+            /** @description The current step */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11099,7 +11099,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 書いた段階 */
+            /** @description The written step */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11121,7 +11121,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 分野の一覧 */
+            /** @description The interests */
             200: {
                 headers: {
                     [name: string]: unknown;

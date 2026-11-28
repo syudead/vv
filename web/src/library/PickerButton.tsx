@@ -42,11 +42,12 @@ export default function PickerButton({
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
+          shape="compact"
           aria-label={label}
           // Stop card navigation/selection without preventDefault, which would block Radix toggling.
           onClick={(event) => event.stopPropagation()}
           className={cn(
-            "rounded-sm p-0 transition-opacity duration-150 hover:bg-transparent active:bg-transparent",
+            "p-0 transition-opacity duration-150 hover:bg-transparent active:bg-transparent",
             card
               ? "size-8 text-foreground hover:text-foreground [&_svg]:size-5"
               : "size-6 text-muted-foreground hover:text-foreground",

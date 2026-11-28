@@ -24,14 +24,14 @@ type GateState = { status: "loading" } | { status: "ready"; step: OnboardingStep
 
 const StepContext = createContext<OnboardingStep>("done");
 
-/** useOnboardingStep はゲートが読んだ今の段階を返す。ゲートの外と閲覧者は `done`。 */
+/** The current step the gate read; `done` outside the gate and for viewers. */
 export function useOnboardingStep(): OnboardingStep {
   return useContext(StepContext);
 }
 
 /**
- * OnboardingGate は所有者の段階が分かるまで何も描かず、分かったら段階に合う経路へ置き換える。
- * 段階を読めなかったときは `done` と扱い、どの画面も止めない。閲覧者は読まずにそのまま描く。
+ * Draw nothing until the owner's step is known, then replace the route with the step's. A step that
+ * cannot be read counts as `done`, so no screen is blocked; viewers render without a read.
  */
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const owner = useAudience() === "owner";

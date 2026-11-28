@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { browserTimeZone } from "../i18n/intl";
 import { RequestFailed } from "./client";
 import {
-  browserTimeZone,
   clearWatchHistory,
   deleteWatchHistoryEntry,
   listWatchHistory,

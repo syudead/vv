@@ -40,7 +40,14 @@ E2E does not cover the production Vite build or its embedding in the Go binary:
 
 Timer-dependent Vitest tests apply [Time and synchronization](testing-time.md#clocks-and-state)
 with `vi.useFakeTimers` and `vi.advanceTimersByTimeAsync`, restoring real timers
-in cleanup with `vi.useRealTimers`.
+in cleanup with `vi.useRealTimers`. A test that checks nothing more happens
+after a response first observes the request (`waitFor` on the fake server's
+calls), then calls `settle()` from
+[`web/src/testing/settle.ts`](../../web/src/testing/settle.ts), which drains the
+queued promise callbacks and the React work they schedule in one event-loop
+turn. ESLint fails on `setTimeout` with a delay other than `0` in tests and on
+`page.waitForTimeout` in `web/e2e`, and on snapshot and screenshot matchers in
+both.
 
 ## Choosing the level
 

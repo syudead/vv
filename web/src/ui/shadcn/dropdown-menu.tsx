@@ -4,8 +4,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// Adapted from shadcn/ui radix-nova with shared tokens.
-// （web/registry/rules/components.md「DropdownMenu」）。
+// Adapted from shadcn/ui radix-nova with shared tokens; see web/registry/rules/components.md, DropdownMenu.
 
 const itemClassName =
   "group/dropdown-menu-item relative flex min-h-8 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";

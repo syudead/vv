@@ -3,6 +3,11 @@ import { asUiText, type UiText } from "./uiText";
 /** Catalog and formatters share one locale fixed at startup. */
 export const LOCALE = "en-US";
 
+/** The device's IANA time zone, which the watch history groups its days by. */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 type Decorate = (text: string) => string;
 
 const identity: Decorate = (text) => text;

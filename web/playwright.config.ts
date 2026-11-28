@@ -35,7 +35,8 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  // Onboarding needs an empty library and runs after account setup, before the other tests.
+  // Onboarding needs an empty library and runs after account setup, before the other tests. The assistant
+  // spec saves an Ollama connection that cannot be removed, so it runs last, and CI gives it its own server.
   projects: [
     {
       name: "owner-setup",
@@ -50,7 +51,13 @@ export default defineConfig({
     {
       name: "e2e",
       testMatch: "**/*.e2e.ts",
-      testIgnore: "onboarding.e2e.ts",
+      testIgnore: ["onboarding.e2e.ts", "assistant.e2e.ts"],
+      dependencies: ["owner-setup"],
+      use: { storageState: ownerStorageState },
+    },
+    {
+      name: "assistant",
+      testMatch: "assistant.e2e.ts",
       dependencies: ["owner-setup"],
       use: { storageState: ownerStorageState },
     },

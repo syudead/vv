@@ -15,6 +15,7 @@ import { cn } from "../lib/cn";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Alert, AlertAction, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
+import { Label } from "../ui/shadcn/label";
 import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Spinner } from "../ui/shadcn/spinner";
@@ -250,9 +251,9 @@ function RepresentativeRow({
   const note = [...(bundled === null ? [] : [bundled]), ...tags].join(" · ");
 
   return (
-    <label
+    <Label
       className={cn(
-        "flex items-start gap-3 py-2",
+        "items-start gap-3 py-2 font-normal",
         disabled ? "cursor-default" : "cursor-pointer",
       )}
     >
@@ -277,6 +278,6 @@ function RepresentativeRow({
           </span>
         )}
       </span>
-    </label>
+    </Label>
   );
 }

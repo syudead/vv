@@ -850,11 +850,11 @@ func isLinkFolderSwitch(rest string) bool {
 }
 
 func requiresPatchJSONBody(path string) bool {
-	// PATCH /api/playlists/{id}。
+	// PATCH /api/playlists/{id}.
 	if id, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
-	// PATCH /api/groups/{id}。
+	// PATCH /api/groups/{id}.
 	if id, ok := strings.CutPrefix(path, "/api/groups/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
@@ -862,7 +862,7 @@ func requiresPatchJSONBody(path string) bool {
 	if id, ok := strings.CutPrefix(path, "/api/smart-folders/"); ok {
 		return id != "" && id != "cards" && !strings.Contains(id, "/")
 	}
-	// PATCH /api/tag-kinds/{id}。
+	// PATCH /api/tag-kinds/{id}.
 	if id, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}

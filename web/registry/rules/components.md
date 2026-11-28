@@ -4,8 +4,12 @@ Every control, overlay and mark on a new or migrated screen is a component
 from `web/src/ui/shadcn`, or one of the vv components in `web/src/ui` listed
 below, read through its registry item (`npx shadcn view
 ./registry/r/<item>.json` from `web/`). `task check` fails on a raw
-`<button>`, `<input>`, `<select>`, `<textarea>`, `<table>` or `<dialog>`, a
-`role="button"`, or a Radix import outside `web/src/ui`. Each
+`<button>`, `<input>`, `<select>`, `<textarea>`, `<table>`, `<dialog>`,
+`<label>`, `<progress>`, `<hr>` or `<kbd>`, a `role` that a component below
+already has (`button`, `checkbox`, `switch`, `tab`, `tablist`, `menu`,
+`menuitem`, `dialog`, `listbox`, `option`, `slider`, `radio`, `radiogroup`,
+`progressbar`), a `rounded-*` class on a control, or a Radix import outside
+`web/src/ui`. Each
 shadcn component is the shadcn/ui component on the radix base, dressed only
 through the tokens of [foundations.md](foundations.md); its structure and
 variants are upstream's. A screen composes them; it does not restyle them with
@@ -13,7 +17,9 @@ its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
 Every PascalCase file in `web/src/ui` is a vv component listed in this file;
-no older component is left.
+no older component is left. `web/src/theme/registry.test.ts` fails when a
+component file in `web/src/ui` is no file of a `web/registry.json` item, or a
+PascalCase one has no section here.
 
 ## Shared rules
 
@@ -57,11 +63,22 @@ a button through `asChild` (`<Button asChild><Link /></Button>`), so it stays a
 link.
 
 The `shape` is `default` (`rounded-md`) or `pill` (`rounded-full`); `Toggle`
-takes the same axis, and a screen never sets a radius on a control itself. A
-pill is a labelled action the viewer finds by its place: on the video page,
-the actions under the title, a section's one action and a row's `Play` are
-`secondary` `sm` pills, while the other actions inside a row stay `ghost`, so
-the one pill in a row is its first action.
+takes the same axis, and a screen never sets a radius on a control itself:
+`task check` fails on a `rounded-*` class on `Button`, `Toggle`,
+`ToggleGroupItem`, `Input`, `Textarea`, `SelectTrigger`, `Badge`, `Checkbox`
+or `Switch` outside `web/src/ui`. A pill is a labelled action the viewer finds
+by its place: on the video page, the actions under the title, a section's one
+action and a row's `Play` are `secondary` `sm` pills, while the other actions
+inside a row stay `ghost`, so the one pill in a row is its first action.
+
+`Button` has more shapes for a button that sits against something else:
+
+| `shape`                    | Use it for                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `compact`                  | `rounded-sm`, a `size-6` or smaller icon button inside a `Badge`, a notice, or over a thumbnail, where `rounded-md` reads as round |
+| `chip-middle`, `chip-end`  | The buttons after a removable chip's divider: square between, and the last one closing the chip's right corners                    |
+| `group-start`, `group-end` | Two `outline` buttons joined into one control with one border between them, such as the sort menu and its direction                |
+| `edge-left`, `edge-right`  | A tab against the left or right edge of a frame, such as the player's previous and next arrows                                     |
 
 Do not use a Button for navigation that is a plain link in text, to show a
 state that stays on (use `Toggle`), or to pick one of several options (use
@@ -131,6 +148,9 @@ Items `toggle`, `toggle-group`. Buttons that stay pressed.
   `aria-label` and a `Tooltip`.
 - `ToggleGroup type="multiple"` is a row of independent toggles, such as text
   formatting.
+- Items join into one bar by default. `spacing="separate"` stands them apart
+  as chips, each with its own radius and border and `gap-2` between them, for
+  a set that wraps, such as the first setup's interests or a face picker.
 
 The pressed state is `primary-soft` with `primary` text, the same as a
 selected row. Do not use a Toggle for a one-off action (use `Button`) or for a
@@ -292,6 +312,17 @@ more rows. On the video page it sits at the top centre.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.
+
+### Toast
+
+Item `toast`. `ToastProvider` holds the app's one Sonner `Toaster` and the
+queue described in [Sonner](#sonner); `useToast` returns the function a screen
+sends a notice with, `(message, { action, duration })`, which returns a
+function that dismisses that notice. The app mounts one `ToastProvider` around
+its routes, with `placement="playback"` on the video page.
+
+Do not import `sonner` or render a second `Toaster` in a screen; ESLint fails
+on a `sonner` import outside `web/src/ui`.
 
 ### Badge
 
@@ -511,6 +542,15 @@ as `PersonFaceMark`.
 Use it on the organization screens only. Pickers, filter chips and the video
 page show organizations as text.
 
+### ImageFrame
+
+The frame body that `PersonFace` and `OrganizationLogo` share: the image, or
+the placeholder when there is none or it fails to load, and the corner holder
+for marks. It is a file of both items, not an item of its own.
+
+Do not use it in a screen; use [PersonFace](#personface) or
+[OrganizationLogo](#organizationlogo).
+
 ### SpanBar
 
 Item `span-bar`. One lane the length of a video (`h-3`, `bg-muted`,
@@ -692,7 +732,11 @@ Do not use it for landscape images, which fill the frame already.
 Item `brand-home-link`. The VVMDM logo in the top bar, linking to the library:
 the symbol below the `sm` width and the wordmark above it. One per screen.
 
-Do not use the logo images anywhere else.
+The setup and sign-in screens (`auth/CredentialScreen.tsx`) are the one other
+place the logo appears: the wordmark alone as the header's image, named by
+the app's name, with no link, since nothing past the gate opens before the
+viewer signs in. Do not use the logo images anywhere else; ESLint fails on a
+`/brand/` path outside these two files.
 
 ### TagCommand
 
@@ -729,6 +773,17 @@ them with a `ghost` `sm` `Clear filters` while any is set.
 
 Do not use it for one filter among toggles (use `Toggle`), or when the values
 do not need to show on the toolbar (use the library's single filter popover).
+
+### NameCommand
+
+The base of `TagCommand` and `CreditCommand`: the `Command` with its layouts
+and row content, which takes the name rules. It is a file of the items built on
+it, not an item of its own; `CreateTagRow`, `MergeParts` and `RowNameInput`
+take its types.
+
+Do not use it in a screen; use [TagCommand](#tagcommand) or
+[CreditCommand](#creditcommand). ESLint fails on a `NameCommand` import
+outside `web/src/ui`.
 
 ### CreditCommand
 

@@ -56,7 +56,7 @@ const listRoutes: readonly [RegExp, AssistantRoute["kind"]][] = [
   [/^\/settings(?:\/|$)/, "settings"],
 ];
 
-/** The route kind and id the server resolves これ and ここ against. */
+/** The route kind and id the server resolves `これ` and `ここ` against. */
 export function routeOf(pathname: string): AssistantRoute {
   if (pathname === LIBRARY_PATH) return { kind: "library" };
   for (const [pattern, kind] of entityRoutes) {
@@ -130,7 +130,7 @@ const namedRoutes: ReadonlySet<AssistantRoute["kind"]> = new Set([
   "smartFolder",
 ]);
 
-/** The line above the field that says what これ, 選んだもの and ここ will mean. */
+/** The line above the field that says what `これ`, `選んだもの` and `ここ` will mean. */
 export function contextLine(location: TurnLocation, screen: AssistantScreen): UiText {
   const words = t.assistant.context;
   const collections =

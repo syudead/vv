@@ -1,0 +1,32 @@
+# Spectral rules for api/openapi.yaml and api/external-v1.yaml (task lint-api).
+# Only the repository's own rules run; the generators already reject invalid documents.
+rules:
+  vv-english-descriptions:
+    description: >-
+      Summaries and descriptions are English: the generators copy them into Go and
+      TypeScript comments and the assistant tool registry (AGENTS.md, Code comments).
+    severity: error
+    given:
+      - "$..summary"
+      - "$..description"
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "/[\\u3000-\\u303f\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uff01-\\uff60]/"
+
+  vv-int64-ids:
+    description: >-
+      An integer id is int64: peer slot offsets exceed int32, so a narrower id breaks
+      routing to a peer (docs/design-docs/peer-library.md).
+    severity: error
+    given:
+      - "$..properties[?(@property.match(/^id$|Id$/) && @.type == 'integer')]"
+      - "$..properties[?(@property.match(/Ids$/) && @.type == 'array' && @.items.type == 'integer')].items"
+      - "$..parameters[?(@.name && @.name.match(/^id$|Id$/) && @.schema && @.schema.type == 'integer')].schema"
+    then:
+      - field: format
+        function: truthy
+      - field: format
+        function: enumeration
+        functionOptions:
+          values: [int64]

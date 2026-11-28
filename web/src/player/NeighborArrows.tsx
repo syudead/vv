@@ -73,15 +73,14 @@ function Arrow({
       <TooltipTrigger asChild>
         <Button
           variant="ghost"
+          shape={side === "left" ? "edge-left" : "edge-right"}
           aria-label={tip}
           data-neighbor-arrow={side}
           onClick={neighbor.go}
           className={cn(
             // Center above the control bar, 1.5rem above the full frame's midpoint.
             "absolute top-1/2 z-30 -mt-6 h-11/20 min-h-neighbor-arrow-min w-neighbor-arrow -translate-y-1/2 bg-overlay px-0 text-foreground transition duration-150 hover:bg-background motion-reduce:transition-none sm:h-1/2 sm:min-h-neighbor-arrow-min-sm sm:w-8 [&_svg]:size-5",
-            side === "left"
-              ? "left-0 rounded-l-none rounded-r-lg"
-              : "right-0 rounded-l-lg rounded-r-none",
+            side === "left" ? "left-0" : "right-0",
             visible
               ? "opacity-100"
               : // Hidden arrows remain keyboard-focusable but ignore pointer input.

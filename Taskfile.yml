@@ -144,8 +144,8 @@ tasks:
     desc: Reproduce the repository and build checks normally left to CI.
     cmds:
       - task: generate-check
+      - task: lint-api
       - task: migrations-check
-      - task: e2e-groups-check
       - task: lint-go-windows-desktop
       - task: build-windows-check
       - task: static-binary-check
@@ -154,8 +154,21 @@ tasks:
   check-docs:
     desc: Check documentation links and repository artifact rules.
     cmds:
-      # Document discovery uses git ls-files, which the Go test cache does not track.
-      - go test -count=1 ./scripts/docguard
+      - task: lint-docs
+      - task: sdd-citations-check
+      - node --test tools/remark/*.test.mjs
+
+  lint-docs:
+    desc: Lint tracked Markdown with remark (tools/remark/config.mjs); any warning fails.
+    # Tracked files only, so ignored worktrees cannot add stale findings. The vendored shadcn skill follows upstream rules.
+    cmds:
+      - node tools/node_modules/remark-cli/cli.js --rc-path tools/remark/config.mjs --no-config --no-ignore --no-stdout --frail --quiet $(git ls-files -- '*.md' ':!:.agents/skills/shadcn/')
+
+  sdd-citations-check:
+    desc: Fail when a tracked file outside specs/ cites a feature's temporary SDD artifact.
+    # Covers code comments, API descriptions and generated files as well as Markdown; this file holds the pattern.
+    cmds:
+      - git grep -nIE '(^|[^a-zA-Z0-9_-])specs/[0-9]{3}-[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+' -- . ':!:specs/' ':!:Taskfile.yml' && { echo "Cite permanent design docs instead of temporary SDD artifacts." >&2; exit 1; } || test $? -eq 1
 
   audit:
     desc: Check npm and Go dependencies for known vulnerabilities (the Renovate routine runs it daily).
@@ -211,8 +224,10 @@ tasks:
       - npm exec -- prettier --check {{.WEB_FILES}}
 
   lint-go:
-    desc: Run golangci-lint, including dependency rules, and reject //nolint.
+    desc: Test the repository's analyzers, run golangci-lint with them and the dependency rules, and reject //nolint.
     cmds:
+      # The analyzers live in the tools module, which ./... does not reach.
+      - go -C tools test ./lint/...
       - task: golangci
         vars: { GOLANGCI_ARGS: "run {{.GO_PACKAGES}}" }
       - go run ./scripts/nolintguard
@@ -331,15 +346,15 @@ tasks:
     cmds:
       - go run ./scripts/generate -check
 
+  lint-api:
+    desc: Lint the OpenAPI documents with the repository's Spectral rules.
+    cmds:
+      - node tools/node_modules/@stoplight/spectral-cli/dist/index.js lint --ruleset tools/spectral/ruleset.yaml --fail-severity=warn --quiet api/openapi.yaml api/external-v1.yaml
+
   migrations-check:
     desc: Check that applied migrations have not been changed.
     cmds:
       - bash scripts/migrations-immutable.sh
-
-  e2e-groups-check:
-    desc: Check that every e2e file is in exactly one CI e2e group.
-    cmds:
-      - bash scripts/e2e-groups.sh
 
   build-windows-check:
     desc: Check that the sources still build for Windows.
@@ -355,7 +370,7 @@ tasks:
     cmds:
       - go run ./scripts/build -check-static
 
-  # Resolve the pinned linter from tools/go.mod for both run and fmt.
+  # Resolve the pinned linter, built with the analyzers in tools/lint (tools/cmd/golangci-lint), for both run and fmt.
   golangci:
     internal: true
     vars:

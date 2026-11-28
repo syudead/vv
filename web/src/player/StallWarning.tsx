@@ -32,7 +32,8 @@ export default function StallWarning({
               size="icon-sm"
               aria-label={text.dismiss}
               onClick={onDismiss}
-              className="pointer-events-auto -mr-1.5 size-6 rounded-sm text-muted-foreground [&_svg]:size-3"
+              shape="compact"
+              className="pointer-events-auto -mr-1.5 size-6 text-muted-foreground [&_svg]:size-3"
             >
               <X aria-hidden="true" />
             </Button>
