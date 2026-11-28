@@ -20,7 +20,9 @@ sequenceDiagram
 ## Clocks and state
 
 Clock-dependent unit tests advance virtual time; concurrent tests synchronize on the state under test.
-A fixed sleep does not prove another goroutine or promise reached that state.
+A fixed sleep does not prove another goroutine or promise reached that state; the `nosleepintests`
+analyzer rejects `time.Sleep` in Go tests outside a `synctest.Test` callback
+([Lint rules](../how-to/development.md#lint-rules)).
 An expired context can fail at an earlier gate, skipping the wait being tested.
 
 | Behaviour | Mechanism |

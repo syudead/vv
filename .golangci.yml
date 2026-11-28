@@ -32,7 +32,20 @@ linters:
     - usetesting
     # Do not require t.Parallel: tests share environment and package state, while Go already runs packages in separate parallel processes.
 
+    # The repository's own analyzers in tools/lint, compiled into the golangci-lint that tools/go.mod builds.
+    # Keep code comments in English (AGENTS.md "Code comments").
+    - englishcomments
+    # Keep wall-clock waits out of tests (docs/design-docs/testing-time.md).
+    - nosleepintests
+
   settings:
+    custom:
+      englishcomments:
+        type: module
+        description: Reports Go comments with Japanese prose outside backticks.
+      nosleepintests:
+        type: module
+        description: Reports time.Sleep in tests outside a testing/synctest bubble.
     gosmopolitan:
       watch-for-scripts:
         - Han
@@ -326,6 +339,10 @@ linters:
         text: internal/app writes no files
         linters:
           - forbidigo
+      # These tests wait on real OS processes and kernel file notifications, which no virtual clock drives.
+      - path: ^(scripts/dev/process_group_integration_test|cmd/mdm/auto_import_test)\.go$
+        linters:
+          - nosleepintests
       # Exclude generated files, which must not be hand-edited.
       - path: internal/httpapi/(ext)?gen/
         linters:

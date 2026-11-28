@@ -94,8 +94,9 @@ CI runs these additional checks without making them a local pre-push gate;
 `task check-ci` supplements local checks; it does not run them or browser E2E.
 CI also runs full Go and Web suites, coverage/report uploads and quality metrics.
 
-Lint findings are fixed in the code, never silenced: `task check` fails on any
-`//nolint` comment in Go sources (`scripts/nolintguard`) and on any
+Lint findings are fixed in the code, never silenced ([Lint rules](#lint-rules)):
+`task check` fails on any `//nolint` comment in Go sources
+(`scripts/nolintguard`) and on any
 `eslint-disable*` or other inline ESLint configuration comment in `web/`
 (`linterOptions.noInlineConfig`). A change keeps the functions it adds or makes
 more complex at complexity 25 or less and shares code instead of copying it;
@@ -202,3 +203,45 @@ When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit
 `internal/httpapi/gen/`, `internal/httpapi/extgen/` or `web/src/api/gen/`
 directly.
+
+## Lint rules
+
+`task lint-go` runs golangci-lint with [`.golangci.yml`](../../.golangci.yml).
+depguard and forbidigo keep imports and calls with the package that owns them
+([ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction)), and
+two analyzers of the repository's own check rules no published linter covers.
+
+| Analyzer | Reports | Rule |
+| --- | --- | --- |
+| `englishcomments` | A comment group with an ideographic comma or full stop, or two Hiragana in a row, outside backticks; directives and generated files are skipped | [Code comments](../../AGENTS.md#code-comments) |
+| `nosleepintests` | `time.Sleep` in a `_test.go` file outside a function literal passed to `synctest.Test` | [Time and synchronization](../design-docs/testing-time.md) |
+
+A test that waits on a real OS process or on kernel file notifications is
+excluded from `nosleepintests` by path in `.golangci.yml`, with the reason
+beside it.
+
+The analyzers are golangci-lint module plugins, compiled into the linter the
+manual way that plugin system documents.
+
+```mermaid
+flowchart LR
+  pins[tools/go.mod and go.sum] --> main[tools/cmd/golangci-lint]
+  analyzers[tools/lint] -->|register| main
+  main -->|go tool, Go build cache| tasks[lint-go, fmt, fmt-check-go, lint-go-windows-desktop]
+  config[.golangci.yml] --> tasks
+```
+
+`tools/cmd/golangci-lint` is the pinned golangci-lint command with
+[`tools/lint`](../../tools/lint) imported, and it is the `golangci-lint` tool of
+`tools/go.mod`. `go -C tools tool -n golangci-lint` builds it with the versions
+`tools/go.sum` pins and keeps it in the Go build cache, so no task needs a
+separate build step, and `task setup` and the session-start hook warm it as
+before. Its version carries a digest of the binary, because golangci-lint keys
+its analysis cache by version and a changed analyzer must not reuse old
+results. `task lint-go` first runs the analyzers' `analysistest` cases, which
+`./...` does not reach in the tools module.
+
+| Rejected | Why |
+| --- | --- |
+| `golangci-lint custom` with `.custom-gcl.yml` | It clones golangci-lint from GitHub on every build and resolves the plugins' dependencies outside `tools/go.sum`, and its binary needs a cache of its own |
+| `scripts/nolintguard` as an analyzer | golangci-lint applies `//nolint:all` to every linter's reports, a plugin's included, so a directive could silence its own check; nolintguard also reads `testdata` and files no build includes |

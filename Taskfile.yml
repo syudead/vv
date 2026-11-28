@@ -224,8 +224,10 @@ tasks:
       - npm exec -- prettier --check {{.WEB_FILES}}
 
   lint-go:
-    desc: Run golangci-lint, including dependency rules, and reject //nolint.
+    desc: Test the repository's analyzers, run golangci-lint with them and the dependency rules, and reject //nolint.
     cmds:
+      # The analyzers live in the tools module, which ./... does not reach.
+      - go -C tools test ./lint/...
       - task: golangci
         vars: { GOLANGCI_ARGS: "run {{.GO_PACKAGES}}" }
       - go run ./scripts/nolintguard
@@ -368,7 +370,7 @@ tasks:
     cmds:
       - go run ./scripts/build -check-static
 
-  # Resolve the pinned linter from tools/go.mod for both run and fmt.
+  # Resolve the pinned linter, built with the analyzers in tools/lint (tools/cmd/golangci-lint), for both run and fmt.
   golangci:
     internal: true
     vars:

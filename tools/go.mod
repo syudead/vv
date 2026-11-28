@@ -6,14 +6,19 @@ tool (
 	github.com/air-verse/air
 	github.com/fzipp/gocyclo/cmd/gocyclo
 	github.com/go-gremlins/gremlins/cmd/gremlins
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+	github.com/syudead/vv/tools/cmd/golangci-lint
 	github.com/tc-hib/go-winres
 	golang.org/x/vuln/cmd/govulncheck
 	gotest.tools/gotestsum
 )
 
-require github.com/getkin/kin-openapi v0.153.0
+require (
+	github.com/getkin/kin-openapi v0.153.0
+	github.com/golangci/golangci-lint/v2 v2.15.0
+	github.com/golangci/plugin-module-register v0.1.2
+	golang.org/x/tools v0.53.0
+)
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.4.0 // indirect
@@ -116,10 +121,8 @@ require (
 	github.com/golangci/dupl v0.0.0-20260401084720-c99c5cf5c202 // indirect
 	github.com/golangci/go-printf-func-name v0.1.1 // indirect
 	github.com/golangci/gofmt v0.0.0-20260820135601-e84e05053792 // indirect
-	github.com/golangci/golangci-lint/v2 v2.15.0 // indirect
 	github.com/golangci/golines v0.16.0 // indirect
 	github.com/golangci/misspell v0.8.0 // indirect
-	github.com/golangci/plugin-module-register v0.1.2 // indirect
 	github.com/golangci/revgrep v0.8.0 // indirect
 	github.com/golangci/rowserrcheck v0.0.0-20261005233414-e0740d52dee8 // indirect
 	github.com/golangci/swaggoswag v0.0.0-20250504205917-77f2aca3143e // indirect
@@ -251,7 +254,6 @@ require (
 	golang.org/x/telemetry v0.0.0-20261116191925-e77a43154acb // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	golang.org/x/tools v0.53.0 // indirect
 	golang.org/x/vuln v1.10.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
