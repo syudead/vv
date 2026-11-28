@@ -17,7 +17,9 @@ its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
 Every PascalCase file in `web/src/ui` is a vv component listed in this file;
-no older component is left.
+no older component is left. `web/src/theme/registry.test.ts` fails when a
+component file in `web/src/ui` is no file of a `web/registry.json` item, or a
+PascalCase one has no section here.
 
 ## Shared rules
 
@@ -311,6 +313,17 @@ more rows. On the video page it sits at the top centre.
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.
 
+### Toast
+
+Item `toast`. `ToastProvider` holds the app's one Sonner `Toaster` and the
+queue described in [Sonner](#sonner); `useToast` returns the function a screen
+sends a notice with, `(message, { action, duration })`, which returns a
+function that dismisses that notice. The app mounts one `ToastProvider` around
+its routes, with `placement="playback"` on the video page.
+
+Do not import `sonner` or render a second `Toaster` in a screen; ESLint fails
+on a `sonner` import outside `web/src/ui`.
+
 ### Badge
 
 Item `badge`. A small label: a tag chip, a count, a status. `secondary` for
@@ -528,6 +541,15 @@ as `PersonFaceMark`.
 
 Use it on the organization screens only. Pickers, filter chips and the video
 page show organizations as text.
+
+### ImageFrame
+
+The frame body that `PersonFace` and `OrganizationLogo` share: the image, or
+the placeholder when there is none or it fails to load, and the corner holder
+for marks. It is a file of both items, not an item of its own.
+
+Do not use it in a screen; use [PersonFace](#personface) or
+[OrganizationLogo](#organizationlogo).
 
 ### SpanBar
 
@@ -751,6 +773,17 @@ them with a `ghost` `sm` `Clear filters` while any is set.
 
 Do not use it for one filter among toggles (use `Toggle`), or when the values
 do not need to show on the toolbar (use the library's single filter popover).
+
+### NameCommand
+
+The base of `TagCommand` and `CreditCommand`: the `Command` with its layouts
+and row content, which takes the name rules. It is a file of the items built on
+it, not an item of its own; `CreateTagRow`, `MergeParts` and `RowNameInput`
+take its types.
+
+Do not use it in a screen; use [TagCommand](#tagcommand) or
+[CreditCommand](#creditcommand). ESLint fails on a `NameCommand` import
+outside `web/src/ui`.
 
 ### CreditCommand
 

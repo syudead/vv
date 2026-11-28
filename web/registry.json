@@ -601,6 +601,20 @@
       "dependencies": ["sonner", "lucide-react"]
     },
     {
+      "name": "toast",
+      "type": "registry:ui",
+      "title": "Toast",
+      "description": "vv component: ToastProvider, which holds the app's one Toaster and its queue, and useToast, which screens send a notice with. Uses sonner, button and spinner.",
+      "docs": "Usage rules: web/registry/rules/components.md#toast (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/Toast.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["sonner"]
+    },
+    {
       "name": "spinner",
       "type": "registry:ui",
       "title": "Spinner",

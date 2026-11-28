@@ -80,6 +80,7 @@ and `cva()`.
 | A class with an arbitrary value or property, or the `(--var)` shorthand                                                                                  | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).`                                                      |
 | A class the theme does not generate, including a step outside the scale (`p-7`, `text-2xl`, `rounded-xl`, `font-bold`)                                   | `better-tailwindcss/no-unknown-classes`    | `Unknown class detected: <class>`                                                                                                           |
 | A raw colour outside the tokens, a default palette class, a contrast pair below its minimum                                                              | `web/src/theme/tokens.test.ts`             | The test's own                                                                                                                              |
+| A component file in `web/src/ui` that is no file of a `web/registry.json` item, or a PascalCase one without its section in `components.md`               | `web/src/theme/registry.test.ts`           | The test's own                                                                                                                              |
 
 Arbitrary variants (`data-[state=open]:`, `has-[...]:`, `max-[49.5rem]:`)
 pass: the arbitrary-value rule checks only the utility after the last variant.
