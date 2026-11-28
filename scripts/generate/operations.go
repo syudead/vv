@@ -150,7 +150,21 @@ func (d openAPIDoc) successResponse(op *operation, responses map[string]any) err
 				if op.ResponseIDs, err = d.idFields(schema, "", "", nil); err != nil {
 					return err
 				}
+				if err := requireKinds(op.Response, op.ResponseIDs); err != nil {
+					return err
+				}
 			}
+		}
+	}
+	return nil
+}
+
+// requireKinds refuses a response id without a kind, since the peer boundary's coverage test reads the kind to
+// decide which id a rewritten answer must carry.
+func requireKinds(response string, ids []idField) error {
+	for _, id := range ids {
+		if id.Kind == "" {
+			return fmt.Errorf("response %s: no %s names the kind of %s", response, entityExtension, id.Field)
 		}
 	}
 	return nil

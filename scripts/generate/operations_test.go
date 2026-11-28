@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -133,5 +134,14 @@ func TestOperationTableDerivesColumnsFromTheSchema(t *testing.T) {
 	}
 	if !reflect.DeepEqual(ops, want) {
 		t.Errorf("表の列が openapi.yaml と合わない\n got: %+v\nwant: %+v", ops, want)
+	}
+}
+
+// A response id without x-vv-entity stops the generation and names the field.
+func TestOperationTableRefusesAResponseIDWithoutKind(t *testing.T) {
+	fixture := strings.Replace(operationsFixture, "          x-vv-entity: activity\n", "", 1)
+	_, err := operationTable([]byte(fixture))
+	if err == nil || !strings.Contains(err.Error(), "VideoEditResponse: no x-vv-entity names the kind of /undoActivityId") {
+		t.Errorf("error = %v, want one naming /undoActivityId of VideoEditResponse", err)
 	}
 }

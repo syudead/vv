@@ -7187,6 +7187,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: folderRoot
           type: integer
           format: int64
         path:
@@ -7455,6 +7456,7 @@ components:
       description: "The video running work is for; absent when the work names none or the owner's audience leaves it out"
       properties:
         id:
+          x-vv-entity: video
           type: integer
           format: int64
         title:
@@ -7682,6 +7684,7 @@ components:
       description: "One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason."
       properties:
         id:
+          x-vv-entity: assistantTurn
           type: integer
           format: int64
         status:
@@ -7780,6 +7783,7 @@ components:
           type: integer
           description: "With n, how far a call over m items has come."
         reviewRunId:
+          x-vv-entity: assistantReviewRun
           type: integer
           format: int64
           description: "For start_review, the review run it started or found running; the panel links its review list."
@@ -7874,6 +7878,7 @@ components:
           type: string
           enum: [video, person, organization, playlist, group, smartFolder, tag, library, folders, tags, people, organizations, playlists, history, duplicates, activity, settings]
         id:
+          x-vv-entity: assistantDestination
           type: integer
           format: int64
         settingsPage:
@@ -7888,6 +7893,7 @@ components:
         kind:
           $ref: "#/components/schemas/AssistantLabelKind"
         id:
+          x-vv-entity: assistantLabel
           type: integer
           format: int64
         name:
@@ -7909,6 +7915,7 @@ components:
       description: "A search for candidate sets of one kind and their judging by the classifier, one question per set."
       properties:
         id:
+          x-vv-entity: assistantReviewRun
           type: integer
           format: int64
         kind:
@@ -7954,6 +7961,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: assistantReviewCandidate
           type: integer
           format: int64
         probability:
@@ -7978,6 +7986,7 @@ components:
         kind:
           $ref: "#/components/schemas/AssistantLabelKind"
         id:
+          x-vv-entity: assistantLabel
           type: integer
           format: int64
           description: "The tag or person, or a current library video of the member."
@@ -8012,6 +8021,7 @@ components:
           items:
             $ref: "#/components/schemas/AssistantProposal"
         skippedIds:
+          x-vv-entity: assistantReviewCandidate
           type: array
           items:
             type: integer
@@ -8023,11 +8033,13 @@ components:
       additionalProperties: false
       properties:
         rejectedIds:
+          x-vv-entity: assistantReviewCandidate
           type: array
           items:
             type: integer
             format: int64
         skippedIds:
+          x-vv-entity: assistantReviewCandidate
           type: array
           items:
             type: integer
@@ -8062,6 +8074,7 @@ components:
       description: "The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress."
       properties:
         id:
+          x-vv-entity: assistantProposal
           type: integer
           format: int64
         status:
@@ -8070,6 +8083,7 @@ components:
           type: string
           description: "The owner's text, as untranslated user data."
         turnId:
+          x-vv-entity: assistantTurn
           type: integer
           format: int64
           description: "The turn that built the proposal; absent for an adoption from a review list."
@@ -8078,6 +8092,7 @@ components:
           items:
             $ref: "#/components/schemas/AssistantProposalStep"
         activityId:
+          x-vv-entity: activity
           type: integer
           format: int64
           description: "The assistant_run activity entry, present once the proposal is approved."
@@ -8177,6 +8192,7 @@ components:
         kind:
           $ref: "#/components/schemas/AssistantLabelKind"
         id:
+          x-vv-entity: assistantLabel
           type: integer
           format: int64
           description: "The entity's id when the card showed it; absent when unknown."
@@ -8538,6 +8554,7 @@ components:
       required: [videoId, rate, kind, positionMs, band, frames, frameCount]
       properties:
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "The video the match was found in: video.id or one of its versions; playback opens this id."
@@ -8678,6 +8695,7 @@ components:
           type: boolean
           description: "The owner's switch. A plugin that is off never runs, whatever its state; new plugins start on."
         id:
+          x-vv-entity: workInfoPlugin
           type: integer
           format: int64
         kind:
@@ -9168,6 +9186,7 @@ components:
         state:
           $ref: "#/components/schemas/WorkInfoMatchState"
         id:
+          x-vv-entity: credit
           type: integer
           format: int64
           description: "Matched entity, only when state is existing."
@@ -9387,6 +9406,7 @@ components:
           type: string
           description: "Session identifier."
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
         state:
@@ -9663,6 +9683,7 @@ components:
       description: "One issued API token, without plaintext or hash."
       properties:
         id:
+          x-vv-entity: apiToken
           type: integer
           format: int64
         name:
@@ -9940,6 +9961,7 @@ components:
         tag:
           $ref: "#/components/schemas/Tag"
         notFoundIds:
+          x-vv-entity: tag
           type: array
           description: "Sources that no longer exist."
           items:
@@ -9973,18 +9995,21 @@ components:
       additionalProperties: false
       properties:
         appliedIds:
+          x-vv-entity: tag
           type: array
           description: "Processed IDs."
           items:
             type: integer
             format: int64
         notFoundIds:
+          x-vv-entity: tag
           type: array
           description: "IDs that no longer exist."
           items:
             type: integer
             format: int64
         notApplicableIds:
+          x-vv-entity: tag
           type: array
           description: "IDs whose state is incompatible with the operation."
           items:
@@ -10681,6 +10706,7 @@ components:
         person:
           $ref: "#/components/schemas/Person"
         notFoundIds:
+          x-vv-entity: person
           type: array
           description: "Sources that no longer exist."
           items:
@@ -10979,6 +11005,7 @@ components:
         organization:
           $ref: "#/components/schemas/Organization"
         notFoundIds:
+          x-vv-entity: organization
           type: array
           description: "Sources that no longer exist."
           items:
@@ -11095,6 +11122,7 @@ components:
           type: integer
           description: "Videos or collections changed on the read VVMDMs, summed."
         failedVideoIds:
+          x-vv-entity: selectionTarget
           type: array
           description: "Requested ids of the read VVMDMs that were not changed, in their remote ids; for collections, the group and smart-folder ids. Empty on success."
           items:
@@ -11164,6 +11192,7 @@ components:
       description: "One playlist summary."
       properties:
         id:
+          x-vv-entity: playlist
           type: integer
           format: int64
         name:
@@ -11210,6 +11239,7 @@ components:
       description: "PlaylistSummary fields plus visible items."
       properties:
         id:
+          x-vv-entity: playlist
           type: integer
           format: int64
         name:
@@ -11235,6 +11265,7 @@ components:
       description: "One playlist item containing exactly one of video, group or smartFolder according to kind. smartFolder reflects its playback order at read time, which playback also follows."
       properties:
         id:
+          x-vv-entity: playlistItem
           type: integer
           format: int64
           description: "Item identifier for reordering and removal."
@@ -11374,6 +11405,7 @@ components:
       additionalProperties: false
       properties:
         personId:
+          x-vv-entity: person
           type: integer
           format: int64
           description: "The merged provisional person, which no longer exists."
@@ -11381,6 +11413,7 @@ components:
           type: integer
           format: int64
         undoActivityId:
+          x-vv-entity: activity
           type: integer
           format: int64
           description: "The face_merge entry undoActivity takes back; absent when the person held an external ID, which the undo cannot restore."
@@ -11428,6 +11461,7 @@ components:
       additionalProperties: false
       properties:
         personId:
+          x-vv-entity: person
           type: integer
           format: int64
         alone:
@@ -11494,6 +11528,7 @@ components:
           items:
             $ref: "#/components/schemas/VideoEditMerged"
         skippedPersonIds:
+          x-vv-entity: person
           type: array
           description: "Merge sources that no longer existed or had been named, in request order; absent when none."
           items:
@@ -11725,6 +11760,7 @@ components:
       additionalProperties: false
       properties:
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
         title:
@@ -11859,6 +11895,7 @@ components:
           type: string
           description: "Next-page cursor; omitted when no more results remain."
         missingTagIds:
+          x-vv-entity: tag
           type: array
           description: "Missing IDs from tag; omitted when none."
           items:
@@ -12397,6 +12434,7 @@ components:
           type: string
           enum: [tag, tagKind, person, organization]
         id:
+          x-vv-entity: smartRuleRef
           type: integer
           format: int64
 
@@ -12407,9 +12445,11 @@ components:
       description: "Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards."
       properties:
         id:
+          x-vv-entity: smartFolder
           type: integer
           format: int64
         parentId:
+          x-vv-entity: smartFolder
           type: integer
           format: int64
           description: "Parent folder ID; omitted for top-level folders."
@@ -12438,9 +12478,11 @@ components:
       description: "Smart-folder card fields match LibraryGroup semantics. getSmartFolder uses playback order; listSmartFolderCards aggregates matching videos. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags."
       properties:
         id:
+          x-vv-entity: smartFolder
           type: integer
           format: int64
         parentId:
+          x-vv-entity: smartFolder
           type: integer
           format: int64
           description: "Parent folder ID; omitted for top-level folders."
@@ -12477,6 +12519,7 @@ components:
           items:
             $ref: "#/components/schemas/FolderPreview"
         openVideoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Video opened on click, selected like LibraryGroup.openVideoId; omitted if there are no videos."
@@ -12574,6 +12617,7 @@ components:
           description: "Ancestor folders, ordered outermost first and ending at this folder's parent."
           items:
             $ref: "#/components/schemas/GroupRef"
+            x-vv-entity: smartFolder
         items:
           type: array
           description: "First contents page: child folders in name order, then items in folder sort order."
@@ -12761,6 +12805,7 @@ components:
       additionalProperties: false
       properties:
         rootId:
+          x-vv-entity: folderRoot
           type: integer
           format: int64
         name:
@@ -13650,6 +13695,7 @@ components:
       description: "The video whose file is the better representative, judged from the files alone."
       properties:
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
         reason:
@@ -13668,6 +13714,7 @@ components:
           enum: [waiting, running, undecided, failed, no_connection, held]
           description: "held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge."
         activityId:
+          x-vv-entity: activity
           type: integer
           format: int64
           description: "The pair's version_judgement record; absent when none was opened, as while judging is off."
@@ -13683,6 +13730,7 @@ components:
           format: date-time
           description: "Next automatic retry of a failed pair."
         leftVideoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "The video whose frames are on the left of the evidence images and whose times are evidence's aMs."
@@ -14029,6 +14077,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: scan
           type: integer
           format: int64
         origin:
@@ -14072,6 +14121,7 @@ components:
         folder:
           $ref: "#/components/schemas/ScanRescanFolder"
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "The video of a video scope."
@@ -14082,6 +14132,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: folderRoot
           type: integer
           format: int64
         path:
@@ -14125,6 +14176,7 @@ components:
         folder:
           $ref: "#/components/schemas/VideoFolder"
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Video ID when already registered."
@@ -14210,6 +14262,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: watchHistoryEntry
           type: integer
           format: int64
           description: "Identifier used for deletion and ordering equal timestamps."
@@ -14230,11 +14283,13 @@ components:
       additionalProperties: false
       properties:
         itemId:
+          x-vv-entity: playlistItem
           type: integer
           format: int64
         video:
           $ref: "#/components/schemas/Video"
         smartFolderId:
+          x-vv-entity: smartFolder
           type: integer
           format: int64
           description: "Folder ID only for smart-folder items, absent for video/group items; the video page adds smartFolder to the destination URL."
@@ -14247,6 +14302,7 @@ components:
         playlist:
           $ref: "#/components/schemas/PlaylistSummary"
         itemId:
+          x-vv-entity: playlistItem
           type: integer
           format: int64
           description: "Currently playing item."
@@ -14273,6 +14329,7 @@ components:
       additionalProperties: false
       properties:
         scanId:
+          x-vv-entity: scan
           type: integer
           format: int64
           description: "Import identifier for this list; the UI refreshes if it differs from Scan.id."
@@ -14306,6 +14363,7 @@ components:
         folder:
           $ref: "#/components/schemas/VideoFolder"
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Included only for registered videos, allowing navigation to /videos/{id}."
@@ -14554,6 +14612,7 @@ components:
         ]
       properties:
         id:
+          x-vv-entity: activity
           type: integer
           format: int64
         kind:
@@ -14642,6 +14701,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: activity
           type: integer
           format: int64
         kind:
@@ -14731,6 +14791,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: activity
           type: integer
           format: int64
         subject:
@@ -14790,10 +14851,12 @@ components:
           type: string
           description: "Display-name snapshot at recording time, as untranslated user data."
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Current video accessible to the viewer; omitted when unavailable."
         personId:
+          x-vv-entity: person
           type: integer
           format: int64
           description: "The person of a person subject, which may since have been deleted; omitted for other subjects."
@@ -14830,6 +14893,7 @@ components:
       additionalProperties: false
       properties:
         id:
+          x-vv-entity: tag
           type: integer
           format: int64
         name:
@@ -14851,6 +14915,7 @@ components:
       additionalProperties: false
       properties:
         appearanceId:
+          x-vv-entity: faceAppearance
           type: integer
           format: int64
         person:
@@ -14974,6 +15039,7 @@ components:
       description: "One media folder of the read node as it answers its reader"
       properties:
         id:
+          x-vv-entity: linkFolderRoot
           type: integer
           format: int64
         path:
@@ -14988,6 +15054,7 @@ components:
       description: "One media folder of a link in this node's snapshot, with the owner's switch on this node"
       properties:
         id:
+          x-vv-entity: linkFolderRoot
           type: integer
           format: int64
           description: "The folder's id on the link"
@@ -15408,6 +15475,7 @@ components:
           type: string
           enum: [tag, tagKind, person, organization]
         id:
+          x-vv-entity: smartRuleRef
           type: integer
           format: int64
         name:
