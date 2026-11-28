@@ -35,8 +35,10 @@ func rewriteRemotePersonAppearances(list *gen.FaceAppearanceList, join domain.Vo
 	}
 }
 
+// rewriteRemoteFaceMove leaves out the undo entry, as rewriteRemoteFaceConfirmation does.
 func rewriteRemoteFaceMove(move *gen.FaceAppearanceMove, join domain.VocabularyJoin) {
 	rewriteRemotePerson(&move.Person, join)
+	move.UndoActivityId = nil
 }
 
 func rewriteRemoteFaceCandidates(list *gen.FaceCandidateList, join domain.VocabularyJoin) {

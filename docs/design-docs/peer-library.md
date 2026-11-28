@@ -205,6 +205,28 @@ after the entity id by their name. A test fails when an entity operation is
 neither forwarded nor kept, when a forwarded JSON answer has no rewriter, or
 when a body's id field or a path parameter has no translator; such an
 operation answers `404` until one is added, rather than forwarding wrong ids.
+
+The spec says which response fields are ids and of which kind. `task generate`
+lists, for each JSON response schema, every integer or integer array named
+`id`, `ids`, `*Id` or `*Ids` at any depth, as a JSON pointer with its kind
+(`gen.ScreenResponseIDs`). The kind is read from `x-vv-entity` as the
+[assistant registry](assistant.md) reads it: on the property, on an id array's
+items, or on the enclosing object for that object's own `id`.
+`TestRemoteRewritesCoverEveryResponseID` builds an answer holding every listed
+id for each registered rewriter, and for the whole-answer rewriters of the
+merged lists and folder reads, and checks the rewritten answer:
+
+| Field kind | Required after the rewrite |
+| --- | --- |
+| `tag`, `tagKind`, `person`, `organization` in an object with a `name` | The local id of that name |
+| Any other kind, or a vocabulary id without a `name` beside it | The offset form |
+| Listed in the test as dropped, with the reason | Absent from the answer |
+| No `x-vv-entity` | The test fails until the spec names the kind |
+
+A new id field in a rewritten schema therefore fails the test until its
+rewriter covers it, instead of reaching the screens in the peer's ids. The
+rewriters stay hand-written for URLs, dropped fields and the peer's own values,
+which the table does not describe.
 Media operations are proxied as byte streams with `Range` and the caching
 headers passed through, since the browser has no session on the peer.
 
@@ -217,7 +239,7 @@ headers passed through, since the browser has no session on the peer.
 | Related videos, work-info and person plugin fetches, thumbnail edits, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
 | A remote video's `progress` and `favorite`, a remote group's or smart folder's watch values and `favorite`, a remote person's `favorite` | The peer's, kept by the rewrite ([Progress, history and favorites](#progress-history-and-favorites)) |
 | Playlists, activity | Not entity collections; they stay with each node |
-| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404` |
+| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404`; the `undoActivityId` of a move or a confirmation is left out, since the entry is in the peer's activity log |
 | A face move of the peer's appearances from a local person, as the undo of a move to that person sends | Forwarded from the peer's person of that name, `404` when the peer lacks the name |
 | A face edit of a remote person naming this node's appearance | `400 invalid_request` with reason `mixed_nodes`; a similar-people read ignores this node's appearances |
 | Forwarded write | The peer's status, `code` and `reason` |

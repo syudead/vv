@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// One media, one second-path-parameter and one JSON operation; the 404 and the non-id or non-integer fields must stay out of the columns.
+// One media, one second-path-parameter and one JSON operation; the 404 and the non-id or non-integer fields must stay out of the columns, and the response ids at any depth take their x-vv-entity kind.
 const operationsFixture = `
 paths:
   /api/videos/{id}/thumbnail:
@@ -58,6 +58,37 @@ components:
       type: object
     VideoEditResponse:
       type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EditedVideo"
+        undoActivityId:
+          type: integer
+          x-vv-entity: activity
+    EditedVideo:
+      x-vv-entity: video
+      type: object
+      properties:
+        id:
+          type: integer
+        tagIds:
+          type: array
+          items:
+            type: integer
+            x-vv-entity: tag
+        performer:
+          $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: person
+        next:
+          $ref: "#/components/schemas/EditedVideo"
+    CreditRef:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
     PersonId:
       type: integer
     VideoEditRequest:
@@ -90,6 +121,12 @@ func TestOperationTableDerivesColumnsFromTheSchema(t *testing.T) {
 		{
 			Method: "POST", Path: "/api/video-edits", Response: "VideoEditResponse", Request: "VideoEditRequest",
 			BodyIDs: []string{"parentId", "personId", "videoIds"},
+			ResponseIDs: []idField{
+				{Field: "/undoActivityId", Kind: "activity"},
+				{Field: "/items/*/id", Kind: "video"},
+				{Field: "/items/*/tagIds/*", Kind: "tag"},
+				{Field: "/items/*/performer/id", Kind: "person"},
+			},
 		},
 		{Method: "POST", Path: "/api/videos/{id}/tags/{tagId}/confirm", PathParams: []string{"tagId"}},
 		{Method: "GET", Path: "/api/videos/{id}/thumbnail", Streams: true},

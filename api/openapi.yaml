@@ -9707,6 +9707,7 @@ components:
           description: "Plaintext token: 47 characters beginning with vvt_. Returned only here and cannot be retrieved again."
 
     TagRef:
+      x-vv-entity: tag
       type: object
       required: [id, name, tentative, kind]
       additionalProperties: false
@@ -9727,6 +9728,7 @@ components:
           description: "Tag kind; null means unclassified."
 
     VideoTag:
+      x-vv-entity: tag
       type: object
       required: [id, name, manual, fromFolder, tentative, kind]
       additionalProperties: false
@@ -9756,6 +9758,7 @@ components:
           description: "Tag kind; null means unclassified."
 
     Tag:
+      x-vv-entity: tag
       type: object
       required: [id, name, synonyms, videoCount, tentative, createdAt, kind]
       additionalProperties: false
@@ -9809,6 +9812,7 @@ components:
           $ref: "#/components/schemas/Tag"
           description: "Tag whose original name or synonym exactly matches trimmed q and satisfies tentative, unused and kind. Included only for nonempty q with a match, limit and no cursor; it need not appear in the substring-matched, sorted items page."
     TagKindRef:
+      x-vv-entity: tagKind
       type: object
       required: [id, name, cardFirst]
       additionalProperties: false
@@ -9824,6 +9828,7 @@ components:
           description: "Cards list this kind's tags before other tags; see TagKind.cardFirst."
 
     TagKind:
+      x-vv-entity: tagKind
       type: object
       required: [id, name, cardFirst, tagCount, createdAt]
       additionalProperties: false
@@ -10178,6 +10183,7 @@ components:
             $ref: "#/components/schemas/WorkPerson"
         organization:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: organization
           description: "The first label, otherwise the first maker; omitted when the work has neither."
 
     WorkPerson:
@@ -10189,6 +10195,7 @@ components:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: person
         provisional:
           type: boolean
           description: "Same as person.provisional."
@@ -10210,6 +10217,7 @@ components:
           $ref: "#/components/schemas/WorkOrganizationRole"
         organization:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: organization
 
     WorkInfo:
       type: object
@@ -10329,6 +10337,7 @@ components:
           description: "The contentVersion the editor read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored."
 
     Person:
+      x-vv-entity: person
       type: object
       required: [id, name, provisional, names, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
@@ -10470,6 +10479,7 @@ components:
             type: string
 
     Organization:
+      x-vv-entity: organization
       type: object
       required: [id, name, names, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
@@ -10507,6 +10517,7 @@ components:
           format: date-time
         parent:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: organization
           description: "Parent organization; omitted for roots."
 
     OrganizationProfile:
@@ -10707,6 +10718,7 @@ components:
         person:
           $ref: "#/components/schemas/Person"
         undoActivityId:
+          x-vv-entity: activity
           type: integer
           format: int64
           description: "The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID."
@@ -10734,9 +10746,11 @@ components:
       description: "One main person of one video, linked to the listed person."
       properties:
         appearanceId:
+          x-vv-entity: faceAppearance
           type: integer
           format: int64
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "The video with the appearance's content key; absent when no video has it any more."
@@ -10782,10 +10796,12 @@ components:
       description: "One main person of the video."
       properties:
         appearanceId:
+          x-vv-entity: faceAppearance
           type: integer
           format: int64
         person:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: person
         imageRevision:
           $ref: "#/components/schemas/PersonImageRevision"
         hasCrop:
@@ -10822,6 +10838,7 @@ components:
           type: integer
           description: "The person's appearances that are not dropped."
         sampleAppearanceIds:
+          x-vv-entity: faceAppearance
           type: array
           description: "Up to four of the person's appearances with a crop, latest first."
           items:
@@ -10871,6 +10888,7 @@ components:
           items:
             $ref: "#/components/schemas/FaceMoveCredit"
         undoActivityId:
+          x-vv-entity: activity
           type: integer
           format: int64
           description: "Present when the move left the moved-from person provisional, with no credit and no face, so it was merged into the target: the face_merge entry whose undo brings that person back, before the reverse move."
@@ -10936,6 +10954,7 @@ components:
           format: double
 
     FaceCandidatePerson:
+      x-vv-entity: person
       type: object
       required: [id, name, provisional]
       additionalProperties: false
@@ -11582,6 +11601,7 @@ components:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: person
         count:
           type: integer
         imageRevision:
@@ -11596,6 +11616,7 @@ components:
           $ref: "#/components/schemas/WorkOrganizationRole"
         organization:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: organization
         count:
           type: integer
 
@@ -11808,6 +11829,7 @@ components:
           type: string
           description: "Next-page cursor; omitted when no more results remain."
         missingTagIds:
+          x-vv-entity: tag
           type: array
           description: "Missing IDs from tag; omitted when none."
           items:
@@ -11885,6 +11907,7 @@ components:
           $ref: "#/components/schemas/SmartFolderSummary"
 
     LibraryGroup:
+      x-vv-entity: group
       type: object
       required:
         [
@@ -11943,10 +11966,12 @@ components:
           items:
             $ref: "#/components/schemas/FolderPreview"
         openVideoId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Member opened on click: first in-progress member, otherwise first incomplete member, otherwise the first member."
         videoIds:
+          x-vv-entity: video
           type: array
           description: "All member IDs in order."
           items:
@@ -12101,6 +12126,7 @@ components:
           type: string
           description: "Single-use undo token for POST /api/organize/undo, valid for ten minutes."
         groupId:
+          x-vv-entity: group
           type: integer
           format: int64
           description: "New group ID; returned only by /api/organize/group."
@@ -12212,6 +12238,7 @@ components:
           type: boolean
           description: "True for a newly created tag; false for an existing tag resolved by name or synonym."
     GroupRef:
+      x-vv-entity: group
       type: object
       required: [id, name]
       additionalProperties: false
@@ -12224,6 +12251,7 @@ components:
           type: string
 
     GroupItem:
+      x-vv-entity: groupItem
       type: object
       required: [id, kind]
       additionalProperties: false
@@ -12615,6 +12643,7 @@ components:
           description: "Parent folder ID; null moves to the top level."
 
     VideoSmartFolderRef:
+      x-vv-entity: smartFolder
       type: object
       required: [id, name, position, count]
       additionalProperties: false
@@ -12642,6 +12671,7 @@ components:
       additionalProperties: false
       properties:
         videoId:
+          x-vv-entity: video
           type: integer
           format: int64
         title:
@@ -12660,6 +12690,7 @@ components:
       additionalProperties: false
       properties:
         rootId:
+          x-vv-entity: folderRoot
           type: integer
           format: int64
         path:
@@ -12699,6 +12730,7 @@ components:
         mode:
           $ref: "#/components/schemas/FolderGroupingMode"
         groupId:
+          x-vv-entity: group
           type: integer
           format: int64
           description: "Automatic group ID for this folder; omitted if absent. Convert it to a tag through POST /api/groups/{id}/tag."
@@ -12756,6 +12788,7 @@ components:
             $ref: "#/components/schemas/RootFolder"
 
     Video:
+      x-vv-entity: video
       type: object
       description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo."
       required:
@@ -13490,6 +13523,7 @@ components:
       description: "Containing folder for the displayed location in video lists, representative location in GET /api/videos/{id}, problem location in ScanIssue, or active file in ScanActivity; omitted outside registered folders. For automatic LibraryGroup.folder and Video.group.folder, identifies the group folder itself."
       properties:
         rootId:
+          x-vv-entity: folderRoot
           type: integer
           format: int64
           description: "Registered media-folder ID containing the location."
@@ -13512,6 +13546,7 @@ components:
           type: boolean
           description: "True when both request source and Host are loopback and the server environment can launch the default application."
     VideoGroupRef:
+      x-vv-entity: group
       type: object
       required: [id, name, position, count]
       additionalProperties: false
@@ -13547,6 +13582,7 @@ components:
           minimum: 1
           description: "Number of versions with locations visible to the viewer."
         representativeId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Effective representative video ID, the one displayed in lists."
@@ -13558,6 +13594,7 @@ components:
       description: "All versions in the set."
       properties:
         representativeId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Effective representative video ID, or the video's own ID when outside a set."
@@ -13779,6 +13816,7 @@ components:
             format: int64
 
     RelatedGroup:
+      x-vv-entity: group
       type: object
       required: [id, name, items, offset, total]
       additionalProperties: false
@@ -13841,10 +13879,12 @@ components:
           type: string
           description: "Value for the next cursor request; omitted at the end."
         nextId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Next group member, omitted at the final member; otherwise the first related video. Omitted when unavailable or when the request includes cursor."
         prevId:
+          x-vv-entity: video
           type: integer
           format: int64
           description: "Previous group member, omitted at the first member, outside a group, or when cursor is supplied. Outside groups the UI uses the previously viewed video; this value need not appear in items."
@@ -14815,6 +14855,7 @@ components:
           format: int64
         person:
           $ref: "#/components/schemas/CreditRef"
+          x-vv-entity: person
           description: "The linked person as now named; omitted once the person is deleted."
         createdPerson:
           type: boolean
