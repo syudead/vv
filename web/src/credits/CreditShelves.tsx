@@ -5,7 +5,7 @@ import { useVideos, type VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import { Shelf } from "../ui/patterns/shelf";
 import type { ListCriteria } from "../videoList/listCriteria";
-import { ShelfToolbar } from "../videoList/ShelfToolbar";
+import { ShelfArea } from "../videoList/ShelfToolbar";
 import { type ShelfCriteria, useShelfCriteria } from "../videoList/useShelfCriteria";
 import {
   ShelfFailed,
@@ -56,7 +56,7 @@ function useSubjectVideos(
 }
 
 /**
- * The page's search, filter and sort in the top bar, then one shelf per role the subject has
+ * The page's search, filter and sort, then one shelf per role the subject has
  * matching videos in, in the roles' order. The matching videos in any role stand for the shelves
  * while loading or failing, and with none the empty or no-match state shows instead. With
  * `keepFailedRole` a role whose first read fails keeps its shelf with the failure.
@@ -70,10 +70,9 @@ export function CreditShelves({
 }) {
   const shelf = useShelfCriteria();
   return (
-    <>
-      <ShelfToolbar {...shelf.toolbar} />
+    <ShelfArea toolbar={shelf.toolbar}>
       <SubjectShelves subject={subject} shelf={shelf} keepFailedRole={keepFailedRole} />
-    </>
+    </ShelfArea>
   );
 }
 

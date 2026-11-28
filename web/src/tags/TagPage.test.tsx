@@ -247,7 +247,7 @@ describe("TagPage 動画", () => {
     ]);
   });
 
-  it("上部バーの検索を URL の並び順と合わせて送り、開いた一覧への戻り先を保つ", async () => {
+  it("動画欄の上の検索を URL の並び順と合わせて送り、開いた一覧への戻り先を保つ", async () => {
     const user = userEvent.setup();
     server.videos = [video(7, { title: "First" })];
     install();
@@ -259,8 +259,16 @@ describe("TagPage 動画", () => {
     });
     await screen.findByRole("link", { name: /First/ });
 
-    const topBar = screen.getByTestId("topbar");
-    await user.type(within(topBar).getByLabelText("Search videos"), "first{Enter}");
+    const search = screen.getByLabelText("Search videos");
+    expect(
+      within(screen.getByTestId("topbar")).queryByLabelText("Search videos"),
+    ).toBeNull();
+    expect(
+      within(search.closest("section[data-slot=shelf-area]")!).getByRole("heading", {
+        name: "Videos",
+      }),
+    ).toBeDefined();
+    await user.type(search, "first{Enter}");
 
     await waitFor(() =>
       expect(server.videoRequests.at(-1)?.toString()).toBe(
@@ -272,18 +280,16 @@ describe("TagPage 動画", () => {
     );
   });
 
-  it("検索に合う動画がないときは一致なしを出し、そのボタンで上部バーの検索欄に移る", async () => {
+  it("検索に合う動画がないときは一致なしを出し、そのボタンで動画欄の検索欄に移る", async () => {
     const user = userEvent.setup();
     server.videos = [];
     install();
-    renderPage({ url: "/tags/2?q=none", tagPage: true, topBar: true });
+    renderPage({ url: "/tags/2?q=none", tagPage: true });
 
     expect(await screen.findByText("No videos match these conditions")).toBeDefined();
     expect(screen.queryByText("Not on any video")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Change search" }));
-    expect(document.activeElement).toBe(
-      within(screen.getByTestId("topbar")).getByLabelText("Search videos"),
-    );
+    expect(document.activeElement).toBe(screen.getByLabelText("Search videos"));
   });
 
   it("tags イベントでは件数が同じでも動画を読み直し、消えた動画を外す", async () => {
