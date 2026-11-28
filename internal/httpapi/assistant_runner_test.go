@@ -170,6 +170,19 @@ func TestActionRunnerRefusesAnEditOfTheOtherAction(t *testing.T) {
 	}
 }
 
+// A row the assistant built, not only a schema row, is checked against the operation's body schema, so a field
+// renamed in api/openapi.yaml after the proposal fails before the handler.
+func TestActionRunnerRefusesABuiltBodyTheSchemaDoesNotTake(t *testing.T) {
+	api := &stubAPI{}
+	runner := &ActionRunner{api: api}
+	_, err := runner.Run(context.Background(), domain.AssistantCall{
+		ActionID: "renameTag", Path: map[string]string{"id": "3"}, Body: map[string]any{"title": "Kitten"},
+	})
+	if !errors.Is(err, domain.ErrAssistantInvalidArguments) || !strings.Contains(err.Error(), "title") || len(api.calls) != 0 {
+		t.Errorf("err = %v, calls %d, want ErrAssistantInvalidArguments naming title before any call", err, len(api.calls))
+	}
+}
+
 // NewServer's runner reaches the real handlers without a session cookie or Origin.
 func TestNewServerRunnerCallsTheScreenHandlers(t *testing.T) {
 	tags := &fakeTags{batchOutcome: domain.TagBatchOutcome{AppliedIDs: []int64{3}}}

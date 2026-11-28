@@ -25,10 +25,6 @@ type ActionRunner struct {
 	api http.Handler
 }
 
-// assistantActionKeys are body fields whose objects, or array elements, take the row's action as their key (add
-// or remove); a key of another action is refused. Other rows with an action send it as the body's action field.
-var assistantActionKeys = map[string][]string{"applyVideoEdits": {"tags", "credits"}}
-
 // Tools lists the assistant's tools: every owner read and excluded operation and every catalog row.
 func (r *ActionRunner) Tools() []domain.AssistantTool { return loadAssistantRegistry().tools() }
 
@@ -63,30 +59,24 @@ func (r *ActionRunner) Run(ctx context.Context, call domain.AssistantCall) (doma
 	return r.send(ctx, op.Method, target, op.BodyType, body)
 }
 
-// rowBody builds the request body of a row: the current settings for a settings row, the call's fields, and the
-// row's action; a schema row's body must match the operation's schema.
+// rowBody builds the request body of a row, the current settings under the call's fields for a settings row, and
+// checks it against the operation's schema before the handler sees it, so a plan built for an older schema fails
+// with the field it got wrong.
 func (r *ActionRunner) rowBody(
 	ctx context.Context, row domain.AssistantAction, op *registryOperation, target string, fields map[string]any,
 ) (map[string]any, error) {
-	body := map[string]any{}
+	var current map[string]any
 	if row.ReadsCurrent {
-		current, err := r.current(ctx, op, target)
-		if err != nil {
-			return nil, err
-		}
-		body = current
-	}
-	maps.Copy(body, fields)
-	if row.Schema {
-		if err := validateBody(op, body); err != nil {
+		var err error
+		if current, err = r.current(ctx, op, target); err != nil {
 			return nil, err
 		}
 	}
-	keys, keyed := assistantActionKeys[row.Operation]
-	if row.Action != "" && !keyed {
-		body["action"] = row.Action
+	body, err := row.RequestBody(current, fields)
+	if err != nil {
+		return nil, err
 	}
-	if err := checkActionKeys(keys, row.Action, body); err != nil {
+	if err := validateBody(op, body); err != nil {
 		return nil, err
 	}
 	return body, nil
@@ -117,30 +107,6 @@ func roundTrip(value any, out any) error {
 		return fmt.Errorf("encode assistant arguments: %w", err)
 	}
 	return json.Unmarshal(encoded, out)
-}
-
-var assistantActionNames = []string{"add", "remove"}
-
-func checkActionKeys(fields []string, action string, body map[string]any) error {
-	for _, field := range fields {
-		var edits []any
-		switch value := body[field].(type) {
-		case []any:
-			edits = value
-		case nil:
-		default:
-			edits = []any{value}
-		}
-		for _, edit := range edits {
-			values, _ := edit.(map[string]any)
-			for _, key := range assistantActionNames {
-				if _, ok := values[key]; ok && key != action {
-					return fmt.Errorf("%s holds %s, which is not the action %s", field, key, action)
-				}
-			}
-		}
-	}
-	return nil
 }
 
 func queryValues(query map[string]string) url.Values {

@@ -257,8 +257,21 @@ Write rows come in three kinds:
 | Kind | Arguments | Examples |
 | --- | --- | --- |
 | Name-based | A target and named arguments that plan builders resolve to ids | `updateVideoTags.add`, `mergeTag`, `applyWorkInfoFetch` |
-| Schema | The operation's own path parameters and body, ids included; the runner checks the body against the schema before the call | `moveFaceAppearances`, `undoActivity`, `setVideoDetails` |
+| Schema | The operation's own path parameters and body, ids included | `moveFaceAppearances`, `undoActivity`, `setVideoDetails` |
 | Composite | A target and named arguments; the row runs its stages in order and calls its cleanup when a stage fails | `editVideoThumbnail`: `startThumbnailEdit`, `runThumbnailEdit`, `applyThumbnailEdit`, then `cancelThumbnailEdit` or `discardThumbnailEdit` |
+
+The runner checks every row's body, as it sends it, against the operation's
+request schema before the handler runs: the call's fields over the current
+settings of a settings row, with the row's action
+(`domain.AssistantAction.RequestBody`). A plan builder writes the screen API's
+field names itself, so a field renamed or reshaped in `api/openapi.yaml`
+after a proposal fails that step with the field it got wrong.
+`TestAssistantPlanBuildersMatchTheRequestSchemas`
+([`internal/app`](../../internal/app/assistant_plan_schema_test.go)) builds a
+representative call for every plan builder, fails for a builder without a
+case, and checks the path, query and body of each call, and of each stage of a
+composite row, against the generated registry, so such a change fails the
+tests instead.
 
 An id's entity kind comes from its path parameter's name in
 `components/parameters` (`PersonId` names a person) or from `x-vv-entity` on
