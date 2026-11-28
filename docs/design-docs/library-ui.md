@@ -1392,8 +1392,8 @@ or filters ([`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)).
 The tag, person and organization pages draw their videos with one set of parts
 ([`VideoShelf.tsx`](../../web/src/videoList/VideoShelf.tsx)): each `Shelf` is a
 `CardGrid` of `VideoCard`s at card size 0 that reads the next page as its end
-comes into view, under the count of what matched. The top bar holds the page's
-search, `Favorites only` filter and sort
+comes into view, under the count of what matched. A page `Toolbar` directly
+above the first shelf holds the page's search, `Favorites only` filter and sort
 ([`ShelfToolbar.tsx`](../../web/src/videoList/ShelfToolbar.tsx)), kept in the
 URL as the library's are, and every shelf on the page reads with them.
 
@@ -1408,6 +1408,7 @@ URL as the library's are, and every shelf on the page reads with them.
 | --- | --- |
 | A row of six videos on the tag page and a grid on the profile pages | The same videos looked and behaved differently, and the row reached only six |
 | A sort menu in each shelf's heading | The person and organization pages have one shelf per role, and their orders would differ |
+| The conditions in the shell's top bar | The videos sit below the record's own sections, so the controls were a screen away from what they narrow |
 
 ## Per-device preferences with defaults
 

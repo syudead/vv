@@ -7,14 +7,14 @@ import { libraryFilterPath } from "../library/libraryPath";
 import { TAG_PARAM } from "../library/tagCriteria";
 import { Shelf } from "../ui/patterns/shelf";
 import { Button } from "../ui/shadcn/button";
-import { ShelfToolbar } from "../videoList/ShelfToolbar";
+import { ShelfArea } from "../videoList/ShelfToolbar";
 import { useShelfCriteria } from "../videoList/useShelfCriteria";
 import { ShelfVideos, videoShelfStatus } from "../videoList/VideoShelf";
 
 const text = t.tags.page;
 
 /**
- * The tag's videos under the page's search, filter and sort in the top bar, read again in place
+ * The tag's videos under the search, filter and sort drawn above them, read again in place
  * when its count or the tag's `revision` changes; the count leaves fileless videos out, so it alone
  * misses their removal.
  */
@@ -50,8 +50,7 @@ export function TagVideosShelf({
     onSearch: () => shelf.toolbar.searchRef.current?.focus(),
   });
   return (
-    <>
-      <ShelfToolbar {...shelf.toolbar} />
+    <ShelfArea toolbar={shelf.toolbar}>
       <Shelf
         title={text.videos}
         count={status === null ? t.count.videos(videos.total) : undefined}
@@ -63,6 +62,6 @@ export function TagVideosShelf({
       >
         {status ?? <ShelfVideos videos={videos} />}
       </Shelf>
-    </>
+    </ShelfArea>
   );
 }

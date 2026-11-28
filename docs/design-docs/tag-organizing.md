@@ -125,7 +125,7 @@ flowchart LR
 `/tags/:id` ([`TagPage.tsx`](../../web/src/tags/TagPage.tsx)) is a
 `RecordEditorPage` for one tag: the title with `Rename`, `Confirm` and
 `Reject…` on a tentative tag or `Delete…` on a confirmed one, the names, the
-kind, the merge into another tag and a shelf of its videos with the top bar's
+kind, the merge into another tag and a shelf of its videos under their own
 search, filter and sort
 ([library-ui.md](library-ui.md#video-shelves-on-tag-person-and-organization-pages)).
 Every control acts at once; there is no save.
