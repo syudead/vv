@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/syudead/vv/internal/ollama"
 )
 
 type chatModelInfo struct {
@@ -91,31 +93,10 @@ func showCapabilities(name string) ([]string, bool) {
 	return capabilities, true
 }
 
-type ollamaToolCall struct {
-	Function struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-	} `json:"function"`
-}
-
-type ollamaChatMessage struct {
-	Role      string           `json:"role"`
-	Content   string           `json:"content"`
-	Images    []string         `json:"images,omitempty"`
-	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
-	ToolName  string           `json:"tool_name,omitempty"`
-}
-
-// Request body sent by internal/ollama.
-type ollamaChatRequest struct {
-	Model    string              `json:"model"`
-	Messages []ollamaChatMessage `json:"messages"`
-	Tools    []json.RawMessage   `json:"tools"`
-}
-
+// The tools keep Ollama's OpenAI-style function entries, which Workers AI takes as they are.
 type workersChatRequest struct {
 	Messages  []workersChatMessage `json:"messages"`
-	Tools     []json.RawMessage    `json:"tools,omitempty"`
+	Tools     []ollama.ChatTool    `json:"tools,omitempty"`
 	MaxTokens int                  `json:"max_tokens"`
 }
 
@@ -146,7 +127,7 @@ type workersChatResponse struct {
 
 func relayChat(w http.ResponseWriter, r *http.Request, cfg config, client *http.Client) {
 	started := time.Now()
-	var in ollamaChatRequest
+	var in ollama.ChatRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "cannot read the request: "+err.Error())
 		return
@@ -183,7 +164,7 @@ func relayChat(w http.ResponseWriter, r *http.Request, cfg config, client *http.
 }
 
 // workersChatBody refuses tools and images a mapped model does not support, with Ollama's wording for tools.
-func workersChatBody(in ollamaChatRequest, model chatModelInfo) ([]byte, error) {
+func workersChatBody(in ollama.ChatRequest, model chatModelInfo) ([]byte, error) {
 	known := !strings.HasPrefix(strings.TrimSpace(in.Model), "@cf/")
 	if known && len(in.Tools) > 0 && !model.tools {
 		return nil, fmt.Errorf("%s does not support tools", in.Model)
@@ -192,7 +173,7 @@ func workersChatBody(in ollamaChatRequest, model chatModelInfo) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	if known && !model.vision && slices.ContainsFunc(in.Messages, func(m ollamaChatMessage) bool { return len(m.Images) > 0 }) {
+	if known && !model.vision && slices.ContainsFunc(in.Messages, func(m ollama.ChatMessage) bool { return len(m.Images) > 0 }) {
 		return nil, fmt.Errorf("%s does not support images; use one of the vision models %s", in.Model,
 			strings.Join(visionModelNames(), ", "))
 	}
@@ -207,8 +188,8 @@ func visionModelNames() []string {
 
 // chatAnswer prefers tool calls over text, since the loop runs the calls before the model answers. An empty answer
 // takes the Gemma calls that Workers AI left in the reasoning, when that is all the reasoning holds.
-func chatAnswer(out workersChatResponse) ollamaChatMessage {
-	message := ollamaChatMessage{Role: "assistant"}
+func chatAnswer(out workersChatResponse) ollama.ChatMessage {
+	message := ollama.ChatMessage{Role: "assistant"}
 	if len(out.Result.Choices) > 0 {
 		for _, call := range out.Result.Choices[0].Message.ToolCalls {
 			message.ToolCalls = append(message.ToolCalls, ollamaCalls(call.Function.Name, call.Function.Arguments)...)
@@ -230,7 +211,7 @@ func chatAnswer(out workersChatResponse) ollamaChatMessage {
 
 // ollamaCalls splits arguments that hold several objects one after another into one call each, the form Gemma
 // writes for parallel calls of one tool.
-func ollamaCalls(name string, arguments json.RawMessage) []ollamaToolCall {
+func ollamaCalls(name string, arguments json.RawMessage) []ollama.ChatToolCall {
 	object := argumentObject(arguments)
 	parts := []json.RawMessage{object}
 	var text string
@@ -239,7 +220,7 @@ func ollamaCalls(name string, arguments json.RawMessage) []ollamaToolCall {
 			parts = split
 		}
 	}
-	calls := make([]ollamaToolCall, len(parts))
+	calls := make([]ollama.ChatToolCall, len(parts))
 	for i, part := range parts {
 		calls[i].Function.Name = name
 		calls[i].Function.Arguments = part
@@ -308,7 +289,7 @@ func chatContent(out workersChatResponse) string {
 	return strings.ReplaceAll(strings.TrimSpace(text), "\n", " ")
 }
 
-func logLine(message ollamaChatMessage) string {
+func logLine(message ollama.ChatMessage) string {
 	if len(message.ToolCalls) == 0 {
 		return message.Content
 	}

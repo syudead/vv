@@ -21,9 +21,11 @@ type ChoiceClassifier interface {
 	Choose(ctx context.Context, req domain.ClassifierChoiceRequest) (map[string]float64, error)
 }
 
-// ClefWire sends Clef's own request and answers the endpoint's JSON as it is, for a caller that reads Clef's answers
-// itself: the assistant's clef tool.
-type ClefWire interface {
-	// SystemOne returns an error with the endpoint's error text for an answer that is not a success.
-	SystemOne(ctx context.Context, req domain.ClefRequest) (json.RawMessage, error)
+// ClassifierWire sends a request in the provider's own question format and answers the provider's JSON as it is, for
+// a caller whose model reads the answers itself: the assistant's clef tool.
+type ClassifierWire interface {
+	// WireFormat tells the model that writes the request how to write it and how to read the answer.
+	WireFormat() domain.ClassifierWireFormat
+	// SendWire returns an error with the provider's error text for an answer that is not a success.
+	SendWire(ctx context.Context, req domain.ClassifierWireRequest) (json.RawMessage, error)
 }

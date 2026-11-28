@@ -133,11 +133,11 @@ func TestChatTellsFailuresApart(t *testing.T) {
 		ctx  func() (context.Context, context.CancelFunc)
 		want error
 	}{
-		{"error body", chatServer(t, http.StatusBadRequest, `{"error":"qwen2:0.5b does not support tools"}`, nil), nil, domain.ErrOllamaModel},
-		{"not Ollama", chatServer(t, http.StatusOK, `<html>secret</html>`, nil), nil, domain.ErrNotOllama},
-		{"no message", chatServer(t, http.StatusOK, `{"done":true}`, nil), nil, domain.ErrNotOllama},
-		{"timeout", chatServer(t, http.StatusOK, `{}`, nil), expired, domain.ErrOllamaTimeout},
-		{"unreachable", closed.URL, nil, domain.ErrOllamaUnreachable},
+		{"error body", chatServer(t, http.StatusBadRequest, `{"error":"qwen2:0.5b does not support tools"}`, nil), nil, domain.ErrModelUnavailable},
+		{"not Ollama", chatServer(t, http.StatusOK, `<html>secret</html>`, nil), nil, domain.ErrUnexpectedProvider},
+		{"no message", chatServer(t, http.StatusOK, `{"done":true}`, nil), nil, domain.ErrUnexpectedProvider},
+		{"timeout", chatServer(t, http.StatusOK, `{}`, nil), expired, domain.ErrProviderTimeout},
+		{"unreachable", closed.URL, nil, domain.ErrProviderUnreachable},
 	} {
 		ctx, cancel := context.Background(), func() {}
 		if tc.ctx != nil {
@@ -145,8 +145,8 @@ func TestChatTellsFailuresApart(t *testing.T) {
 		}
 		_, err := NewChat(generating(tc.url)).Chat(ctx, domain.ChatRequest{})
 		cancel()
-		for _, kind := range []error{domain.ErrOllamaModel, domain.ErrNotOllama, domain.ErrOllamaTimeout,
-			domain.ErrOllamaUnreachable} {
+		for _, kind := range []error{domain.ErrModelUnavailable, domain.ErrUnexpectedProvider, domain.ErrProviderTimeout,
+			domain.ErrProviderUnreachable} {
 			if want := errors.Is(tc.want, kind); errors.Is(err, kind) != want {
 				t.Errorf("%s: err = %v, Is(%v) = %v", tc.name, err, kind, !want)
 			}
@@ -163,7 +163,7 @@ func TestChatWithoutGenerationModelSendsNothing(t *testing.T) {
 	}))
 	defer server.Close()
 	_, err := NewChat(at(server.URL)).Chat(context.Background(), domain.ChatRequest{})
-	if !errors.Is(err, domain.ErrOllamaModel) {
+	if !errors.Is(err, domain.ErrModelUnavailable) {
 		t.Fatalf("err = %v", err)
 	}
 }

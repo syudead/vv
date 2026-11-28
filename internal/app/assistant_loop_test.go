@@ -527,9 +527,9 @@ func TestTurnLoopFollowUpCarriesThePreviousRequestAndSteps(t *testing.T) {
 
 func TestTurnLoopStopsWithTheModelFailure(t *testing.T) {
 	cases := map[error]domain.AssistantStopReason{
-		domain.ErrOllamaUnreachable: domain.AssistantStopConnection,
-		domain.ErrOllamaModel:       domain.AssistantStopModel,
-		domain.ErrOllamaTimeout:     domain.AssistantStopTimeout,
+		domain.ErrProviderUnreachable: domain.AssistantStopConnection,
+		domain.ErrModelUnavailable:    domain.AssistantStopModel,
+		domain.ErrProviderTimeout:     domain.AssistantStopTimeout,
 	}
 	for cause, reason := range cases {
 		f := newLoopFixture(t)

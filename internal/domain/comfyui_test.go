@@ -8,7 +8,9 @@ import (
 func TestApplyComfyUISettingsUpdate(t *testing.T) {
 	key := func(s string) *string { return &s }
 	model := func(m ComfyUIModel) *ComfyUIModel { return &m }
-	saved := ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1", Model: ComfyUIModelQwenImageEdit}
+	const flux, qwen ComfyUIModel = "flux2_klein_4b", "qwen_image_edit_2511"
+	models := []ComfyUIModel{flux, qwen}
+	saved := ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1", Model: qwen}
 	cases := []struct {
 		name    string
 		current ComfyUISettings
@@ -24,7 +26,7 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 			saved, nil},
 		{"空文字列のキーは消す", saved,
 			ComfyUISettingsUpdate{Provider: ComfyUISelfHosted, URL: "https://h", APIKey: key("")},
-			ComfyUISettings{Provider: ComfyUISelfHosted, URL: "https://h", Model: ComfyUIModelQwenImageEdit}, nil},
+			ComfyUISettings{Provider: ComfyUISelfHosted, URL: "https://h", Model: qwen}, nil},
 		{"Cloud は要求の URL を使わない", ComfyUISettings{URL: "http://old"},
 			ComfyUISettingsUpdate{Provider: ComfyUICloud, URL: "ftp://x", APIKey: key(" k2 ")},
 			ComfyUISettings{Provider: ComfyUICloud, URL: "http://old", APIKey: "k2"}, nil},
@@ -48,15 +50,15 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 			ComfyUISettingsUpdate{Provider: ComfyUICloud},
 			saved, nil},
 		{"モデルを選ぶ", saved,
-			ComfyUISettingsUpdate{Provider: ComfyUICloud, Model: model(ComfyUIModelFlux2Klein)},
-			ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1", Model: ComfyUIModelFlux2Klein}, nil},
+			ComfyUISettingsUpdate{Provider: ComfyUICloud, Model: model(flux)},
+			ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1", Model: flux}, nil},
 		{"知らないモデル", saved,
 			ComfyUISettingsUpdate{Provider: ComfyUICloud, Model: model("sdxl")}, ComfyUISettings{}, ErrInvalidComfyUISettings},
 		{"知らない提供元", ComfyUISettings{},
 			ComfyUISettingsUpdate{Provider: "other", URL: "http://h"}, ComfyUISettings{}, ErrInvalidComfyUISettings},
 	}
 	for _, c := range cases {
-		got, err := ApplyComfyUISettingsUpdate(c.current, c.update)
+		got, err := ApplyComfyUISettingsUpdate(c.current, c.update, models)
 		if c.wantErr != nil {
 			if !errors.Is(err, c.wantErr) || !errors.Is(err, ErrInvalidComfyUISettings) {
 				t.Errorf("%s: err = %v, want %v", c.name, err, c.wantErr)
@@ -66,14 +68,5 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: got %+v, %v; want %+v", c.name, got, err, c.want)
 		}
-	}
-}
-
-func TestComfyUISettingsEffectiveModel(t *testing.T) {
-	if got := (ComfyUISettings{}).EffectiveModel(); got != ComfyUIModelFlux2Klein {
-		t.Errorf("empty = %s", got)
-	}
-	if got := (ComfyUISettings{Model: ComfyUIModelQwenImageEdit}).EffectiveModel(); got != ComfyUIModelQwenImageEdit {
-		t.Errorf("qwen = %s", got)
 	}
 }

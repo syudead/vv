@@ -2,8 +2,8 @@
 
 VVMDM's features reach a model only through task-agnostic ports:
 `app.Classifier` for yes/no decisions, `app.ChoiceClassifier` for ranking
-options, `app.ClefWire` for Clef's own request
-and answer, and `app.ToolChat` for a conversation in which the model calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
+options, `app.ClassifierWire` for a request and answer in the provider's own
+question format, and `app.ToolChat` for a conversation in which the model calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
 how many questions it accepts per call; a provider does not know which feature
 asks or what the questions mean.
 
@@ -15,7 +15,7 @@ flowchart LR
   judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
   assistant[Feature: Assistant] -->|domain.ClassifierRequest| port
   assistant -->|domain.ChatRequest| tport[app.ToolChat]
-  assistant -->|domain.ClefRequest| wport[app.ClefWire]
+  assistant -->|domain.ClassifierWireRequest| wport[app.ClassifierWire]
   port -.->|implemented by| ollama[internal/ollama.Classifier]
   wport -.->|implemented by| ollama
   tport -.->|implemented by| chat[internal/ollama.Chat]
@@ -57,20 +57,29 @@ questions instead.
 | Duplicate judging | One question; up to 4 images of frame A beside frame B and no facts; sent only once the Ollama connection is saved | [duplicate-judging.md](duplicate-judging.md) |
 | Assistant review runs | One question per candidate set; as facts, the two names with their synonyms or other names and 3 titles each, or up to 10 titles and their folders of a work; no images | [assistant.md](assistant.md#review-runs-judge-candidate-sets-for-the-owner) |
 
-## Clef wire port
+## Classifier wire port
 
-`app.ClefWire` takes Clef's own request without the model:
-`domain.ClefRequest` holds the `state` facts, the encoded images and the
-`questions`, each `{ type, instructions }` under the caller's own key. It
-answers the endpoint's JSON as it is, or an error with the endpoint's error
-text ([`internal/app/classifier.go`](../../internal/app/classifier.go)). The
-assistant's `clef` tool is its caller, so the model can ask what it needs and
-read Clef's answers itself
+`app.ClassifierWire` takes a request in the provider's own question format
+without the model: `domain.ClassifierWireRequest` holds the facts, the encoded
+images and the questions, each `{ type, instructions }` under the caller's own
+key. It answers the provider's JSON as it is, or an error with the provider's
+error text ([`internal/app/classifier.go`](../../internal/app/classifier.go)).
+The assistant's `clef` tool is its caller, so the model can ask what it needs
+and read the answers itself
 ([assistant.md](assistant.md#images-reach-clef-or-the-model)).
+
+The model writes the request, so it must know the format. The port's
+`domain.ClassifierWireFormat` carries the tool description (what the provider
+judges and how to read its answer), the question types and the description
+of the questions argument; the assistant keeps the tool's name, which the panel
+renders, and its argument layout of `state`, `images` and `questions`, whose
+image references only the assistant reads. The Ollama adapter fills the format
+with Clef's request, whose yes/no questions are `noul` questions.
 
 | Rejected | Why |
 | --- | --- |
 | The classifier port for the `clef` tool | It answers probabilities for keyed questions only, and drops the rest of Clef's answer |
+| The tool's description and question types in `internal/app` | They are Clef's request and answer, which only the provider knows |
 
 ## Tool-calling chat port
 
@@ -86,15 +95,16 @@ template formats the calls the way the model was trained.
 | `ToolDefinition` | A name, a description and a JSON Schema object for the arguments |
 | `ChatReply` | The tool calls, each with a JSON object of arguments, or the text; a reply with calls carries no text |
 
-Failures wrap one domain cause each, so the assistant maps them without
-reading messages.
+Failures wrap one provider-neutral domain cause each, so the assistant and the
+Ollama settings API map them without reading messages or knowing the
+provider. The adapter's message names the provider.
 
 | Cause | When |
 | --- | --- |
-| `ErrOllamaUnreachable` | The endpoint cannot be reached |
-| `ErrNotOllama` | The reply is not Ollama's |
-| `ErrOllamaModel` | No generation model is saved, or Ollama answers an `error` (a missing model, for one) |
-| `ErrOllamaTimeout` | No answer within the time limit |
+| `ErrProviderUnreachable` | The endpoint cannot be reached |
+| `ErrUnexpectedProvider` | The reply is not the configured provider's; for Ollama, not Ollama's |
+| `ErrModelUnavailable` | No generation model is saved, or the provider answers an error (a missing model, for one) |
+| `ErrProviderTimeout` | No answer within the time limit |
 
 The model's
 reasoning (`thinking`) is dropped in the adapter, so the owner sees only facts
@@ -109,16 +119,18 @@ from tools and the answer.
 ## Ollama provider
 
 [`internal/ollama`](../../internal/ollama) implements the classifier port and
-the Clef wire port with Ollama's decision API (`POST /v1/systemone`) and a Clef
+the classifier wire port with Ollama's decision API (`POST /v1/systemone`) and a Clef
 model, and the tool-calling chat port with Ollama's chat API (`POST /api/chat`)
 and a chat model the owner chooses. It owns everything specific to that provider:
 
 | Concern | Rule |
 | --- | --- |
 | Connection | Reads the saved URL and models (`ollama.endpoint`, `ollama.model`, `ollama.generation_model`) on every call, so a change takes effect without a restart |
+| Defaults | `ollama.DefaultSettings` holds the URL and decision model used while none is saved. The store leaves an absent value empty; the adapter fills its defaults on each read, and `cmd/mdm` passes them to `app.OllamaConnection`, so the settings screen shows them |
 | Wire format, decisions | Facts become the `state` object, images are base64 `images`; a yes/no question is a `noul` question, and a choice is one `choice` question whose `criteria` are the options and a `_none` option for none of them, left out of the answer |
-| Wire format, Clef wire | The request's `state`, `images` and `questions` as given, with the decision model and `keep_alive` added |
-| Images | Ollama takes at most 8 images on one request; the Clef wire and each chat message tile more into one near-square grid of cells sized from the first image, at most 640 px wide, as a JPEG. The classifier port's features send no more than 8. `scripts/clefrelay` uses the same tiling for Workers AI's limit of 4 |
+| Wire format, classifier wire | The request's facts as `state`, `images` and `questions` as given, with the decision model and `keep_alive` added; the format the model writes describes Clef's request and its `noul` answers |
+| Request bodies | `ollama.DecisionRequest` and `ollama.ChatRequest` are the one definition of the two bodies; `scripts/clefrelay` decodes them instead of keeping its own copies |
+| Images | Ollama takes at most 8 images on one request; the classifier wire and each chat message tile more into one near-square grid of cells sized from the first image, at most 640 px wide, as a JPEG. The classifier port's features send no more than 8. `scripts/clefrelay` uses the same tiling for Workers AI's limit of 4 |
 | Wire format, tool chat | The messages with base64 `images`, `tool_calls` and `tool_name`, the tools as `function` entries, `stream: false` and no `options.num_ctx`: Ollama sizes the context for its host (`OLLAMA_CONTEXT_LENGTH` or its default), and after each call the `context_length` that `/api/ps` reports for the loaded model, or Ollama's documented default of 4,096, is the context the assistant fits its prompt to; before a turn's first call, `/api/ps` gives the context when the model is already loaded, and `size_vram` below `size` marks a model partly on the CPU. Sending the model's trained length made Ollama allocate a context past the GPU's memory, which runs on the CPU many times slower |
 | Capabilities | `POST /api/show` lists them; `tools` and `vision` are read, and an Ollama that reports none has neither |
 | Batches | 16 yes/no questions per decision call, all with the same input; answers are merged. A choice takes one call per 254 options, dealt round-robin so options next to each other in the caller's order land in different calls, since one choice of 254 options costs about 6,100 input tokens with one image. A chat call is never split or retried |
@@ -209,6 +221,11 @@ is separate from auto-tagging.
 Each provider keeps its own value when the owner switches to the other, so
 switching back does not ask for the URL or the key again.
 
+`domain.ComfyUIModel` is only the name the owner chose. `comfyui.Models`
+lists the names, the default first; `cmd/mdm` passes it to
+`app.ComfyUIConnection`, which rejects a name not in it and answers an absent
+model as the default, while the store keeps it absent.
+
 Each model has its own pair of bundled workflows, one without and one with
 `vv:reference`, and both pairs fill the same `vv:*` nodes. Only the
 instruction's input differs: `text` on FLUX.2 [klein]'s `CLIPTextEncode`,
@@ -262,12 +279,22 @@ body.
 A new provider is a new adapter package that implements
 `Classify(ctx, domain.ClassifierRequest)` or
 `Chat(ctx, domain.ChatRequest)`, reads its own settings, and splits
-requests to its own limits. `cmd/mdm` passes it to the features in place of
-`internal/ollama`; no feature changes. depguard keeps `internal/app` from
-importing a provider package ([.golangci.yml](../../.golangci.yml)).
+requests to its own limits. It maps its failures to the neutral causes above,
+owns its default settings, model names and wire formats, and describes the
+format of `app.ClassifierWire` if it offers one. `cmd/mdm` passes it to the
+features in place of `internal/ollama`; no feature changes. depguard keeps
+`internal/app` from importing a provider package
+([.golangci.yml](../../.golangci.yml)).
+
+Some names stay provider-specific outside the adapters on purpose: the
+owner configures an Ollama and a ComfyUI connection by name, so
+`domain.OllamaSettings`, `domain.ComfyUISettings`, `app.OllamaConnection`,
+`app.ComfyUIConnection` and their screen API keep the provider's name, and the
+assistant's `clef` tool keeps the name the panel renders.
 
 | Rejected | Why |
 | --- | --- |
+| Provider defaults, model names and failure causes in `internal/domain` | Changing provider would change the domain, and a second provider would need its own copies |
 | The feature passes the URL and model with each request | Every feature would read the provider's settings, and changing provider would change every feature |
 | The feature splits questions to the provider's limit | The limit comes from one provider's memory use, and another provider's limit differs |
 | Ollama settings and the connection test inside the auto-tagging use case | A second feature using the classifier would depend on auto-tagging |

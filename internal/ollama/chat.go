@@ -25,7 +25,7 @@ func NewChat(settings SettingsSource) *Chat {
 }
 
 func NewChatWithHTTPClient(settings SettingsSource, client *http.Client) *Chat {
-	return &Chat{settings: settings, http: client}
+	return &Chat{settings: defaulted{settings}, http: client}
 }
 
 // ollamaDefaultContext is Ollama's documented default context, for an Ollama whose /api/ps does not report one.
@@ -92,45 +92,46 @@ func (c *Chat) loaded(ctx context.Context, settings domain.OllamaSettings) (load
 	return loadedModel{}, false
 }
 
-// chatMessage omits Ollama's thinking field, so the model's reasoning never leaves the adapter.
-type chatMessage struct {
+// ChatMessage omits Ollama's thinking field, so the model's reasoning never leaves the adapter.
+type ChatMessage struct {
 	Role      string         `json:"role"`
 	Content   string         `json:"content"`
 	Images    []string       `json:"images,omitempty"`
-	ToolCalls []chatToolCall `json:"tool_calls,omitempty"`
+	ToolCalls []ChatToolCall `json:"tool_calls,omitempty"`
 	ToolName  string         `json:"tool_name,omitempty"`
 }
 
-type chatToolCall struct {
-	Function chatFunction `json:"function"`
+type ChatToolCall struct {
+	Function ChatFunction `json:"function"`
 }
 
-type chatFunction struct {
+type ChatFunction struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 }
 
-type chatTool struct {
+type ChatTool struct {
 	Type     string       `json:"type"`
-	Function chatToolSpec `json:"function"`
+	Function ChatToolSpec `json:"function"`
 }
 
-type chatToolSpec struct {
+type ChatToolSpec struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-type chatRequest struct {
+// ChatRequest is the body of POST /api/chat; scripts/clefrelay reads it too.
+type ChatRequest struct {
 	Model     string        `json:"model"`
-	Messages  []chatMessage `json:"messages"`
-	Tools     []chatTool    `json:"tools,omitempty"`
+	Messages  []ChatMessage `json:"messages"`
+	Tools     []ChatTool    `json:"tools,omitempty"`
 	Stream    bool          `json:"stream"`
 	KeepAlive string        `json:"keep_alive"`
 }
 
 type chatResponse struct {
-	Message         *chatMessage `json:"message"`
+	Message         *ChatMessage `json:"message"`
 	Error           string       `json:"error"`
 	DoneReason      string       `json:"done_reason"`
 	PromptEvalCount int          `json:"prompt_eval_count"`
@@ -152,13 +153,13 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 		return domain.ChatReply{}, fmt.Errorf("cannot read the Ollama settings: %w", err)
 	}
 	if settings.GenerationModel == "" {
-		return domain.ChatReply{}, kindErrorf(domain.ErrOllamaModel, nil, "no generation model is saved")
+		return domain.ChatReply{}, kindErrorf(domain.ErrModelUnavailable, nil, "no generation model is saved")
 	}
 	messages, err := wireMessages(req.Messages)
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
-	body := chatRequest{
+	body := ChatRequest{
 		Model: settings.GenerationModel, Messages: messages, Tools: wireTools(req.Tools), Stream: false,
 		KeepAlive: keepAlive,
 	}
@@ -181,7 +182,7 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 
 // postChat keeps only Ollama's own error text, and names the endpoint when the reply is not Ollama's.
 func postChat(
-	ctx context.Context, client *http.Client, settings domain.OllamaSettings, body chatRequest,
+	ctx context.Context, client *http.Client, settings domain.OllamaSettings, body ChatRequest,
 ) (chatResponse, domain.ChatUsage, error) {
 	status, raw, err := postJSON(ctx, client, settings.Endpoint, "/api/chat", body)
 	if err != nil {
@@ -192,7 +193,7 @@ func postChat(
 		return chatResponse{}, domain.ChatUsage{}, notOllama(settings.Endpoint, status)
 	}
 	if decoded.Error != "" {
-		return chatResponse{}, domain.ChatUsage{}, kindErrorf(domain.ErrOllamaModel, nil, "model %q: %s",
+		return chatResponse{}, domain.ChatUsage{}, kindErrorf(domain.ErrModelUnavailable, nil, "model %q: %s",
 			settings.GenerationModel, statusMessage(status, decoded.Error))
 	}
 	if status != http.StatusOK || decoded.Message == nil {
@@ -207,31 +208,31 @@ func postChat(
 }
 
 func notOllama(endpoint string, status int) error {
-	return kindErrorf(domain.ErrNotOllama, nil, "the server at %s is not Ollama (%s)", endpoint, statusMessage(status, ""))
+	return kindErrorf(domain.ErrUnexpectedProvider, nil, "the server at %s is not Ollama (%s)", endpoint, statusMessage(status, ""))
 }
 
 // wireMessages tiles a message's images into one when there are more than Ollama takes, as for Clef.
-func wireMessages(messages []domain.ChatMessage) ([]chatMessage, error) {
-	out := make([]chatMessage, len(messages))
+func wireMessages(messages []domain.ChatMessage) ([]ChatMessage, error) {
+	out := make([]ChatMessage, len(messages))
 	for i, m := range messages {
 		images, err := encodeImages(m.Images, maxImages)
 		if err != nil {
 			return nil, fmt.Errorf("cannot tile the images of message %d: %w", i, err)
 		}
-		out[i] = chatMessage{Role: string(m.Role), Content: m.Content, Images: images, ToolName: m.ToolName}
+		out[i] = ChatMessage{Role: string(m.Role), Content: m.Content, Images: images, ToolName: m.ToolName}
 		for _, call := range m.ToolCalls {
-			out[i].ToolCalls = append(out[i].ToolCalls, chatToolCall{
-				Function: chatFunction{Name: call.Name, Arguments: objectOrEmpty(call.Arguments)},
+			out[i].ToolCalls = append(out[i].ToolCalls, ChatToolCall{
+				Function: ChatFunction{Name: call.Name, Arguments: objectOrEmpty(call.Arguments)},
 			})
 		}
 	}
 	return out, nil
 }
 
-func wireTools(tools []domain.ToolDefinition) []chatTool {
-	out := make([]chatTool, len(tools))
+func wireTools(tools []domain.ToolDefinition) []ChatTool {
+	out := make([]ChatTool, len(tools))
 	for i, tool := range tools {
-		out[i] = chatTool{Type: "function", Function: chatToolSpec{
+		out[i] = ChatTool{Type: "function", Function: ChatToolSpec{
 			Name: tool.Name, Description: tool.Description, Parameters: objectOrEmpty(tool.Parameters),
 		}}
 	}

@@ -15,7 +15,7 @@ func TestComfyUISettingsRoundTrip(t *testing.T) {
 		t.Fatalf("保存前 = %+v, %v", got, err)
 	}
 	want := domain.ComfyUISettings{
-		Provider: domain.ComfyUICloud, URL: "http://gpu:8188", APIKey: "secret", Model: domain.ComfyUIModelQwenImageEdit,
+		Provider: domain.ComfyUICloud, URL: "http://gpu:8188", APIKey: "secret", Model: domain.ComfyUIModel("qwen_image_edit_2511"),
 	}
 	if err := db.Settings().SaveComfyUISettings(ctx, want); err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestComfyUISettingsRoundTrip(t *testing.T) {
 	if got, err = db.Settings().ComfyUISettings(ctx); err != nil || got != want {
 		t.Fatalf("キーを消したあと = %+v, %v", got, err)
 	}
-	if ollama, err := db.Settings().OllamaSettings(ctx); err != nil || ollama != domain.DefaultOllamaSettings() {
+	if ollama, err := db.Settings().OllamaSettings(ctx); err != nil || ollama != (domain.OllamaSettings{}) {
 		t.Fatalf("ComfyUI の接続先が Ollama の接続先を変えた: %+v, %v", ollama, err)
 	}
 }

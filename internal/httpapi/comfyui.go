@@ -122,7 +122,7 @@ func (s *server) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Reques
 }
 
 func comfyUISettingsBody(settings domain.ComfyUISettings) gen.ComfyUISettings {
-	body := gen.ComfyUISettings{ApiKeySet: settings.APIKey != "", Model: gen.ComfyUIModel(settings.EffectiveModel())}
+	body := gen.ComfyUISettings{ApiKeySet: settings.APIKey != "", Model: gen.ComfyUIModel(settings.Model)}
 	if settings.Saved() {
 		provider := gen.ComfyUIProvider(settings.Provider)
 		body.Provider = &provider

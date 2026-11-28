@@ -32,6 +32,24 @@ func oneQuestion() domain.ClassifierRequest {
 	return domain.ClassifierRequest{Questions: []domain.ClassifierQuestion{{Key: "a", Text: "?"}}}
 }
 
+// The store leaves an unsaved model empty, and the adapter sends its own default.
+func TestClassifySendsTheDefaultModelWhenNoneIsSaved(t *testing.T) {
+	var got DecisionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"answers":{}}`))
+	}))
+	defer server.Close()
+
+	if _, err := New(fixedSettings{settings: domain.OllamaSettings{Endpoint: server.URL}}).Classify(
+		context.Background(), oneQuestion()); err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != DefaultModel {
+		t.Errorf("model = %q, want %q", got.Model, DefaultModel)
+	}
+}
+
 func TestClassifySendsSystemOneRequest(t *testing.T) {
 	var got map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +103,7 @@ func TestClassifySplitsQuestionsIntoBatches(t *testing.T) {
 	var mu sync.Mutex
 	var sizes []int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body requestBody
+		var body DecisionRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		mu.Lock()
 		sizes = append(sizes, len(body.Questions))
@@ -178,9 +196,9 @@ func TestClassifyReportsUnreachableEndpoint(t *testing.T) {
 // none option's probability is not returned.
 func TestChooseSplitsOptionsIntoChoiceQuestions(t *testing.T) {
 	var mu sync.Mutex
-	var sent []question
+	var sent []DecisionQuestion
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body requestBody
+		var body DecisionRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		q := body.Questions["choice"]
 		mu.Lock()

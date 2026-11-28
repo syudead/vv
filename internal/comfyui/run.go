@@ -52,7 +52,7 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	p := presetFor(conn.EffectiveModel())
+	p := presetFor(conn.Model)
 	name := p.edit
 	if input.Reference != nil {
 		name = p.editReference

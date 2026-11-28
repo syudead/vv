@@ -7,25 +7,21 @@ import (
 	"strings"
 )
 
-// Ollama connection settings belong to the provider adapter, independently of feature settings (docs/design-docs/ai-layer.md).
-
-const (
-	DefaultOllamaEndpoint = "http://127.0.0.1:11434"
-	// DefaultOllamaModel favors the smaller, faster Clef variant.
-	DefaultOllamaModel = "clef-flash"
-)
+// Ollama connection settings belong to the provider adapter, independently of feature settings; the adapter owns
+// their default values (docs/design-docs/ai-layer.md).
 
 const ollamaMaxModelLength = 200
 
 var ErrInvalidOllamaSettings = errors.New("invalid Ollama settings")
 
-// Ollama failures the adapter tells apart, so callers can name the cause without reading messages.
+// Model provider failures an adapter tells apart, so callers can name the cause without reading messages.
 var (
-	ErrOllamaUnreachable = errors.New("cannot reach Ollama")
-	ErrNotOllama         = errors.New("the server is not Ollama")
-	// ErrOllamaModel covers a missing model and a model that refused the request.
-	ErrOllamaModel   = errors.New("the Ollama model is missing or refused the request")
-	ErrOllamaTimeout = errors.New("the Ollama request timed out")
+	ErrProviderUnreachable = errors.New("cannot reach the model provider")
+	// ErrUnexpectedProvider means a server answered, but not as the configured provider does.
+	ErrUnexpectedProvider = errors.New("the server is not the configured model provider")
+	// ErrModelUnavailable covers a missing model and a model that refused the request.
+	ErrModelUnavailable = errors.New("the model is missing or refused the request")
+	ErrProviderTimeout  = errors.New("the model provider did not answer in time")
 	// ErrGenerationModelMissing means the check found the decision model but not the generation model.
 	ErrGenerationModelMissing = errors.New("the generation model is not at the Ollama endpoint")
 	// ErrGenerationModelWithoutTools means the generation model is there but cannot call tools.
@@ -40,8 +36,15 @@ type OllamaSettings struct {
 	GenerationModel string
 }
 
-func DefaultOllamaSettings() OllamaSettings {
-	return OllamaSettings{Endpoint: DefaultOllamaEndpoint, Model: DefaultOllamaModel}
+// WithDefaults fills an absent endpoint or decision model from defaults, which the provider adapter supplies.
+func (s OllamaSettings) WithDefaults(defaults OllamaSettings) OllamaSettings {
+	if s.Endpoint == "" {
+		s.Endpoint = defaults.Endpoint
+	}
+	if s.Model == "" {
+		s.Model = defaults.Model
+	}
+	return s
 }
 
 func NormalizeOllamaSettings(s OllamaSettings) (OllamaSettings, error) {

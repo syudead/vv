@@ -61,19 +61,9 @@ func TestRelayChatSendsEveryToolAsAFunction(t *testing.T) {
 		t.Fatal(err)
 	}
 	var names []string
-	for _, raw := range got.Tools {
-		var tool struct {
-			Type     string `json:"type"`
-			Function struct {
-				Name       string          `json:"name"`
-				Parameters json.RawMessage `json:"parameters"`
-			} `json:"function"`
-		}
-		if err := json.Unmarshal(raw, &tool); err != nil {
-			t.Fatal(err)
-		}
+	for _, tool := range got.Tools {
 		if tool.Type != "function" || len(tool.Function.Parameters) == 0 {
-			t.Errorf("tool = %s", raw)
+			t.Errorf("tool = %+v", tool)
 		}
 		names = append(names, tool.Function.Name)
 	}

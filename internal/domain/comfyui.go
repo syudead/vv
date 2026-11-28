@@ -16,18 +16,9 @@ const (
 	ComfyUICloud      ComfyUIProvider = "cloud"
 )
 
-// ComfyUIModel selects the bundled workflow set (docs/design-docs/ai-layer.md).
+// ComfyUIModel names the image-edit model the owner chose; internal/comfyui defines the names and the default
+// (docs/design-docs/ai-layer.md).
 type ComfyUIModel string
-
-const (
-	// ComfyUIModelFlux2Klein is the default FLUX.2 [klein] 4B fp8 model.
-	ComfyUIModelFlux2Klein ComfyUIModel = "flux2_klein_4b"
-	// ComfyUIModelQwenImageEdit uses Qwen-Image-Edit-2511 fp8mixed with Lightning four-step LoRA.
-	ComfyUIModelQwenImageEdit ComfyUIModel = "qwen_image_edit_2511"
-)
-
-// ComfyUIModels lists the default first.
-var ComfyUIModels = []ComfyUIModel{ComfyUIModelFlux2Klein, ComfyUIModelQwenImageEdit}
 
 const comfyUIMaxAPIKeyLength = 1000
 
@@ -38,7 +29,7 @@ var (
 	ErrComfyUIAPIKeyMissing   = fmt.Errorf("%w: Comfy Cloud needs an API key", ErrInvalidComfyUISettings)
 )
 
-// ComfyUISettings retains inactive provider values for switching back and never returns APIKey through the API; empty Provider means unsaved and empty Model selects the default.
+// ComfyUISettings retains inactive provider values for switching back and never returns APIKey through the API; empty Provider means unsaved and empty Model selects the adapter's default.
 type ComfyUISettings struct {
 	Provider ComfyUIProvider
 	URL      string
@@ -50,13 +41,6 @@ func (s ComfyUISettings) Saved() bool {
 	return s.Provider != ""
 }
 
-func (s ComfyUISettings) EffectiveModel() ComfyUIModel {
-	if s.Model == "" {
-		return ComfyUIModels[0]
-	}
-	return s.Model
-}
-
 // ComfyUISettingsUpdate preserves nil fields; an empty APIKey deletes the saved key.
 type ComfyUISettingsUpdate struct {
 	Provider ComfyUIProvider
@@ -65,8 +49,9 @@ type ComfyUISettingsUpdate struct {
 	Model    *ComfyUIModel
 }
 
-// ApplyComfyUISettingsUpdate wraps ErrInvalidComfyUISettings for invalid URLs or missing cloud keys and preserves the saved URL when selecting cloud.
-func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsUpdate) (ComfyUISettings, error) {
+// ApplyComfyUISettingsUpdate wraps ErrInvalidComfyUISettings for invalid URLs, missing cloud keys or a model not in
+// models, and preserves the saved URL when selecting cloud.
+func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsUpdate, models []ComfyUIModel) (ComfyUISettings, error) {
 	next := current
 	next.Provider = update.Provider
 	if update.APIKey != nil {
@@ -77,8 +62,8 @@ func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsU
 		next.APIKey = key
 	}
 	if update.Model != nil {
-		if !slices.Contains(ComfyUIModels, *update.Model) {
-			return ComfyUISettings{}, fmt.Errorf("%w: the model must be one of %v", ErrInvalidComfyUISettings, ComfyUIModels)
+		if !slices.Contains(models, *update.Model) {
+			return ComfyUISettings{}, fmt.Errorf("%w: the model must be one of %v", ErrInvalidComfyUISettings, models)
 		}
 		next.Model = *update.Model
 	}

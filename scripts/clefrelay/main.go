@@ -77,24 +77,17 @@ func main() {
 	}
 }
 
-// Request body sent by internal/ollama.
-type ollamaRequest struct {
-	Model     string          `json:"model"`
-	State     json.RawMessage `json:"state"`
-	Images    []string        `json:"images"`
-	Questions json.RawMessage `json:"questions"`
-}
-
 type workersImage struct {
 	ContentType string `json:"content_type"`
 	Base64      string `json:"base64"`
 }
 
+// workersRequest is ollama.DecisionRequest without keep_alive, with typed images.
 type workersRequest struct {
-	Model     string          `json:"model"`
-	State     json.RawMessage `json:"state"`
-	Images    []workersImage  `json:"images,omitempty"`
-	Questions json.RawMessage `json:"questions"`
+	Model     string                             `json:"model"`
+	State     map[string]string                  `json:"state"`
+	Images    []workersImage                     `json:"images,omitempty"`
+	Questions map[string]ollama.DecisionQuestion `json:"questions"`
 }
 
 type workersResponse struct {
@@ -157,7 +150,7 @@ func newRelay(cfg config, client *http.Client) http.Handler {
 
 func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Client) {
 	started := time.Now()
-	var in ollamaRequest
+	var in ollama.DecisionRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "cannot read the request: "+err.Error())
 		return
@@ -189,7 +182,7 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 
 	if status == http.StatusOK && decodeErr == nil && out.Success && out.Result != nil {
 		log.Printf("clefrelay: %s %d questions, %d→%d images, %d tokens, %s",
-			model, countKeys(in.Questions), len(in.Images), len(images), out.Result.Usage.InputTokens,
+			model, len(in.Questions), len(in.Images), len(images), out.Result.Usage.InputTokens,
 			time.Since(started).Round(time.Millisecond))
 		writeJSON(w, http.StatusOK, map[string]any{"model": model, "answers": out.Result.Answers})
 		return
@@ -269,12 +262,6 @@ func workersImages(encoded []string) ([]workersImage, error) {
 		return nil, err
 	}
 	return []workersImage{{ContentType: "image/jpeg", Base64: base64.StdEncoding.EncodeToString(tiled)}}, nil
-}
-
-func countKeys(raw json.RawMessage) int {
-	var m map[string]json.RawMessage
-	_ = json.Unmarshal(raw, &m)
-	return len(m)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

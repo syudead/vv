@@ -65,7 +65,7 @@ func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain
 	return nil
 }
 
-// OllamaSettings uses domain defaults when no connection is saved.
+// OllamaSettings leaves absent values empty; the provider adapter fills its own defaults.
 func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettings, error) {
 	settings, _, err := ollamaConnection(ctx, s.db.sql)
 	return settings, err
@@ -94,9 +94,9 @@ func (s *SettingsStore) SavedOllamaSettings(ctx context.Context) (domain.OllamaS
 	return settings, saved, nil
 }
 
-// Include legacy keys when detecting a saved connection; use defaults for absent values.
+// Include legacy keys when detecting a saved connection; absent values stay empty.
 func ollamaConnection(ctx context.Context, q rowQueryer) (domain.OllamaSettings, bool, error) {
-	settings := domain.DefaultOllamaSettings()
+	var settings domain.OllamaSettings
 	saved := false
 	for _, item := range []struct {
 		keys   []string

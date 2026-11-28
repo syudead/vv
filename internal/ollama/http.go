@@ -35,9 +35,9 @@ func transportError(endpoint string, err error) error {
 	case errors.Is(err, context.Canceled):
 		return fmt.Errorf("the request to Ollama at %s was canceled: %w", endpoint, err)
 	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()):
-		return kindErrorf(domain.ErrOllamaTimeout, err, "Ollama at %s did not answer in time", endpoint)
+		return kindErrorf(domain.ErrProviderTimeout, err, "Ollama at %s did not answer in time", endpoint)
 	default:
-		return kindErrorf(domain.ErrOllamaUnreachable, err, "cannot reach Ollama at %s: %v", endpoint, err)
+		return kindErrorf(domain.ErrProviderUnreachable, err, "cannot reach Ollama at %s: %v", endpoint, err)
 	}
 }
 

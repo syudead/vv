@@ -9,6 +9,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// testOllamaDefaults stands in for the adapter's defaults, which fill what the store leaves absent.
+var testOllamaDefaults = domain.OllamaSettings{Endpoint: "http://127.0.0.1:11434", Model: "clef-flash"}
+
 type fakeOllamaStore struct {
 	settings domain.OllamaSettings
 	saved    bool
@@ -48,8 +51,8 @@ func (p *fakeProbe) Capabilities(_ context.Context, endpoint, model string) (dom
 }
 
 func TestAssistantReadinessFollowsSavedConnection(t *testing.T) {
-	store := &fakeOllamaStore{settings: domain.DefaultOllamaSettings()}
-	conn := NewOllamaConnection(store, &fakeProbe{caps: domain.ModelCapabilities{Tools: true}})
+	store := &fakeOllamaStore{settings: testOllamaDefaults}
+	conn := NewOllamaConnection(store, &fakeProbe{caps: domain.ModelCapabilities{Tools: true}}, testOllamaDefaults)
 	ctx := context.Background()
 	readiness := func() domain.AssistantNotReady {
 		t.Helper()
@@ -84,7 +87,7 @@ func TestAssistantReadinessReadsCapabilitiesOncePerModel(t *testing.T) {
 	gemma := domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef", GenerationModel: "gemma3:27b"}
 	store := &fakeOllamaStore{settings: gemma, saved: true}
 	probe := &fakeProbe{caps: domain.ModelCapabilities{Vision: true}}
-	conn := NewOllamaConnection(store, probe)
+	conn := NewOllamaConnection(store, probe, testOllamaDefaults)
 
 	for range 2 {
 		got, err := conn.AssistantReadiness(ctx)
@@ -115,8 +118,8 @@ func TestAssistantReadinessWhenOllamaCannotAnswer(t *testing.T) {
 	store := &fakeOllamaStore{
 		settings: domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef", GenerationModel: "qwen3:8b"}, saved: true,
 	}
-	probe := &fakeProbe{capsErr: domain.ErrOllamaUnreachable}
-	conn := NewOllamaConnection(store, probe)
+	probe := &fakeProbe{capsErr: domain.ErrProviderUnreachable}
+	conn := NewOllamaConnection(store, probe, testOllamaDefaults)
 	if got, err := conn.AssistantReadiness(ctx); err != nil || got != (domain.AssistantStatus{}) {
 		t.Fatalf("unreachable = %+v, %v; want ready, the turn reports the failure", got, err)
 	}
@@ -131,7 +134,7 @@ func TestOllamaConnectionCheckNamesModelWithoutTools(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeOllamaStore{settings: domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef", GenerationModel: "qwen2:0.5b"}}
 	probe := &fakeProbe{}
-	conn := NewOllamaConnection(store, probe)
+	conn := NewOllamaConnection(store, probe, testOllamaDefaults)
 	if err := conn.Check(ctx); !errors.Is(err, domain.ErrGenerationModelWithoutTools) {
 		t.Fatalf("Check = %v", err)
 	}
@@ -146,18 +149,18 @@ func TestOllamaConnectionCheckNamesModelWithoutTools(t *testing.T) {
 }
 
 func TestOllamaConnectionSaveAndCheck(t *testing.T) {
-	store := &fakeOllamaStore{settings: domain.DefaultOllamaSettings()}
+	store := &fakeOllamaStore{}
 	probe := &fakeProbe{err: errors.New("cannot reach Ollama")}
-	conn := NewOllamaConnection(store, probe)
+	conn := NewOllamaConnection(store, probe, testOllamaDefaults)
 	ctx := context.Background()
 
 	if _, err := conn.SaveSettings(ctx, domain.OllamaSettings{Endpoint: "nope", Model: "clef"}); !errors.Is(err, domain.ErrInvalidOllamaSettings) {
 		t.Fatalf("err = %v", err)
 	}
-	if store.settings != domain.DefaultOllamaSettings() {
+	if store.settings != (domain.OllamaSettings{}) {
 		t.Fatalf("規則に合わない値を保存した: %+v", store.settings)
 	}
-	if got, saved, err := conn.Settings(ctx); err != nil || saved || got != domain.DefaultOllamaSettings() {
+	if got, saved, err := conn.Settings(ctx); err != nil || saved || got != testOllamaDefaults {
 		t.Fatalf("保存の前の Settings = %+v, %v, %v", got, saved, err)
 	}
 	want := domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef"}
@@ -174,7 +177,7 @@ func TestOllamaConnectionSaveAndCheck(t *testing.T) {
 }
 
 func TestOllamaConnectionOnSaved(t *testing.T) {
-	conn := NewOllamaConnection(&fakeOllamaStore{}, &fakeProbe{})
+	conn := NewOllamaConnection(&fakeOllamaStore{}, &fakeProbe{}, testOllamaDefaults)
 	calls := 0
 	conn.OnSaved(func(context.Context) { calls++ })
 	ctx := context.Background()

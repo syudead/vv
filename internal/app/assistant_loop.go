@@ -187,7 +187,7 @@ type turnLoop struct {
 	viewed bool
 	// usage is how the provider ended the last reply.
 	usage domain.ChatUsage
-	// clef and vision say which image tools the turn offers; judged marks a turn that received Clef's answers.
+	// clef and vision say which image tools the turn offers; judged marks a turn that received the classifier's answers.
 	clef, vision, judged bool
 	// attached and attachedNames hold the images view_images read this round, for the message after the results.
 	attached      [][]byte
@@ -286,9 +286,9 @@ func (l *turnLoop) chatStop(ctx context.Context, err error) domain.AssistantStop
 	switch {
 	case ctx.Err() != nil:
 		return domain.AssistantStopCancelled
-	case errors.Is(err, domain.ErrOllamaTimeout), errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, domain.ErrProviderTimeout), errors.Is(err, context.DeadlineExceeded):
 		return domain.AssistantStopTimeout
-	case errors.Is(err, domain.ErrOllamaUnreachable), errors.Is(err, domain.ErrNotOllama):
+	case errors.Is(err, domain.ErrProviderUnreachable), errors.Is(err, domain.ErrUnexpectedProvider):
 		return domain.AssistantStopConnection
 	}
 	l.a.logger.Info("the generation model failed", slog.Int64("turn", l.turn.ID), slog.Any("error", err))

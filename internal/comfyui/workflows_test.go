@@ -53,7 +53,7 @@ func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
 }
 
 func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
-	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "")
+	required, err := workflowRequirement(ModelFlux2Klein, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
 }
 
 func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
-	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "klein-4b-finetune.safetensors")
+	required, err := workflowRequirement(ModelFlux2Klein, "klein-4b-finetune.safetensors")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
 }
 
 func TestEveryModelHasAPresetWhoseLoadersNameItsFiles(t *testing.T) {
-	for _, model := range domain.ComfyUIModels {
+	for _, model := range Models {
 		p, ok := presets[model]
 		if !ok {
 			t.Fatalf("%s has no preset", model)
@@ -110,7 +110,7 @@ func TestEveryModelHasAPresetWhoseLoadersNameItsFiles(t *testing.T) {
 			t.Errorf("%s: workflows %s and %s are not all in workflowNames", model, p.edit, p.editReference)
 		}
 	}
-	required, err := workflowRequirement(domain.ComfyUIModelQwenImageEdit, "")
+	required, err := workflowRequirement(ModelQwenImageEdit, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestCheckUsesTheSavedModel(t *testing.T) {
 	for _, f := range qwenRequiredFiles {
 		files = append(files, f.name)
 	}
-	required, err := workflowRequirement(domain.ComfyUIModelQwenImageEdit, "")
+	required, err := workflowRequirement(ModelQwenImageEdit, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestCheckUsesTheSavedModel(t *testing.T) {
 	}
 	url := fakeProvider(t, "/system_stats", systemStatsReply, "", data, nil)
 	qwen := fixedSettings{settings: domain.ComfyUISettings{
-		Provider: domain.ComfyUISelfHosted, URL: url, Model: domain.ComfyUIModelQwenImageEdit,
+		Provider: domain.ComfyUISelfHosted, URL: url, Model: ModelQwenImageEdit,
 	}}
 	if err := NewWithOptions(qwen, Options{DiffusionModel: "klein-4b-finetune.safetensors"}).Check(context.Background()); err != nil {
 		t.Fatalf("Check with Qwen files = %v", err)
@@ -176,7 +176,7 @@ func contains(list []string, s string) bool {
 // combo selects the newer COMBO schema; drop omits node classes.
 func objectInfoFor(t *testing.T, files []string, combo bool, drop ...string) []byte {
 	t.Helper()
-	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "")
+	required, err := workflowRequirement(ModelFlux2Klein, "")
 	if err != nil {
 		t.Fatal(err)
 	}

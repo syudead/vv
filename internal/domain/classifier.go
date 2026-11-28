@@ -35,18 +35,27 @@ type ClassifierChoiceRequest struct {
 	None string
 }
 
-// ClefRequest is Clef's own decision request without the model and keep-alive, which the adapter adds; the
-// assistant's clef tool sends it as the model wrote it, with each image reference replaced by the image's bytes.
-type ClefRequest struct {
-	State map[string]string
+// ClassifierWireRequest is a request in the provider's own question format, which a model writes from the provider's
+// ClassifierWireFormat; the adapter adds the model and whatever else the provider needs.
+type ClassifierWireRequest struct {
+	Facts map[string]string
 	// Images are encoded image files, shown in order.
 	Images [][]byte
 	// Questions are keyed by the caller's own keys.
-	Questions map[string]ClefQuestion
+	Questions map[string]ClassifierWireQuestion
 }
 
-type ClefQuestion struct {
-	// Type is "noul" for a yes/no question answered with a probability.
+type ClassifierWireQuestion struct {
+	// Type is one of the format's QuestionTypes.
 	Type         string `json:"type"`
 	Instructions string `json:"instructions"`
+}
+
+// ClassifierWireFormat tells a model how to write a provider's request and how to read its answer.
+type ClassifierWireFormat struct {
+	// Description says what the provider judges, how to write the questions and how to read the answer.
+	Description   string
+	QuestionTypes []string
+	// QuestionsDescription describes the questions argument, with an example.
+	QuestionsDescription string
 }

@@ -45,7 +45,7 @@ func TestNormalizeOllamaSettings(t *testing.T) {
 	if got, err := NormalizeOllamaSettings(OllamaSettings{Endpoint: "http://h", Model: "clef", GenerationModel: " "}); err != nil || got.GenerationModel != "" {
 		t.Fatalf("空の生成用のモデル = %+v, %v", got, err)
 	}
-	valid := DefaultOllamaSettings()
+	valid := OllamaSettings{Endpoint: "http://127.0.0.1:11434", Model: "clef-flash"}
 	for name, change := range map[string]func(*OllamaSettings){
 		"空の URL":        func(s *OllamaSettings) { s.Endpoint = "" },
 		"http 以外":       func(s *OllamaSettings) { s.Endpoint = "ftp://host" },

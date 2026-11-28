@@ -50,6 +50,9 @@ type autoTaggingFixture struct {
 	owner *http.Cookie
 }
 
+// testOllamaDefaults stands in for the adapter's defaults that cmd/mdm passes to the connection.
+var testOllamaDefaults = domain.OllamaSettings{Endpoint: "http://127.0.0.1:11434", Model: "clef-flash"}
+
 // The fixture tests queueing with real app/storage and fake classifier/connection probes; classification does not run.
 func newAutoTaggingFixture(t *testing.T, probe app.OllamaProbe) *autoTaggingFixture {
 	t.Helper()
@@ -58,7 +61,7 @@ func newAutoTaggingFixture(t *testing.T, probe app.OllamaProbe) *autoTaggingFixt
 		tagger := app.NewAutoTagger(app.AutoTaggerOptions{
 			Queue: db.AutoTags(), Settings: db.Settings(), Classifier: autoTagClassifier{}, Logger: discardLogger(),
 		})
-		return Options{AutoTagging: tagger, Ollama: app.NewOllamaConnection(db.Settings(), probe), Videos: db.Library()}
+		return Options{AutoTagging: tagger, Ollama: app.NewOllamaConnection(db.Settings(), probe, testOllamaDefaults), Videos: db.Library()}
 	})
 	f.owner = f.env.setup()
 	return f
@@ -101,7 +104,7 @@ func TestAutoTaggingSettingsDefaultsAndSave(t *testing.T) {
 	if err != nil || stored != want {
 		t.Fatalf("stored = %+v, %v", stored, err)
 	}
-	if ollama, _ := f.env.db.Settings().OllamaSettings(context.Background()); ollama != domain.DefaultOllamaSettings() {
+	if ollama, _ := f.env.db.Settings().OllamaSettings(context.Background()); ollama != (domain.OllamaSettings{}) {
 		t.Fatalf("機能の設定が Ollama の接続先を変えた: %+v", ollama)
 	}
 }
@@ -130,7 +133,7 @@ func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
 
 	rec := f.env.get("/api/settings/ollama", f.owner)
 	if got := decode[gen.OllamaSettings](t, rec); rec.Code != http.StatusOK ||
-		got.Endpoint != domain.DefaultOllamaEndpoint || got.Model != domain.DefaultOllamaModel || got.Saved {
+		got.Endpoint != testOllamaDefaults.Endpoint || got.Model != testOllamaDefaults.Model || got.Saved {
 		t.Fatalf("defaults = %d %+v", rec.Code, got)
 	}
 	// saved is response-only and must be rejected in requests.

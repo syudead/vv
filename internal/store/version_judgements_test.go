@@ -448,7 +448,7 @@ func TestOllamaConnectionSaved(t *testing.T) {
 	if saved, err := db.Settings().OllamaConnectionSaved(ctx); err != nil || saved {
 		t.Fatalf("保存の前 = %v, %v, want 未保存", saved, err)
 	}
-	if err := db.Settings().SaveOllamaSettings(ctx, domain.DefaultOllamaSettings()); err != nil {
+	if err := db.Settings().SaveOllamaSettings(ctx, domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef-flash"}); err != nil {
 		t.Fatal(err)
 	}
 	if saved, err := db.Settings().OllamaConnectionSaved(ctx); err != nil || !saved {
@@ -469,11 +469,11 @@ func TestSavedOllamaSettings(t *testing.T) {
 			t.Fatalf("%s: OllamaConnectionSaved = %v, %v, want %v", step, alone, err, saved)
 		}
 	}
-	check("保存の前", domain.DefaultOllamaSettings(), false)
+	check("保存の前", domain.OllamaSettings{}, false)
 	if err := writeSetting(ctx, db.sql, legacyOllamaModelKey, "old-model"); err != nil {
 		t.Fatal(err)
 	}
-	check("模型の行だけ", domain.OllamaSettings{Endpoint: domain.DefaultOllamaEndpoint, Model: "old-model"}, false)
+	check("模型の行だけ", domain.OllamaSettings{Model: "old-model"}, false)
 	if err := writeSetting(ctx, db.sql, legacyOllamaEndpointKey, "http://old:1"); err != nil {
 		t.Fatal(err)
 	}

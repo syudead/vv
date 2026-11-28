@@ -277,9 +277,9 @@ func run(opts runOptions) error {
 	for _, kind := range domain.ScheduledJobKinds {
 		wakers[kind] = scheduler
 	}
-	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
+	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier, ollama.DefaultSettings())
 	comfyUIClient := comfyui.NewWithOptions(settingsStore, comfyui.Options{DiffusionModel: cfg.ComfyUIDiffusionModel})
-	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
+	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient, comfyui.Models)
 	// Thumbnail edits share ingestion's generation lock; see docs/design-docs/thumbnail-editing.md.
 	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
 		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Foreground: scheduler,
