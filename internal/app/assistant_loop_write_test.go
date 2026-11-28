@@ -21,9 +21,17 @@ type writeRunner struct {
 	*fakeToolRunner
 	tools []domain.AssistantTool
 	runs  []domain.AssistantCall
+	// refuse is the error CheckCall answers for a call of its action id; checks records each checked call.
+	refuse map[string]error
+	checks []domain.AssistantCall
 }
 
 func (r *writeRunner) Tools() []domain.AssistantTool { return r.tools }
+
+func (r *writeRunner) CheckCall(_ context.Context, call domain.AssistantCall) error {
+	r.checks = append(r.checks, call)
+	return r.refuse[call.ActionID]
+}
 
 func (r *writeRunner) Run(_ context.Context, call domain.AssistantCall) (domain.AssistantCallResult, error) {
 	r.runs = append(r.runs, call)
@@ -167,6 +175,44 @@ func TestWriteCallsBecomeOneProposalWithTheCreatedTagFromStepOne(t *testing.T) {
 	}
 	if len(f.runner.runs) != 0 {
 		t.Fatalf("write calls reached the runner before approval: %+v", f.runner.runs)
+	}
+	if len(f.runner.checks) != 2 || f.runner.checks[1].ActionID != "updateVideoTags.add" ||
+		len(f.runner.checks[1].Body["videoIds"].([]int64)) != 1 {
+		t.Fatalf("checked calls = %+v, want each step's request with its video id", f.runner.checks)
+	}
+}
+
+// A step whose request the operation's schema refuses, or whose current settings cannot be read, never reaches
+// the proposal; the model hears why and can call again.
+func TestWriteCallTheRequestCheckRefusesIsAnErrorForTheModel(t *testing.T) {
+	for _, c := range []struct {
+		name, wantError string
+		refusal         error
+	}{
+		{"schema mismatch", "tag: unexpected property",
+			fmt.Errorf("%w: tag: unexpected property", domain.ErrAssistantInvalidArguments)},
+		{"unreadable settings", "the operation answered 503 unavailable",
+			&domain.AssistantCallError{Status: 503, Code: "unavailable"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newWriteFixture(t,
+				calls(toolCall("updateVideoTags.add", `{"target":{"kind":"selection"},"tagNames":["ライブ"]}`)),
+				text("提案できませんでした。"))
+			f.runner.refuse = map[string]error{"updateVideoTags.add": c.refusal}
+
+			turn := f.run(t, 0)
+
+			if turn.Status != domain.AssistantTurnDone || turn.ProposalID != 0 || f.store.plans != nil {
+				t.Fatalf("turn = %+v, plans = %+v; want no proposal", turn, f.store.plans)
+			}
+			failed := turn.Progress[1].Error
+			if !strings.Contains(failed, "updateVideoTags__add is not proposed") || !strings.Contains(failed, c.wantError) {
+				t.Fatalf("error = %q, want the refused step and %q", failed, c.wantError)
+			}
+			if result := toolResult(t, f.chat, 1, nil); !strings.Contains(result, c.wantError) {
+				t.Fatalf("tool result = %q, want the refusal for the model", result)
+			}
+		})
 	}
 }
 

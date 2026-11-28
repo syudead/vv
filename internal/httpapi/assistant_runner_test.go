@@ -183,6 +183,46 @@ func TestActionRunnerRefusesABuiltBodyTheSchemaDoesNotTake(t *testing.T) {
 	}
 }
 
+// CheckCall applies Run's request check at proposal time: a settings row reads its current settings, which the
+// update's required fields come from, and no write handler runs.
+func TestActionRunnerCheckCallChecksTheRequestWithoutWriting(t *testing.T) {
+	settings := `{"enabled":true,"afterImport":false,"threshold":0.5,"tentativeThreshold":0.3,"queue":{"pending":2}}`
+	cases := []struct {
+		name, current string
+		call          domain.AssistantCall
+		wantRefused   bool
+		wantGets      int
+	}{
+		{name: "a body the schema takes", call: domain.AssistantCall{
+			ActionID: "renameTag", Path: map[string]string{"id": "3"}, Body: map[string]any{"name": "Kitten"},
+		}},
+		{name: "a field the schema does not name", wantRefused: true, call: domain.AssistantCall{
+			ActionID: "renameTag", Path: map[string]string{"id": "3"}, Body: map[string]any{"title": "Kitten"},
+		}},
+		{name: "a missing path parameter", wantRefused: true, call: domain.AssistantCall{
+			ActionID: "renameTag", Body: map[string]any{"name": "Kitten"},
+		}},
+		{name: "one settings field over the current settings", current: settings, wantGets: 1, call: domain.AssistantCall{
+			ActionID: "updateAutoTaggingSettings", Body: map[string]any{"threshold": 0.8},
+		}},
+		{name: "settings that lack a required field", current: `{"enabled":true}`, wantRefused: true, wantGets: 1,
+			call: domain.AssistantCall{ActionID: "updateAutoTaggingSettings", Body: map[string]any{"threshold": 0.8}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &stubAPI{respond: func(*http.Request) (int, string) { return http.StatusOK, tc.current }}
+			err := (&ActionRunner{api: api}).CheckCall(context.Background(), tc.call)
+
+			if refused := errors.Is(err, domain.ErrAssistantInvalidArguments); refused != tc.wantRefused || (err != nil && !refused) {
+				t.Fatalf("err = %v, want refused %v", err, tc.wantRefused)
+			}
+			if len(api.calls) != tc.wantGets || slices.ContainsFunc(api.calls, func(c recordedCall) bool { return c.method != http.MethodGet }) {
+				t.Errorf("calls = %+v, want %d reads and no write", api.calls, tc.wantGets)
+			}
+		})
+	}
+}
+
 // NewServer's runner reaches the real handlers without a session cookie or Origin.
 func TestNewServerRunnerCallsTheScreenHandlers(t *testing.T) {
 	tags := &fakeTags{batchOutcome: domain.TagBatchOutcome{AppliedIDs: []int64{3}}}

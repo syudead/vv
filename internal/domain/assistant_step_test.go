@@ -116,3 +116,24 @@ func TestAssistantPlanWithStepIDsFillsCreatedIDs(t *testing.T) {
 		t.Error("a missing created id is accepted")
 	}
 }
+
+// The proposal-time call holds a positive id wherever only the execution knows one, and leaves the plan alone.
+func TestAssistantPlanSampleCallFillsEveryIDTheExecutionKnows(t *testing.T) {
+	plan := AssistantPlan{
+		ActionID: "updateVideoTags.add", Targets: AssistantPlanTargets{VideoKeys: []string{"a", "b"}},
+		Call: AssistantPlanCall{
+			VideoField: "videoIds", Body: map[string]any{"tagIds": []int64{7}},
+			StepIDs: []AssistantStepID{{Step: 0, Field: "tagIds"}, {Step: 1, Path: "id"}},
+		},
+	}
+	call := plan.SampleCall()
+	videos, _ := call.Body["videoIds"].([]int64)
+	tags, _ := call.Body["tagIds"].([]int64)
+	if len(videos) != 2 || videos[0] <= 0 || videos[0] == videos[1] || len(tags) != 2 || tags[0] != 7 || tags[1] <= 0 || tags[1] == 7 ||
+		call.Path["id"] == "" || call.Path["id"] == "0" {
+		t.Errorf("call = %+v, want two distinct video ids, a created tag id and a created path id", call)
+	}
+	if !slices.Equal(plan.Call.Body["tagIds"].([]int64), []int64{7}) || plan.Call.Path != nil {
+		t.Error("SampleCall changed the plan's own call")
+	}
+}

@@ -21,6 +21,10 @@ type ActionRunner interface {
 	// WriteCall validates a schema row's tool arguments against its operation's schema, before any call, and splits
 	// them into the request of the row's step; domain.ErrAssistantInvalidArguments refuses them.
 	WriteCall(actionID string, arguments json.RawMessage) (domain.AssistantCall, error)
+	// CheckCall builds the request Run would send for the call, a settings row's current settings included, and
+	// checks it against the operation's schema without calling a write handler; it returns the errors Run returns
+	// before its call, domain.ErrAssistantInvalidArguments for a request the schema refuses.
+	CheckCall(ctx context.Context, call domain.AssistantCall) error
 	// Run returns domain.ErrAssistantActionUnknown before any call for an id outside the catalog, and a
 	// *domain.AssistantCallError for a non-2xx response.
 	Run(ctx context.Context, call domain.AssistantCall) (domain.AssistantCallResult, error)

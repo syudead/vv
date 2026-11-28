@@ -118,12 +118,36 @@ func (l *turnLoop) write(ctx context.Context, call domain.ToolCall, tool domain.
 	}); i >= 0 {
 		return "", fmt.Sprintf("this is step %d again; it is proposed once", i+1), nil
 	}
+	if failure, err := l.checkStep(ctx, plan); failure != "" || err != nil {
+		return "", failure, err
+	}
 	step := l.writes.add(plan)
 	encoded, _ := json.Marshal(map[string]any{ // Plain values always encode.
 		"step": step + 1, "proposed": describePlan(plan),
 		"note": "Nothing has changed yet; the owner approves the proposal after your answer.",
 	})
 	return string(encoded), "", nil
+}
+
+// checkStep checks the request the step will send against its operation's schema before the step enters the
+// proposal, so the model, not the owner after approving, meets a mismatch. A composite row is not checked here:
+// the worker builds its stages' requests, which TestAssistantPlanBuildersMatchTheRequestSchemas covers.
+func (l *turnLoop) checkStep(ctx context.Context, plan domain.AssistantPlan) (string, error) {
+	if row, ok := plan.Action(); ok && row.Operation == "" {
+		return "", nil
+	}
+	err := l.runner.CheckCall(ctx, plan.SampleCall())
+	var call *domain.AssistantCallError
+	switch {
+	case err == nil:
+		return "", nil
+	case errors.Is(err, domain.ErrAssistantInvalidArguments), errors.Is(err, domain.ErrAssistantActionUnknown):
+		return fmt.Sprintf("%s is not proposed: %v", domain.AssistantModelToolName(plan.ActionID), err), nil
+	case errors.As(err, &call):
+		return fmt.Sprintf("%s is not proposed, since its request could not be checked: %s",
+			domain.AssistantModelToolName(plan.ActionID), readFailure(err)), nil
+	}
+	return "", err
 }
 
 // nameStep builds a name-based row's step through its plan builder.

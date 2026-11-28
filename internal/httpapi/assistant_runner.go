@@ -30,33 +30,52 @@ func (r *ActionRunner) Tools() []domain.AssistantTool { return loadAssistantRegi
 
 // Run implements app.ActionRunner.
 func (r *ActionRunner) Run(ctx context.Context, call domain.AssistantCall) (domain.AssistantCallResult, error) {
+	op, target, body, err := r.request(ctx, call)
+	if err != nil {
+		return domain.AssistantCallResult{}, err
+	}
+	return r.send(ctx, op.Method, target, op.BodyType, body)
+}
+
+// CheckCall implements app.ActionRunner: it builds the request Run would send, reading a settings row's current
+// settings, and calls no write handler.
+func (r *ActionRunner) CheckCall(ctx context.Context, call domain.AssistantCall) error {
+	_, _, _, err := r.request(ctx, call)
+	return err
+}
+
+// request resolves a call to its operation, its target and its checked body, which is nil for an operation
+// without one.
+func (r *ActionRunner) request(
+	ctx context.Context, call domain.AssistantCall,
+) (*registryOperation, string, map[string]any, error) {
 	row, ok := domain.LookupAssistantAction(call.ActionID)
 	if !ok {
-		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q", domain.ErrAssistantActionUnknown, call.ActionID)
+		return nil, "", nil, fmt.Errorf("%w: %q", domain.ErrAssistantActionUnknown, call.ActionID)
 	}
 	operation := row.Operation
 	if operation == "" {
 		operation = call.Operation
 	}
 	if !slices.Contains(row.Operations(), operation) || (row.Operation != "" && call.Operation != "" && call.Operation != row.Operation) {
-		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q does not call %q", domain.ErrAssistantActionUnknown, row.ID, call.Operation)
+		return nil, "", nil, fmt.Errorf("%w: %q does not call %q", domain.ErrAssistantActionUnknown, row.ID, call.Operation)
 	}
 	op, ok := loadAssistantRegistry().byID[operation]
 	if !ok {
-		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q has no operation", domain.ErrAssistantActionUnknown, row.ID)
+		return nil, "", nil, fmt.Errorf("%w: %q has no operation", domain.ErrAssistantActionUnknown, row.ID)
 	}
 	target, err := requestTarget(op, call.Path, queryValues(call.Query))
 	if err != nil {
-		return domain.AssistantCallResult{}, fmt.Errorf("assistant action %s: %w", row.ID, err)
+		return nil, "", nil, fmt.Errorf("assistant action %s: %w: %w", row.ID, domain.ErrAssistantInvalidArguments, err)
 	}
 	if !op.Body {
-		return r.send(ctx, op.Method, target, "", nil)
+		return op, target, nil, nil
 	}
 	body, err := r.rowBody(ctx, row, op, target, call.Body)
 	if err != nil {
-		return domain.AssistantCallResult{}, fmt.Errorf("assistant action %s: %w", row.ID, err)
+		return nil, "", nil, fmt.Errorf("assistant action %s: %w", row.ID, err)
 	}
-	return r.send(ctx, op.Method, target, op.BodyType, body)
+	return op, target, body, nil
 }
 
 // rowBody builds the request body of a row, the current settings under the call's fields for a settings row, and
@@ -74,7 +93,7 @@ func (r *ActionRunner) rowBody(
 	}
 	body, err := row.RequestBody(current, fields)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", domain.ErrAssistantInvalidArguments, err)
 	}
 	if err := validateBody(op, body); err != nil {
 		return nil, err

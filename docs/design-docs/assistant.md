@@ -266,6 +266,20 @@ settings of a settings row, with the row's action
 (`domain.AssistantAction.RequestBody`). A plan builder writes the screen API's
 field names itself, so a field renamed or reshaped in `api/openapi.yaml`
 after a proposal fails that step with the field it got wrong.
+
+The same check runs when the loop builds a step, before the step enters the
+proposal: `ActionRunner.CheckCall` builds the request `Run` would send and
+calls no write handler. The step's call holds a placeholder wherever only the
+execution knows an id, a video id of its first batch or an id an earlier step
+creates (`domain.AssistantPlan.SampleCall`), since the schema takes any
+positive id. A settings row reads its current settings, as execution does: the
+update takes every setting and the call carries one field, so a check of the
+fields alone would need a copy of the schema without `required`, and would
+miss a setting the read no longer answers. A refused step comes back to the
+model as an error result, so the model can correct the call and the owner never
+approves a step that cannot run; a composite row is not checked then, since
+the worker builds its stages' requests. Execution checks again, because the
+settings or the schema can change before approval.
 `TestAssistantPlanBuildersMatchTheRequestSchemas`
 ([`internal/app`](../../internal/app/assistant_plan_schema_test.go)) builds a
 representative call for every plan builder, fails for a builder without a

@@ -97,6 +97,9 @@ var loopRegistry = []domain.AssistantTool{
 
 func (r *fakeToolRunner) Tools() []domain.AssistantTool { return loopRegistry }
 
+// CheckCall accepts every request; writeRunner refuses the ones a test names.
+func (r *fakeToolRunner) CheckCall(context.Context, domain.AssistantCall) error { return nil }
+
 func (r *fakeToolRunner) Read(_ context.Context, read domain.AssistantRead) (domain.AssistantReadResult, error) {
 	r.reads = append(r.reads, read)
 	if r.during != nil {

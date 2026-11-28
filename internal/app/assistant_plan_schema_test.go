@@ -89,6 +89,10 @@ func (r *schemaRunner) WriteCall(string, json.RawMessage) (domain.AssistantCall,
 	return domain.AssistantCall{}, errors.New("no schema rows")
 }
 
+func (r *schemaRunner) CheckCall(context.Context, domain.AssistantCall) error {
+	return errors.New("the schema cases run their calls")
+}
+
 func (r *schemaRunner) Run(_ context.Context, call domain.AssistantCall) (domain.AssistantCallResult, error) {
 	row, _ := domain.LookupAssistantAction(call.ActionID)
 	operation := row.Operation
