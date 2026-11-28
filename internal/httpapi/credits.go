@@ -278,7 +278,7 @@ func creditInputOf(body gen.CreditInput, fields bodyFields, kind domain.CreditKi
 
 func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	patch, ok := s.readCreditPatch(w, r, api.kind)
-	if !ok || !s.creditChangesConfigured(w) {
+	if !ok || !s.creditsConfigured(w) {
 		return
 	}
 	credit, err := s.vocabulary.UpdateCredit(r.Context(), s.links(), api.kind, id, patch)
@@ -439,7 +439,7 @@ func jsonProperty(fields map[string]json.RawMessage, name string) (json.RawMessa
 }
 
 func (s *server) deleteCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
-	if !s.creditChangesConfigured(w) || !s.deleteOnPeer(w, r, domain.VocabularyKindOf(api.kind), id) {
+	if !s.creditsConfigured(w) || !s.deleteOnPeer(w, r, domain.VocabularyKindOf(api.kind), id) {
 		return
 	}
 	if err := s.credits.Delete(r.Context(), api.kind, id); err != nil {
@@ -464,7 +464,7 @@ func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api credit
 		})
 		return
 	}
-	if !s.creditChangesConfigured(w) {
+	if !s.creditsConfigured(w) {
 		return
 	}
 	// The peer merges first, so a self-merge is refused before it, not by storage.
@@ -518,12 +518,6 @@ func (s *server) creditsConfigured(w http.ResponseWriter) bool {
 		return false
 	}
 	return true
-}
-
-// creditChangesConfigured answers 500 and reports false when people and organization storage or the vocabulary use
-// case is missing.
-func (s *server) creditChangesConfigured(w http.ResponseWriter) bool {
-	return s.creditsConfigured(w) && s.vocabularyConfigured(w, "People and organization storage is not configured.")
 }
 
 func (s *server) writeCreditBody(w http.ResponseWriter, status int, body any) {

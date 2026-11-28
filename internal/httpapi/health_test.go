@@ -10,6 +10,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi"
 )
@@ -34,9 +35,10 @@ func newTestRouter(t *testing.T, pinger httpapi.Pinger) http.Handler {
 			Commit:  "9f1c2ab",
 			BuiltAt: time.Date(2026, 9, 12, 4, 21, 7, 0, time.UTC),
 		},
-		Pinger: pinger,
-		Assets: testAssets(),
-		Auth:   ownerAuthenticator{},
+		Pinger:     pinger,
+		Assets:     testAssets(),
+		Auth:       ownerAuthenticator{},
+		Vocabulary: app.NewVocabularyChanges(app.VocabularyChangesOptions{}),
 	})
 }
 

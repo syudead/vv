@@ -179,28 +179,26 @@ func (s *server) peerEntries(ctx context.Context, slot int64, kind domain.Vocabu
 	return entries, nil
 }
 
-// vocabularyConfigured answers 500 with message and reports false when the vocabulary use case is missing.
-func (s *server) vocabularyConfigured(w http.ResponseWriter, message string) bool {
-	if s.vocabulary == nil {
-		s.internalError(w, message, nil)
-		return false
-	}
-	return true
-}
-
 // holdTagNames takes the tag-name lock of the vocabulary use case and returns its unlock, for a deferred call.
 func (s *server) holdTagNames() (unlock func()) {
-	if s.vocabulary == nil {
-		return func() {}
-	}
 	return s.vocabulary.HoldTagNames()
 }
 
-// writeVocabularyChangeError answers an error of a change by name: a name taken here or on a link, or a link that
-// is down, refused or failed; any other error is the local write's, which fallback answers.
+// vocabularyStepMessages answer a change by name whose read of this node failed, naming that read.
+var vocabularyStepMessages = map[domain.VocabularyStep]string{
+	domain.VocabularyReadLinks:       "Could not read the pairing.",
+	domain.VocabularyLoadTag:         "Could not load the tag.",
+	domain.VocabularyLookUpTagName:   "Could not look up the tag name.",
+	domain.VocabularyReadCreditNames: "Could not read the names of people and organizations.",
+}
+
+// writeVocabularyChangeError answers an error of a change by name: a name taken here or on a link, a link that is
+// down, refused or failed, or a failed read of this node; any other error is the local write's, which fallback
+// answers.
 func (s *server) writeVocabularyChangeError(w http.ResponseWriter, err error, fallback func(http.ResponseWriter, error)) {
 	var taken *domain.VocabularyNameTakenError
 	var link *domain.VocabularyLinkError
+	var step *domain.VocabularyStepError
 	switch {
 	case errors.As(err, &taken):
 		body := tagNameTakenBody(taken.NewName, domain.TagRef{Name: taken.Holder})
@@ -211,6 +209,8 @@ func (s *server) writeVocabularyChangeError(w http.ResponseWriter, err error, fa
 		s.writeErrorBody(w, http.StatusConflict, body)
 	case errors.As(err, &link):
 		s.vocabularyLinkFailure(w, link)
+	case errors.As(err, &step) && vocabularyStepMessages[step.Step] != "":
+		s.internalError(w, vocabularyStepMessages[step.Step], err)
 	default:
 		fallback(w, err)
 	}
@@ -316,7 +316,7 @@ func remoteVocabularyID(r *http.Request, kind domain.VocabularyKind) int64 {
 func (s *server) checkRemoteTagRename(w http.ResponseWriter, r *http.Request) bool {
 	var body gen.RenameTagRequest
 	raw, ok := s.readJSONBodyRaw(w, r, &body)
-	if !ok || !s.vocabularyConfigured(w, "Tag storage is not configured.") {
+	if !ok || !s.tagsConfigured(w) {
 		return false
 	}
 	restoreBody(r, raw)
@@ -334,7 +334,7 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 	return func(s *server, w http.ResponseWriter, r *http.Request) bool {
 		var body gen.CreditPatch
 		raw, ok := s.readJSONBodyRaw(w, r, &body)
-		if !ok || !s.vocabularyConfigured(w, "People and organization storage is not configured.") {
+		if !ok || !s.creditsConfigured(w) {
 			return false
 		}
 		restoreBody(r, raw)

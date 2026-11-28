@@ -51,3 +51,23 @@ type VocabularyNameTakenError struct {
 func (e *VocabularyNameTakenError) Error() string {
 	return fmt.Sprintf("%s name %q is held by %q on %q", e.Kind, e.NewName, e.Holder, e.Link)
 }
+
+// VocabularyStep is a read of this node a change by name failed at, before any node changed.
+type VocabularyStep string
+
+const (
+	VocabularyReadLinks       VocabularyStep = "read the pairing"
+	VocabularyLoadTag         VocabularyStep = "load the tag"
+	VocabularyLookUpTagName   VocabularyStep = "look up the tag name"
+	VocabularyReadCreditNames VocabularyStep = "read the names of people and organizations"
+)
+
+// VocabularyStepError is a failure of this node's own read at Step, so the caller can say which read failed.
+type VocabularyStepError struct {
+	Step VocabularyStep
+	Err  error
+}
+
+func (e *VocabularyStepError) Error() string { return fmt.Sprintf("%s: %v", e.Step, e.Err) }
+
+func (e *VocabularyStepError) Unwrap() error { return e.Err }

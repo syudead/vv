@@ -226,7 +226,7 @@ func TestActionRunnerCheckCallChecksTheRequestWithoutWriting(t *testing.T) {
 // NewServer's runner reaches the real handlers without a session cookie or Origin.
 func TestNewServerRunnerCallsTheScreenHandlers(t *testing.T) {
 	tags := &fakeTags{batchOutcome: domain.TagBatchOutcome{AppliedIDs: []int64{3}}}
-	_, runner := NewServer(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}})
+	_, runner := NewServer(testServerOptions(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}}))
 
 	result, err := runner.Run(context.Background(), domain.AssistantCall{
 		ActionID: "batchTags.reject", Body: map[string]any{"ids": []int64{3}},

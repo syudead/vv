@@ -421,18 +421,16 @@ func run(opts runOptions) error {
 	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, pluginProxy, ingest, personImages, logger)
 	defer closeWorkInfoPlugins()
 	handler, assistantRunner := httpapi.NewServer(httpapi.Options{
-		Build:        build,
-		Pinger:       db,
-		Videos:       libraryStore,
-		Playback:     playbackStore,
-		Scans:        scans,
-		MediaFolders: mediaFolders,
-		FolderUsage:  mediaFolders,
-		Tags:         db.Tags(),
-		Credits:      db.Credits(),
-		Vocabulary: app.NewVocabularyChanges(app.VocabularyChangesOptions{
-			Tags: db.Tags(), Credits: db.Credits(), Joins: libraryStore,
-		}),
+		Build:            build,
+		Pinger:           db,
+		Videos:           libraryStore,
+		Playback:         playbackStore,
+		Scans:            scans,
+		MediaFolders:     mediaFolders,
+		FolderUsage:      mediaFolders,
+		Tags:             db.Tags(),
+		Credits:          db.Credits(),
+		Vocabulary:       newVocabularyChanges(db),
 		WorkInfo:         db.WorkInfo(),
 		MediaInfo:        libraryStore,
 		Visibility:       db.Visibility(),
@@ -524,6 +522,11 @@ func run(opts runOptions) error {
 }
 
 // addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.
+// newVocabularyChanges is the vocabulary use case over db's stores, which the server requires.
+func newVocabularyChanges(db *store.DB) *app.VocabularyChanges {
+	return app.NewVocabularyChanges(app.VocabularyChangesOptions{Tags: db.Tags(), Credits: db.Credits(), Joins: db.Library()})
+}
+
 func addBackfillHandlers(
 	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
 ) {

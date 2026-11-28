@@ -134,8 +134,8 @@ type Tags interface {
 
 // VocabularyChanges writes a change of a tag, person or organization name on every paired link by name and then
 // here, in the order and under the tag-name lock docs/design-docs/peer-library.md#vocabulary-by-name describes;
-// app.VocabularyChanges implements it. Its errors are *domain.VocabularyNameTakenError, *domain.VocabularyLinkError
-// or the local store's.
+// app.VocabularyChanges implements it. Its errors are *domain.VocabularyNameTakenError, *domain.VocabularyLinkError,
+// *domain.VocabularyStepError or the local store's.
 type VocabularyChanges interface {
 	// HoldTagNames takes the lock every local write that can give, change or take away a tag's name holds.
 	HoldTagNames() (unlock func())
@@ -310,8 +310,8 @@ type Options struct {
 	Tags Tags
 
 	Credits Credits
-	// Nil Vocabulary fails tag renames, promotes, merges and deletions and person and organization updates, merges
-	// and deletions with 500, and leaves the other tag writes without the tag-name lock.
+	// Vocabulary is required: tag renames, promotes, merges and deletions and person and organization updates,
+	// merges and deletions run through it, and every other tag-name write holds its lock.
 	Vocabulary VocabularyChanges
 	// Nil WorkInfo makes writes fail and omits workInfo from video responses.
 	WorkInfo WorkInfo
@@ -522,8 +522,12 @@ func NewRouter(opts Options) http.Handler {
 	return handler
 }
 
-// NewServer returns NewRouter's handler and the assistant's runner over the same handlers.
+// NewServer returns NewRouter's handler and the assistant's runner over the same handlers. It panics without
+// opts.Vocabulary, which every tag-name write takes its lock from.
 func NewServer(opts Options) (http.Handler, *ActionRunner) {
+	if opts.Vocabulary == nil {
+		panic("httpapi: Options.Vocabulary is required")
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()

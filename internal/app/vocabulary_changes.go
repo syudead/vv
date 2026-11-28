@@ -91,7 +91,7 @@ func (v *VocabularyChanges) PromoteTagSynonym(ctx context.Context, links domain.
 	err := v.tagNameOnLinks(ctx, links, id, name, domain.VocabularyPromote, func(_, normalized string) (bool, error) {
 		holder, held, err := v.tags.LookupTagName(ctx, normalized)
 		if err != nil {
-			return false, fmt.Errorf("look up the tag name: %w", err)
+			return false, &domain.VocabularyStepError{Step: domain.VocabularyLookUpTagName, Err: err}
 		}
 		holds := &domain.TagNameHolder{TagID: holder.ID, Canonical: holder.Name == normalized}
 		return held && domain.CheckSynonymOf(id, holds) == nil, nil
@@ -118,7 +118,7 @@ func (v *VocabularyChanges) tagNameOnLinks(
 	}
 	names, err := v.tags.TagNames(ctx, []int64{id})
 	if err != nil {
-		return fmt.Errorf("load the tag: %w", err)
+		return &domain.VocabularyStepError{Step: domain.VocabularyLoadTag, Err: err}
 	}
 	current, found := names[id]
 	if !found {
@@ -149,7 +149,7 @@ func (v *VocabularyChanges) tagNameFree(ctx context.Context, normalized string) 
 	owner, taken, err := v.tags.LookupTagName(ctx, normalized)
 	switch {
 	case err != nil:
-		return fmt.Errorf("look up the tag name: %w", err)
+		return &domain.VocabularyStepError{Step: domain.VocabularyLookUpTagName, Err: err}
 	case taken:
 		return &domain.VocabularyNameTakenError{Kind: domain.VocabularyTag, NewName: normalized, Holder: owner.Name}
 	}
@@ -231,7 +231,7 @@ func (v *VocabularyChanges) creditNameFree(ctx context.Context, kind domain.Cred
 	}
 	join, err := v.joins.VocabularyJoin(ctx)
 	if err != nil {
-		return fmt.Errorf("read the names of people and organizations: %w", err)
+		return &domain.VocabularyStepError{Step: domain.VocabularyReadCreditNames, Err: err}
 	}
 	holders := join.People
 	if kind == domain.CreditOrganization {
@@ -273,7 +273,7 @@ func (v *VocabularyChanges) remoteNameKept(
 	}
 	states, err := links.Links(ctx)
 	if err != nil {
-		return false, fmt.Errorf("read the pairing: %w", err)
+		return false, &domain.VocabularyStepError{Step: domain.VocabularyReadLinks, Err: err}
 	}
 	names, err := v.names(ctx, links, states, kind, []int64{id})
 	return names[id] == name, err
@@ -354,7 +354,7 @@ func (v *VocabularyChanges) Names(
 ) (map[int64]string, error) {
 	states, err := links.Links(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read the pairing: %w", err)
+		return nil, &domain.VocabularyStepError{Step: domain.VocabularyReadLinks, Err: err}
 	}
 	return v.names(ctx, links, states, kind, ids)
 }
@@ -366,7 +366,7 @@ func (v *VocabularyChanges) Send(
 ) (domain.VocabularyOutcome, error) {
 	states, err := links.Links(ctx)
 	if err != nil {
-		return domain.VocabularyOutcome{}, fmt.Errorf("read the pairing: %w", err)
+		return domain.VocabularyOutcome{}, &domain.VocabularyStepError{Step: domain.VocabularyReadLinks, Err: err}
 	}
 	return sendToLinks(ctx, links, states, change, skip)
 }
@@ -408,7 +408,7 @@ func (v *VocabularyChanges) names(
 func connectedLinks(ctx context.Context, links domain.VocabularyLinks) ([]domain.PeerLinkState, error) {
 	states, err := links.Links(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read the pairing: %w", err)
+		return nil, &domain.VocabularyStepError{Step: domain.VocabularyReadLinks, Err: err}
 	}
 	if !allConnected(states) {
 		return nil, notConnected(states)

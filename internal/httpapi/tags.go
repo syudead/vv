@@ -198,7 +198,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if !s.tagChangesConfigured(w) {
+	if !s.tagsConfigured(w) {
 		return
 	}
 	tag, err := s.vocabulary.RenameTag(r.Context(), s.links(), id, body.Name)
@@ -211,7 +211,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 }
 
 func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
-	if !s.tagChangesConfigured(w) {
+	if !s.tagsConfigured(w) {
 		return
 	}
 	defer s.holdTagNames()()
@@ -239,7 +239,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
 	}
-	if !s.tagChangesConfigured(w) {
+	if !s.tagsConfigured(w) {
 		return
 	}
 	defer s.holdTagNames()()
@@ -349,9 +349,6 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
-		return
-	}
-	if req.Action == domain.TagBatchDelete && !s.vocabularyConfigured(w, "Tag storage is not configured.") {
 		return
 	}
 	defer s.holdTagNames()()
@@ -540,13 +537,12 @@ func normalizedTagNameOrRaw(name string) string {
 	return normalized
 }
 
-// tagChangesConfigured answers 500 and reports false when tag storage or the vocabulary use case is missing.
-func (s *server) tagChangesConfigured(w http.ResponseWriter) bool {
+func (s *server) tagsConfigured(w http.ResponseWriter) bool {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return false
 	}
-	return s.vocabularyConfigured(w, "Tag storage is not configured.")
+	return true
 }
 
 // writeTagChangeError answers an error of a tag change by name, the local write's as writeTagError does.

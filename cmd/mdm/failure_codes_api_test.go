@@ -41,7 +41,8 @@ func newFailureCodesDB(t *testing.T) (context.Context, string, *store.DB) {
 
 func failureCodesRouter(db *store.DB, scans httpapi.Scans) http.Handler {
 	return httpapi.NewRouter(httpapi.Options{
-		Videos: db.Library(), Playback: db.Playback(), MediaFolders: db.Settings(),
+		Vocabulary: newVocabularyChanges(db),
+		Videos:     db.Library(), Playback: db.Playback(), MediaFolders: db.Settings(),
 		Folders: db.Library(), Library: db.Library(), Tags: db.Tags(), Scans: scans,
 		Assets: fstest.MapFS{}, Auth: ownerAuth{},
 	})

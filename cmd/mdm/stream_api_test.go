@@ -32,7 +32,8 @@ func TestStreamServesIndexedFileWithStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: f.db.Library(), MediaFolders: f.db.Settings(), Files: mediafs.New(), Assets: fstest.MapFS{}, Auth: ownerAuth{},
+		Vocabulary: newVocabularyChanges(f.db),
+		Videos:     f.db.Library(), MediaFolders: f.db.Settings(), Files: mediafs.New(), Assets: fstest.MapFS{}, Auth: ownerAuth{},
 	})
 
 	rec := httptest.NewRecorder()

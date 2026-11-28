@@ -42,7 +42,7 @@ func (s *server) getMergedTag(w http.ResponseWriter, r *http.Request, id int64) 
 
 func (s *server) PromoteTagSynonym(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	var body gen.TagSynonymRequest
-	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) || !s.vocabularyConfigured(w, "Tag storage is not configured.") {
+	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) {
 		return
 	}
 	tag, err := s.vocabulary.PromoteTagSynonym(r.Context(), s.links(), id, body.Name)

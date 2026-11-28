@@ -370,9 +370,12 @@ before any write and the tag-name lock
 ([tag-organizing.md](tag-organizing.md#promote-reaches-the-paired-nodes)); it
 reaches the links through the `domain.VocabularyLinks` port, which the HTTP
 layer implements per request, and answers typed errors
-(`domain.VocabularyLinkError`, `domain.VocabularyNameTakenError`) that the
-screen API maps to its statuses. Merges plan their names in the HTTP layer and
-send them through the same use case.
+(`domain.VocabularyLinkError`, `domain.VocabularyNameTakenError`, and
+`domain.VocabularyStepError` naming the read of this node that failed) that
+the screen API maps to its statuses and messages. The HTTP server cannot be
+built without the use case, so no configuration answers these writes 500 or
+skips the lock. Merges plan their names in the HTTP layer and send them
+through the same use case.
 
 The external API (`/api/v1` and `/mcp`) writes this node's vocabulary only,
 batch deletion included

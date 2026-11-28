@@ -30,10 +30,12 @@ type fakeVocabularyLinks struct {
 	states  []domain.PeerLinkState
 	entries map[int64][]domain.LinkVocabularyEntry
 	refuse  map[int64]error
+	// linksErr fails reading the links.
+	linksErr error
 }
 
 func (f *fakeVocabularyLinks) Links(context.Context) ([]domain.PeerLinkState, error) {
-	return f.states, nil
+	return f.states, f.linksErr
 }
 
 func (f *fakeVocabularyLinks) Entries(_ context.Context, slot int64, _ domain.VocabularyKind) ([]domain.LinkVocabularyEntry, error) {
@@ -53,15 +55,17 @@ func (f *fakeVocabularyLinks) Apply(_ context.Context, link domain.PeerLink, cha
 type fakeVocabularyTags struct {
 	log     *vocabularyLog
 	holders map[string]domain.TagRef
+	// namesErr and lookupErr fail TagNames and LookupTagName.
+	namesErr, lookupErr error
 }
 
 func (f *fakeVocabularyTags) TagNames(context.Context, []int64) (map[int64]string, error) {
-	return map[int64]string{3: "猫"}, nil
+	return map[int64]string{3: "猫"}, f.namesErr
 }
 
 func (f *fakeVocabularyTags) LookupTagName(_ context.Context, name string) (domain.TagRef, bool, error) {
 	holder, ok := f.holders[name]
-	return holder, ok, nil
+	return holder, ok, f.lookupErr
 }
 
 func (f *fakeVocabularyTags) RenameTag(_ context.Context, id int64, name string) (domain.Tag, error) {
@@ -285,4 +289,66 @@ func TestRenameRemoteCreditRenamesTheOtherLinksOnly(t *testing.T) {
 	if want := []string{"entries 2", "entries 2", "entries 1", "entries 2", "rename 1 A->B"}; !slices.Equal(log.calls, want) {
 		t.Errorf("calls = %q, want %q", log.calls, want)
 	}
+}
+
+type failingVocabularyJoins struct{ err error }
+
+func (f failingVocabularyJoins) VocabularyJoin(context.Context) (domain.VocabularyJoin, error) {
+	return domain.VocabularyJoin{}, f.err
+}
+
+// A read of this node that fails stops the change before any node changes, and the error names that read.
+func TestChangeByNameNamesTheReadOfThisNodeThatFailed(t *testing.T) {
+	cause := errors.New("disk")
+	tests := []struct {
+		name   string
+		links  *fakeVocabularyLinks
+		tags   *fakeVocabularyTags
+		change func(*VocabularyChanges, *fakeVocabularyLinks) error
+		want   domain.VocabularyStep
+	}{
+		{
+			name: "the links", links: &fakeVocabularyLinks{linksErr: cause}, tags: &fakeVocabularyTags{},
+			change: renameTag3, want: domain.VocabularyReadLinks,
+		},
+		{
+			name: "the tag", links: &fakeVocabularyLinks{states: twoLinks()}, tags: &fakeVocabularyTags{namesErr: cause},
+			change: renameTag3, want: domain.VocabularyLoadTag,
+		},
+		{
+			name: "the tag name", links: &fakeVocabularyLinks{states: twoLinks()}, tags: &fakeVocabularyTags{lookupErr: cause},
+			change: renameTag3, want: domain.VocabularyLookUpTagName,
+		},
+		{
+			name: "the names of people", links: &fakeVocabularyLinks{states: twoLinks()}, tags: &fakeVocabularyTags{},
+			change: func(v *VocabularyChanges, links *fakeVocabularyLinks) error {
+				v.credits = &fakeVocabularyCredits{log: links.log, current: domain.Credit{Kind: domain.CreditPerson, ID: 5, Name: "A"}}
+				v.joins = failingVocabularyJoins{err: cause}
+				name := "B"
+				_, err := v.UpdateCredit(context.Background(), links, domain.CreditPerson, 5, domain.CreditPatch{Name: &name})
+				return err
+			},
+			want: domain.VocabularyReadCreditNames,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, log := newVocabularyFixture(tc.links, tc.tags)
+
+			err := tc.change(v, tc.links)
+
+			var step *domain.VocabularyStepError
+			if !errors.As(err, &step) || step.Step != tc.want || !errors.Is(err, cause) {
+				t.Errorf("err = %#v, want the %q step failing with the cause", err, tc.want)
+			}
+			if len(log.calls) != 0 {
+				t.Errorf("calls = %q, want none", log.calls)
+			}
+		})
+	}
+}
+
+func renameTag3(v *VocabularyChanges, links *fakeVocabularyLinks) error {
+	_, err := v.RenameTag(context.Background(), links, 3, "ねこ")
+	return err
 }
