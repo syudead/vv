@@ -473,7 +473,7 @@ func editBoxes(t *testing.T, entries ...editEntry) []mp4Box {
 
 func TestPresentationWindowFollowsEditList(t *testing.T) {
 	normal := [4]byte{0, 1, 0, 0}
-	// media timescale 90000、movie timescale 1000。
+	// Media timescale 90000, movie timescale 1000.
 	for _, tc := range []struct {
 		name      string
 		entries   []editEntry

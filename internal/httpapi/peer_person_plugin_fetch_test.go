@@ -27,7 +27,7 @@ func (r personRuntime) Run(
 	return domain.WorkInfoRunResult{Person: r.person, PersonPluginImages: [][]byte{r.image}}, domain.WorkInfoRunLog{}, nil
 }
 
-// remotePersonFetch makes 早美れむ with a wiki ID on a, approves a person plugin answering runtime on b, and fetches
+// remotePersonFetch makes `早美れむ` with a wiki ID on a, approves a person plugin answering runtime on b, and fetches
 // for a's person from b; it returns a's person, b's fetch path for it and the fetch.
 func remotePersonFetch(
 	t *testing.T, runtime personRuntime,

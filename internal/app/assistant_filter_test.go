@@ -133,7 +133,7 @@ func TestResolveFilterOnTheSelectionNarrowsIt(t *testing.T) {
 	}
 }
 
-// Llama 3.3 70B answers "長いのは除いて" after a proposal on the selection with a filter target alone; the follow-up
+// Llama 3.3 70B answers `長いのは除いて` after a proposal on the selection with a filter target alone; the follow-up
 // keeps the selection instead of widening the change to the whole library.
 func TestResolveFollowUpFilterKeepsTheSelection(t *testing.T) {
 	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+

@@ -10,8 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Move。
-
 func videoRef(id int64) domain.OrganizeRef {
 	return domain.OrganizeRef{Kind: domain.OrganizeVideo, ID: id}
 }

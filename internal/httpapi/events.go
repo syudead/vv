@@ -280,7 +280,7 @@ func (e *Events) Handle(event domain.Event) {
 	case domain.SmartFoldersChanged:
 		e.SmartFoldersChanged(event.IDs)
 	case domain.OnboardingChanged:
-		// ホームの変化は onboarding の知らせにする。所有者にもゲストにも送る（docs/design-docs/onboarding.md）。
+		// A home change becomes the owner-only onboarding event (docs/design-docs/home.md).
 		e.OnboardingChanged()
 	case domain.AssistantChanged:
 		e.AssistantChanged()
@@ -411,7 +411,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		}
 	}
 	if pending.onboarding && !guest {
-		// candidates と同じく中身の無い知らせで、data は空のオブジェクトにする。
+		// Like candidates, the event carries no payload, so data is an empty object.
 		if err := writeEvent(w, "onboarding", struct{}{}); err != nil {
 			return err
 		}
