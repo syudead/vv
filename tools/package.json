@@ -2,6 +2,7 @@
   "name": "vv-tools",
   "private": true,
   "devDependencies": {
+    "@stoplight/spectral-cli": "6.17.1",
     "jscpd": "4.3.0",
     "openapi-typescript": "7.13.0",
     "remark": "15.0.1",

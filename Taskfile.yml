@@ -144,6 +144,7 @@ tasks:
     desc: Reproduce the repository and build checks normally left to CI.
     cmds:
       - task: generate-check
+      - task: lint-api
       - task: migrations-check
       - task: lint-go-windows-desktop
       - task: build-windows-check
@@ -342,6 +343,11 @@ tasks:
     desc: Check that committed generated files match OpenAPI.
     cmds:
       - go run ./scripts/generate -check
+
+  lint-api:
+    desc: Lint the OpenAPI documents with the repository's Spectral rules.
+    cmds:
+      - node tools/node_modules/@stoplight/spectral-cli/dist/index.js lint --ruleset tools/spectral/ruleset.yaml --fail-severity=warn --quiet api/openapi.yaml api/external-v1.yaml
 
   migrations-check:
     desc: Check that applied migrations have not been changed.

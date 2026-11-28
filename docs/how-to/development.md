@@ -86,6 +86,7 @@ CI runs these additional checks without making them a local pre-push gate;
 | CI check | Run locally when |
 | --- | --- |
 | `generate-check` | Changing OpenAPI, generators or registry components; run `task generate` first |
+| `lint-api` | Changing OpenAPI; the Spectral rules in `tools/spectral/ruleset.yaml` require English summaries and descriptions and `int64` integer ids |
 | `migrations-check` | Changing migration SQL |
 | `lint-go-windows-desktop`, `build-windows-check` | Changing Windows, desktop or cross-platform code |
 | `build-check-web` | Changing bundling, assets or build configuration |
