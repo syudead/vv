@@ -1,14 +1,15 @@
 {
   "offset": 1099511627776,
   "cases": [
-    {"note": "zero names no remote entity", "id": 0, "remote": false, "slot": 0},
-    {"note": "smallest local id", "id": 1, "remote": false, "slot": 0},
-    {"note": "largest local id 2^40-1", "id": 1099511627775, "remote": false, "slot": 0},
-    {"note": "2^40 is slot 1's id 0", "id": 1099511627776, "remote": true, "slot": 1},
-    {"note": "2^40+1", "id": 1099511627777, "remote": true, "slot": 1},
-    {"note": "last id of slot 1", "id": 2199023255551, "remote": true, "slot": 1},
-    {"note": "first id of slot 2", "id": 2199023255552, "remote": true, "slot": 2},
-    {"note": "slot 2's id 7", "id": 2199023255559, "remote": true, "slot": 2},
-    {"note": "2^53-1, the largest safe integer, is the last slot's last id", "id": 9007199254740991, "remote": true, "slot": 8191}
+    {"note": "a negative id names nothing", "id": -1, "remote": false, "slot": -1, "nodes": "none"},
+    {"note": "zero names nothing", "id": 0, "remote": false, "slot": 0, "nodes": "none"},
+    {"note": "smallest local id", "id": 1, "remote": false, "slot": 0, "nodes": "local"},
+    {"note": "largest local id 2^40-1", "id": 1099511627775, "remote": false, "slot": 0, "nodes": "local"},
+    {"note": "2^40 is slot 1's id 0", "id": 1099511627776, "remote": true, "slot": 1, "nodes": "remote"},
+    {"note": "2^40+1", "id": 1099511627777, "remote": true, "slot": 1, "nodes": "remote"},
+    {"note": "last id of slot 1", "id": 2199023255551, "remote": true, "slot": 1, "nodes": "remote"},
+    {"note": "first id of slot 2", "id": 2199023255552, "remote": true, "slot": 2, "nodes": "remote"},
+    {"note": "slot 2's id 7", "id": 2199023255559, "remote": true, "slot": 2, "nodes": "remote"},
+    {"note": "2^53-1, the largest safe integer, is the last slot's last id", "id": 9007199254740991, "remote": true, "slot": 8191, "nodes": "remote"}
   ]
 }

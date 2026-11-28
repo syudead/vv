@@ -104,6 +104,7 @@ func TestRemoteIDSharedCases(t *testing.T) {
 			ID     int64  `json:"id"`
 			Remote bool   `json:"remote"`
 			Slot   int64  `json:"slot"`
+			Nodes  string `json:"nodes"`
 		} `json:"cases"`
 	}
 	readSharedFixture(t, "remote_id.json", &file)
@@ -120,7 +121,21 @@ func TestRemoteIDSharedCases(t *testing.T) {
 		if got := domain.RemoteSlot(c.ID); got != c.Slot {
 			t.Errorf("%s: RemoteSlot(%d) = %d, want %d", c.Note, c.ID, got, c.Slot)
 		}
+		if got := idNodes(c.ID); got != c.Nodes {
+			t.Errorf("%s: IDNodes(%d) reaches %q, want %q", c.Note, c.ID, got, c.Nodes)
+		}
 	}
+}
+
+// idNodes spells IDNodes' answer for one id as the fixture and the SPA's idNodes do.
+func idNodes(id int64) string {
+	switch local, remote := domain.IDNodes(id); {
+	case remote:
+		return "remote"
+	case local:
+		return "local"
+	}
+	return "none"
 }
 
 func TestWatchStateSharedCases(t *testing.T) {

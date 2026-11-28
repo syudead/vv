@@ -15,13 +15,16 @@ export function remoteSlot(id: number): number {
 
 export type IdNodes = "none" | "local" | "remote" | "mixed";
 
-/** Which nodes a set of ids reaches; an empty set reaches none. */
+/**
+ * Which nodes a set of ids reaches, as Go's domain.IDNodes answers: an id of 0 or below names no entity, so an
+ * empty set or one of such ids reaches none.
+ */
 export function idNodes(ids: Iterable<number>): IdNodes {
   let local = false;
   let remote = false;
   for (const id of ids) {
     if (isRemoteId(id)) remote = true;
-    else local = true;
+    else if (id > 0) local = true;
     if (local && remote) return "mixed";
   }
   if (remote) return "remote";
