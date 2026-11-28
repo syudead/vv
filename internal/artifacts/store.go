@@ -188,6 +188,23 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output, poster st
 	return nil
 }
 
+// PublishThumbnailImage publishes an image that is already encoded, such as an applied thumbnail image,
+// as PublishThumbnail would; an empty poster removes the previous one.
+func (s *Store) PublishThumbnailImage(contentKey string, image, poster []byte) error {
+	return s.PublishThumbnail(contentKey, func(output, posterOutput string) error {
+		if err := os.WriteFile(output, image, 0o644); err != nil {
+			return fmt.Errorf("cannot write the thumbnail image: %w", err)
+		}
+		if len(poster) == 0 {
+			return nil
+		}
+		if err := os.WriteFile(posterOutput, poster, 0o644); err != nil {
+			return fmt.Errorf("cannot write the thumbnail poster: %w", err)
+		}
+		return nil
+	})
+}
+
 func nonEmptyFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular() && info.Size() > 0

@@ -44,9 +44,7 @@ func (i *Ingest) republishThumbnailImage(ctx context.Context, key string) error 
 	if err != nil {
 		return err
 	}
-	return i.files.PublishThumbnail(key, func(output, poster string) error {
-		return writeThumbnailImages(output, image, poster, source)
-	})
+	return i.files.PublishThumbnailImage(key, image, source)
 }
 
 // removeVirtualThumbnailImage records the removal, then deletes the files under the generation lock. A file left

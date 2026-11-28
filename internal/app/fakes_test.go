@@ -478,22 +478,43 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string, s
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		f.mu.Lock()
-		if f.published == nil {
-			f.published, f.posters = map[string][]byte{}, map[string][]byte{}
-		}
-		f.published[contentKey] = data
-		if posterData == nil {
-			delete(f.posters, contentKey)
-		} else {
-			f.posters[contentKey] = posterData
-		}
-		f.mu.Unlock()
+		f.storeThumbnail(contentKey, data, posterData)
 	}
+	f.recordThumbnailPublish()
+	return nil
+}
+
+// PublishThumbnailImage records the bytes as PublishThumbnail records written files.
+func (f *fakeGenerator) PublishThumbnailImage(contentKey string, image, poster []byte) error {
+	if f.publishErr != nil {
+		return f.publishErr
+	}
+	if len(poster) == 0 {
+		poster = nil
+	}
+	f.storeThumbnail(contentKey, image, poster)
+	f.recordThumbnailPublish()
+	return nil
+}
+
+func (f *fakeGenerator) storeThumbnail(contentKey string, data, poster []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.published == nil {
+		f.published, f.posters = map[string][]byte{}, map[string][]byte{}
+	}
+	f.published[contentKey] = data
+	if poster == nil {
+		delete(f.posters, contentKey)
+	} else {
+		f.posters[contentKey] = poster
+	}
+}
+
+func (f *fakeGenerator) recordThumbnailPublish() {
 	if f.recordPublish {
 		f.record("publish-thumbnail")
 	}
-	return nil
 }
 
 // A thumbnail counts as available once published through thumbnailDir.
