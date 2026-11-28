@@ -37,18 +37,50 @@ const imageReferencesSchema = `{"type":"array","items":{"type":"string"},"descri
 
 // clefDefinition offers the wire's request as state (facts), images (references) and questions in its format.
 func clefDefinition(format domain.ClassifierWireFormat) domain.ToolDefinition {
-	types, _ := json.Marshal(format.QuestionTypes)            // Strings always encode.
-	questions, _ := json.Marshal(format.QuestionsDescription) // Strings always encode.
+	type stringSchema struct {
+		Type string   `json:"type"`
+		Enum []string `json:"enum,omitempty"`
+	}
+	type questionSchema struct {
+		Type       string `json:"type"`
+		Properties struct {
+			Type         stringSchema `json:"type"`
+			Instructions stringSchema `json:"instructions"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	type mapSchema[T any] struct {
+		Type                 string `json:"type"`
+		AdditionalProperties T      `json:"additionalProperties"`
+		Description          string `json:"description"`
+	}
+	type parameters struct {
+		Type       string `json:"type"`
+		Properties struct {
+			State     mapSchema[stringSchema]   `json:"state"`
+			Images    json.RawMessage           `json:"images"`
+			Questions mapSchema[questionSchema] `json:"questions"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	question := questionSchema{Type: "object", Required: []string{"type", "instructions"}}
+	question.Properties.Type = stringSchema{Type: "string", Enum: format.QuestionTypes}
+	question.Properties.Instructions = stringSchema{Type: "string"}
+	p := parameters{Type: "object", Required: []string{"questions"}}
+	p.Properties.State = mapSchema[stringSchema]{
+		Type: "object", AdditionalProperties: stringSchema{Type: "string"},
+		Description: `Named facts, such as {"title":"Trip"}.`,
+	}
+	p.Properties.Images = json.RawMessage(imageReferencesSchema)
+	p.Properties.Questions = mapSchema[questionSchema]{
+		Type: "object", AdditionalProperties: question, Description: format.QuestionsDescription,
+	}
+	var encoded bytes.Buffer
+	enc := json.NewEncoder(&encoded)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(p) // Only strings, slices and valid raw JSON, which always encode.
 	return domain.ToolDefinition{
-		Name:        toolClef,
-		Description: format.Description,
-		Parameters: json.RawMessage(`{"type":"object","properties":{` +
-			`"state":{"type":"object","additionalProperties":{"type":"string"},"description":"Named facts, such as {\"title\":\"Trip\"}."},` +
-			`"images":` + imageReferencesSchema + `,` +
-			`"questions":{"type":"object","additionalProperties":{"type":"object","properties":{` +
-			`"type":{"type":"string","enum":` + string(types) + `},"instructions":{"type":"string"}},"required":["type","instructions"]},` +
-			`"description":` + string(questions) + `}},` +
-			`"required":["questions"]}`),
+		Name: toolClef, Description: format.Description, Parameters: bytes.TrimSuffix(encoded.Bytes(), []byte("\n")),
 	}
 }
 
