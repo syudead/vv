@@ -1683,23 +1683,23 @@ paths:
   /api/onboarding:
     get:
       operationId: getOnboarding
-      summary: オンボードの段階を返す
+      summary: Get the onboarding step
       description: |
-        段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
-        無ければ `folders` である（docs/design-docs/home.md）。所有者だけ。
+        The step is stored in the `onboarding.step` setting. Without it, the step is `done` when a
+        media folder exists and `folders` otherwise (docs/design-docs/home.md). Owner only.
       responses:
         "200":
-          description: 今の段階
+          description: The current step
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Onboarding"
     put:
       operationId: updateOnboarding
-      summary: オンボードの段階を書く
+      summary: Set the onboarding step
       description: |
-        名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
-        画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。
+        Writes the named step as is, so the later of two devices' writes wins. A changed step sends
+        the `onboarding` screen event (docs/design-docs/home.md).
       requestBody:
         required: true
         content:
@@ -1708,7 +1708,7 @@ paths:
               $ref: "#/components/schemas/Onboarding"
       responses:
         "200":
-          description: 書いた段階
+          description: The written step
           content:
             application/json:
               schema:
@@ -1721,13 +1721,13 @@ paths:
   /api/onboarding/interests:
     get:
       operationId: listOnboardingInterests
-      summary: 分野の一覧を返す
+      summary: List onboarding interests
       description: |
-        Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.
-        （docs/design-docs/home.md）。
+        Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule
+        (docs/design-docs/home.md).
       responses:
         "200":
-          description: 分野の一覧
+          description: The interests
           content:
             application/json:
               schema:
@@ -9572,7 +9572,7 @@ components:
         step:
           type: string
           enum: [folders, scan, interests, done]
-          description: オンボードの段階（docs/design-docs/home.md）
+          description: The onboarding step (docs/design-docs/home.md)
 
     Interest:
       type: object
@@ -9581,13 +9581,13 @@ components:
       properties:
         id:
           type: string
-          description: 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」）
+          description: Stable interest identifier (docs/design-docs/home.md, "Interest catalog")
         name:
           type: string
-          description: タグの名前（英語）
+          description: Tag name in English
         synonym:
           type: string
-          description: タグの同義語（日本語）
+          description: Tag synonym in Japanese
         hasFolder:
           type: boolean
           description: An ordinary root smart folder already matches this interest tag.
@@ -9626,7 +9626,7 @@ components:
             $ref: "#/components/schemas/SmartFolderSummary"
         queued:
           type: integer
-          description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+          description: Number of videos queued for auto-tagging; 0 when auto-tagging is off
 
     StartFaceRecognitionRequest:
       type: object

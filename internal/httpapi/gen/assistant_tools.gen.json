@@ -4849,8 +4849,8 @@
       "operationId": "getOnboarding",
       "method": "GET",
       "path": "/api/onboarding",
-      "summary": "オンボードの段階を返す",
-      "description": "段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、\n無ければ `folders` である（docs/design-docs/home.md）。所有者だけ。\n",
+      "summary": "Get the onboarding step",
+      "description": "The step is stored in the `onboarding.step` setting. Without it, the step is `done` when a\nmedia folder exists and `folders` otherwise (docs/design-docs/home.md). Owner only.\n",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -7024,8 +7024,8 @@
       "operationId": "listOnboardingInterests",
       "method": "GET",
       "path": "/api/onboarding/interests",
-      "summary": "分野の一覧を返す",
-      "description": "Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.\n（docs/design-docs/home.md）。\n",
+      "summary": "List onboarding interests",
+      "description": "Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule\n(docs/design-docs/home.md).\n",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -13030,8 +13030,8 @@
       "operationId": "updateOnboarding",
       "method": "PUT",
       "path": "/api/onboarding",
-      "summary": "オンボードの段階を書く",
-      "description": "名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら\n画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。\n",
+      "summary": "Set the onboarding step",
+      "description": "Writes the named step as is, so the later of two devices' writes wins. A changed step sends\nthe `onboarding` screen event (docs/design-docs/home.md).\n",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -13040,7 +13040,7 @@
             "additionalProperties": false,
             "properties": {
               "step": {
-                "description": "オンボードの段階（docs/design-docs/home.md）",
+                "description": "The onboarding step (docs/design-docs/home.md)",
                 "enum": [
                   "folders",
                   "scan",

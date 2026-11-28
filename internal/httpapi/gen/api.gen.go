@@ -5649,13 +5649,13 @@ type Interest struct {
 	// HasFolder An ordinary root smart folder already matches this interest tag.
 	HasFolder bool `json:"hasFolder"`
 
-	// Id 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」）
+	// Id Stable interest identifier (docs/design-docs/home.md, "Interest catalog")
 	Id string `json:"id"`
 
-	// Name タグの名前（英語）
+	// Name Tag name in English
 	Name string `json:"name"`
 
-	// Synonym タグの同義語（日本語）
+	// Synonym Tag synonym in Japanese
 	Synonym string `json:"synonym"`
 }
 
@@ -5674,7 +5674,7 @@ type InterestPickResult struct {
 	// Folders New smart folders; excludes interests whose matching root folder already existed.
 	Folders []SmartFolderSummary `json:"folders"`
 
-	// Queued 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+	// Queued Number of videos queued for auto-tagging; 0 when auto-tagging is off
 	Queued int `json:"queued"`
 }
 
@@ -6292,11 +6292,11 @@ type OllamaSettings struct {
 
 // Onboarding defines model for Onboarding.
 type Onboarding struct {
-	// Step オンボードの段階（docs/design-docs/home.md）
+	// Step The onboarding step (docs/design-docs/home.md)
 	Step OnboardingStep `json:"step"`
 }
 
-// OnboardingStep オンボードの段階（docs/design-docs/home.md）
+// OnboardingStep The onboarding step (docs/design-docs/home.md)
 type OnboardingStep string
 
 // Organization One organization: names, external IDs, a profile, a favorite mark, a logo and a parent organization.
@@ -10899,13 +10899,13 @@ type ServerInterface interface {
 	// GetMediaFolderUsage Return a media folder's video size and disk space
 	// (GET /api/media-folders/{id}/usage)
 	GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id MediaFolderId)
-	// GetOnboarding オンボードの段階を返す
+	// GetOnboarding Get the onboarding step
 	// (GET /api/onboarding)
 	GetOnboarding(w http.ResponseWriter, r *http.Request)
-	// UpdateOnboarding オンボードの段階を書く
+	// UpdateOnboarding Set the onboarding step
 	// (PUT /api/onboarding)
 	UpdateOnboarding(w http.ResponseWriter, r *http.Request)
-	// ListOnboardingInterests 分野の一覧を返す
+	// ListOnboardingInterests List onboarding interests
 	// (GET /api/onboarding/interests)
 	ListOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	// PickOnboardingInterests Create tags and smart folders for selected interests
