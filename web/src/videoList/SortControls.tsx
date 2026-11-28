@@ -21,7 +21,6 @@ import { type ReactNode, useId } from "react";
 import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -261,7 +260,7 @@ export function SortMenuView<T extends string>({
             size="sm"
             aria-label={currentLabel}
             disabled={disabled}
-            className={cn(toggle !== undefined && "rounded-r-none")}
+            shape={toggle === undefined ? "default" : "group-start"}
           >
             {label}
             <ChevronDown aria-hidden="true" className="text-muted-foreground" />
@@ -290,8 +289,7 @@ export function SortMenuView<T extends string>({
               size="icon-sm"
               aria-label={toggle.label}
               disabled={disabled}
-              // Join the controls with only one border between them.
-              className="rounded-l-none border-l-0"
+              shape="group-end"
               onClick={toggle.onClick}
             >
               {toggle.icon}

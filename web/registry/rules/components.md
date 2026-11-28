@@ -4,8 +4,12 @@ Every control, overlay and mark on a new or migrated screen is a component
 from `web/src/ui/shadcn`, or one of the vv components in `web/src/ui` listed
 below, read through its registry item (`npx shadcn view
 ./registry/r/<item>.json` from `web/`). `task check` fails on a raw
-`<button>`, `<input>`, `<select>`, `<textarea>`, `<table>` or `<dialog>`, a
-`role="button"`, or a Radix import outside `web/src/ui`. Each
+`<button>`, `<input>`, `<select>`, `<textarea>`, `<table>`, `<dialog>`,
+`<label>`, `<progress>`, `<hr>` or `<kbd>`, a `role` that a component below
+already has (`button`, `checkbox`, `switch`, `tab`, `tablist`, `menu`,
+`menuitem`, `dialog`, `listbox`, `option`, `slider`, `radio`, `radiogroup`,
+`progressbar`), a `rounded-*` class on a control, or a Radix import outside
+`web/src/ui`. Each
 shadcn component is the shadcn/ui component on the radix base, dressed only
 through the tokens of [foundations.md](foundations.md); its structure and
 variants are upstream's. A screen composes them; it does not restyle them with
@@ -57,11 +61,22 @@ a button through `asChild` (`<Button asChild><Link /></Button>`), so it stays a
 link.
 
 The `shape` is `default` (`rounded-md`) or `pill` (`rounded-full`); `Toggle`
-takes the same axis, and a screen never sets a radius on a control itself. A
-pill is a labelled action the viewer finds by its place: on the video page,
-the actions under the title, a section's one action and a row's `Play` are
-`secondary` `sm` pills, while the other actions inside a row stay `ghost`, so
-the one pill in a row is its first action.
+takes the same axis, and a screen never sets a radius on a control itself:
+`task check` fails on a `rounded-*` class on `Button`, `Toggle`,
+`ToggleGroupItem`, `Input`, `Textarea`, `SelectTrigger`, `Badge`, `Checkbox`
+or `Switch` outside `web/src/ui`. A pill is a labelled action the viewer finds
+by its place: on the video page, the actions under the title, a section's one
+action and a row's `Play` are `secondary` `sm` pills, while the other actions
+inside a row stay `ghost`, so the one pill in a row is its first action.
+
+`Button` has more shapes for a button that sits against something else:
+
+| `shape`                    | Use it for                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `compact`                  | `rounded-sm`, a `size-6` or smaller icon button inside a `Badge`, a notice, or over a thumbnail, where `rounded-md` reads as round |
+| `chip-middle`, `chip-end`  | The buttons after a removable chip's divider: square between, and the last one closing the chip's right corners                    |
+| `group-start`, `group-end` | Two `outline` buttons joined into one control with one border between them, such as the sort menu and its direction                |
+| `edge-left`, `edge-right`  | A tab against the left or right edge of a frame, such as the player's previous and next arrows                                     |
 
 Do not use a Button for navigation that is a plain link in text, to show a
 state that stays on (use `Toggle`), or to pick one of several options (use
@@ -131,6 +146,9 @@ Items `toggle`, `toggle-group`. Buttons that stay pressed.
   `aria-label` and a `Tooltip`.
 - `ToggleGroup type="multiple"` is a row of independent toggles, such as text
   formatting.
+- Items join into one bar by default. `spacing="separate"` stands them apart
+  as chips, each with its own radius and border and `gap-2` between them, for
+  a set that wraps, such as the first setup's interests or a face picker.
 
 The pressed state is `primary-soft` with `primary` text, the same as a
 selected row. Do not use a Toggle for a one-off action (use `Button`) or for a

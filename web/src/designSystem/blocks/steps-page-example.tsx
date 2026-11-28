@@ -42,14 +42,11 @@ export function StepsPageExample() {
         size="sm"
         aria-label={p.topics}
         defaultValue={["travel"]}
-        className="w-full flex-wrap gap-2"
+        spacing="separate"
+        className="w-full flex-wrap"
       >
         {topics.map(([key, name]) => (
-          <ToggleGroupItem
-            key={key}
-            value={key}
-            className="flex-none rounded-md px-3 data-[variant=outline]:border-l"
-          >
+          <ToggleGroupItem key={key} value={key} className="px-3">
             {name}
           </ToggleGroupItem>
         ))}

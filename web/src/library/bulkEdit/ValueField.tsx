@@ -95,7 +95,8 @@ function PickedChip({
           onClick={() => {
             if (!disabled) onRemove();
           }}
-          className="size-6 rounded-l-none [&_svg]:size-3"
+          shape="chip-end"
+          className="size-6 [&_svg]:size-3"
         >
           <X aria-hidden="true" />
         </Button>

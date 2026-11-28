@@ -209,6 +209,12 @@ const controlRule = "no-restricted-syntax";
 const restrictedClassesRule = "better-tailwindcss/no-restricted-classes";
 const unknownClassesRule = "better-tailwindcss/no-unknown-classes";
 
+const componentRoles =
+  "checkbox|switch|tab|tablist|menu|menuitem|dialog|listbox|option|slider|radio|radiogroup|progressbar";
+const radiusControls =
+  "Button|Toggle|ToggleGroupItem|Input|Textarea|SelectTrigger|Badge|Checkbox|Switch";
+const roundedClass = String.raw`/(^|[\s:!])rounded(-|\s|!|$)/`;
+
 const controlRestrictedSyntax = [
   {
     selector:
@@ -216,8 +222,23 @@ const controlRestrictedSyntax = [
     message: "Use the design-system component (web/registry/rules/components.md).",
   },
   {
+    selector: "JSXOpeningElement[name.name=/^(label|progress|hr|kbd)$/]",
+    message:
+      "Use the design-system Label, Progress, Separator or Kbd (web/registry/rules/components.md).",
+  },
+  {
     selector: 'JSXAttribute[name.name="role"][value.value="button"]',
     message: "Use the design-system Button (web/registry/rules/components.md).",
+  },
+  {
+    selector: `JSXAttribute[name.name="role"][value.value=/^(${componentRoles})$/]`,
+    message:
+      "A design-system component already has this role: Checkbox, Switch, Tabs, DropdownMenu, Dialog, Select, Command, Slider, RadioGroup or Progress (web/registry/rules/components.md).",
+  },
+  {
+    selector: `JSXOpeningElement[name.name=/^(${radiusControls})$/] > JSXAttribute[name.name="className"] :matches(Literal[value=${roundedClass}], TemplateElement[value.raw=${roundedClass}])`,
+    message:
+      "A screen never sets a radius on a design-system control; use its shape or variant (web/registry/rules/components.md, Button).",
   },
   // Reserve style for runtime measurements and positions; fixed values must use tokens and classes.
   {
@@ -255,16 +276,42 @@ const focusRing = String.raw`(?:^|:)!?outline-(?:none|hidden)!?$|(?:^|:)(?:focus
 const focusMessage =
   "Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).";
 
-function restrictedClasses(allowed = [], { focus = true } = {}) {
+// Single-use colour roles (web/registry/rules/foundations.md): kind-N and favorite belong to their components and the showcase.
+const tokenUtility = (token) => String.raw`!?[a-z-]+-${token}(?:-soft)?(?:\/[0-9]+)?!?$`;
+const kindMessage =
+  "The kind-* colours mark tag kinds only, through KindMark and KindToggleGroup (web/registry/rules/foundations.md; web/registry/rules/components.md, KindMark).";
+const favoriteMessage =
+  "The favorite colours draw the favorite heart only, through FavoriteToggle (web/registry/rules/foundations.md; web/registry/rules/components.md, FavoriteToggle).";
+
+function restrictedClasses(file, allowed = []) {
+  const flags = areaFlags(file);
   // Ignore both v3 prefix and v4 suffix ! markers when matching the allowlist.
   const allow = allowed.length > 0 ? `(?!!?(?:${allowed.join("|")})!?$)` : "";
   const restrict = [
     { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
   ];
-  if (focus)
+  if (!file.startsWith("ui/shadcn/"))
     restrict.push({ pattern: `^${allow}.*?(?:${focusRing})`, message: focusMessage });
+  if (flags.kindTokens)
+    restrict.push({
+      pattern: `^${allow}${variants}${tokenUtility("kind-[1-8]")}`,
+      message: kindMessage,
+    });
+  if (flags.favoriteTokens)
+    restrict.push({
+      pattern: `^${allow}${variants}${tokenUtility("favorite")}`,
+      message: favoriteMessage,
+    });
   return ["error", { restrict }];
 }
+
+const classAreas = [
+  "",
+  "ui/shadcn/",
+  "designSystem/",
+  ...kindTokenFiles,
+  ...favoriteTokenFiles,
+];
 
 function unknownClasses(allowed = []) {
   return ["error", { ignore: allowed.map((pattern) => `^(?:${pattern})$`) }];
@@ -279,9 +326,7 @@ function exceptionRules(entry) {
     } else if (entry.classes === undefined) {
       rules[rule] = "off";
     } else if (rule === restrictedClassesRule) {
-      rules[rule] = restrictedClasses(entry.classes, {
-        focus: !entry.file.startsWith("ui/shadcn/"),
-      });
+      rules[rule] = restrictedClasses(entry.file, entry.classes);
     } else if (rule === unknownClassesRule) {
       rules[rule] = unknownClasses(entry.classes);
     }
@@ -301,17 +346,14 @@ function designSystemConfig() {
         },
       },
       rules: {
-        [restrictedClassesRule]: restrictedClasses(),
         [unknownClassesRule]: unknownClasses(),
       },
     },
-    {
-      files: ["src/ui/shadcn/**"],
+    ...classAreas.map((area) => ({
+      files: areaGlob(area),
       ignores: testFiles,
-      rules: {
-        [restrictedClassesRule]: restrictedClasses([], { focus: false }),
-      },
-    },
+      rules: { [restrictedClassesRule]: restrictedClasses(areaSample(area)) },
+    })),
     ...boundaryAreas.map((area) => ({
       files: areaGlob(area),
       ignores: testFiles,

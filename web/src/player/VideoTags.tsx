@@ -334,7 +334,8 @@ export default function VideoTags({
                       title={t.player.tags.confirm(tag.name)}
                       disabled={removingIds.has(tag.id)}
                       onClick={() => settleTag(tag, "confirm")}
-                      className="size-6 rounded-none [&_svg]:size-3"
+                      shape="chip-middle"
+                      className="size-6 [&_svg]:size-3"
                     >
                       <Check aria-hidden="true" />
                     </Button>
@@ -349,7 +350,8 @@ export default function VideoTags({
                       title={t.player.tags.reject(tag.name)}
                       disabled={removingIds.has(tag.id)}
                       onClick={() => settleTag(tag, "reject")}
-                      className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+                      shape="chip-end"
+                      className="size-6 [&_svg]:size-3"
                     >
                       <X aria-hidden="true" />
                     </Button>
@@ -365,7 +367,8 @@ export default function VideoTags({
                     aria-label={t.player.tags.remove(tag.name)}
                     disabled={removingIds.has(tag.id)}
                     onClick={() => removeTag(tag, index)}
-                    className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+                    shape="chip-end"
+                    className="size-6 [&_svg]:size-3"
                   >
                     <X aria-hidden="true" />
                   </Button>

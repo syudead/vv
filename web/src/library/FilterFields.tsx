@@ -65,7 +65,8 @@ export function ConditionChip({
         size="icon-sm"
         aria-label={removeLabel}
         onClick={onRemove}
-        className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+        shape="chip-end"
+        className="size-6 [&_svg]:size-3"
       >
         <X aria-hidden="true" />
       </Button>

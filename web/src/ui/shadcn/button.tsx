@@ -32,10 +32,17 @@ const buttonVariants = cva(
         icon: "size-9",
         "icon-sm": "size-8",
       },
-      // A pill is a labelled action beside a heading, at a section's end or first in a row.
+      // Screens pick a radius here and never set one; web/registry/rules/components.md, Button says where each goes.
       shape: {
         default: "rounded-md",
         pill: "rounded-full",
+        compact: "rounded-sm",
+        "chip-middle": "rounded-none",
+        "chip-end": "rounded-l-none rounded-r-sm",
+        "group-start": "rounded-r-none",
+        "group-end": "rounded-l-none border-l-0",
+        "edge-left": "rounded-l-none rounded-r-lg",
+        "edge-right": "rounded-l-lg rounded-r-none",
       },
     },
     defaultVariants: {

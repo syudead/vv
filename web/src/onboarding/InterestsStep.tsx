@@ -67,7 +67,7 @@ function InterestChip({ interest }: { interest: Interest }) {
           : undefined
       }
       title={interest.synonym}
-      className="flex-none rounded-md px-3 data-[variant=outline]:border-l"
+      className="px-3"
     >
       {interest.name}
     </ToggleGroupItem>
@@ -228,7 +228,8 @@ export default function InterestsStep({ frame, write }: StepProps) {
           onValueChange={(values) =>
             setPicked(values.filter((id) => !hasFolder.includes(id)))
           }
-          className="w-full flex-wrap gap-2"
+          spacing="separate"
+          className="w-full flex-wrap"
         >
           {interests.map((interest) => (
             <InterestChip key={interest.id} interest={interest} />

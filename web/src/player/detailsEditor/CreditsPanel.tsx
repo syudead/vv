@@ -205,7 +205,8 @@ function CreditChip({
           aria-label={t.player.detailsEditor.remove(label)}
           aria-disabled={saving || undefined}
           onClick={onRemove}
-          className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+          shape="chip-end"
+          className="size-6 [&_svg]:size-3"
           {...invalidProps(problem, `chip-${chip.key}`)}
         >
           <X aria-hidden="true" />
