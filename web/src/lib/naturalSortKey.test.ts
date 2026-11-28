@@ -1,9 +1,7 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
+import { readDomainFixture } from "../testing/domainFixture";
 import { compareNaturalSortKeys, naturalSortKey } from "./naturalSortKey";
 
 /** Share fixtures with Go's natural_sort_key_test.go, which also checks key ordering. */
@@ -11,21 +9,7 @@ interface NaturalSortKeyFile {
   cases: { note: string; input: string; want: string }[];
 }
 
-const file = JSON.parse(
-  readFileSync(
-    join(
-      __dirname,
-      "..",
-      "..",
-      "..",
-      "internal",
-      "domain",
-      "testdata",
-      "natural_sort_key.json",
-    ),
-    "utf8",
-  ),
-) as NaturalSortKeyFile;
+const file = readDomainFixture<NaturalSortKeyFile>("natural_sort_key.json");
 
 describe("naturalSortKey", () => {
   it("共有の組で Go の NaturalSortKey と同じ鍵を返す", () => {

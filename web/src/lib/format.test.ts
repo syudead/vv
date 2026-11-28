@@ -1,15 +1,28 @@
 import { describe, expect, it } from "vitest";
 
 import type { Video } from "../api/client";
+import { readDomainFixture } from "../testing/domainFixture";
 import {
   formatBytes,
   formatDuration,
   isNarrowVideo,
   qualityLabel,
   unplayableText,
+  type WatchState,
   watchState,
   watchedRatio,
 } from "./format";
+
+/** Share fixtures with Go's ClassifyWatch in internal/domain/foldcheck. */
+interface WatchStateFile {
+  cases: {
+    note: string;
+    progress: { positionMs: number; completed: boolean } | null;
+    want: WatchState;
+  }[];
+}
+
+const watchStates = readDomainFixture<WatchStateFile>("watch_state.json");
 
 const base: Video = {
   id: 1,
@@ -63,17 +76,13 @@ describe("qualityLabel", () => {
 
 describe("watchState / watchedRatio", () => {
   const at = "2026-09-20T00:00:00Z";
-  it("3 値に畳む", () => {
-    expect(watchState(base)).toBe("unwatched");
-    expect(
-      watchState({ progress: { positionMs: 0, completed: false, updatedAt: at } }),
-    ).toBe("unwatched");
-    expect(
-      watchState({ progress: { positionMs: 10, completed: false, updatedAt: at } }),
-    ).toBe("inProgress");
-    expect(
-      watchState({ progress: { positionMs: 10, completed: true, updatedAt: at } }),
-    ).toBe("watched");
+  it("共有の組で Go の ClassifyWatch と同じ 3 値に畳む", () => {
+    expect(watchStates.cases.length).toBeGreaterThan(0);
+    for (const c of watchStates.cases) {
+      const video =
+        c.progress === null ? {} : { progress: { ...c.progress, updatedAt: at } };
+      expect(watchState(video), c.note).toBe(c.want);
+    }
   });
   it("途中のときだけ割合を返す", () => {
     expect(

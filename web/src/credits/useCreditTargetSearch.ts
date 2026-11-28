@@ -4,6 +4,7 @@ import { isAborted } from "../api/client";
 import { type Credit, type CreditKind, listCredits } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
+import { trimWhiteSpace } from "../lib/textRules";
 import type { CreditChoice } from "../ui/CreditCommand";
 import { creditFace } from "./creditFace";
 import { matchedOtherName } from "./creditRows";
@@ -57,7 +58,7 @@ export function useCreditTargetSearch(kind: CreditKind, sourceId: number, value:
       meta: t.credits.mergeDialog.videoCount(credit.videoCount),
     };
   });
-  const trimmed = value.trim();
+  const trimmed = trimWhiteSpace(value);
   const exact = shown.find((credit) => trimmed !== "" && credit.name === trimmed);
   const exactOption =
     exact === undefined

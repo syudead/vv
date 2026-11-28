@@ -48,7 +48,10 @@ export function isTagListSort(value: unknown): value is TagListSort {
 /** Batch updates are atomic: disable oversized selections instead of silently splitting requests. */
 export const maxVideoTagsSelection = 20000;
 
-/** Disable Select all or batch actions when their respective counts exceed the API limit. */
+/**
+ * Disable Select all or batch actions when their respective counts exceed the API limit, TagBatchRequest's
+ * maxItems; internal/domain/testdata/limits.json ties the two in tests.
+ */
 export const maxTagBatch = 20000;
 
 /** Shared reads accept no per-caller AbortSignal so one caller cannot cancel other waiters. */

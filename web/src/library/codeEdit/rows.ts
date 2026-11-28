@@ -1,5 +1,5 @@
 import type { components } from "../../api/gen/openapi";
-import { trimWhiteSpace } from "../../playlists/playlistName";
+import { trimWhiteSpace } from "../../lib/textRules";
 
 export type CodeEditRow = components["schemas"]["VideoCodeEditRow"];
 export type CodeEditItem = components["schemas"]["VideoCodeEditItem"];

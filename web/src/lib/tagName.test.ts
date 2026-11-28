@@ -1,24 +1,25 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
 import { t } from "../i18n";
-import { nameReason } from "./tagName";
+import {
+  expectNameRule,
+  readDomainFixture,
+  type NameRuleFile,
+} from "../testing/domainFixture";
+import { nameReason, tagNameMaxLength } from "./tagName";
 
-describe("nameReason の制御文字", () => {
-  it.each([
-    ["U+0000", "a\u0000b"],
-    ["U+001F", "a\u001fb"],
-    ["U+007F", "a\u007fb"],
-    ["U+0085", "a\u0085b"],
-    ["U+009F", "a\u009fb"],
-  ])("%s を含む名前を拒む", (_, name) => {
-    expect(nameReason(name)).toBe(t.tagName.controlCharacters);
+const file = readDomainFixture<NameRuleFile>("tag_name.json");
+
+describe("nameReason", () => {
+  it("共有の組で Go の NormalizeTagName と同じ上限を持つ", () => {
+    expect(tagNameMaxLength).toBe(file.maxLength);
   });
 
-  it.each([
-    ["U+00A0", "a b"],
-    ["U+200B", "a​b"],
-    ["U+0020", "a b"],
-  ])("制御文字でない %s は拒まない", (_, name) => {
-    expect(nameReason(name)).toBeNull();
+  it("共有の組で Go の NormalizeTagName と同じ名前を受け付け、同じ理由で拒む", () => {
+    expectNameRule(file, nameReason, {
+      controlCharacters: t.tagName.controlCharacters,
+      tooLong: (length) => t.tagName.tooLong(tagNameMaxLength, length),
+    });
   });
 });

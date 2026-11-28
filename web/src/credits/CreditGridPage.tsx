@@ -11,6 +11,7 @@ import {
 import { updateFavorites } from "../api/favorites";
 import { t, type UiText } from "../i18n";
 import { creditNameReason } from "../lib/creditName";
+import { trimWhiteSpace } from "../lib/textRules";
 import NameDialog, { type NameDialogWords } from "../library/NameDialog";
 import { writeListSortPreferences } from "../preferences/tagListPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
@@ -48,7 +49,7 @@ function scrollToTop() {
 }
 
 function validateName(text: string) {
-  return text.trim() === "" ? t.creditName.required : creditNameReason(text);
+  return trimWhiteSpace(text) === "" ? t.creditName.required : creditNameReason(text);
 }
 
 const noPreviewReset = () => undefined;

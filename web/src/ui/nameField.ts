@@ -9,6 +9,7 @@ import {
 import type { UiText } from "../i18n";
 import { isComposingKeyEvent } from "../lib/ime";
 import { newlinePattern } from "../lib/tagName";
+import { trimWhiteSpace } from "../lib/textRules";
 import type { NameRules } from "./NameCommand";
 import { tagNameRules } from "./TagCommand";
 
@@ -50,7 +51,7 @@ export function useTagNameField(
 
   function trySpelling(): string | null {
     if (reason !== null) return null;
-    const trimmed = value.trim();
+    const trimmed = trimWhiteSpace(value);
     if (trimmed === "") {
       setReason(rules.required);
       return null;

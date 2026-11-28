@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { errorText, type UiText } from "../i18n";
+import { trimWhiteSpace } from "../lib/textRules";
 import { playlistName } from "../playlists/playlistName";
 import {
   CreateDialogFrame,
@@ -45,7 +46,11 @@ export default function NameDialog<T>({
     if (pending) return;
     const refusal = validate === undefined ? null : validate(text);
     const name =
-      validate === undefined ? playlistName(text) : refusal === null ? text.trim() : null;
+      validate === undefined
+        ? playlistName(text)
+        : refusal === null
+          ? trimWhiteSpace(text)
+          : null;
     if (name === null) {
       setInvalid(refusal ?? nameRule);
       setFailure(null);

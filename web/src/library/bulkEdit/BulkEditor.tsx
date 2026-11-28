@@ -17,6 +17,7 @@ import {
 import { creditDisplayName } from "../../credits/displayName";
 import { errorText, t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { trimWhiteSpace } from "../../lib/textRules";
 import CreditPicker from "../../player/detailsEditor/CreditPicker";
 import { organizationRole, personRole } from "../../player/detailsEditor/CreditsPanel";
 import { type Chip, isNewChip } from "../../player/detailsEditor/draft";
@@ -648,7 +649,7 @@ function TagPicker({
   const allTags = useAllTags();
   const [value, setValue] = useState("");
   const { options, exactOption } = buildAddOptions(allTags, value);
-  const trimmed = value.trim();
+  const trimmed = trimWhiteSpace(value);
   const createLabel =
     exactOption === null && trimmed !== "" ? (
       <span className="flex min-w-0 items-center gap-2">
