@@ -38,7 +38,8 @@ func listedLocationCondition(alias string, audience domain.Audience) string {
 }
 
 // scopedLocationCondition is registeredLocationCondition under the audience's folder scope, without the role's
-// public rule; folders never overlap, so the scoped folder replaces the registered one.
+// public rule; folders never overlap, so the scoped folder replaces the registered one. rule_equivalence_test.go compares
+// it with domain.Audience.ListsFolder.
 func scopedLocationCondition(alias string, audience domain.Audience) string {
 	scope := `mf.enabled = 1`
 	if ids, explicit := audience.ExcludedFolders(); explicit {

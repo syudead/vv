@@ -113,7 +113,7 @@ func (p *PlaybackStore) ListWatchHistoryDays(
 	return days, nil
 }
 
-// Keep watch-state filtering equivalent to domain.ClassifyWatch; WatchHistoryAll applies no condition.
+// watchHistoryStateCondition restates domain.ClassifyWatch, compared in rule_equivalence_test.go; WatchHistoryAll applies no condition.
 func watchHistoryStateCondition(filter domain.WatchHistoryFilter) string {
 	switch filter {
 	case domain.WatchHistoryInProgress:
