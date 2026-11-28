@@ -7,7 +7,7 @@ import {
   hasConditions,
   type HistoryMode,
   type ListCriteriaChange,
-  newSeed,
+  sortChange,
 } from "./listCriteria";
 import { useListActions } from "./useListActions";
 import { useListCriteria } from "./useListCriteria";
@@ -30,17 +30,7 @@ export function useCollectionCriteria() {
   );
   const actions = useListActions(update);
   const changeSort = useCallback(
-    (sort: VideoSort) =>
-      apply(
-        (current) => ({
-          ...current,
-          sort,
-          seed: sort === "random" ? newSeed(current.seed) : undefined,
-        }),
-        "push",
-        undefined,
-        false,
-      ),
+    (sort: VideoSort) => apply(sortChange(sort), "push", undefined, false),
     [apply],
   );
   const savedOrder = useCallback(

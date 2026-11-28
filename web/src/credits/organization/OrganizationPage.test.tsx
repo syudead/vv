@@ -7,6 +7,7 @@ import type { Organization } from "../../api/credits";
 import { jsonResponse } from "../../testing/personPage";
 import { video } from "../../testing/groupPage";
 import { ToastProvider } from "../../ui/Toast";
+import { TooltipProvider } from "../../ui/shadcn/tooltip";
 import OrganizationPage from "./OrganizationPage";
 
 function organization(overrides: Partial<Organization> = {}): Organization {
@@ -189,17 +190,21 @@ function Location() {
   return <output aria-label="location">{location.pathname}</output>;
 }
 
-function renderPage() {
+function renderPage(search = "") {
   return render(
-    <ToastProvider>
-      <MemoryRouter initialEntries={[`/organizations/${String(server.routeId)}`]}>
-        <Routes>
-          <Route path="/organizations/:id" element={<OrganizationPage />} />
-          <Route path="/organizations" element={<p>Organizations list</p>} />
-        </Routes>
-        <Location />
-      </MemoryRouter>
-    </ToastProvider>,
+    <TooltipProvider>
+      <ToastProvider>
+        <MemoryRouter
+          initialEntries={[`/organizations/${String(server.routeId)}${search}`]}
+        >
+          <Routes>
+            <Route path="/organizations/:id" element={<OrganizationPage />} />
+            <Route path="/organizations" element={<p>Organizations list</p>} />
+          </Routes>
+          <Location />
+        </MemoryRouter>
+      </ToastProvider>
+    </TooltipProvider>,
   );
 }
 
@@ -331,6 +336,32 @@ describe("OrganizationPage", () => {
     expect(await screen.findByText("No videos yet")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Studio", level: 1 })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Maker" })).toBeNull();
+  });
+
+  it("sends the URL's search and sort with the read in any role and with each role's read", async () => {
+    server.videos = { maker: [1], label: [2] };
+    renderPage("?q=film&sort=titleAsc");
+
+    expect(await screen.findByRole("heading", { name: "Label", level: 2 })).toBeTruthy();
+    const reads = server.requests.filter((url) => url.pathname === "/api/videos");
+    expect(reads.map((url) => url.searchParams.get("organizationRole"))).toEqual(
+      expect.arrayContaining([null, "maker", "label"]),
+    );
+    for (const url of reads) {
+      expect(url.searchParams.get("query")).toBe("film");
+      expect(url.searchParams.get("sort")).toBe("titleAsc");
+    }
+  });
+
+  it("shows no-match instead of the empty state when the search finds no video, and its button focuses the search", async () => {
+    const user = userEvent.setup();
+    server.videos = { maker: [], label: [] };
+    renderPage("?q=film");
+
+    expect(await screen.findByText("No videos match these conditions")).toBeTruthy();
+    expect(screen.queryByText("No videos yet")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change search" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("Search videos"));
   });
 
   it("shows the gone state when the organization no longer exists", async () => {

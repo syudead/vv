@@ -12,7 +12,6 @@ import {
   criteriaKey,
   type HistoryMode,
   type ListCriteriaChange,
-  newSeed,
 } from "../videoList/listCriteria";
 import { useListActions } from "../videoList/useListActions";
 import { useListCriteria } from "../videoList/useListCriteria";
@@ -37,18 +36,15 @@ export function useConditions(extraParams: readonly string[] = noExtraParams) {
     [apply],
   );
 
+  const actions = useListActions(update);
+  const { changeSort: applySort } = actions;
   const changeSort = useCallback(
     (next: VideoSort) => {
-      update((current) => ({
-        ...current,
-        sort: next,
-        seed: next === "random" ? newSeed(current.seed) : undefined,
-      }));
+      applySort(next);
       savePreferences({ ...preferences, sort: next });
     },
-    [preferences, savePreferences, update],
+    [preferences, savePreferences, applySort],
   );
-  const actions = useListActions(update);
   const changeZoom = useCallback(
     (next: Zoom) => savePreferences({ ...preferences, zoom: next }),
     [preferences, savePreferences],
@@ -65,8 +61,8 @@ export function useConditions(extraParams: readonly string[] = noExtraParams) {
     view: preferences.view,
     changeView,
     searchField,
-    changeSort,
     ...actions,
+    changeSort,
     changeZoom,
   };
 }

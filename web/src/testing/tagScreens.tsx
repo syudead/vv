@@ -4,6 +4,7 @@ import { Fragment, StrictMode } from "react";
 import {
   MemoryRouter,
   type NavigateFunction,
+  parsePath,
   Route,
   Routes,
   useLocation,
@@ -867,8 +868,11 @@ export function renderPage({
   topBar = false,
   strict = false,
   tagPage = false,
+  state,
 }: {
   url?: string;
+  /** The history entry's state, such as the list a tag page was opened from. */
+  state?: unknown;
   topBar?: boolean;
   /** Replay effects as development builds do. */
   strict?: boolean;
@@ -878,7 +882,9 @@ export function renderPage({
   const Mode = strict ? StrictMode : Fragment;
   return render(
     <Mode>
-      <MemoryRouter initialEntries={[url]}>
+      <MemoryRouter
+        initialEntries={[state === undefined ? url : { ...parsePath(url), state }]}
+      >
         <TooltipProvider>
           <ToastProvider>
             {topBar && (

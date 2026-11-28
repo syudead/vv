@@ -1,10 +1,13 @@
 import { useCallback } from "react";
 
+import type { VideoSort } from "../api/client";
+
 import {
   clearConditions,
   type HistoryMode,
   type ListCriteriaChange,
   newSeed,
+  sortChange,
 } from "./listCriteria";
 
 export function useListActions(
@@ -24,5 +27,6 @@ export function useListActions(
     [update],
   );
   const clearAll = useCallback(() => update(clearConditions), [update]);
-  return { changeFavorite, commitQuery, shuffle, clearAll };
+  const changeSort = useCallback((sort: VideoSort) => update(sortChange(sort)), [update]);
+  return { changeFavorite, commitQuery, shuffle, clearAll, changeSort };
 }
