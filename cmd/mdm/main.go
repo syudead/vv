@@ -521,12 +521,12 @@ func run(opts runOptions) error {
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
 }
 
-// addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.
 // newVocabularyChanges is the vocabulary use case over db's stores, which the server requires.
 func newVocabularyChanges(db *store.DB) *app.VocabularyChanges {
 	return app.NewVocabularyChanges(app.VocabularyChangesOptions{Tags: db.Tags(), Credits: db.Credits(), Joins: db.Library()})
 }
 
+// addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.
 func addBackfillHandlers(
 	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
 ) {
