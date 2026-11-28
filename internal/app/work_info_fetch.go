@@ -134,6 +134,7 @@ func (p *WorkInfoPlugins) ApplyPeerWorkInfoFetch(
 func (p *WorkInfoPlugins) onPeer(peer domain.WorkInfoPeer) *WorkInfoPlugins {
 	q := *p
 	node := peerWorkInfoNode{peer}
+	q.localMatcher = p.matcher
 	q.videos, q.applier, q.matcher, q.covers, q.personImages = node, node, node, node, nil
 	return &q
 }
@@ -225,12 +226,14 @@ func (p *WorkInfoPlugins) keepFetched(
 	}
 	keepPersonImages(result.WorkInfo.People, result.PersonImages)
 	details := domain.OrderFetchedWorkDetails(result.WorkInfo)
-	people, err := p.matchCredits(ctx, domain.CreditPerson, domain.PersonMatchEntries(details.People))
+	people, err := p.matchFetchedCredits(ctx, domain.CreditPerson, domain.PersonMatchEntries(details.People),
+		func(i int, name string) { details.People[i].Name = name })
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	organizations, err := p.matchCredits(ctx, domain.CreditOrganization,
-		domain.OrganizationMatchEntries(details.Organizations))
+	organizations, err := p.matchFetchedCredits(ctx, domain.CreditOrganization,
+		domain.OrganizationMatchEntries(details.Organizations),
+		func(i int, name string) { details.Organizations[i].Name = name })
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
@@ -261,6 +264,106 @@ func (p *WorkInfoPlugins) recordFetch(ctx context.Context, videoID int64, runErr
 		}
 	}
 	return p.applier.RecordWorkInfoFetch(ctx, videoID, failure)
+}
+
+// matchFetchedCredits matches entries and, for a peer's video, gives each entry the peer holds nothing for the
+// named entity this node matches it to, renaming the entry to that entity's display name: the nodes join people
+// and organizations by display name only, so the peer's apply then links or creates the joined entity. The renamed
+// entry is matched on the peer again, and kept only when the peer still holds nothing for it or holds the joined
+// entity, since the peer's apply rematches it against its own other names too.
+func (p *WorkInfoPlugins) matchFetchedCredits(
+	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry, rename func(i int, name string),
+) ([]domain.CreditMatch, error) {
+	matches, err := p.matchCredits(ctx, kind, entries)
+	if err != nil || p.localMatcher == nil {
+		return matches, err
+	}
+	at, local, err := p.localMatches(ctx, kind, entries, matches)
+	if err != nil || len(at) == 0 {
+		return matches, err
+	}
+	at, local, err = p.joinedByDisplayName(ctx, kind, at, local)
+	if err != nil || len(at) == 0 {
+		return matches, err
+	}
+	renamed := make([]domain.CreditMatchEntry, len(at))
+	for j, i := range at {
+		renamed[j] = domain.CreditMatchEntry{Name: local[j].Credit.Name, ExternalIDs: entries[i].ExternalIDs}
+	}
+	again, err := p.matcher.Match(ctx, kind, renamed)
+	if err != nil {
+		return nil, err
+	}
+	for j, i := range at {
+		if j >= len(again) {
+			break
+		}
+		peer := again[j]
+		joined := peer.State == domain.CreditMatchExisting && peer.Credit != nil && peer.Credit.ID == local[j].Credit.ID
+		if peer.State == domain.CreditMatchNew || joined {
+			matches[i] = local[j]
+			rename(i, local[j].Credit.Name)
+		}
+	}
+	return matches, nil
+}
+
+// joinedByDisplayName keeps the local matches whose display name alone matches the same entity on this node: the
+// join picks one entity per display name, and the peer's apply merges new entries by folded name, so a display
+// name another entity also holds would link that one.
+func (p *WorkInfoPlugins) joinedByDisplayName(
+	ctx context.Context, kind domain.CreditKind, at []int, local []domain.CreditMatch,
+) ([]int, []domain.CreditMatch, error) {
+	names := make([]domain.CreditMatchEntry, len(local))
+	for j, match := range local {
+		names[j] = domain.CreditMatchEntry{Name: match.Credit.Name}
+	}
+	again, err := p.localMatcher.Match(ctx, kind, names)
+	if err != nil {
+		return nil, nil, err
+	}
+	var keptAt []int
+	var kept []domain.CreditMatch
+	for j, match := range again {
+		if j < len(local) && match.State == domain.CreditMatchExisting && match.Credit != nil &&
+			match.Credit.ID == local[j].Credit.ID {
+			keptAt = append(keptAt, at[j])
+			kept = append(kept, local[j])
+		}
+	}
+	return keptAt, kept, nil
+}
+
+// localMatches matches on this node the entries the peer answered as new, returning the positions of those that
+// name one of this node's named entities and their matches.
+func (p *WorkInfoPlugins) localMatches(
+	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry, matches []domain.CreditMatch,
+) ([]int, []domain.CreditMatch, error) {
+	var at []int
+	var unmatched []domain.CreditMatchEntry
+	for i, match := range matches {
+		if match.State == domain.CreditMatchNew && i < len(entries) {
+			at = append(at, i)
+			unmatched = append(unmatched, entries[i])
+		}
+	}
+	if len(unmatched) == 0 {
+		return nil, nil, nil
+	}
+	local, err := p.localMatcher.Match(ctx, kind, unmatched)
+	if err != nil {
+		return nil, nil, err
+	}
+	var named []int
+	var found []domain.CreditMatch
+	for j, match := range local {
+		// A provisional person has no name for the peer to join.
+		if j < len(at) && match.State == domain.CreditMatchExisting && match.Credit != nil && match.Credit.Name != "" {
+			named = append(named, at[j])
+			found = append(found, match)
+		}
+	}
+	return named, found, nil
 }
 
 // Skip storage reads for empty entry lists.

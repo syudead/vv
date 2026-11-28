@@ -72,14 +72,16 @@ type WorkInfoRunNetworkSource interface {
 
 // WorkInfoPlugins manages plugin registration.
 type WorkInfoPlugins struct {
-	store       WorkInfoPluginStore
-	runtime     WorkInfoPluginRuntime
-	videos      WorkInfoVideos
-	applier     FetchedWorkInfoApplier
-	matcher     WorkInfoCreditMatcher
-	network     WorkInfoRunNetworkSource
-	covers      WorkInfoCoverApplier
-	fillTargets WorkInfoFillTargets
+	store   WorkInfoPluginStore
+	runtime WorkInfoPluginRuntime
+	videos  WorkInfoVideos
+	applier FetchedWorkInfoApplier
+	matcher WorkInfoCreditMatcher
+	// localMatcher is this node's matcher while matcher is the peer's, and nil otherwise.
+	localMatcher WorkInfoCreditMatcher
+	network      WorkInfoRunNetworkSource
+	covers       WorkInfoCoverApplier
+	fillTargets  WorkInfoFillTargets
 	// personImages may be nil.
 	personImages WorkInfoPersonImageFiller
 	people       PersonPluginPeople
