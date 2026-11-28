@@ -2,7 +2,7 @@ import type { ThumbnailEdit, ThumbnailEditState } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
 
-// 「Rules out of pages」）。
+// Rules the thumbnail editor computes, kept out of the page (docs/design-docs/web-testing.md, Rules out of pages).
 
 export type RunningState = Extract<
   ThumbnailEditState,

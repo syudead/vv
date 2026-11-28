@@ -19,8 +19,8 @@ function Command({ className, ...props }: ComponentProps<typeof CommandPrimitive
   );
 }
 
-// Remove upstream outline-hidden and shrink the input to h-6 so the shared focus ring is not hidden or clipped.
-// TagCommand）。
+// Remove upstream outline-hidden and shrink the input to h-6 so the shared focus ring is not hidden or clipped
+// (web/registry/rules/components.md, TagCommand).
 function CommandInput({
   className,
   icon,

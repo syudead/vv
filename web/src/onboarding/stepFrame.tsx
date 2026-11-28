@@ -6,7 +6,7 @@ import type { StepsPageStep } from "../ui/patterns/steps-page";
 import { Alert, AlertDescription } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 
-/** StepFrame は StepsPage の、手順の帯に渡す値である。 */
+/** The steps strip's values for StepsPage. */
 export interface StepFrame {
   steps: readonly StepsPageStep[];
   current: number;
@@ -14,7 +14,6 @@ export interface StepFrame {
   progress: UiText;
 }
 
-/** stepFrame は今の手順 `step` の帯の値を作る。 */
 export function stepFrame(step: OnboardingStep): StepFrame {
   const text = t.onboarding;
   const found = ONBOARDING_STEPS.indexOf(step as (typeof ONBOARDING_STEPS)[number]);
@@ -34,8 +33,8 @@ export function stepFrame(step: OnboardingStep): StepFrame {
 }
 
 /**
- * StepWrite は段階の書き込みである。`pending` の間は下端のボタンを押せなくする。`go` は書けたら
- * true を返し、書けなければ `error` に理由を置いて false を返す。
+ * The step write: the footer buttons are disabled while `pending`; `go` returns true once written, or
+ * sets `error` to the reason and returns false.
  */
 export interface StepWrite {
   pending: boolean;
@@ -43,13 +42,12 @@ export interface StepWrite {
   go: (next: OnboardingStep) => Promise<boolean>;
 }
 
-/** StepProps は手順 1 つの部品が受け取る値である。 */
 export interface StepProps {
   frame: StepFrame;
   write: StepWrite;
 }
 
-/** SkipButton は下端の左の「Skip」である。 */
+/** The footer's `Skip`, at its left. */
 export function SkipButton({
   disabled,
   onClick,
@@ -64,7 +62,7 @@ export function SkipButton({
   );
 }
 
-/** StepNotice は下端の行の上の失敗の Alert である。理由が無ければ何も描かない。 */
+/** The failure Alert above the footer; nothing without a reason. */
 export function StepNotice({ message }: { message: UiText | null }) {
   if (message === null) return null;
   return (

@@ -98,7 +98,11 @@ Lint findings are fixed in the code, never silenced ([Lint rules](#lint-rules)):
 `task check` fails on any `//nolint` comment in Go sources
 (`scripts/nolintguard`) and on any
 `eslint-disable*` or other inline ESLint configuration comment in `web/`
-(`linterOptions.noInlineConfig`). A change keeps the functions it adds or makes
+(`linterOptions.noInlineConfig`), and on `@ts-ignore`, `@ts-expect-error` and
+`@ts-nocheck` (`vv/no-ts-suppression`). `vv/english-comments` fails on
+Japanese prose in a comment under `web/src` or `web/e2e`, outside backticks,
+following the comment policy in `AGENTS.md`. Both are vv's own rules in
+`web/eslint-rules/`, tested with ESLint's `RuleTester` under Vitest. A change keeps the functions it adds or makes
 more complex at complexity 25 or less and shares code instead of copying it;
 the Codex review raises a breach
 ([Complexity and duplication](../design-docs/complexity-and-duplication.md)).

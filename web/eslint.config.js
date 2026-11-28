@@ -7,6 +7,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import testingLibrary from "eslint-plugin-testing-library";
 import globals from "globals";
 import designExceptions from "./design-exceptions.js";
+import vv from "./eslint-rules/index.js";
 
 // UI text and formatting belong exclusively to src/i18n.
 const japanese =
@@ -434,11 +435,19 @@ export default [
     },
     plugins: {
       "react-hooks": reactHooks,
+      vv,
     },
     rules: {
       ...js.configs.recommended.rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
+      "vv/no-ts-suppression": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}", "e2e/**/*.{ts,mjs}"],
+    rules: {
+      "vv/english-comments": "error",
     },
   },
   {

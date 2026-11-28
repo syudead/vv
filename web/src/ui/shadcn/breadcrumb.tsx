@@ -6,7 +6,6 @@ import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 
 // Adapted from shadcn/ui radix-nova; see web/registry/rules/components.md, Breadcrumb.
-// （web/registry/rules/components.md「Breadcrumb」）。
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
   return (

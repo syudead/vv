@@ -16,8 +16,8 @@ import { Toaster } from "./shadcn/sonner";
 import { Spinner } from "./shadcn/spinner";
 
 // Show up to three list notifications and one at a time in playback, retaining the queue across navigation.
-// Keep only the latest action notification; its default duration is eight seconds.
-// （web/registry/rules/components.md「Sonner」）。
+// Keep only the latest action notification; its default duration is eight seconds
+// (web/registry/rules/components.md, Sonner).
 
 const visibleLimit = { default: 3, playback: 1 } as const;
 

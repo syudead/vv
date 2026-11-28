@@ -23,7 +23,7 @@ import {
 // Pairs the main node with a second real server from the Settings page, then reads, plays and loses the
 // second node's videos through the main node, as the owner sees them in the browser.
 
-// media-fixtures.mjs の generatePeerFixtures と同じ題名。
+// The titles generatePeerFixtures in media-fixtures.mjs gives.
 const query = "pairing";
 const localTitle = "pairing-local";
 const remoteTitle = "pairing-remote";

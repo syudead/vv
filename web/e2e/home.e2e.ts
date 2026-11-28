@@ -25,7 +25,7 @@ interface Video {
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-// media-fixtures.mjs の generateHomeFixtures と同じ題名。
+// The titles generateHomeFixtures in media-fixtures.mjs gives.
 const query = "ホーム確認";
 const fillers = Array.from(
   { length: 2 },
@@ -33,7 +33,7 @@ const fillers = Array.from(
 );
 const inProgress = "ホーム確認の途中";
 const allTitles = [...fillers, inProgress];
-// 受け入れ条件 8 で公開にする2本。ほかの e2e の動画はどれも非公開である。
+// The two videos made public; every other suite's videos stay private.
 const publicTitles = fillers.slice(0, 2);
 const videos = new Map<string, Video>();
 let mediaFolder: MediaFolder | undefined;
@@ -70,7 +70,7 @@ async function startScan(request: APIRequestContext) {
     .toBe("done");
 }
 
-/** readVideos は API から、この e2e の動画を題名で引けるように読む。 */
+/** Read this suite's videos from the API, keyed by title. */
 async function readVideos(request: APIRequestContext): Promise<Map<string, Video>> {
   const response = await request.get(
     `/api/videos?limit=200&query=${encodeURIComponent(query)}`,
@@ -100,7 +100,7 @@ async function setPublic(request: APIRequestContext, titles: string[], shown: bo
   expect(response.ok()).toBe(true);
 }
 
-/** removeOwnMediaFolder は、この e2e のメディアフォルダの登録を外す（前の試行の分も）。 */
+/** Unregister this suite's media folder, including one left by an earlier attempt. */
 async function removeOwnMediaFolder(request: APIRequestContext) {
   const response = await request.get("/api/media-folders");
   expect(response.status()).toBe(200);
@@ -118,7 +118,7 @@ function folderCard(page: Page): Locator {
   return page.locator(`article[data-smart-folder-id="${String(folderId)}"]`);
 }
 
-/** cardTitles は locator の中の動画のカードの題名を、並びに依らず比べられるよう並べ替えて返す。 */
+/** The titles of the video cards in locator, sorted so they compare regardless of order. */
 async function cardTitles(scope: Locator | Page): Promise<string[]> {
   const titles = await scope.locator("article[data-video-id] h3").allTextContents();
   return titles.sort();
@@ -131,7 +131,7 @@ function guestContext(browser: Browser): Promise<BrowserContext> {
 test.describe.serial("home", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(240_000);
-    // CI のリトライに備え、前の試行が残したものを先に消す。
+    // A CI retry starts by removing what an earlier attempt left.
     await removeOwnMediaFolder(request);
 
     const created = await request.post("/api/media-folders", {

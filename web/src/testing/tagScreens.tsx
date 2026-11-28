@@ -776,8 +776,7 @@ export function install() {
       );
       if (ownedBy !== undefined) {
         if (ownedBy.name === body.name) {
-          // A different tag owns the name; require matching mergeTagId consent.
-          // tag_merge_required。
+          // A different tag owns the name; without a matching mergeTagId, answer tag_merge_required.
           if (body.mergeTagId !== ownedBy.id) {
             return maybeHold(() =>
               jsonResponse(

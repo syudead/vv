@@ -3,14 +3,12 @@ import type { OnboardingStep } from "../api/onboarding";
 export const ONBOARDING_PATH = "/welcome";
 
 /**
- * onboardingRedirect は、見る人が `pathname` を開いたときに置き換える先を返す。置き換えなければ
- * null（docs/design-docs/home.md）。
+ * Where to replace `pathname`, already normalized by AuthGate's routePath, or null to stay
+ * (docs/design-docs/home.md).
  *
- * - 所有者で段階が `done` でなければ、どの経路も `/welcome` へ置き換える。
- * - 所有者で段階が `done` なら、`/welcome` は `/` へ置き換える。
- * - 閲覧者は送らない（`/welcome` は所有者だけの画面で、ゲートがログインへ送る）。
- *
- * `pathname` は AuthGate の routePath で揃えたものである。
+ * - An owner whose step is not `done` goes from every route to `/welcome`.
+ * - An owner whose step is `done` goes from `/welcome` to `/`.
+ * - A viewer is never redirected; `/welcome` is owner-only and the gate sends a viewer to sign in.
  */
 export function onboardingRedirect(
   owner: boolean,

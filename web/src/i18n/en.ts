@@ -4220,7 +4220,7 @@ export const en = {
     controlCharacters: "Line breaks and tabs aren't allowed",
     tooLong: (limit: number) => `Up to ${characters(limit)}`,
   },
-  // オンボード（docs/design-docs/home.md「Words」の Onboarding の行）。
+  // Onboarding (docs/design-docs/home.md, Words, the Onboarding row).
   onboarding: {
     documentTitle: "Set up your library",
     steps: "Setup steps",

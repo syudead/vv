@@ -173,8 +173,7 @@ function AppRoutes() {
     <ToastProvider placement={scanPlacement}>
       {owner && <ScanProgressIndicator />}
       {owner && <BackgroundPausedIndicator />}
-      {/* 所有者の段階が done でない間は、どの経路も /welcome へ置き換える
-          （docs/design-docs/home.md）。 */}
+      {/* Until the owner's step is done, every route is replaced by /welcome (docs/design-docs/home.md). */}
       <OnboardingGate>
         <Routes>
           <Route path="/library" element={<LibraryRedirect />} />

@@ -47,8 +47,8 @@ export function useVideoPlaylist({
     context.status === "reading" ||
     context.status === "ready" ||
     context.status === "failed";
-  // Read step folder IDs from playback data, not the panel response.
-  // docs/design-docs/catalog-organization.md「Video page in a playlist」）。
+  // Read step folder IDs from playback data, not the panel response
+  // (docs/design-docs/catalog-organization.md, Video page in a playlist).
   const goStep = (step: PlaylistStep, autoplay: boolean) =>
     void navigate(playlistStepPath(playlistId, step), {
       state: { ...linkState, autoplay },

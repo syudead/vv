@@ -21,7 +21,7 @@ type InterestList =
   | { status: "failed"; reason: UiText }
   | { status: "ready"; interests: Interest[] };
 
-/** ScanLine は今の取り込みの行である。取り込みが無ければ何も描かない。 */
+/** The current scan's line; nothing without a scan. */
 function ScanLine({ scan }: { scan: Scan | null }) {
   const text = t.onboarding.interests;
   if (scan === null) return null;
@@ -55,7 +55,7 @@ function ScanLine({ scan }: { scan: Scan | null }) {
   );
 }
 
-/** InterestChip は分野 1 つの切り替えである。ホームにもうある分野は押したまま押せない。 */
+/** One interest's toggle; an interest already on the home stays pressed and cannot be pressed. */
 function InterestChip({ interest }: { interest: Interest }) {
   const item = (
     <ToggleGroupItem
@@ -83,7 +83,7 @@ function InterestChip({ interest }: { interest: Interest }) {
   );
 }
 
-/** useInterestsData は分野の一覧と、自動タグ付けが入かを読む。 */
+/** Read the interests and whether auto-tagging is on. */
 function useInterestsData() {
   const [list, setList] = useState<InterestList>({ status: "loading" });
 
@@ -117,9 +117,9 @@ function useInterestsData() {
 }
 
 /**
- * madeAfterFailure は分野の追加が失敗したあと一覧を読み直し、選んだ分野のうちホームに
- * 載ったものを返す。棚を確定してから自動タグ付けへ入れるので、入れるのだけが失敗すれば
- * 棚は残っている（research.md R-6）。読み直せなければ null で、何も足せなかったと扱う。
+ * After adding interests fails, reread the list and return the picked interests that reached the home.
+ * Shelves are committed before auto-tagging is queued, so a failure to queue leaves them; null when the
+ * reread fails, which counts as nothing added.
  */
 async function madeAfterFailure(
   picked: readonly string[],

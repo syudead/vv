@@ -16,7 +16,7 @@ type FolderList =
   | { status: "failed"; reason: UiText }
   | { status: "ready"; folders: MediaFolder[] };
 
-/** FolderRows は足したフォルダの行である。パスは先頭の側を省き、全体を title に置く。 */
+/** The added folders' rows; a path is shortened from its start, with the whole path in title. */
 function FolderRows({ folders }: { folders: readonly MediaFolder[] }) {
   if (folders.length === 0) return null;
   return (

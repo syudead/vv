@@ -3,8 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// Adapted from shadcn/ui radix-nova with shared tokens.
-// （web/registry/rules/components.md「Progress」）。
+// Adapted from shadcn/ui radix-nova with shared tokens; see web/registry/rules/components.md, Progress.
 //
 // Scale against max rather than upstream's fixed 100; null renders indeterminate progress.
 
