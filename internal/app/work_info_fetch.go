@@ -268,7 +268,9 @@ func (p *WorkInfoPlugins) recordFetch(ctx context.Context, videoID int64, runErr
 
 // matchFetchedCredits matches entries and, for a peer's video, gives each entry the peer holds nothing for the
 // named entity this node matches it to, renaming the entry to that entity's display name: the nodes join people
-// and organizations by display name only, so the peer's apply then links or creates the joined entity.
+// and organizations by display name only, so the peer's apply then links or creates the joined entity. The renamed
+// entry is matched on the peer again, and kept only when the peer still holds nothing for it or holds the joined
+// entity, since the peer's apply rematches it against its own other names too.
 func (p *WorkInfoPlugins) matchFetchedCredits(
 	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry, rename func(i int, name string),
 ) ([]domain.CreditMatch, error) {
@@ -276,6 +278,37 @@ func (p *WorkInfoPlugins) matchFetchedCredits(
 	if err != nil || p.localMatcher == nil {
 		return matches, err
 	}
+	at, local, err := p.localMatches(ctx, kind, entries, matches)
+	if err != nil || len(at) == 0 {
+		return matches, err
+	}
+	renamed := make([]domain.CreditMatchEntry, len(at))
+	for j, i := range at {
+		renamed[j] = domain.CreditMatchEntry{Name: local[j].Credit.Name, ExternalIDs: entries[i].ExternalIDs}
+	}
+	again, err := p.matcher.Match(ctx, kind, renamed)
+	if err != nil {
+		return nil, err
+	}
+	for j, i := range at {
+		if j >= len(again) {
+			break
+		}
+		peer := again[j]
+		joined := peer.State == domain.CreditMatchExisting && peer.Credit != nil && peer.Credit.ID == local[j].Credit.ID
+		if peer.State == domain.CreditMatchNew || joined {
+			matches[i] = local[j]
+			rename(i, local[j].Credit.Name)
+		}
+	}
+	return matches, nil
+}
+
+// localMatches matches on this node the entries the peer answered as new, returning the positions of those that
+// name one of this node's named entities and their matches.
+func (p *WorkInfoPlugins) localMatches(
+	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry, matches []domain.CreditMatch,
+) ([]int, []domain.CreditMatch, error) {
 	var at []int
 	var unmatched []domain.CreditMatchEntry
 	for i, match := range matches {
@@ -285,21 +318,22 @@ func (p *WorkInfoPlugins) matchFetchedCredits(
 		}
 	}
 	if len(unmatched) == 0 {
-		return matches, nil
+		return nil, nil, nil
 	}
 	local, err := p.localMatcher.Match(ctx, kind, unmatched)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var named []int
+	var found []domain.CreditMatch
 	for j, match := range local {
 		// A provisional person has no name for the peer to join.
-		if j >= len(at) || match.State != domain.CreditMatchExisting || match.Credit == nil || match.Credit.Name == "" {
-			continue
+		if j < len(at) && match.State == domain.CreditMatchExisting && match.Credit != nil && match.Credit.Name != "" {
+			named = append(named, at[j])
+			found = append(found, match)
 		}
-		matches[at[j]] = match
-		rename(at[j], match.Credit.Name)
 	}
-	return matches, nil
+	return named, found, nil
 }
 
 // Skip storage reads for empty entry lists.
