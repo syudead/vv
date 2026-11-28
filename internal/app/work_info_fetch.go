@@ -282,6 +282,10 @@ func (p *WorkInfoPlugins) matchFetchedCredits(
 	if err != nil || len(at) == 0 {
 		return matches, err
 	}
+	at, local, err = p.joinedByDisplayName(ctx, kind, at, local)
+	if err != nil || len(at) == 0 {
+		return matches, err
+	}
 	renamed := make([]domain.CreditMatchEntry, len(at))
 	for j, i := range at {
 		renamed[j] = domain.CreditMatchEntry{Name: local[j].Credit.Name, ExternalIDs: entries[i].ExternalIDs}
@@ -302,6 +306,32 @@ func (p *WorkInfoPlugins) matchFetchedCredits(
 		}
 	}
 	return matches, nil
+}
+
+// joinedByDisplayName keeps the local matches whose display name alone matches the same entity on this node: the
+// join picks one entity per display name, and the peer's apply merges new entries by folded name, so a display
+// name another entity also holds would link that one.
+func (p *WorkInfoPlugins) joinedByDisplayName(
+	ctx context.Context, kind domain.CreditKind, at []int, local []domain.CreditMatch,
+) ([]int, []domain.CreditMatch, error) {
+	names := make([]domain.CreditMatchEntry, len(local))
+	for j, match := range local {
+		names[j] = domain.CreditMatchEntry{Name: match.Credit.Name}
+	}
+	again, err := p.localMatcher.Match(ctx, kind, names)
+	if err != nil {
+		return nil, nil, err
+	}
+	var keptAt []int
+	var kept []domain.CreditMatch
+	for j, match := range again {
+		if j < len(local) && match.State == domain.CreditMatchExisting && match.Credit != nil &&
+			match.Credit.ID == local[j].Credit.ID {
+			keptAt = append(keptAt, at[j])
+			kept = append(kept, local[j])
+		}
+	}
+	return keptAt, kept, nil
 }
 
 // localMatches matches on this node the entries the peer answered as new, returning the positions of those that
