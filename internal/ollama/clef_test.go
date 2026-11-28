@@ -52,7 +52,7 @@ func decodedImages(t *testing.T, raw json.RawMessage) []image.Image {
 
 // The wire fills the model and keep-alive from the settings, passes state and questions as given, tiles more images
 // than Ollama takes into one, and answers the endpoint's JSON as it is.
-func TestSystemOneSendsClefsOwnRequestAndAnswersItsJSON(t *testing.T) {
+func TestSendWireSendsClefsOwnRequestAndAnswersItsJSON(t *testing.T) {
 	var got map[string]json.RawMessage
 	answer := `{"model":"clef","answers":{"cat":{"type":"noul","noul":0.93}}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,10 +69,10 @@ func TestSystemOneSendsClefsOwnRequestAndAnswersItsJSON(t *testing.T) {
 		images = append(images, blue)
 	}
 
-	raw, err := New(at(server.URL)).SystemOne(context.Background(), domain.ClefRequest{
-		State:     map[string]string{"title": "猫の日"},
+	raw, err := New(at(server.URL)).SendWire(context.Background(), domain.ClassifierWireRequest{
+		Facts:     map[string]string{"title": "猫の日"},
 		Images:    images,
-		Questions: map[string]domain.ClefQuestion{"cat": {Type: "noul", Instructions: "Is a cat visible?"}},
+		Questions: map[string]domain.ClassifierWireQuestion{"cat": {Type: "noul", Instructions: "Is a cat visible?"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestSystemOneSendsClefsOwnRequestAndAnswersItsJSON(t *testing.T) {
 	}
 }
 
-func TestSystemOnePassesUpToTheLimitUnchanged(t *testing.T) {
+func TestSendWirePassesUpToTheLimitUnchanged(t *testing.T) {
 	var got map[string]json.RawMessage
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&got)
@@ -113,7 +113,7 @@ func TestSystemOnePassesUpToTheLimitUnchanged(t *testing.T) {
 	for i := range images {
 		images[i] = []byte{byte(i)}
 	}
-	if _, err := New(at(server.URL)).SystemOne(context.Background(), domain.ClefRequest{Images: images}); err != nil {
+	if _, err := New(at(server.URL)).SendWire(context.Background(), domain.ClassifierWireRequest{Images: images}); err != nil {
 		t.Fatal(err)
 	}
 	var encoded []string
@@ -123,13 +123,13 @@ func TestSystemOnePassesUpToTheLimitUnchanged(t *testing.T) {
 	}
 }
 
-func TestSystemOneReturnsTheEndpointsErrorText(t *testing.T) {
+func TestSendWireReturnsTheEndpointsErrorText(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":"unknown question type \"maybe\""}`))
 	}))
 	defer server.Close()
-	_, err := New(at(server.URL)).SystemOne(context.Background(), domain.ClefRequest{})
+	_, err := New(at(server.URL)).SendWire(context.Background(), domain.ClassifierWireRequest{})
 	if err == nil || !strings.Contains(err.Error(), `400: unknown question type "maybe"`) {
 		t.Errorf("err = %v, want the endpoint's error text", err)
 	}

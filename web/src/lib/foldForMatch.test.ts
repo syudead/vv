@@ -1,9 +1,7 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
+import { readDomainFixture } from "../testing/domainFixture";
 import { foldForMatch, lowerCodePoint } from "./foldForMatch";
 
 /** Share fixtures with internal/domain/fold_for_match_test.go. */
@@ -12,21 +10,7 @@ interface FoldForMatchFile {
   lower: { from: number; to: number }[];
 }
 
-const file = JSON.parse(
-  readFileSync(
-    join(
-      __dirname,
-      "..",
-      "..",
-      "..",
-      "internal",
-      "domain",
-      "testdata",
-      "fold_for_match.json",
-    ),
-    "utf8",
-  ),
-) as FoldForMatchFile;
+const file = readDomainFixture<FoldForMatchFile>("fold_for_match.json");
 
 const unassigned = /^\p{Cn}$/u;
 

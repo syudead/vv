@@ -50,7 +50,8 @@ func newImageSearchFixture(t *testing.T) imageSearchFixture {
 	}
 	uploadsDir := Config{DataDir: dataDir}.SearchUploadsDir()
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: db.Library(), Assets: fstest.MapFS{}, Logger: slog.New(slog.DiscardHandler), Auth: ownerAuth{},
+		Vocabulary: newVocabularyChanges(db),
+		Videos:     db.Library(), Assets: fstest.MapFS{}, Logger: slog.New(slog.DiscardHandler), Auth: ownerAuth{},
 		ImageSearch: app.NewImageSearch(app.ImageSearchOptions{
 			Index: db.Library(), Uploads: artifacts.NewSearchUploads(uploadsDir),
 			Logger: slog.New(slog.DiscardHandler),

@@ -277,9 +277,9 @@ func run(opts runOptions) error {
 	for _, kind := range domain.ScheduledJobKinds {
 		wakers[kind] = scheduler
 	}
-	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
+	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier, ollama.DefaultSettings())
 	comfyUIClient := comfyui.NewWithOptions(settingsStore, comfyui.Options{DiffusionModel: cfg.ComfyUIDiffusionModel})
-	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
+	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient, comfyui.Models)
 	// Thumbnail edits share ingestion's generation lock; see docs/design-docs/thumbnail-editing.md.
 	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
 		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Foreground: scheduler,
@@ -430,6 +430,7 @@ func run(opts runOptions) error {
 		FolderUsage:      mediaFolders,
 		Tags:             db.Tags(),
 		Credits:          db.Credits(),
+		Vocabulary:       newVocabularyChanges(db),
 		WorkInfo:         db.WorkInfo(),
 		MediaInfo:        libraryStore,
 		Visibility:       db.Visibility(),
@@ -518,6 +519,11 @@ func run(opts runOptions) error {
 		}
 	}
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
+}
+
+// newVocabularyChanges is the vocabulary use case over db's stores, which the server requires.
+func newVocabularyChanges(db *store.DB) *app.VocabularyChanges {
+	return app.NewVocabularyChanges(app.VocabularyChangesOptions{Tags: db.Tags(), Credits: db.Credits(), Joins: db.Library()})
 }
 
 // addBackfillHandlers handles the jobs every start queues, the per-video jobs they queue and the search index.

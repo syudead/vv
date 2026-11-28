@@ -1,0 +1,28 @@
+{
+  "maxLength": 100,
+  "cases": [
+    {"note": "plain", "input": "Tag", "want": "Tag"},
+    {"note": "ASCII spaces trimmed", "input": "  Tag  ", "want": "Tag"},
+    {"note": "U+3000 ideographic space trimmed", "input": "\u3000Tag\u3000", "want": "Tag"},
+    {"note": "U+00A0 no-break space trimmed", "input": "\u00a0Tag\u00a0", "want": "Tag"},
+    {"note": "U+2028 line separator trimmed", "input": "\u2028Tag\u2029", "want": "Tag"},
+    {"note": "U+FEFF is not White_Space and stays", "input": "\ufeffTag\ufeff", "want": "\ufeffTag\ufeff"},
+    {"note": "U+FEFF alone is a name", "input": "\ufeff", "want": "\ufeff"},
+    {"note": "U+200B is not White_Space and stays", "input": "\u200bTag", "want": "\u200bTag"},
+    {"note": "inner space kept", "input": "a b", "want": "a b"},
+    {"note": "empty", "input": "", "problem": "empty"},
+    {"note": "only White_Space", "input": " \u3000\u00a0 ", "problem": "empty"},
+    {"note": "U+0000", "input": "a\u0000b", "problem": "controlCharacters"},
+    {"note": "tab", "input": "\tTag", "problem": "controlCharacters"},
+    {"note": "line feed", "input": "Tag\n", "problem": "controlCharacters"},
+    {"note": "U+007F", "input": "a\u007fb", "problem": "controlCharacters"},
+    {"note": "U+0085 is Cc before White_Space", "input": "\u0085Tag", "problem": "controlCharacters"},
+    {"note": "U+009F", "input": "a\u009fb", "problem": "controlCharacters"},
+    {"note": "exactly the limit", "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "want": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"note": "the limit after trimming", "input": " aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u3000", "want": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"note": "one over the limit", "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "problem": "tooLong"},
+    {"note": "U+FEFF counts toward the limit", "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ufeff", "problem": "tooLong"},
+    {"note": "astral code points at the limit", "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀", "want": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"},
+    {"note": "astral code points over the limit", "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀", "problem": "tooLong"}
+  ]
+}

@@ -9,7 +9,7 @@ const (
 	WatchStateWatched    WatchState = "watched"
 )
 
-// ClassifyWatch must stay consistent with storage's watch-state SQL; nil means no progress.
+// ClassifyWatch is the rule internal/store's watch-state SQL restates, compared in its rule_equivalence_test.go; nil means no progress.
 func ClassifyWatch(progress *Progress) WatchState {
 	switch {
 	case progress == nil:

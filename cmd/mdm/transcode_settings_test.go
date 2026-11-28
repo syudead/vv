@@ -68,7 +68,8 @@ func TestTranscodeSettingsCheckDoesNotDelayHTTP(t *testing.T) {
 		if err == nil {
 			settingsDone = settings.Done()
 			handler = httpapi.NewRouter(httpapi.Options{
-				Pinger: db, TranscodeSettings: settings, Assets: fstest.MapFS{}, Auth: ownerAuth{}, Logger: logger,
+				Vocabulary: newVocabularyChanges(db),
+				Pinger:     db, TranscodeSettings: settings, Assets: fstest.MapFS{}, Auth: ownerAuth{}, Logger: logger,
 			})
 		}
 		started <- err

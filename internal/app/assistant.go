@@ -53,9 +53,9 @@ type AssistantOptions struct {
 	// Reviews and Classifier are required by review runs; without Reviews an organize request is unsupported.
 	Reviews    AssistantReviewStore
 	Classifier Classifier
-	// Clef serves the clef tool, which is offered only with it; Model tells whether the generation model sees images,
-	// and without it view_images is never offered.
-	Clef  ClefWire
+	// Clef serves the clef tool, which is offered only with it and in its wire format; Model tells whether the
+	// generation model sees images, and without it view_images is never offered.
+	Clef  ClassifierWire
 	Model AssistantModel
 	// Nil uses slog.Default.
 	Logger *slog.Logger
@@ -75,7 +75,7 @@ type Assistant struct {
 	groups       AssistantGroups
 	reviews      AssistantReviewStore
 	classifier   Classifier
-	clef         ClefWire
+	clef         ClassifierWire
 	model        AssistantModel
 	logger       *slog.Logger
 	now          func() time.Time

@@ -104,12 +104,19 @@ func storedGroupMembers(audience domain.Audience) string {
 		strconv.Itoa(audienceValue(audience)) + `)`
 }
 
+// ownerMemberProgressColumns reads a member's left-joined progress p, with no row as unwatched.
+const ownerMemberProgressColumns = `coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms`
+
+// groupWatchCountsSQL selects the watched and started member counts that domain.WatchStateOf takes; rule_equivalence_test.go
+// checks them against domain.GroupWatch.
+const groupWatchCountsSQL = `coalesce(sum(m.completed = 1), 0), coalesce(sum(m.completed = 1 or m.position_ms > 0), 0)`
+
 // Aggregate narrow member rows, given as group_id, video_id and position, in SQLite; no member details cross into Go.
 func groupValuesSelect(members, roots string, audience domain.Audience) string {
 	a := strconv.Itoa(audienceValue(audience))
 	progress, join := `0 as completed, 0 as position_ms, null as played_at`, ""
 	if audience.IsOwner() {
-		progress = `coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms, p.updated_at as played_at`
+		progress = ownerMemberProgressColumns + `, p.updated_at as played_at`
 		join = ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	}
 	return `with m as materialized (
@@ -119,8 +126,7 @@ func groupValuesSelect(members, roots string, audience domain.Audience) string {
 		from ` + members + ` gm join videos on videos.id = gm.video_id` + representativeLocationJoin("gm", audience) + join + `
 		where gm.group_id in (` + roots + `))
 		select g.id, ` + a + `, count(m.video_id), max(m.added_at), max(m.mtime), max(m.created_at), max(m.played_at),
-			sum(m.duration_ms), coalesce(sum(m.size_bytes), 0), coalesce(sum(m.completed = 1), 0),
-			coalesce(sum(m.completed = 1 or m.position_ms > 0), 0),
+			sum(m.duration_ms), coalesce(sum(m.size_bytes), 0), ` + groupWatchCountsSQL + `,
 			(select video_id from m chosen where chosen.group_id = g.id
 			 order by case when completed = 1 then 2 when position_ms > 0 then 0 else 1 end, position limit 1)
 		from groups g left join m on m.group_id = g.id where g.id in (` + roots + `) group by g.id`

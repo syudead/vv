@@ -42,7 +42,7 @@ func (c *Classifier) Check(ctx context.Context) error {
 		return err
 	}
 	if !hasModel(tags, settings.Model) {
-		return kindErrorf(domain.ErrOllamaModel, nil, "ollama %s at %s has no model named %q; pull it first",
+		return kindErrorf(domain.ErrModelUnavailable, nil, "ollama %s at %s has no model named %q; pull it first",
 			version, settings.Endpoint, settings.Model)
 	}
 	if settings.GenerationModel != "" && !hasModel(tags, settings.GenerationModel) {
@@ -70,7 +70,7 @@ func (c *Classifier) Models(ctx context.Context) ([]domain.OllamaModel, error) {
 			continue
 		}
 		capabilities, err := c.Capabilities(ctx, settings.Endpoint, name)
-		if err != nil && !errors.Is(err, domain.ErrOllamaModel) {
+		if err != nil && !errors.Is(err, domain.ErrModelUnavailable) {
 			return nil, err
 		}
 		models = append(models, domain.OllamaModel{Name: name, Capabilities: capabilities})
@@ -101,7 +101,7 @@ func (c *Classifier) Capabilities(ctx context.Context, endpoint, model string) (
 		return domain.ModelCapabilities{}, notOllama(endpoint, status)
 	}
 	if decoded.Error != "" {
-		return domain.ModelCapabilities{}, kindErrorf(domain.ErrOllamaModel, nil, "model %q: %s", model,
+		return domain.ModelCapabilities{}, kindErrorf(domain.ErrModelUnavailable, nil, "model %q: %s", model,
 			statusMessage(status, decoded.Error))
 	}
 	if status != http.StatusOK {
@@ -122,7 +122,7 @@ func (c *Classifier) listModels(ctx context.Context, endpoint string) (string, t
 		return "", tagsBody{}, err
 	}
 	if version.Version == "" {
-		return "", tagsBody{}, kindErrorf(domain.ErrNotOllama, nil, "the server at %s is not Ollama", endpoint)
+		return "", tagsBody{}, kindErrorf(domain.ErrUnexpectedProvider, nil, "the server at %s is not Ollama", endpoint)
 	}
 	var tags tagsBody
 	if err := c.getJSON(ctx, endpoint, "/api/tags", &tags); err != nil {
@@ -164,10 +164,10 @@ func (c *Classifier) getJSON(ctx context.Context, endpoint, path string, out any
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return kindErrorf(domain.ErrNotOllama, nil, "the server at %s is not Ollama (%s answered %d)", endpoint, path, resp.StatusCode)
+		return kindErrorf(domain.ErrUnexpectedProvider, nil, "the server at %s is not Ollama (%s answered %d)", endpoint, path, resp.StatusCode)
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
-		return kindErrorf(domain.ErrNotOllama, nil, "the server at %s is not Ollama (%s is not JSON)", endpoint, path)
+		return kindErrorf(domain.ErrUnexpectedProvider, nil, "the server at %s is not Ollama (%s is not JSON)", endpoint, path)
 	}
 	return nil
 }

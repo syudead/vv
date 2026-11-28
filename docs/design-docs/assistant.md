@@ -257,8 +257,35 @@ Write rows come in three kinds:
 | Kind | Arguments | Examples |
 | --- | --- | --- |
 | Name-based | A target and named arguments that plan builders resolve to ids | `updateVideoTags.add`, `mergeTag`, `applyWorkInfoFetch` |
-| Schema | The operation's own path parameters and body, ids included; the runner checks the body against the schema before the call | `moveFaceAppearances`, `undoActivity`, `setVideoDetails` |
+| Schema | The operation's own path parameters and body, ids included | `moveFaceAppearances`, `undoActivity`, `setVideoDetails` |
 | Composite | A target and named arguments; the row runs its stages in order and calls its cleanup when a stage fails | `editVideoThumbnail`: `startThumbnailEdit`, `runThumbnailEdit`, `applyThumbnailEdit`, then `cancelThumbnailEdit` or `discardThumbnailEdit` |
+
+The runner checks every row's body, as it sends it, against the operation's
+request schema before the handler runs: the call's fields over the current
+settings of a settings row, with the row's action
+(`domain.AssistantAction.RequestBody`). A plan builder writes the screen API's
+field names itself, so a field renamed or reshaped in `api/openapi.yaml`
+after a proposal fails that step with the field it got wrong.
+
+The same check runs when the loop builds a step, before the step enters the
+proposal: `ActionRunner.CheckCall` builds the request `Run` would send and
+calls no write handler. The step's call holds a placeholder wherever only the
+execution knows an id, a video id of its first batch or an id an earlier step
+creates (`domain.AssistantPlan.SampleCall`), since the schema takes any
+positive id. A settings row reads its current settings, as execution does: the
+update takes every setting and the call carries one field, so a check of the
+fields alone would need a copy of the schema without `required`, and would
+miss a setting the read no longer answers. A refused step comes back to the
+model as an error result, so the model can correct the call and the owner never
+approves a step that cannot run; a composite row is not checked then, since
+the worker builds its stages' requests. Execution checks again, because the
+settings or the schema can change before approval.
+`TestAssistantPlanBuildersMatchTheRequestSchemas`
+([`internal/app`](../../internal/app/assistant_plan_schema_test.go)) builds a
+representative call for every plan builder, fails for a builder without a
+case, and checks the path, query and body of each call, and of each stage of a
+composite row, against the generated registry, so such a change fails the
+tests instead.
 
 An id's entity kind comes from its path parameter's name in
 `components/parameters` (`PersonId` names a person) or from `x-vv-entity` on
@@ -360,12 +387,12 @@ this node's library holds no user key for it
 Two built-in tools take the image references that image reads answer, and the
 model chooses between them
 ([`assistant_images.go`](../../internal/app/assistant_images.go)). Both are
-sent on every model call: `clef` whenever the Clef wire is configured, and
+sent on every model call: `clef` whenever the classifier wire is configured, and
 `view_images` only while the generation model has `vision`.
 
 | Tool | Arguments | What the server does | Result |
 | --- | --- | --- | --- |
-| `clef` | Clef's own request: `state` (facts as strings), `images` (references) and `questions` (`{ type: "noul", instructions }` keyed by the model's keys) | Replaces each reference with the bytes of its in-process read and sends the rest unchanged through `app.ClefWire`, which adds the decision model and `keep_alive` | The endpoint's JSON answer (`answers`, each with `noul`), or the error text |
+| `clef` | Clef's own request, in the format `app.ClassifierWire` describes: `state` (facts as strings), `images` (references) and `questions` (`{ type: "noul", instructions }` keyed by the model's keys) | Replaces each reference with the bytes of its in-process read and sends the rest unchanged through `app.ClassifierWire`, which adds the decision model and `keep_alive` | The endpoint's JSON answer (`answers`, each with `noul`), or the error text |
 | `view_images` | `images` (references) | Reads each image, keeps one within 1,024 px on its long side as it is and re-encodes a larger one as a scaled JPEG, and attaches them to one `user` message after the round's tool results, marked as data | `{ "attached": n }` |
 
 | Rule | Why |

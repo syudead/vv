@@ -35,7 +35,7 @@ func (s *externalVideoTagsStore) ApplyVideoTags(_ context.Context, refs []domain
 }
 
 func externalVideoTagsHandler(store *externalVideoTagsStore) *externalServer {
-	return &externalServer{s: &server{tags: store, logger: discardLogger()}}
+	return &externalServer{s: &server{tags: store, vocabulary: testVocabulary(store, nil, nil), logger: discardLogger()}}
 }
 
 func postExternalVideoTags(t *testing.T, e *externalServer, body string) *httptest.ResponseRecorder {

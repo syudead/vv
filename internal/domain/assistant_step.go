@@ -234,6 +234,27 @@ func (p AssistantPlan) WithStepIDs(call AssistantCall, created map[int]int64) (A
 	return call, true
 }
 
+// assistantPlaceholderStepID stands in for an id an earlier step creates; it is far above real ids so that it does
+// not repeat an id a list already holds.
+const assistantPlaceholderStepID = int64(1) << 31
+
+// SampleCall is the call of the plan's first batch as the worker sends it, with a placeholder for each id only the
+// execution knows: video ids 1, 2, … for the batch's keys and a placeholder for each id an earlier step creates.
+// A request check at proposal time uses it, since a schema takes any positive id.
+func (p AssistantPlan) SampleCall() AssistantCall {
+	keys := p.Batches()[0] // Batches always holds one batch at least.
+	ids := make([]int64, len(keys))
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	created := map[int]int64{}
+	for _, ref := range p.Call.StepIDs {
+		created[ref.Step] = assistantPlaceholderStepID + int64(ref.Step)
+	}
+	call, _ := p.WithStepIDs(p.CallFor(ids), created) // Every referenced step has a placeholder.
+	return call
+}
+
 // withStepID appends the id to a list of ids and replaces any other value.
 func withStepID(value any, id int64) any {
 	switch ids := value.(type) {

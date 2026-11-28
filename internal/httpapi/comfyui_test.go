@@ -22,7 +22,7 @@ func newComfyUIFixture(t *testing.T, probe app.ComfyUIProbe) *comfyUIFixture {
 	t.Helper()
 	f := &comfyUIFixture{}
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
-		return Options{ComfyUI: app.NewComfyUIConnection(db.Settings(), probe)}
+		return Options{ComfyUI: app.NewComfyUIConnection(db.Settings(), probe, []domain.ComfyUIModel{"flux2_klein_4b", "qwen_image_edit_2511"})}
 	})
 	f.owner = f.env.setup()
 	return f
@@ -99,7 +99,7 @@ func TestComfyUISettingsModel(t *testing.T) {
 		!strings.Contains(body, `"model":"qwen_image_edit_2511"`) {
 		t.Fatalf("PUT without model = %d %s", code, body)
 	}
-	if got := f.stored(t); got.Model != domain.ComfyUIModelQwenImageEdit {
+	if got := f.stored(t); got.Model != domain.ComfyUIModel("qwen_image_edit_2511") {
 		t.Fatalf("stored = %+v", got)
 	}
 }

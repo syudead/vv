@@ -27,13 +27,19 @@ func (r imageRunner) Image(_ context.Context, reference string) (domain.Assistan
 	return domain.AssistantImage{}, &domain.AssistantCallError{Status: 404, Code: "not_found"}
 }
 
-// fakeWire records Clef requests and answers one JSON answer.
+// fakeWire records wire requests and answers one JSON answer.
 type fakeWire struct {
-	requests []domain.ClefRequest
+	requests []domain.ClassifierWireRequest
 	answer   string
 }
 
-func (w *fakeWire) SystemOne(_ context.Context, req domain.ClefRequest) (json.RawMessage, error) {
+var fakeWireFormat = domain.ClassifierWireFormat{
+	Description: "Ask the judge.", QuestionTypes: []string{"noul"}, QuestionsDescription: "Keyed yes/no questions.",
+}
+
+func (w *fakeWire) WireFormat() domain.ClassifierWireFormat { return fakeWireFormat }
+
+func (w *fakeWire) SendWire(_ context.Context, req domain.ClassifierWireRequest) (json.RawMessage, error) {
 	w.requests = append(w.requests, req)
 	return json.RawMessage(w.answer), nil
 }
@@ -74,10 +80,11 @@ func TestClefSendsTheModelsRequestWithTheImagesBytes(t *testing.T) {
 	if len(wire.requests) != 1 {
 		t.Fatalf("wire calls = %d, want 1", len(wire.requests))
 	}
-	want := domain.ClefRequest{
-		State:     map[string]string{"title": "Clip 7"},
+	assertClefOffersTheWireFormat(t, f.chat.requests[0].Tools)
+	want := domain.ClassifierWireRequest{
+		Facts:     map[string]string{"title": "Clip 7"},
 		Images:    [][]byte{[]byte("frame-a"), []byte("frame-b")},
-		Questions: map[string]domain.ClefQuestion{"cat": {Type: "noul", Instructions: "Is a cat visible?"}},
+		Questions: map[string]domain.ClassifierWireQuestion{"cat": {Type: "noul", Instructions: "Is a cat visible?"}},
 	}
 	if !reflect.DeepEqual(wire.requests[0], want) {
 		t.Errorf("wire request = %+v, want %+v", wire.requests[0], want)
@@ -91,6 +98,37 @@ func TestClefSendsTheModelsRequestWithTheImagesBytes(t *testing.T) {
 	}
 	if p := turn.Progress; len(p) != 1 || p[0].Tool != "clef" || p[0].Images != 2 {
 		t.Errorf("progress = %+v, want clef with 2 images", p)
+	}
+}
+
+// assertClefOffersTheWireFormat checks that the clef tool takes its description and question schema from the wire.
+func assertClefOffersTheWireFormat(t *testing.T, tools []domain.ToolDefinition) {
+	t.Helper()
+	i := slices.IndexFunc(tools, func(d domain.ToolDefinition) bool { return d.Name == "clef" })
+	if i < 0 {
+		t.Fatalf("tools = %+v, want clef", tools)
+	}
+	var params struct {
+		Properties struct {
+			Questions struct {
+				Description          string `json:"description"`
+				AdditionalProperties struct {
+					Properties struct {
+						Type struct {
+							Enum []string `json:"enum"`
+						} `json:"type"`
+					} `json:"properties"`
+				} `json:"additionalProperties"`
+			} `json:"questions"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(tools[i].Parameters, &params); err != nil {
+		t.Fatalf("clef parameters = %s: %v", tools[i].Parameters, err)
+	}
+	q := params.Properties.Questions
+	if tools[i].Description != fakeWireFormat.Description || q.Description != fakeWireFormat.QuestionsDescription ||
+		!slices.Equal(q.AdditionalProperties.Properties.Type.Enum, fakeWireFormat.QuestionTypes) {
+		t.Errorf("clef = %+v, want the wire's format %+v", tools[i], fakeWireFormat)
 	}
 }
 

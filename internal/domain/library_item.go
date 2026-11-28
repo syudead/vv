@@ -84,7 +84,7 @@ func memberStarted(progress *Progress) bool {
 	return ClassifyWatch(progress) != WatchStateUnwatched
 }
 
-// GroupWatch must stay consistent with the started and watched counts in internal/store's groupValuesSelect.
+// GroupWatch is the rule internal/store's groupWatchCountsSQL restates; its rule_equivalence_test.go compares them.
 func GroupWatch(progress []*Progress) (WatchState, int) {
 	started, watched := 0, 0
 	for _, p := range progress {

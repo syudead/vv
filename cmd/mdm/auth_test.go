@@ -52,7 +52,8 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	authenticator, apiTokens := newHTTPAuth(db.Auth())
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: db.Library(), Assets: fstest.MapFS{}, Auth: authenticator, APITokens: apiTokens,
+		Vocabulary: newVocabularyChanges(db),
+		Videos:     db.Library(), Assets: fstest.MapFS{}, Auth: authenticator, APITokens: apiTokens,
 	})
 	serve := func(method, target, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, target, strings.NewReader(body))

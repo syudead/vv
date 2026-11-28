@@ -94,7 +94,8 @@ func newThumbnailImageFixture(t *testing.T) *thumbnailImageFixture {
 		Index: db.Library(), Ingest: db.Ingest(), Files: artifactStore, Logger: logger,
 	})
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: db.Library(), Playback: db.Playback(), Catalog: catalog, Artifacts: artifactStore,
+		Vocabulary: newVocabularyChanges(db),
+		Videos:     db.Library(), Playback: db.Playback(), Catalog: catalog, Artifacts: artifactStore,
 		MediaFolders: db.Settings(), Files: mediafs.New(), ThumbnailPicker: ingest, ThumbnailUploads: ingest,
 		Assets: fstest.MapFS{}, Logger: logger, Auth: ownerAuth{},
 	})

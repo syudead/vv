@@ -156,7 +156,7 @@ const topGroupsSelect = `select g.id from groups g where not exists (select 1 fr
 
 const favoriteGroupsSelect = `select group_id as id from group_favorites`
 
-// Keep watch-state classification equivalent to domain.ClassifyWatch.
+// videoWatchStateExpr restates domain.ClassifyWatch; rule_equivalence_test.go compares them.
 const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
 				when p.content_key is null or p.position_ms = 0 then 'unwatched'
 				else 'inProgress' end`

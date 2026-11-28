@@ -447,9 +447,10 @@ func TestStreamPathStaysUnderAPI(t *testing.T) {
 func TestStreamWithoutMediaFilesIsInternalError(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "movie.mp4", 16)
 	handler := NewRouter(Options{
-		Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
-		Assets: emptyAssets{},
-		Auth:   ownerAuth{},
+		Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Assets:     emptyAssets{},
+		Auth:       ownerAuth{},
+		Vocabulary: testVocabulary(nil, nil, nil),
 	})
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1/stream"); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)

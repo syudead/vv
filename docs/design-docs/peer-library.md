@@ -205,6 +205,44 @@ after the entity id by their name. A test fails when an entity operation is
 neither forwarded nor kept, when a forwarded JSON answer has no rewriter, or
 when a body's id field or a path parameter has no translator; such an
 operation answers `404` until one is added, rather than forwarding wrong ids.
+
+The spec says which response fields are ids and of which kind. `task generate`
+lists, for each JSON response schema, every integer or integer array named
+`id`, `ids`, `*Id` or `*Ids` at any depth, as a JSON pointer with its kind
+(`gen.ScreenResponseIDs`). The kind is read from `x-vv-entity` as the
+[assistant registry](assistant.md) reads it: on the property, on an id array's
+items, or on the enclosing object for that object's own `id`. Generation fails
+on a response id without a kind. An id whose entity a sibling `kind` field
+names takes a kind for that union, such as `assistantLabel`, `smartRuleRef` or
+`credit`; `selectionTarget` is a selection's video, or a group or smart folder
+of a collections delete.
+
+Code that decodes a peer answer rewrites it with a named function for its
+response schema, never with id rewrites inline: the merged video, library and
+watch-history lists, root folders, smart-folder lists, cards, details and item
+pages, credit merges, the tag and edit answers and summaries of a selection,
+and fill targets. A rewriter registered for forwarding, or listed with these in
+the test, is checked against the schema its generated type names.
+`TestRemoteRewritesCoverEveryResponseID` builds an answer holding every listed
+id for each such rewriter and checks the rewritten answer:
+
+| Field kind | Required after the rewrite |
+| --- | --- |
+| `tag`, `tagKind`, `person`, `organization` in an object with a `name` | The local id of that name |
+| Any other kind, or a vocabulary id without a `name` beside it | The offset form |
+| Listed in the test as dropped, with the reason | Absent from the answer |
+
+A new id field in a rewritten schema therefore fails the test until its
+rewriter covers it, instead of reaching the screens in the peer's ids. The
+credit matches of a work-info fetch, whose kind is the request's, and the
+related-video pages, whose peer ids rank the list before each video is
+rewritten, are read for the peer's ids and stay outside the test.
+
+The rewriters are hand-written rather than driven from `gen.ScreenResponseIDs`.
+A driver would walk each decoded value by JSON pointer through reflection or a
+second decode of every list page, and would still need hand-written code for
+URLs, dropped fields, the peer's own values and a smart rule joined by the
+names beside it. The test already fails on any id the hand-written code misses.
 Media operations are proxied as byte streams with `Range` and the caching
 headers passed through, since the browser has no session on the peer.
 
@@ -217,7 +255,7 @@ headers passed through, since the browser has no session on the peer.
 | Related videos, work-info and person plugin fetches, thumbnail edits, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
 | A remote video's `progress` and `favorite`, a remote group's or smart folder's watch values and `favorite`, a remote person's `favorite` | The peer's, kept by the rewrite ([Progress, history and favorites](#progress-history-and-favorites)) |
 | Playlists, activity | Not entity collections; they stay with each node |
-| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404` |
+| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404`; the `undoActivityId` of a move or a confirmation is left out, since the entry is in the peer's activity log |
 | A face move of the peer's appearances from a local person, as the undo of a move to that person sends | Forwarded from the peer's person of that name, `404` when the peer lacks the name |
 | A face edit of a remote person naming this node's appearance | `400 invalid_request` with reason `mixed_nodes`; a similar-people read ignores this node's appearances |
 | Forwarded write | The peer's status, `code` and `reason` |
@@ -343,12 +381,31 @@ node alone.
 Synonyms, kinds of a tag, tentative state, rejected names, images and links
 stay per node.
 
+The `VocabularyChanges` use case in `internal/app` owns this order, the checks
+before any write and the tag-name lock
+([tag-organizing.md](tag-organizing.md#promote-reaches-the-paired-nodes)); it
+reaches the links through the `domain.VocabularyLinks` port, which the HTTP
+layer implements per request, and answers typed errors
+(`domain.VocabularyLinkError`, `domain.VocabularyNameTakenError`, and
+`domain.VocabularyStepError` naming the read of this node that failed) that
+the screen API maps to its statuses and messages. The HTTP server cannot be
+built without the use case, so no configuration answers these writes 500 or
+skips the lock. Merges plan their names in the HTTP layer and send them
+through the same use case.
+
+The external API (`/api/v1` and `/mcp`) writes this node's vocabulary only,
+batch deletion included
+([external-api.md](../how-to/external-api.md)): its token holder sees this
+node's library alone, so a deletion by name would remove entries on a node it
+cannot see.
+
 | Rejected | Why |
 | --- | --- |
 | A node column or a cache of the peer's vocabulary | Pairing would change local data, and a cache goes stale |
 | Applying locally and replaying later | A replay queue needs its own conflict handling |
 | Writing the connected links and skipping the rest | A link that is down would keep the old name, and the screens would show two entries |
 | Undoing the earlier links after a refusal | A deletion or merge has no inverse write |
+| The external API's rename, merge or batch deletion reaching the links | Its caller addresses this node's ids and reads this node's lists only, and the how-to promises a change of this VVMDM only |
 
 ## Collections
 

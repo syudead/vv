@@ -15,7 +15,7 @@ type OllamaConnection interface {
 	Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error)
 	SaveSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
 	Check(ctx context.Context) error
-	// Models lists the models at the saved endpoint; errors wrap domain.ErrOllamaUnreachable or domain.ErrNotOllama.
+	// Models lists the models at the saved endpoint; errors wrap domain.ErrProviderUnreachable or domain.ErrUnexpectedProvider.
 	Models(ctx context.Context) ([]domain.OllamaModel, error)
 	AssistantReadiness(ctx context.Context) (domain.AssistantStatus, error)
 }
@@ -115,10 +115,10 @@ func (s *server) ListOllamaModels(w http.ResponseWriter, r *http.Request) {
 	}
 	models, err := s.ollama.Models(r.Context())
 	switch {
-	case errors.Is(err, domain.ErrOllamaUnreachable), errors.Is(err, domain.ErrOllamaTimeout):
+	case errors.Is(err, domain.ErrProviderUnreachable), errors.Is(err, domain.ErrProviderTimeout):
 		s.writeReasonError(w, http.StatusConflict, codeOllamaUnreachable, gen.ErrorReasonConnection, err.Error())
 		return
-	case errors.Is(err, domain.ErrNotOllama):
+	case errors.Is(err, domain.ErrUnexpectedProvider):
 		s.writeReasonError(w, http.StatusConflict, codeOllamaUnreachable, gen.ErrorReasonNotOllama, err.Error())
 		return
 	case err != nil:

@@ -113,8 +113,8 @@ func (s *server) tagOnPeer(r *http.Request, action gen.VideoTagsAction, link lin
 		s.logger.Warn("could not join the other VVMDM's tag", slog.Any("error", err))
 		return nil, answer.Applied
 	}
-	ref := peerTagRef(answer.Tag, join)
-	return &ref, answer.Applied
+	rewriteRemoteVideoTagsResponse(&answer, join)
+	return &answer.Tag, answer.Applied
 }
 
 func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +148,8 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 		if !s.peerSelectionRead(r, "/api/video-tags/summary", link, &peer) {
 			continue
 		}
-		items := peerTagSummaryItems(peer.Items, join.InSlot(link.slot))
+		rewriteRemoteTagsSummary(&peer, join.InSlot(link.slot))
+		items := tagSummaryItems(peer.Items)
 		join.HoldTags(items)
 		summary = domain.MergeTagSummaries(summary, domain.TagSummary{Total: peer.Total, Items: items})
 	}

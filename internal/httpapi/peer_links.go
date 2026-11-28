@@ -67,20 +67,6 @@ func (e *linkError) Error() string { return e.name + ": " + e.err.Error() }
 
 func (e *linkError) Unwrap() error { return e.err }
 
-// namedLinkError is err with the name of the link in slot, or err alone when this node has no link there.
-func (s *server) namedLinkError(ctx context.Context, slot int64, err error) error {
-	links, readErr := s.readLinks(ctx)
-	if readErr != nil {
-		return err
-	}
-	for _, link := range links {
-		if link.Link.Slot == slot {
-			return &linkError{name: link.Link.Name, err: err}
-		}
-	}
-	return err
-}
-
 // linkErrorName is the name of the link err names, empty when it names none.
 func linkErrorName(err error) string {
 	var link *linkError

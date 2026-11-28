@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"slices"
 
@@ -46,12 +45,12 @@ func (s *server) PromoteTagSynonym(w http.ResponseWriter, r *http.Request, id ge
 	if !s.readJSONBody(w, r, &body) || !s.localTagID(w, id) {
 		return
 	}
-	defer s.holdTagNames()()
-	if !s.promoteTagOnPeer(w, r, id, body.Name) {
+	tag, err := s.vocabulary.PromoteTagSynonym(r.Context(), s.links(), id, body.Name)
+	if err != nil {
+		s.writeTagChangeError(w, err, normalizedTagNameOrRaw(body.Name))
 		return
 	}
-	tag, err := s.tags.PromoteSynonym(r.Context(), id, body.Name)
-	s.answerTag(w, http.StatusOK, func() any { return toAPITag(tag) }, err, normalizedTagNameOrRaw(body.Name))
+	s.answerTag(w, http.StatusOK, func() any { return toAPITag(tag) }, nil, "")
 }
 
 func (s *server) MoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen.TagId) {
@@ -101,28 +100,7 @@ func (s *server) localTagID(w http.ResponseWriter, id int64) bool {
 	return true
 }
 
-// holdTagNames takes tagNameWrites and returns its unlock, for a deferred call.
-func (s *server) holdTagNames() (unlock func()) {
-	s.tagNameWrites.Lock()
-	return s.tagNameWrites.Unlock
-}
-
 // namesNewTags reports whether inputs name a tag by name, which creates the tag when no tag holds the name.
 func namesNewTags(inputs []domain.TagInput) bool {
 	return slices.ContainsFunc(inputs, func(input domain.TagInput) bool { return input.ID == nil })
-}
-
-// promoteTagOnPeer makes name the canonical name of every link's tag of id's canonical name before PromoteSynonym
-// changes id, so tags stay joined by canonical name. A name that is not id's synonym is left to the local promote's
-// answer.
-func (s *server) promoteTagOnPeer(w http.ResponseWriter, r *http.Request, id int64, name string) bool {
-	return s.tagNameOnPeer(w, r, id, name, domain.VocabularyPromote, func(ctx context.Context, _, normalized string) (send, ok bool) {
-		holder, held, err := s.tags.LookupTagName(ctx, normalized)
-		if err != nil {
-			s.internalError(w, "Could not look up the tag name.", err)
-			return false, false
-		}
-		synonym := held && domain.CheckSynonymOf(id, &domain.TagNameHolder{TagID: holder.ID, Canonical: holder.Name == normalized}) == nil
-		return synonym, true
-	})
 }

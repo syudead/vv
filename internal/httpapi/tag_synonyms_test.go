@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -155,19 +156,31 @@ func TestPromoteWithTheStoppedPeerChangesNothing(t *testing.T) {
 	}
 }
 
-// lockProbeTags records, per store write, whether the server's tagNameWrites was held when the write arrived.
+// heldVocabulary is the vocabulary use case whose HoldTagNames records that the tag-name lock is held until its
+// unlock.
+type heldVocabulary struct {
+	*app.VocabularyChanges
+	held bool
+}
+
+func (v *heldVocabulary) HoldTagNames() (unlock func()) {
+	release := v.VocabularyChanges.HoldTagNames()
+	v.held = true
+	return func() {
+		v.held = false
+		release()
+	}
+}
+
+// lockProbeTags records, per store write, whether a handler held the tag-name lock when the write arrived.
 type lockProbeTags struct {
 	*fakeTags
-	srv  *server
-	held map[string]bool
+	vocabulary *heldVocabulary
+	held       map[string]bool
 }
 
 func (p *lockProbeTags) probe(operation string) {
-	free := p.srv.tagNameWrites.TryLock()
-	if free {
-		p.srv.tagNameWrites.Unlock()
-	}
-	p.held[operation] = !free
+	p.held[operation] = p.vocabulary.held
 }
 
 func (p *lockProbeTags) RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error) {
@@ -258,12 +271,13 @@ func (o lockProbeOnboarding) PickInterests(context.Context, []string) (domain.In
 }
 
 // A promote or rename sends the links its change before the local write, so every local write that can take the
-// synonym or the tag away, or give a tag the new name, waits for tagNameWrites; otherwise the local write fails
-// after the links changed.
+// synonym or the tag away, or give a tag the new name, waits for the tag-name lock; otherwise the local write fails
+// after the links changed. The use case's own tests check that a promote and a rename hold it.
 func TestTagNameWritesWaitForAPromoteOrRename(t *testing.T) {
 	srv := &server{logger: discardLogger()}
-	probe := &lockProbeTags{fakeTags: &fakeTags{}, srv: srv, held: map[string]bool{}}
-	srv.tags = probe
+	probe := &lockProbeTags{fakeTags: &fakeTags{}, held: map[string]bool{}}
+	probe.vocabulary = &heldVocabulary{VocabularyChanges: testVocabulary(probe, nil, nil)}
+	srv.tags, srv.vocabulary = probe, probe.vocabulary
 	srv.videoEdits = lockProbeVideoEdits{probe: probe}
 	srv.onboarding = lockProbeOnboarding{probe: probe}
 	name := "猫"
@@ -277,8 +291,6 @@ func TestTagNameWritesWaitForAPromoteOrRename(t *testing.T) {
 		operation string
 		call      func(w http.ResponseWriter)
 	}{
-		{"rename", func(w http.ResponseWriter) { srv.RenameTag(w, post("/api/tags/3", `{"name":"猫"}`), 3) }},
-		{"promote", func(w http.ResponseWriter) { srv.PromoteTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
 		{"move", func(w http.ResponseWriter) { srv.MoveTagSynonym(w, post("/", `{"name":"ねこ","targetId":4}`), 3) }},
 		{"detach", func(w http.ResponseWriter) { srv.DetachTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
 		{"add-synonym", func(w http.ResponseWriter) { srv.AddTagSynonym(w, post("/", `{"name":"ねこ"}`), 3) }},
@@ -321,77 +333,39 @@ func TestTagNameWritesWaitForAPromoteOrRename(t *testing.T) {
 	}
 }
 
-// linkedLockProbe is one connected link whose node records whether the server's tagNameWrites was held when a
-// vocabulary change arrived, and applies every change.
-type linkedLockProbe struct {
+// pathLink is one connected link that records the path of every request it gets.
+type pathLink struct {
 	Pairing
-	srv  *server
-	sent []bool
+	paths []string
 }
 
-func (l *linkedLockProbe) State(context.Context) (domain.PeerState, error) {
+func (l *pathLink) State(context.Context) (domain.PeerState, error) {
 	return domain.PeerState{Links: []domain.PeerLinkState{{
 		Link: domain.PeerLink{Slot: 1, Name: "node-a"}, State: domain.PeerConnected,
 	}}}, nil
 }
 
-func (l *linkedLockProbe) Forward(req *http.Request, _ int64, _, _ bool) (*http.Response, error) {
-	answer := `{"items":[]}`
-	if req.URL.Path == "/api/peer/vocabulary" {
-		free := l.srv.tagNameWrites.TryLock()
-		if free {
-			l.srv.tagNameWrites.Unlock()
-		}
-		l.sent = append(l.sent, !free)
-		answer = `{"changed":true,"skipped":[]}`
-	}
+func (l *pathLink) Forward(req *http.Request, _ int64, _, _ bool) (*http.Response, error) {
+	l.paths = append(l.paths, req.URL.Path)
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": {contentTypeJSON}},
-		Body:       io.NopCloser(strings.NewReader(answer)),
-		Request:    req,
+		StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {contentTypeJSON}},
+		Body: io.NopCloser(strings.NewReader(`{"items":[]}`)), Request: req,
 	}, nil
 }
 
-// linkedTags is tag 3, 猫, which holds ねこ as a synonym when synonym is set.
-type linkedTags struct {
-	*lockProbeTags
-	synonym bool
-}
+// The external API changes this node's tags only, so its batch deletion reaches no link even while one is
+// connected, unlike the screens' batch deletion.
+func TestExternalBatchDeleteChangesThisNodeOnly(t *testing.T) {
+	tags := &fakeTags{}
+	link := &pathLink{}
+	srv := &server{logger: discardLogger(), tags: tags, vocabulary: testVocabulary(tags, nil, nil), pairing: link, peerLink: link}
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"action":"delete","ids":[3]}`))
+	r.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	(&externalServer{s: srv}).BatchTags(rec, r)
 
-func (l *linkedTags) TagNames(context.Context, []int64) (map[int64]string, error) {
-	return map[int64]string{3: "猫"}, nil
-}
-
-func (l *linkedTags) LookupTagName(context.Context, string) (domain.TagRef, bool, error) {
-	return domain.TagRef{ID: 3, Name: "猫"}, l.synonym, nil
-}
-
-// A promote or rename writes the links under tagNameWrites as well as the local write, so a write that waits for
-// the lock cannot fall between them.
-func TestPromoteAndRenameWriteTheLinksUnderTagNameWrites(t *testing.T) {
-	for _, tc := range []struct {
-		operation string
-		synonym   bool
-		call      func(srv *server, w http.ResponseWriter, r *http.Request)
-	}{
-		{"promote", true, func(srv *server, w http.ResponseWriter, r *http.Request) { srv.PromoteTagSynonym(w, r, 3) }},
-		{"rename", false, func(srv *server, w http.ResponseWriter, r *http.Request) { srv.RenameTag(w, r, 3) }},
-	} {
-		srv := &server{logger: discardLogger()}
-		link := &linkedLockProbe{srv: srv}
-		srv.pairing, srv.peerLink = link, link
-		srv.tags = &linkedTags{
-			lockProbeTags: &lockProbeTags{fakeTags: &fakeTags{}, srv: srv, held: map[string]bool{}}, synonym: tc.synonym,
-		}
-		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"ねこ"}`))
-		r.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		tc.call(srv, rec, r)
-
-		if !slices.Equal(link.sent, []bool{true}) {
-			t.Errorf("%s: tagNameWrites held at each links' write = %v, want [true]: %d %s",
-				tc.operation, link.sent, rec.Code, rec.Body)
-		}
+	if rec.Code != http.StatusOK || len(link.paths) != 0 || !slices.Equal(tags.lastIDs, []int64{3}) {
+		t.Errorf("status %d, link requests %v, local batch ids %v; want 200, none, [3]: %s",
+			rec.Code, link.paths, tags.lastIDs, rec.Body)
 	}
 }

@@ -302,7 +302,7 @@ func TestStartWithQwenUsesItsWorkflows(t *testing.T) {
 	f := newRunProvider(t, false)
 	client := NewWithOptions(fixedSettings{}, Options{DiffusionModel: "klein-4b-finetune.safetensors"})
 	conn := f.conn()
-	conn.Model = domain.ComfyUIModelQwenImageEdit
+	conn.Model = ModelQwenImageEdit
 	frame := pngOf(t, 8, 6, color.RGBA{R: 200, A: 255})
 	reference := pngOf(t, 4, 4, color.RGBA{B: 200, A: 255})
 	cases := []struct {

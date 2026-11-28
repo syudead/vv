@@ -47,7 +47,8 @@ func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 		if !s.peerSelectionRead(r, "/api/video-edits/summary", link, &peer) {
 			continue
 		}
-		part := peerEditSummary(peer, join.InSlot(link.slot))
+		rewriteRemoteEditSummary(&peer, join.InSlot(link.slot))
+		part := editSummary(peer)
 		join.Hold(part)
 		summary = domain.MergeVideoEditSummaries(summary, part)
 	}

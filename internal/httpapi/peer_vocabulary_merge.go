@@ -105,7 +105,7 @@ func (s *server) mergeOnBothNodes(w http.ResponseWriter, r *http.Request, target
 // Ids in the offset form name no entry of this node, so nothing merges here, and a provisional person, such as the
 // one a face split makes, has no name to send.
 func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditKindAPI, target int64, sources []int64) {
-	if !s.mergeOnOtherLinks(w, r, vocabularyKindOf(api.kind), target, sources) {
+	if !s.mergeOnOtherLinks(w, r, domain.VocabularyKindOf(api.kind), target, sources) {
 		return
 	}
 	peerSources := slices.Clone(sources)
@@ -136,21 +136,29 @@ func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditK
 		s.vocabularyFailure(w, err)
 		return
 	}
-	for i, id := range answer.NotFoundIds {
-		answer.NotFoundIds[i] = join.Remote(id)
-	}
 	if answer.Person != nil {
-		rewriteRemotePerson(answer.Person, join)
-		s.writeCreditBody(w, http.StatusOK, gen.PersonMergeResponse{Person: *answer.Person, NotFoundIds: nonNilIDs(answer.NotFoundIds)})
+		merged := gen.PersonMergeResponse{Person: *answer.Person, NotFoundIds: nonNilIDs(answer.NotFoundIds)}
+		rewriteRemotePersonMerge(&merged, join)
+		s.writeCreditBody(w, http.StatusOK, merged)
 		return
 	}
 	if answer.Organization != nil {
-		rewriteRemoteOrganizationEntity(answer.Organization, join)
-		s.writeCreditBody(w, http.StatusOK,
-			gen.OrganizationMergeResponse{Organization: *answer.Organization, NotFoundIds: nonNilIDs(answer.NotFoundIds)})
+		merged := gen.OrganizationMergeResponse{Organization: *answer.Organization, NotFoundIds: nonNilIDs(answer.NotFoundIds)}
+		rewriteRemoteOrganizationMerge(&merged, join)
+		s.writeCreditBody(w, http.StatusOK, merged)
 		return
 	}
 	s.internalError(w, "The other VVMDM answered the merge without the "+string(api.kind)+".", nil)
+}
+
+func rewriteRemotePersonMerge(merged *gen.PersonMergeResponse, join domain.VocabularyJoin) {
+	rewriteRemotePerson(&merged.Person, join)
+	rewriteRemoteIDs(&merged.NotFoundIds, join)
+}
+
+func rewriteRemoteOrganizationMerge(merged *gen.OrganizationMergeResponse, join domain.VocabularyJoin) {
+	rewriteRemoteOrganizationEntity(&merged.Organization, join)
+	rewriteRemoteIDs(&merged.NotFoundIds, join)
 }
 
 // mergeOnOtherLinks merges by name, on every link but the target's, the named entries of a merge the target's link
@@ -234,7 +242,7 @@ func (s *server) tagMergeSide() mergeSide {
 func (s *server) creditMergeSide(api creditKindAPI) mergeSide {
 	notFound := func(w http.ResponseWriter) { s.writeCreditError(w, api, domain.ErrNotFound) }
 	return mergeSide{
-		kind:     vocabularyKindOf(api.kind),
+		kind:     domain.VocabularyKindOf(api.kind),
 		notFound: notFound,
 		fail:     func(w http.ResponseWriter, err error) { s.writeCreditError(w, api, err) },
 		entry: func(ctx context.Context, name string) (int64, error) {

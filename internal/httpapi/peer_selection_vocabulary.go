@@ -89,7 +89,7 @@ func rememberCreated(v editVocabulary) editVocabulary {
 	v.create = func(kind domain.CreditKind, name string) (int64, error) {
 		made, err := create(kind, name)
 		if err == nil {
-			vocabulary := vocabularyKindOf(kind)
+			vocabulary := domain.VocabularyKindOf(kind)
 			if created[vocabulary] == nil {
 				created[vocabulary] = map[string]int64{}
 			}
@@ -102,7 +102,7 @@ func rememberCreated(v editVocabulary) editVocabulary {
 
 func translateCreditEdit(v editVocabulary, index int, credit domain.CreditEdit) (domain.CreditEdit, error) {
 	out := domain.CreditEdit{Kind: credit.Kind, Role: credit.Role}
-	kind := vocabularyKindOf(credit.Kind)
+	kind := domain.VocabularyKindOf(credit.Kind)
 	for _, list := range []struct {
 		name string
 		ids  []int64
@@ -198,7 +198,7 @@ func (s *server) linkEditVocabulary(r *http.Request, slot int64, entries linkEnt
 			var created struct {
 				ID int64 `json:"id"`
 			}
-			err := s.peerCall(r, slot, http.MethodPost, vocabularyListPaths[vocabularyKindOf(kind)], nil, gen.CreditInput{Names: []gen.CreditName{{Name: name}}}, &created)
+			err := s.peerCall(r, slot, http.MethodPost, vocabularyListPaths[domain.VocabularyKindOf(kind)], nil, gen.CreditInput{Names: []gen.CreditName{{Name: name}}}, &created)
 			if err != nil {
 				return 0, fmt.Errorf("%w: %w", errPeerPart, err)
 			}
@@ -262,7 +262,7 @@ func (s *server) linkEntryCache(r *http.Request) linkEntries {
 		if names, ok := byName[k]; ok {
 			return names, byID[k], nil
 		}
-		items, err := s.peerEntries(r, slot, kind)
+		items, err := s.peerRequestEntries(r, slot, kind)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, fmt.Errorf("%w: %w", errPeerPart, err)
 		}

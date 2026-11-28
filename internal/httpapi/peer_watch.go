@@ -124,14 +124,19 @@ func (s *server) peerWatchHistory(
 	if err := s.peerGet(r, join.Slot, watchHistoryPath, query, &answer); err != nil {
 		return domain.MergeSide[gen.WatchHistoryEntry]{}, err
 	}
-	for i := range answer.Items {
-		entry := &answer.Items[i]
+	rewriteRemoteWatchHistory(&answer, join)
+	return peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
+}
+
+// rewriteRemoteWatchHistory keeps the peer's item cursors for the merged history that reads the page.
+func rewriteRemoteWatchHistory(page *gen.WatchHistoryPage, join domain.VocabularyJoin) {
+	for i := range page.Items {
+		entry := &page.Items[i]
 		entry.Id = join.Remote(entry.Id)
 		if entry.Video != nil {
 			rewriteRemoteVideo(entry.Video, join)
 		}
 	}
-	return peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 }
 
 // withPeerWatchHistoryDays adds every connected link's days to days; a link that fails is left out.

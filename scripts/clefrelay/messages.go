@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/syudead/vv/internal/ollama"
 )
 
 // workersChatMessage is an OpenAI-style chat message, the form Workers AI function calling and vision models take.
@@ -37,7 +39,7 @@ type imageURL struct {
 // workersMessages gives each Ollama tool call an id and each tool result the id of the earliest unanswered call to
 // its tool, because Ollama matches results by tool name and order while Workers AI matches them by id. Ids are nine
 // letters and digits, the only form Mistral models accept.
-func workersMessages(in []ollamaChatMessage, userAfterTool bool) ([]workersChatMessage, error) {
+func workersMessages(in []ollama.ChatMessage, userAfterTool bool) ([]workersChatMessage, error) {
 	out := make([]workersChatMessage, len(in))
 	var pending []workersToolCall
 	for i, m := range in {
@@ -83,7 +85,7 @@ func bridgeToolResults(messages []workersChatMessage) []workersChatMessage {
 	return out
 }
 
-func workersCall(id string, call ollamaToolCall) (workersToolCall, error) {
+func workersCall(id string, call ollama.ChatToolCall) (workersToolCall, error) {
 	wire := workersToolCall{ID: id, Type: "function"}
 	wire.Function.Name = call.Function.Name
 	encoded, err := json.Marshal(string(objectOrEmpty(call.Function.Arguments)))
@@ -111,7 +113,7 @@ func answerCall(pending []workersToolCall, name string, index int) (string, []wo
 }
 
 // messageContent sends images as data URLs beside the text, tiling more than four as Clef requests do.
-func messageContent(m ollamaChatMessage) (any, error) {
+func messageContent(m ollama.ChatMessage) (any, error) {
 	if len(m.Images) == 0 {
 		return m.Content, nil
 	}

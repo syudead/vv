@@ -16,6 +16,7 @@ import {
   getTag,
   getTags,
   listRejectedTagNamePage,
+  maxTagBatch,
   mergeTag,
   moveTagSynonym,
   promoteTagSynonym,
@@ -28,6 +29,7 @@ import {
   summarizeVideoTags,
   tagImpact,
 } from "./tags";
+import { readDomainFixture } from "../testing/domainFixture";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -884,6 +886,13 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
 });
 
 describe("まとめての操作と確認の数", () => {
+  it("まとめての操作の上限は API の TagBatchRequest と同じ", () => {
+    // Go's foldcheck tests tie limits.json to the schema's maxItems and domain.MaxTagBatch.
+    expect(maxTagBatch).toBe(
+      readDomainFixture<{ maxTagBatch: number }>("limits.json").maxTagBatch,
+    );
+  });
+
   it("batchTagsはPOST /api/tags/batchを送り、成功後に購読者のいる共有の一覧を1回取り直して一覧の控えを捨てる", async () => {
     subscribeTags(() => undefined);
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });

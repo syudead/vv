@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,7 +17,10 @@ import (
 // The screen API's operation table, which the peer boundary builds its lists from.
 const operationsOut = "internal/httpapi/gen/operations.gen.go"
 
-const jsonMediaType = "application/json"
+const (
+	jsonMediaType   = "application/json"
+	entityExtension = "x-vv-entity"
+)
 
 // operation is one row of the generated table; see the ScreenOperation comment in the output.
 type operation struct {
@@ -27,6 +31,15 @@ type operation struct {
 	Request    string
 	PathParams []string
 	BodyIDs    []string
+	// ResponseIDs are the id fields of the JSON success response.
+	ResponseIDs []idField
+}
+
+// idField is an id-like integer of a schema: Field is a JSON pointer where "*" stands for every array item, and an
+// id array's pointer ends in "/*"; Kind is the x-vv-entity kind, or empty when the spec does not say.
+type idField struct {
+	Field string
+	Kind  string
 }
 
 type openAPIDoc map[string]any
@@ -109,7 +122,8 @@ func (d openAPIDoc) operation(method, path string, raw map[string]any) (operatio
 	}
 	schema := mapping(media)["schema"]
 	op.Request = schemaName(schema)
-	op.BodyIDs, err = d.integerIDFields(schema)
+	ids, err := d.idFields(schema, "", "", nil)
+	op.BodyIDs = topLevelNames(ids)
 	return op, err
 }
 
@@ -131,42 +145,138 @@ func (d openAPIDoc) successResponse(op *operation, responses map[string]any) err
 			if mediaType != jsonMediaType {
 				op.Streams = true
 			} else if op.Response == "" {
-				op.Response = schemaName(mapping(media)["schema"])
+				schema := mapping(media)["schema"]
+				op.Response = schemaName(schema)
+				if op.ResponseIDs, err = d.idFields(schema, "", "", nil); err != nil {
+					return err
+				}
+				if err := requireKinds(op.Response, op.ResponseIDs); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// integerIDFields names the body's top-level integer properties called id or ending in Id, and the integer arrays named ids or ending in Ids.
-func (d openAPIDoc) integerIDFields(schema any) ([]string, error) {
+// requireKinds refuses a response id without a kind, since the peer boundary's coverage test reads the kind to
+// decide which id a rewritten answer must carry.
+func requireKinds(response string, ids []idField) error {
+	for _, id := range ids {
+		if id.Kind == "" {
+			return fmt.Errorf("response %s: no %s names the kind of %s", response, entityExtension, id.Field)
+		}
+	}
+	return nil
+}
+
+// idFields walks the schema's objects and arrays for id-like integers (id, ids, *Id, *Ids), as tools/assistanttools
+// does for a request body. A kind comes from x-vv-entity on the property, on an id array's items, or on an
+// enclosing object, which names the kind of that object's own id.
+func (d openAPIDoc) idFields(schema any, pointer, inherited string, seen []string) ([]idField, error) {
+	ref, _ := mapping(schema)["$ref"].(string)
+	if ref != "" && slices.Contains(seen, ref) {
+		return nil, nil
+	}
+	if ref != "" {
+		seen = append(seen, ref)
+	}
 	resolved, err := d.resolve(schema)
 	if err != nil {
 		return nil, err
 	}
-	fields := []string{}
-	for name, raw := range mapping(resolved["properties"]) {
-		property, err := d.resolve(raw)
+	if kind := refEntity(mapping(schema), resolved); kind != "" {
+		inherited = kind
+	}
+	type nested struct {
+		schema             any
+		pointer, inherited string
+	}
+	var walk []nested
+	for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+		parts, _ := resolved[key].([]any)
+		for _, part := range parts {
+			walk = append(walk, nested{part, pointer, inherited})
+		}
+	}
+	if items, ok := resolved["items"]; ok {
+		walk = append(walk, nested{items, pointer + "/*", inherited})
+	}
+	var ids []idField
+	properties := mapping(resolved["properties"])
+	for _, name := range slices.Sorted(maps.Keys(properties)) {
+		field := pointer + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(name)
+		id, isID, err := d.idProperty(name, properties[name])
+		switch {
+		case err != nil:
+			return nil, err
+		case !isID:
+			walk = append(walk, nested{properties[name], field, ""})
+		case id.Kind == "" && name == "id":
+			id.Kind = inherited
+			fallthrough
+		default:
+			id.Field = field + id.Field
+			ids = append(ids, id)
+		}
+	}
+	for _, next := range walk {
+		found, err := d.idFields(next.schema, next.pointer, next.inherited, seen)
 		if err != nil {
 			return nil, err
 		}
-		switch {
-		case (name == "id" || strings.HasSuffix(name, "Id")) && hasType(property, "integer"):
-		case (name == "ids" || strings.HasSuffix(name, "Ids")) && hasType(property, "array"):
-			items, err := d.resolve(property["items"])
-			if err != nil {
-				return nil, err
-			}
-			if !hasType(items, "integer") {
-				continue
-			}
-		default:
-			continue
-		}
-		fields = append(fields, name)
+		ids = append(ids, found...)
 	}
-	slices.Sort(fields)
-	return fields, nil
+	return ids, nil
+}
+
+// idProperty reports whether the property is an id-like integer or integer array, with its kind; Field is "/*" for
+// an array and empty otherwise.
+func (d openAPIDoc) idProperty(name string, raw any) (idField, bool, error) {
+	if name != "id" && name != "ids" && !strings.HasSuffix(name, "Id") && !strings.HasSuffix(name, "Ids") {
+		return idField{}, false, nil
+	}
+	property, err := d.resolve(raw)
+	if err != nil {
+		return idField{}, false, err
+	}
+	kind := refEntity(mapping(raw), property)
+	switch {
+	case hasType(property, "integer"):
+		return idField{Kind: kind}, true, nil
+	case hasType(property, "array"):
+		items, err := d.resolve(property["items"])
+		if err != nil || !hasType(items, "integer") {
+			return idField{}, false, err
+		}
+		if itemKind := refEntity(mapping(property["items"]), items); itemKind != "" {
+			kind = itemKind
+		}
+		return idField{Field: "/*", Kind: kind}, true, nil
+	}
+	return idField{}, false, nil
+}
+
+// refEntity reads x-vv-entity next to a $ref first, then on the resolved schema.
+func refEntity(node, resolved map[string]any) string {
+	if kind, _ := node[entityExtension].(string); kind != "" {
+		return kind
+	}
+	kind, _ := resolved[entityExtension].(string)
+	return kind
+}
+
+// topLevelNames are the sorted names of the schema's own id properties.
+func topLevelNames(ids []idField) []string {
+	names := []string{}
+	for _, id := range ids {
+		name, rest, _ := strings.Cut(strings.TrimPrefix(id.Field, "/"), "/")
+		if name != "*" && (rest == "" || rest == "*") && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 // resolve follows local $ref chains; a missing value resolves to an empty mapping.
@@ -268,7 +378,39 @@ var ScreenOperations = []ScreenOperation{
 		b.WriteString("},\n")
 	}
 	b.WriteString("}\n")
+	renderResponseIDs(&b, ops)
 	return format.Source(b.Bytes())
+}
+
+func renderResponseIDs(b *bytes.Buffer, ops []operation) {
+	responses := map[string][]idField{}
+	for _, op := range ops {
+		if op.Response != "" && len(op.ResponseIDs) > 0 {
+			responses[op.Response] = op.ResponseIDs
+		}
+	}
+	b.WriteString(`
+// ScreenID is an id-like integer (id, ids, *Id, *Ids) of a schema.
+type ScreenID struct {
+	// Field is a JSON pointer where "*" stands for every array item; an id array's pointer ends in "/*".
+	Field string
+	// Kind is the entity kind x-vv-entity gives the field, its array's items or its enclosing object, or empty.
+	Kind string
+}
+
+// ScreenResponseIDs lists the id fields of each JSON success response schema that has any, by Response.
+var ScreenResponseIDs = map[string][]ScreenID{
+`)
+	for _, name := range slices.Sorted(maps.Keys(responses)) {
+		ids := slices.Clone(responses[name])
+		slices.SortFunc(ids, func(a, c idField) int { return strings.Compare(a.Field, c.Field) })
+		fmt.Fprintf(b, "\t%q: {\n", name)
+		for _, id := range ids {
+			fmt.Fprintf(b, "\t\t{Field: %q, Kind: %q},\n", id.Field, id.Kind)
+		}
+		b.WriteString("\t},\n")
+	}
+	b.WriteString("}\n")
 }
 
 func stringSlice(values []string) string {

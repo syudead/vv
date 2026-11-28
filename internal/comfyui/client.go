@@ -82,7 +82,7 @@ func NewWithOptions(settings SettingsSource, opts Options) *Client {
 
 // Only compatible models on self-hosted connections accept overrides.
 func (c *Client) diffusionModelFor(conn domain.ComfyUISettings) string {
-	if conn.Provider != domain.ComfyUISelfHosted || !presetFor(conn.EffectiveModel()).overridable {
+	if conn.Provider != domain.ComfyUISelfHosted || !presetFor(conn.Model).overridable {
 		return ""
 	}
 	return c.diffusionModel
@@ -129,7 +129,7 @@ func (c *Client) Check(ctx context.Context) error {
 }
 
 func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string, settings domain.ComfyUISettings) error {
-	required, err := workflowRequirement(settings.EffectiveModel(), c.diffusionModelFor(settings))
+	required, err := workflowRequirement(settings.Model, c.diffusionModelFor(settings))
 	if err != nil {
 		return err
 	}

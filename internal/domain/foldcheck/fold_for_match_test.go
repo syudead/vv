@@ -1,4 +1,5 @@
-// Package foldcheck_test validates shared Go/Web folding and sorting fixtures; it lives outside domain so fixture I/O does not violate depguard.
+// Package foldcheck_test validates the fixtures Go and the SPA share (folding, sorting, name rules, remote ids,
+// watch states and limits); it lives outside domain so fixture I/O does not violate depguard.
 package foldcheck_test
 
 import (

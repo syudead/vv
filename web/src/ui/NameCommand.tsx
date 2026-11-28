@@ -17,6 +17,7 @@ import type { UiText } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { isComposingKeyEvent } from "@/lib/ime";
 import { newlinePattern } from "@/lib/tagName";
+import { trimWhiteSpace } from "@/lib/textRules";
 import {
   Command,
   CommandGroup,
@@ -144,7 +145,7 @@ export default function NameCommand({
   }, [rules, value]);
 
   const blocked = busy || locked || reason !== null;
-  const trimmed = value.trim();
+  const trimmed = trimWhiteSpace(value);
   const showCreate =
     createLabel !== null &&
     (offerCreateWithExact || exactChoice === null) &&

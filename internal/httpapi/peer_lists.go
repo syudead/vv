@@ -265,6 +265,11 @@ func (s *server) peerGet(r *http.Request, slot int64, path string, query url.Val
 // peerCall sends body, when set, as JSON to path on the node of the link in slot as the viewer and decodes a 200
 // or 201 answer into out, when set; a 204 answers nothing, and any other answer is a *peerRefusal.
 func (s *server) peerCall(r *http.Request, slot int64, method, path string, query url.Values, body, out any) error {
+	return s.peerCallContext(r.Context(), slot, method, path, query, body, out)
+}
+
+// peerCallContext is peerCall for the viewer of ctx.
+func (s *server) peerCallContext(ctx context.Context, slot int64, method, path string, query url.Values, body, out any) error {
 	if s.peerLink == nil {
 		return domain.ErrPeerUnreachable
 	}
@@ -277,14 +282,14 @@ func (s *server) peerCall(r *http.Request, slot int64, method, path string, quer
 		payload = bytes.NewReader(raw)
 	}
 	target := url.URL{Path: path, RawQuery: query.Encode()}
-	req, err := http.NewRequestWithContext(r.Context(), method, target.String(), payload)
+	req, err := http.NewRequestWithContext(ctx, method, target.String(), payload)
 	if err != nil {
 		return err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	answer, err := s.peerSend(req, slot, !audienceFrom(r.Context()).IsOwner(), false)
+	answer, err := s.peerSend(req, slot, !audienceFrom(ctx).IsOwner(), false)
 	if err != nil || out == nil || answer == nil {
 		return err
 	}
@@ -325,7 +330,7 @@ func (s *server) peerSend(req *http.Request, slot int64, guest, media bool) ([]b
 type mergedRead[T any] struct {
 	path  string
 	local func(q domain.VideoQuery) (listPart[T], error)
-	// peer decodes and rewrites the answer of the link in slot into this node's id space.
+	// peer decodes and rewrites the answer of the link in slot into this node's id space, missing ids included.
 	peer func(r *http.Request, slot int64, query url.Values) (listPart[T], error)
 }
 
@@ -395,8 +400,8 @@ func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mer
 		sides = append(sides, part.side)
 		page.total += part.total
 		for _, id := range part.missing {
-			if remote := domain.RemoteID(part.side.Slot, id); !slices.Contains(page.missing, remote) {
-				page.missing = append(page.missing, remote)
+			if !slices.Contains(page.missing, id) {
+				page.missing = append(page.missing, id)
 			}
 		}
 	}
@@ -461,7 +466,7 @@ func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q doma
 			if err := s.peerGet(r, slot, "/api/videos", query, &answer); err != nil {
 				return listPart[gen.Video]{}, err
 			}
-			rewriteRemoteVideos(answer.Items, join.InSlot(slot))
+			rewriteRemoteVideoListing(&answer, join.InSlot(slot))
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.Video]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err
 		},
@@ -502,9 +507,7 @@ func (s *server) listMergedLibrary(w http.ResponseWriter, r *http.Request, q dom
 			if err := s.peerGet(r, slot, "/api/library", query, &answer); err != nil {
 				return listPart[gen.LibraryItem]{}, err
 			}
-			for i := range answer.Items {
-				rewriteRemoteLibraryItem(&answer.Items[i], join.InSlot(slot))
-			}
+			rewriteRemoteLibraryPage(&answer, join.InSlot(slot))
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.LibraryItem]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err
 		},

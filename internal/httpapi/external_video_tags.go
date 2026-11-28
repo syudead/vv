@@ -152,24 +152,8 @@ func (e *externalServer) writeVideoTagsError(w http.ResponseWriter, err error) {
 	var nameAt *domain.TagNameAtError
 	var invalid *domain.InvalidTagNameError
 	if errors.As(err, &nameAt) && errors.As(err, &invalid) {
-		body := extgen.Error{Code: extgen.ErrorCodeInvalidRequest, Index: &nameAt.Index}
-		prefix := "Tag " + strconv.Itoa(nameAt.Index) + ": "
-		var reason extgen.ErrorReason
-		switch invalid.Problem {
-		case domain.TagNameEmpty:
-			reason, body.Message = extgen.TagNameEmpty, prefix+"Enter a tag name."
-		case domain.TagNameControlCharacters:
-			reason, body.Message = extgen.TagNameControlCharacters, prefix+"Tag names cannot contain control characters."
-		case domain.TagNameTooLong:
-			limit := domain.TagNameMaxLength
-			reason, body.Limit = extgen.TagNameTooLong, &limit
-			body.Message = prefix + "Tag names must be at most " + strconv.Itoa(limit) + " characters."
-		}
-		if reason != "" {
-			body.Reason = &reason
-		} else {
-			body.Message = prefix + "The tag name cannot be used."
-		}
+		body := externalTagNameErrorBody(invalid, "Tag "+strconv.Itoa(nameAt.Index)+": ")
+		body.Index = &nameAt.Index
 		writeExternalError(w, e.s, http.StatusBadRequest, body)
 		return
 	}

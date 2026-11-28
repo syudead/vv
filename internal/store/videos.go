@@ -38,7 +38,8 @@ func registeredLocationCondition(alias string) string {
 	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + `)`
 }
 
-// inMediaFolderCondition matches pathExpr against media folder mf: the folder itself or any path under it.
+// inMediaFolderCondition restates domain.PathWithinRoot for cleaned paths against media folder mf; rule_equivalence_test.go
+// compares them.
 func inMediaFolderCondition(pathExpr string) string {
 	rootExpr := `mf.path`
 	if runtime.GOOS == "windows" {

@@ -22,16 +22,31 @@ type ComfyUIProbe interface {
 type ComfyUIConnection struct {
 	store ComfyUISettingsStore
 	probe ComfyUIProbe
-	mu    sync.Mutex
+	// models are the names the adapter offers, its default first.
+	models []domain.ComfyUIModel
+	mu     sync.Mutex
 }
 
-func NewComfyUIConnection(store ComfyUISettingsStore, probe ComfyUIProbe) *ComfyUIConnection {
-	return &ComfyUIConnection{store: store, probe: probe}
+// NewComfyUIConnection takes the adapter's model names, the default first, and shows an absent model as the default.
+func NewComfyUIConnection(store ComfyUISettingsStore, probe ComfyUIProbe, models []domain.ComfyUIModel) *ComfyUIConnection {
+	return &ComfyUIConnection{store: store, probe: probe, models: models}
 }
 
 // An empty Provider means no saved connection.
 func (c *ComfyUIConnection) Settings(ctx context.Context) (domain.ComfyUISettings, error) {
-	return c.store.ComfyUISettings(ctx)
+	settings, err := c.store.ComfyUISettings(ctx)
+	if err != nil {
+		return domain.ComfyUISettings{}, err
+	}
+	return c.withDefaultModel(settings), nil
+}
+
+// withDefaultModel names the model an edit runs; the store keeps an absent model absent.
+func (c *ComfyUIConnection) withDefaultModel(settings domain.ComfyUISettings) domain.ComfyUISettings {
+	if settings.Model == "" && len(c.models) > 0 {
+		settings.Model = c.models[0]
+	}
+	return settings
 }
 
 // Serialize read-modify-write to avoid lost concurrent changes; domain validates updates and secret
@@ -43,14 +58,14 @@ func (c *ComfyUIConnection) SaveSettings(ctx context.Context, update domain.Comf
 	if err != nil {
 		return domain.ComfyUISettings{}, err
 	}
-	next, err := domain.ApplyComfyUISettingsUpdate(current, update)
+	next, err := domain.ApplyComfyUISettingsUpdate(current, update, c.models)
 	if err != nil {
 		return domain.ComfyUISettings{}, err
 	}
 	if err := c.store.SaveComfyUISettings(ctx, next); err != nil {
 		return domain.ComfyUISettings{}, err
 	}
-	return next, nil
+	return c.withDefaultModel(next), nil
 }
 
 // Check only the saved endpoint, never a request-supplied URL.

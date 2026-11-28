@@ -67,8 +67,8 @@ func TestListOllamaModels(t *testing.T) {
 	}
 
 	for kind, want := range map[error]gen.ErrorReason{
-		domain.ErrOllamaUnreachable: gen.ErrorReasonConnection,
-		domain.ErrNotOllama:         gen.ErrorReasonNotOllama,
+		domain.ErrProviderUnreachable: gen.ErrorReasonConnection,
+		domain.ErrUnexpectedProvider:  gen.ErrorReasonNotOllama,
 	} {
 		down := newAutoTaggingFixture(t, ollamaProbe{err: fmt.Errorf("at http://h: %w", kind)})
 		rec := down.env.get("/api/settings/ollama/models", down.owner)

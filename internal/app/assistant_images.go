@@ -21,6 +21,7 @@ type AssistantModel interface {
 }
 
 const (
+	// toolClef is the name the panel renders a judging step by; the wire's format fills the rest of the tool.
 	toolClef       = "clef"
 	toolViewImages = "view_images"
 )
@@ -34,20 +35,53 @@ const viewImageJPEGQuality = 85
 const imageReferencesSchema = `{"type":"array","items":{"type":"string"},"description":"Image references, the ` +
 	`\"image\" strings that image tools answered, such as \"getVideoFrame?id=7&positionMs=1000\"."}`
 
-var clefDefinition = domain.ToolDefinition{
-	Name: toolClef,
-	Description: "Ask Clef, the app's judging model, yes/no questions about images and facts. The arguments are " +
-		"Clef's own request: state (named facts as strings), images (image references) and questions (keyed by your " +
-		"own keys, each {\"type\":\"noul\",\"instructions\":\"the question in English\"}). Answers Clef's answer as it " +
-		"is: for each key, noul is the probability of yes from 0 to 1. Clef answers each question once for all the " +
-		"images of the call together, so judge each video in its own call. One call can take minutes on a CPU.",
-	Parameters: json.RawMessage(`{"type":"object","properties":{` +
-		`"state":{"type":"object","additionalProperties":{"type":"string"},"description":"Named facts, such as {\"title\":\"Trip\"}."},` +
-		`"images":` + imageReferencesSchema + `,` +
-		`"questions":{"type":"object","additionalProperties":{"type":"object","properties":{` +
-		`"type":{"type":"string","enum":["noul"]},"instructions":{"type":"string"}},"required":["type","instructions"]},` +
-		`"description":"Yes/no questions keyed by your own keys, such as {\"cat\":{\"type\":\"noul\",\"instructions\":\"Is a cat visible?\"}}."}},` +
-		`"required":["questions"]}`),
+// clefDefinition offers the wire's request as state (facts), images (references) and questions in its format.
+func clefDefinition(format domain.ClassifierWireFormat) domain.ToolDefinition {
+	type stringSchema struct {
+		Type string   `json:"type"`
+		Enum []string `json:"enum,omitempty"`
+	}
+	type questionSchema struct {
+		Type       string `json:"type"`
+		Properties struct {
+			Type         stringSchema `json:"type"`
+			Instructions stringSchema `json:"instructions"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	type mapSchema[T any] struct {
+		Type                 string `json:"type"`
+		AdditionalProperties T      `json:"additionalProperties"`
+		Description          string `json:"description"`
+	}
+	type parameters struct {
+		Type       string `json:"type"`
+		Properties struct {
+			State     mapSchema[stringSchema]   `json:"state"`
+			Images    json.RawMessage           `json:"images"`
+			Questions mapSchema[questionSchema] `json:"questions"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	question := questionSchema{Type: "object", Required: []string{"type", "instructions"}}
+	question.Properties.Type = stringSchema{Type: "string", Enum: format.QuestionTypes}
+	question.Properties.Instructions = stringSchema{Type: "string"}
+	p := parameters{Type: "object", Required: []string{"questions"}}
+	p.Properties.State = mapSchema[stringSchema]{
+		Type: "object", AdditionalProperties: stringSchema{Type: "string"},
+		Description: `Named facts, such as {"title":"Trip"}.`,
+	}
+	p.Properties.Images = json.RawMessage(imageReferencesSchema)
+	p.Properties.Questions = mapSchema[questionSchema]{
+		Type: "object", AdditionalProperties: question, Description: format.QuestionsDescription,
+	}
+	var encoded bytes.Buffer
+	enc := json.NewEncoder(&encoded)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(p) // Only strings, slices and valid raw JSON, which always encode.
+	return domain.ToolDefinition{
+		Name: toolClef, Description: format.Description, Parameters: bytes.TrimSuffix(encoded.Bytes(), []byte("\n")),
+	}
 }
 
 var viewImagesDefinition = domain.ToolDefinition{
@@ -76,7 +110,7 @@ func (l *turnLoop) imageTools(ctx context.Context) {
 func (l *turnLoop) imageDefinitions() []domain.ToolDefinition {
 	var out []domain.ToolDefinition
 	if l.clef {
-		out = append(out, clefDefinition)
+		out = append(out, clefDefinition(l.a.clef.WireFormat()))
 	}
 	if l.vision {
 		out = append(out, viewImagesDefinition)
@@ -112,9 +146,9 @@ func (l *turnLoop) runImageTool(ctx context.Context, call domain.ToolCall) (stri
 // reference cannot be read.
 func (l *turnLoop) runClef(ctx context.Context, raw json.RawMessage) (string, string) {
 	var args struct {
-		State     map[string]string              `json:"state"`
-		Images    []string                       `json:"images"`
-		Questions map[string]domain.ClefQuestion `json:"questions"`
+		State     map[string]string                        `json:"state"`
+		Images    []string                                 `json:"images"`
+		Questions map[string]domain.ClassifierWireQuestion `json:"questions"`
 	}
 	if err := decodeImageArguments(raw, &args); err != nil {
 		return "", "clef takes state as an object of strings, images as reference strings and questions as " +
@@ -124,7 +158,9 @@ func (l *turnLoop) runClef(ctx context.Context, raw json.RawMessage) (string, st
 	if failure != "" {
 		return "", failure
 	}
-	answer, err := l.a.clef.SystemOne(ctx, domain.ClefRequest{State: args.State, Images: images, Questions: args.Questions})
+	answer, err := l.a.clef.SendWire(ctx, domain.ClassifierWireRequest{
+		Facts: args.State, Images: images, Questions: args.Questions,
+	})
 	if err != nil {
 		return "", "clef failed: " + err.Error()
 	}

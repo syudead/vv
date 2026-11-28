@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/syudead/vv/internal/ollama"
 )
 
 // Gemma's own tool call format, which Workers AI sometimes leaves unparsed in reasoning_content:
@@ -15,9 +17,9 @@ const (
 
 // gemmaCalls reads reasoning that holds only Gemma tool calls as those calls. Anything else, such as prose or
 // arguments that do not become a JSON object, answers nil, so the reply stays empty.
-func gemmaCalls(reasoning string) []ollamaToolCall {
+func gemmaCalls(reasoning string) []ollama.ChatToolCall {
 	rest := strings.TrimSpace(reasoning)
-	var calls []ollamaToolCall
+	var calls []ollama.ChatToolCall
 	for rest != "" {
 		body, ok := strings.CutPrefix(rest, gemmaCallStart)
 		if !ok {
@@ -32,7 +34,7 @@ func gemmaCalls(reasoning string) []ollamaToolCall {
 		if !ok || name == "" || !valid {
 			return nil
 		}
-		var wire ollamaToolCall
+		var wire ollama.ChatToolCall
 		wire.Function.Name, wire.Function.Arguments = name, object
 		calls = append(calls, wire)
 		rest = strings.TrimSpace(after)

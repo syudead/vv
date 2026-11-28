@@ -305,7 +305,6 @@ func selectClaimableJob(ctx context.Context, conn *sql.Conn, claim domain.JobCla
 			and l.path > j.location_path order by l.path limit 1),
 		(select l.path from video_locations l where l.video_id = j.video_id and ` + available + ` order by l.path limit 1))`
 	onRoots := onRootsCondition("c.next_path", claim.Roots)
-	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
 	query := `select c.id, c.kind, c.video_id, c.attempts, c.force, c.priority, c.location_path, c.next_path from (
 		select j.id, j.kind, j.video_id, j.attempts, j.force, j.priority, j.run_after, j.location_path, ` + next + ` as next_path
 		from jobs j where j.state = 'queued' and j.kind = ? and j.run_after <= ? and j.priority <= ?` +
@@ -402,7 +401,7 @@ func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id in
 	return &c, nil
 }
 
-// Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows. A thumbnail parked under unavailable folders
+// claimConditionSQL restates domain.JobClaimCondition.Allows; rule_equivalence_test.go compares them. A thumbnail parked under unavailable folders
 // is not claimable, so it does not hold back seek sprites on other disks.
 func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []int64) string {
 	var cond string

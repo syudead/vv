@@ -9,7 +9,7 @@ import (
 )
 
 type OllamaSettingsStore interface {
-	// Return settings/defaults and saved-presence from one snapshot.
+	// Return settings and saved-presence from one snapshot; absent values are empty.
 	SavedOllamaSettings(ctx context.Context) (domain.OllamaSettings, bool, error)
 	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error
 }
@@ -27,9 +27,10 @@ type modelKey struct{ endpoint, model string }
 
 // Provider settings remain independent of feature enablement; see docs/design-docs/ai-layer.md.
 type OllamaConnection struct {
-	store OllamaSettingsStore
-	probe OllamaProbe
-	mu    sync.Mutex
+	store    OllamaSettingsStore
+	probe    OllamaProbe
+	defaults domain.OllamaSettings
+	mu       sync.Mutex
 	// Optional save hook resumes duplicate pairs waiting for connection settings; see
 	// docs/design-docs/duplicate-judging.md.
 	saved func(context.Context)
@@ -38,8 +39,11 @@ type OllamaConnection struct {
 	capabilities   map[modelKey]domain.ModelCapabilities
 }
 
-func NewOllamaConnection(store OllamaSettingsStore, probe OllamaProbe) *OllamaConnection {
-	return &OllamaConnection{store: store, probe: probe, capabilities: map[modelKey]domain.ModelCapabilities{}}
+// NewOllamaConnection fills the values the store leaves absent from defaults, which the provider adapter owns.
+func NewOllamaConnection(store OllamaSettingsStore, probe OllamaProbe, defaults domain.OllamaSettings) *OllamaConnection {
+	return &OllamaConnection{
+		store: store, probe: probe, defaults: defaults, capabilities: map[modelKey]domain.ModelCapabilities{},
+	}
 }
 
 // Register OnSaved once before accepting requests.
@@ -48,8 +52,12 @@ func (o *OllamaConnection) OnSaved(saved func(context.Context)) {
 }
 
 // Read settings and explicit-save status together, matching duplicate-judging wait rules.
-func (o *OllamaConnection) Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error) {
-	return o.store.SavedOllamaSettings(ctx)
+func (o *OllamaConnection) Settings(ctx context.Context) (domain.OllamaSettings, bool, error) {
+	settings, saved, err := o.store.SavedOllamaSettings(ctx)
+	if err != nil {
+		return domain.OllamaSettings{}, false, err
+	}
+	return settings.WithDefaults(o.defaults), saved, nil
 }
 
 // SaveSettings also rereads the generation model's capabilities from the stored settings, so the server only
@@ -67,7 +75,7 @@ func (o *OllamaConnection) SaveSettings(ctx context.Context, settings domain.Oll
 	if o.saved != nil {
 		o.saved(ctx)
 	}
-	if stored, _, err := o.store.SavedOllamaSettings(ctx); err == nil && stored.GenerationModel != "" {
+	if stored, _, err := o.Settings(ctx); err == nil && stored.GenerationModel != "" {
 		_, _ = o.readCapabilities(ctx, stored)
 	}
 	return normalized, nil
@@ -79,7 +87,7 @@ func (o *OllamaConnection) Check(ctx context.Context) error {
 	if err := o.probe.Check(ctx); err != nil {
 		return err
 	}
-	settings, _, err := o.store.SavedOllamaSettings(ctx)
+	settings, _, err := o.Settings(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot read the Ollama settings: %w", err)
 	}
@@ -105,7 +113,7 @@ func (o *OllamaConnection) Models(ctx context.Context) ([]domain.OllamaModel, er
 // AssistantReadiness asks Ollama only on the first read for an endpoint and model pair. When Ollama cannot
 // be reached then, the assistant counts as ready and the turn reports the connection failure.
 func (o *OllamaConnection) AssistantReadiness(ctx context.Context) (domain.AssistantStatus, error) {
-	settings, saved, err := o.store.SavedOllamaSettings(ctx)
+	settings, saved, err := o.Settings(ctx)
 	if err != nil {
 		return domain.AssistantStatus{}, err
 	}

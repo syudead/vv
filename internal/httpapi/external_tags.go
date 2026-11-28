@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
@@ -13,6 +12,8 @@ import (
 
 // External tag mutations reuse UI storage operations and take IDs from request bodies; this layer only validates and maps response errors.
 // Missing or null required properties are malformed input, not the 404 their zero IDs would otherwise produce.
+// They change this node's tags only, even while it reads others: unlike the screens' rename, merge and batch
+// deletion, none reaches a link (docs/design-docs/peer-library.md#vocabulary-by-name).
 
 // MergeTags is atomic; missing sources are returned in notFoundIds.
 func (e *externalServer) MergeTags(w http.ResponseWriter, r *http.Request) {
@@ -238,17 +239,5 @@ func (e *externalServer) writeTagConflict(w http.ResponseWriter, reason extgen.E
 }
 
 func (e *externalServer) writeInvalidTagName(w http.ResponseWriter, invalid *domain.InvalidTagNameError) {
-	switch invalid.Problem {
-	case domain.TagNameEmpty:
-		reason := extgen.TagNameEmpty
-		e.invalidRequest(w, &reason, "Enter a tag name.")
-	case domain.TagNameControlCharacters:
-		reason := extgen.TagNameControlCharacters
-		e.invalidRequest(w, &reason, "Tag names cannot contain control characters.")
-	case domain.TagNameTooLong:
-		e.invalidRequestLimit(w, extgen.TagNameTooLong, domain.TagNameMaxLength,
-			"Tag names must be at most "+strconv.Itoa(domain.TagNameMaxLength)+" characters.")
-	default:
-		e.invalidRequest(w, nil, "The tag name cannot be used.")
-	}
+	writeExternalError(w, e.s, http.StatusBadRequest, externalTagNameErrorBody(invalid, ""))
 }

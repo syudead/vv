@@ -12,7 +12,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/semaphore"
@@ -131,6 +130,29 @@ type Tags interface {
 	RenameTagKind(ctx context.Context, id int64, name string) (domain.TagKind, error)
 	SetTagKindCardFirst(ctx context.Context, id int64, cardFirst bool) (domain.TagKind, error)
 	DeleteTagKind(ctx context.Context, id int64) error
+}
+
+// VocabularyChanges writes a change of a tag, person or organization name on every paired link by name and then
+// here, in the order and under the tag-name lock docs/design-docs/peer-library.md#vocabulary-by-name describes;
+// app.VocabularyChanges implements it. Its errors are *domain.VocabularyNameTakenError, *domain.VocabularyLinkError,
+// *domain.VocabularyStepError or the local store's.
+type VocabularyChanges interface {
+	// HoldTagNames takes the lock every local write that can give, change or take away a tag's name holds.
+	HoldTagNames() (unlock func())
+	RenameTag(ctx context.Context, links domain.VocabularyLinks, id int64, name string) (domain.Tag, error)
+	PromoteTagSynonym(ctx context.Context, links domain.VocabularyLinks, id int64, name string) (domain.Tag, error)
+	// RenameRemoteTag runs before the rename of the link's tag of the remote id is forwarded to that link.
+	RenameRemoteTag(ctx context.Context, links domain.VocabularyLinks, id int64, name string) error
+	UpdateCredit(
+		ctx context.Context, links domain.VocabularyLinks, kind domain.CreditKind, id int64, patch domain.CreditPatch,
+	) (domain.Credit, error)
+	// RenameRemoteCredit runs before a patch setting the display name newName is forwarded to the remote id's link.
+	RenameRemoteCredit(ctx context.Context, links domain.VocabularyLinks, kind domain.CreditKind, id int64, newName string) error
+	// DeleteOnLinks reports whether the local deletion follows the links'.
+	DeleteOnLinks(ctx context.Context, links domain.VocabularyLinks, kind domain.VocabularyKind, id int64) (bool, error)
+	Propagates(ctx context.Context, links domain.VocabularyLinks) (bool, error)
+	Names(ctx context.Context, links domain.VocabularyLinks, kind domain.VocabularyKind, ids []int64) (map[int64]string, error)
+	Send(ctx context.Context, links domain.VocabularyLinks, change domain.VocabularyChange, skip int64) (domain.VocabularyOutcome, error)
 }
 
 // Transcoder produces fragmented MP4 per request; Start returns with initial data and probes into
@@ -288,6 +310,9 @@ type Options struct {
 	Tags Tags
 
 	Credits Credits
+	// Vocabulary is required: tag renames, promotes, merges and deletions and person and organization updates,
+	// merges and deletions run through it, and every other tag-name write holds its lock.
+	Vocabulary VocabularyChanges
 	// Nil WorkInfo makes writes fail and omits workInfo from video responses.
 	WorkInfo WorkInfo
 	// Nil MediaInfo omits mediaInfo from video responses.
@@ -410,27 +435,23 @@ type Options struct {
 type server struct {
 	// favoritesMaxBody overrides the default byte limit for this server instance.
 	favoritesMaxBody int64
-	// tagNameWrites holds a local tag's rename or promote from the links' write through the local write, and every
-	// other local write that can give, change or take away a tag's name waits for it, so the local write cannot fail
-	// after the links changed (docs/design-docs/tag-organizing.md).
-	tagNameWrites sync.Mutex
-
-	build        domain.BuildInfo
-	pinger       Pinger
-	videos       Library
-	playback     Playback
-	scans        Scans
-	mediaFolders MediaFolders
-	folderUsage  MediaFolderUsage
-	tags         Tags
-	credits      Credits
-	workInfo     WorkInfo
-	mediaInfo    MediaInfoReader
-	visibility   Visibility
-	videoEdits   VideoEdits
-	codeEdits    VideoCodeEdits
-	favorites    Favorites
-	playlists    Playlists
+	build            domain.BuildInfo
+	pinger           Pinger
+	videos           Library
+	playback         Playback
+	scans            Scans
+	mediaFolders     MediaFolders
+	folderUsage      MediaFolderUsage
+	tags             Tags
+	credits          Credits
+	vocabulary       VocabularyChanges
+	workInfo         WorkInfo
+	mediaInfo        MediaInfoReader
+	visibility       Visibility
+	videoEdits       VideoEdits
+	codeEdits        VideoCodeEdits
+	favorites        Favorites
+	playlists        Playlists
 
 	playlistPlayback PlaylistPlaybackReader
 	watchHistory     WatchHistory
@@ -501,8 +522,12 @@ func NewRouter(opts Options) http.Handler {
 	return handler
 }
 
-// NewServer returns NewRouter's handler and the assistant's runner over the same handlers.
+// NewServer returns NewRouter's handler and the assistant's runner over the same handlers. It panics without
+// opts.Vocabulary, which every tag-name write takes its lock from.
 func NewServer(opts Options) (http.Handler, *ActionRunner) {
+	if opts.Vocabulary == nil {
+		panic("httpapi: Options.Vocabulary is required")
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -524,6 +549,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		folderUsage:            opts.FolderUsage,
 		tags:                   opts.Tags,
 		credits:                opts.Credits,
+		vocabulary:             opts.Vocabulary,
 		workInfo:               opts.WorkInfo,
 		mediaInfo:              opts.MediaInfo,
 		visibility:             opts.Visibility,

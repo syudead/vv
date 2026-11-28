@@ -15,7 +15,7 @@ import (
 // The runner reaches the real handlers for a read: the query reaches the service and the body is the handler's.
 func TestActionRunnerReadsThroughTheScreenHandler(t *testing.T) {
 	tags := &fakeTags{tags: []domain.Tag{{ID: 3, Name: "karaoke", Synonyms: []string{}}}}
-	_, runner := NewServer(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}})
+	_, runner := NewServer(testServerOptions(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}}))
 
 	result, err := runner.Read(context.Background(), domain.AssistantRead{
 		Operation: "listTags", Arguments: json.RawMessage(`{"q":"kara","limit":5}`),
@@ -40,7 +40,7 @@ func TestActionRunnerReadsThroughTheScreenHandler(t *testing.T) {
 // carry it; text that is not a number still fails the schema.
 func TestActionRunnerReadsQueryArgumentsAsTheirWireText(t *testing.T) {
 	tags := &fakeTags{tags: []domain.Tag{{ID: 3, Name: "karaoke", Synonyms: []string{}}}}
-	_, runner := NewServer(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}})
+	_, runner := NewServer(testServerOptions(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}}))
 
 	if _, err := runner.Read(context.Background(), domain.AssistantRead{
 		Operation: "listTags", Arguments: json.RawMessage(`{"limit":"5","unused":"false","cursor":"null","q":null}`),
@@ -58,7 +58,7 @@ func TestActionRunnerReadsQueryArgumentsAsTheirWireText(t *testing.T) {
 // An image operation answers a reference, and the reference reads back the handler's bytes and content type.
 func TestActionRunnerAnswersAnImageAsAReferenceThatReadsBack(t *testing.T) {
 	credits := &faceAppearanceCredits{crop: []byte("jpeg-bytes")}
-	_, runner := NewServer(Options{Credits: credits, Auth: ownerAuth{}, Assets: emptyAssets{}})
+	_, runner := NewServer(testServerOptions(Options{Credits: credits, Auth: ownerAuth{}, Assets: emptyAssets{}}))
 
 	result, err := runner.Read(context.Background(), domain.AssistantRead{
 		Operation: "getFaceAppearanceCrop", Arguments: json.RawMessage(`{"id":9}`),
@@ -173,7 +173,7 @@ func TestActionRunnerMasksURLCredentialsInReadResults(t *testing.T) {
 // A schema row's body is checked against the operation's schema before the handler runs.
 func TestActionRunnerValidatesASchemaRowsBodyBeforeTheCall(t *testing.T) {
 	credits := &faceAppearanceCredits{}
-	_, runner := NewServer(Options{Credits: credits, Auth: ownerAuth{}, Assets: emptyAssets{}})
+	_, runner := NewServer(testServerOptions(Options{Credits: credits, Auth: ownerAuth{}, Assets: emptyAssets{}}))
 	call := domain.AssistantCall{
 		ActionID: "moveFaceAppearances", Path: map[string]string{"id": "4"},
 		Body: map[string]any{"appearanceIds": []int64{7}, "targetId": "someone"},

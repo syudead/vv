@@ -63,7 +63,7 @@ func TestRelayChatRejectsAModelThatIsNotAChatModel(t *testing.T) {
 		t.Error("the judging model reached the chat endpoint")
 	})
 	_, err := chat.Chat(context.Background(), domain.ChatRequest{})
-	if !errors.Is(err, domain.ErrOllamaModel) || !strings.Contains(err.Error(), "llama3.3:70b") {
+	if !errors.Is(err, domain.ErrModelUnavailable) || !strings.Contains(err.Error(), "llama3.3:70b") {
 		t.Fatalf("err = %v", err)
 	}
 }

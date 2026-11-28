@@ -100,7 +100,7 @@ func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
 	if got, err = db.Settings().AutoTagSettings(ctx); err != nil || got != want {
 		t.Fatalf("読み戻し = %+v, %v; want %+v", got, err, want)
 	}
-	if ollama, err := db.Settings().OllamaSettings(ctx); err != nil || ollama != domain.DefaultOllamaSettings() {
+	if ollama, err := db.Settings().OllamaSettings(ctx); err != nil || ollama != (domain.OllamaSettings{}) {
 		t.Fatalf("機能の設定が接続先を変えた: %+v, %v", ollama, err)
 	}
 }
@@ -112,7 +112,7 @@ func TestOllamaSettingsRoundTripAndLegacyKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := db.Settings().OllamaSettings(ctx)
-	if err != nil || got != (domain.OllamaSettings{Endpoint: "http://old:1", Model: domain.DefaultOllamaModel}) {
+	if err != nil || got != (domain.OllamaSettings{Endpoint: "http://old:1"}) {
 		t.Fatalf("前の版のキー = %+v, %v", got, err)
 	}
 	for _, want := range []domain.OllamaSettings{

@@ -109,10 +109,18 @@ func (s *server) editOnPeer(r *http.Request, parts videoEditParts, out *gen.Vide
 			s.logger.Warn("could not join a read VVMDM's tags", slog.Any("error", err))
 			continue
 		}
-		for _, ref := range answer.Tags {
-			out.Tags = append(out.Tags, peerTagRef(ref, join))
-		}
+		rewriteRemoteVideoEditResponse(&answer, join)
+		out.Tags = append(out.Tags, answer.Tags...)
 	}
+}
+
+// rewriteRemoteVideoEditResponse leaves out what editOnPeer does not report from a link: its merges, skipped people
+// and remote part, which a request of this node never gives the link.
+func rewriteRemoteVideoEditResponse(answer *gen.VideoEditResponse, join domain.VocabularyJoin) {
+	for i := range answer.Tags {
+		rewriteRemoteTagRef(&answer.Tags[i], join)
+	}
+	answer.Merged, answer.SkippedPersonIds, answer.Remote = nil, nil, nil
 }
 
 // videoEditRequestOf is edit as the request the link takes for its part.
@@ -159,21 +167,52 @@ func optionalIDs64(ids []int64) *[]int64 {
 	return &ids
 }
 
-// peerTagRef is the peer's tag in this node's ids: the same-named local tag's, else the offset.
-func peerTagRef(ref gen.TagRef, join domain.VocabularyJoin) gen.TagRef {
+// rewriteRemoteVideoTagsResponse leaves out the link's remote part, which a request of this node never gives it.
+func rewriteRemoteVideoTagsResponse(answer *gen.VideoTagsResponse, join domain.VocabularyJoin) {
+	rewriteRemoteTagRef(&answer.Tag, join)
+	answer.Remote = nil
+}
+
+// rewriteRemoteTagRef gives the peer's tag the same-named local tag's id, else the offset; the kind is copied first,
+// since the answer may share it.
+func rewriteRemoteTagRef(ref *gen.TagRef, join domain.VocabularyJoin) {
 	ref.Id = join.Tag(ref.Id, ref.Name)
 	if ref.Kind != nil {
 		kind := *ref.Kind
 		rewriteRemoteKindRef(&kind, join)
 		ref.Kind = &kind
 	}
-	return ref
 }
 
-func peerTagSummaryItems(items []gen.VideoTagsSummaryItem, join domain.VocabularyJoin) []domain.TagSummaryItem {
+func rewriteRemoteTagsSummary(summary *gen.VideoTagsSummary, join domain.VocabularyJoin) {
+	for i := range summary.Items {
+		rewriteRemoteTagRef(&summary.Items[i].Tag, join)
+	}
+}
+
+// rewriteRemoteEditSummary leaves out the image revision of a person joined to a local one, since it names the peer's
+// image.
+func rewriteRemoteEditSummary(summary *gen.VideoEditSummary, join domain.VocabularyJoin) {
+	for i := range summary.Tags {
+		rewriteRemoteTagRef(&summary.Tags[i].Tag, join)
+	}
+	for i := range summary.People {
+		person := &summary.People[i]
+		person.Person.Id = join.Person(person.Person.Id, person.Person.Name)
+		if !domain.IsRemoteID(person.Person.Id) {
+			person.ImageRevision = nil
+		}
+	}
+	for i := range summary.Organizations {
+		rewriteRemoteOrganization(&summary.Organizations[i].Organization, join)
+	}
+}
+
+// tagSummaryItems are the rewritten summary items of a link.
+func tagSummaryItems(items []gen.VideoTagsSummaryItem) []domain.TagSummaryItem {
 	out := make([]domain.TagSummaryItem, len(items))
 	for i, item := range items {
-		ref := peerTagRef(item.Tag, join)
+		ref := item.Tag
 		out[i] = domain.TagSummaryItem{
 			Tag:   domain.TagRef{ID: ref.Id, Name: ref.Name, Tentative: ref.Tentative},
 			Count: item.Count, ManualCount: item.ManualCount,
@@ -185,18 +224,17 @@ func peerTagSummaryItems(items []gen.VideoTagsSummaryItem, join domain.Vocabular
 	return out
 }
 
-// peerEditSummary is the peer's summary in this node's ids. A person joined to a local one leaves out the peer's
-// image revision, which names the peer's image.
-func peerEditSummary(summary gen.VideoEditSummary, join domain.VocabularyJoin) domain.VideoEditSummary {
+// editSummary is a link's rewritten summary.
+func editSummary(summary gen.VideoEditSummary) domain.VideoEditSummary {
 	out := domain.VideoEditSummary{
-		Total: summary.Total, Public: summary.Public, Tags: peerTagSummaryItems(summary.Tags, join),
+		Total: summary.Total, Public: summary.Public, Tags: tagSummaryItems(summary.Tags),
 	}
 	for _, p := range summary.People {
 		item := domain.VideoEditPersonCount{
 			Role: domain.PersonRole(p.Role), Count: p.Count,
-			Person: domain.CreditRef{ID: join.Person(p.Person.Id, p.Person.Name), Name: p.Person.Name, Provisional: p.Person.Provisional},
+			Person: domain.CreditRef{ID: p.Person.Id, Name: p.Person.Name, Provisional: p.Person.Provisional},
 		}
-		if p.ImageRevision != nil && domain.IsRemoteID(item.Person.ID) {
+		if p.ImageRevision != nil {
 			item.ImageRevision = *p.ImageRevision
 		}
 		out.People = append(out.People, item)
@@ -204,7 +242,7 @@ func peerEditSummary(summary gen.VideoEditSummary, join domain.VocabularyJoin) d
 	for _, o := range summary.Organizations {
 		out.Organizations = append(out.Organizations, domain.VideoEditOrganizationCount{
 			Role: domain.OrganizationRole(o.Role), Count: o.Count,
-			Organization: domain.CreditRef{ID: join.Organization(o.Organization.Id, o.Organization.Name), Name: o.Organization.Name},
+			Organization: domain.CreditRef{ID: o.Organization.Id, Name: o.Organization.Name},
 		})
 	}
 	for _, d := range summary.Dates {

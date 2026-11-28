@@ -33,21 +33,31 @@ type preset struct {
 	overridable bool
 }
 
+const (
+	// ModelFlux2Klein is the default FLUX.2 [klein] 4B fp8 model.
+	ModelFlux2Klein domain.ComfyUIModel = "flux2_klein_4b"
+	// ModelQwenImageEdit uses Qwen-Image-Edit-2511 fp8mixed with Lightning four-step LoRA.
+	ModelQwenImageEdit domain.ComfyUIModel = "qwen_image_edit_2511"
+)
+
+// Models lists the models the owner can choose, the default first; cmd/mdm passes it to app.ComfyUIConnection.
+var Models = []domain.ComfyUIModel{ModelFlux2Klein, ModelQwenImageEdit}
+
 var presets = map[domain.ComfyUIModel]preset{
-	domain.ComfyUIModelFlux2Klein: {
+	ModelFlux2Klein: {
 		edit: workflowEdit, editReference: workflowEditReference, files: requiredFiles, overridable: true,
 	},
-	domain.ComfyUIModelQwenImageEdit: {
+	ModelQwenImageEdit: {
 		edit: workflowQwenEdit, editReference: workflowQwenEditReference, files: qwenRequiredFiles,
 	},
 }
 
-// Unknown models fall back to the default preset.
+// Unknown and absent models fall back to the default preset.
 func presetFor(model domain.ComfyUIModel) preset {
 	if p, ok := presets[model]; ok {
 		return p
 	}
-	return presets[domain.ComfyUIModels[0]]
+	return presets[Models[0]]
 }
 
 var workflowNames = []string{workflowEdit, workflowEditReference, workflowQwenEdit, workflowQwenEditReference}

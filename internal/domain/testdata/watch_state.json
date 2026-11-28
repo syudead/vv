@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"note": "no progress", "progress": null, "want": "unwatched"},
+    {"note": "position zero", "progress": {"positionMs": 0, "completed": false}, "want": "unwatched"},
+    {"note": "one millisecond in", "progress": {"positionMs": 1, "completed": false}, "want": "inProgress"},
+    {"note": "completed", "progress": {"positionMs": 90000, "completed": true}, "want": "watched"},
+    {"note": "completed wins over position zero", "progress": {"positionMs": 0, "completed": true}, "want": "watched"}
+  ]
+}
