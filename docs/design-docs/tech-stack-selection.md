@@ -62,7 +62,7 @@ The system serves one user on their own machine, so **simple operation** and
 | Asynchronous work | SQLite job table + goroutine workers, stopped via `context` | No separate process or broker; jobs resume after a restart |
 | Logging | `log/slog` with the JSON handler | Structured logs with no added dependency |
 | Tests | Go `testing` + `net/http/httptest` + Playwright | Only end-to-end tests show that playback starts |
-| Lint | `golangci-lint` with `depguard` | CI rejects imports across layers |
+| Lint | `golangci-lint` with `depguard` and `forbidigo` | CI rejects imports across layers and calls outside their owning package |
 | Distribution | Docker (multi-stage, alpine + `ffmpeg`) + Compose; on Windows, a zip of `VVMDM.exe` and `ffmpeg` on each GitHub Release ([Windows desktop app](windows-app.md#distribution)) | Without CGO the binary runs on alpine and cross-compiles for Windows; the zip needs neither Docker nor an `ffmpeg` install |
 
 Package responsibilities and dependency direction are in

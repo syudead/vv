@@ -14,7 +14,7 @@ import (
 	"unicode"
 )
 
-// Configuration comes only from environment variables; see README.md for defaults.
+// Configuration comes only from environment variables; docs/how-to/running-vv.md#runtime-settings lists the defaults.
 const (
 	envAddr     = "MDM_ADDR"
 	envDataDir  = "MDM_DATA_DIR"

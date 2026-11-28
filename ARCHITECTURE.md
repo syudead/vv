@@ -69,18 +69,46 @@ flowchart LR
 | Layer | Packages | Owns | Must not import |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
-| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging, the assistant) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
+| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging, the assistant) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any `internal/*` package except `internal/domain` and `internal/faceproto` |
 | Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin`, `faceruntime`, `peer` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
+| Shared protocol | `internal/faceproto` | The messages `mdm` and the face helper exchange; `internal/app` and `internal/faceruntime` import it | Anything outside the standard library |
+| Face helper | `cmd/mdm-face`, `internal/faceinfer` | The second binary ([face-recognition.md](docs/design-docs/face-recognition.md)) | Any package of this repository except `internal/faceinfer` and `internal/faceproto` |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
 interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or an
 HTTP server.
 
-golangci-lint's depguard enforces these rules in CI
-([.golangci.yml](.golangci.yml)); each rule's message carries its reason, so a
-violation explains itself in the `task lint` output. Test files are exempt,
-because an external `package x_test` imports its own package.
+golangci-lint enforces these rules in CI ([.golangci.yml](.golangci.yml)), and
+each rule's message names its reason and document, so a violation explains
+itself in the `task lint` output. depguard denies the whole `internal/` prefix
+and allows the packages above, so a new package or subpackage is covered
+without a config change. Sibling packages' test files are exempt, because an
+external `package x_test` imports its own package; the `internal/domain` and
+`internal/app` rules cover their tests too, except the tests of the domain's
+test-only subpackages, which read fixture files. Three adapters also import a
+subpackage, and the rest of the repository has rules of its own.
+
+| Rule | Files | Allowed |
+| --- | --- | --- |
+| Generated code | `internal/httpapi` | `internal/httpapi/gen`, `internal/httpapi/extgen` |
+| Peer decoding | `internal/peer` | `internal/httpapi/gen` (below) |
+| Broadcast metadata | `internal/media` | `internal/media/arib` |
+| SQL stays in the store | Every file except the composition tests in `cmd/mdm` | `database/sql` and the SQLite driver only in `internal/store` |
+| Password hashing | Every file | `golang.org/x/crypto/{argon2,bcrypt,scrypt,pbkdf2}` only in `internal/password` |
+| Logging | Non-test files outside `scripts/` | The `log` package only in `cmd/mdm-face`; the rest use `log/slog` |
+
+forbidigo keeps calls with the package that owns them in product code, which
+excludes tests and `scripts/`.
+
+| Call | Allowed in |
+| --- | --- |
+| `exec.Command`, `exec.CommandContext` | `media.Command`, `internal/opener` |
+| `os.Getenv`, `os.LookupEnv`, `os.Environ` | The `cmd/mdm` server and desktop entry points, `internal/opener` |
+| `http.DefaultTransport` | `internal/faceruntime`, which clones it for downloads |
+| `http.DefaultClient`, `http.Get`, `http.Head`, `http.Post`, `http.PostForm` | Nowhere |
+| `eventbus.On`, `Bus.Subscribe` | `cmd/mdm/events.go`, `internal/eventbus` |
+| `os` functions that create, write or remove files | Any package but `internal/app` |
 
 `web/embed.go` is the one deliberate exception: Go's embed directive cannot
 reference a parent directory, so the declaration that pulls `web/dist` into the

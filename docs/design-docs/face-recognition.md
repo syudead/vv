@@ -45,7 +45,11 @@ fails when either has an `INTERP` header; CI runs it on every pull request.
 
 `mdm` and the helper exchange length-prefixed binary messages on the helper's
 standard input and output ([`internal/faceproto`](../../internal/faceproto)),
-and the helper holds no rule about which faces matter.
+and the helper holds no rule about which faces matter. Both binaries import
+`internal/faceproto`, so it imports only the standard library, and the helper
+side (`cmd/mdm-face`, `internal/faceinfer`) imports no package of this
+repository but those two; depguard checks both
+([ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction)).
 
 The sequence shows one helper's life.
 

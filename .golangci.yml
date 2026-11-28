@@ -6,6 +6,8 @@ linters:
   enable:
     # Enforce dependency direction from ARCHITECTURE.md.
     - depguard
+    # Keep process, environment, HTTP, event and file access with the package that owns it.
+    - forbidigo
     - errcheck
     - govet
     - ineffassign
@@ -37,6 +39,41 @@ linters:
         - Hiragana
         - Katakana
       allow-time-local: true
+    forbidigo:
+      # Match by type, so renamed imports and method values are caught too.
+      analyze-types: true
+      # Each pattern's allowed files are listed in exclusions below, matched by a phrase of its message.
+      forbid:
+        - pattern: ^exec\.Command(Context)?$
+          pkg: ^os/exec$
+          msg: >-
+            Only media.Command, which sets the process priority, and internal/opener start external
+            commands (docs/design-docs/job-scheduling.md#background-processes-run-at-low-priority).
+        - pattern: ^os\.(Getenv|LookupEnv|Environ)$
+          pkg: ^os$
+          msg: >-
+            Only the entry points in cmd/mdm and internal/opener read environment variables; other code
+            receives its settings from them (docs/how-to/running-vv.md#runtime-settings,
+            docs/design-docs/windows-app.md#process-and-window).
+        - pattern: ^http\.(DefaultClient|Get|Head|Post|PostForm)$
+          pkg: ^net/http$
+          msg: >-
+            Send requests through a client the package builds with its own timeout and transport, never
+            the shared default client (docs/design-docs/work-info-plugins.md#plugins-reach-only-public-internet-addresses).
+        - pattern: ^http\.DefaultTransport$
+          pkg: ^net/http$
+          msg: >-
+            Give each client its own transport; only internal/faceruntime clones the default one for its
+            downloads (docs/design-docs/work-info-plugins.md#plugins-reach-only-public-internet-addresses).
+        - pattern: ^(eventbus\.On|eventbus\.Bus\.Subscribe)$
+          pkg: ^github\.com/syudead/vv/internal/eventbus$
+          msg: >-
+            Only cmd/mdm/events.go registers event subscribers (ARCHITECTURE.md#composition-root).
+        - pattern: ^os\.(Chmod|Chtimes|Create|CreateTemp|Link|Mkdir|MkdirAll|MkdirTemp|OpenFile|Remove|RemoveAll|Rename|Symlink|Truncate|WriteFile)$
+          pkg: ^os$
+          msg: >-
+            internal/app writes no files: it hands bytes or a write callback to internal/artifacts through
+            its ArtifactStore interface (ARCHITECTURE.md#cross-cutting-invariants: one owner for generated files).
     depguard:
       rules:
         # purego makes a binary ask for glibc's loader, and mdm must start on Alpine; only the face helper may load native code.
@@ -56,20 +93,17 @@ linters:
                 internal/faceinfer を import できるのは cmd/mdm-face だけである。推論は補助プロセスで
                 行い、mdm は internal/faceproto で補助プロセスと話す（docs/design-docs/face-recognition.md）。
 
-        # Domain is the dependency leaf: no external I/O or sibling internal packages. Violations report the deny description below.
+        # Domain is the dependency leaf: no external I/O or other internal packages. Its subpackages are test-only (foldcheck, assistantcheck) and read fixture files, so their tests are exempt.
         domain-is-the-end-of-the-dependency-chain:
           files:
             - "**/internal/domain/*.go"
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/**/*_test.go"
           deny:
             - pkg: net/http
               desc: >-
                 internal/domain から net/http を import してはならない。ドメインモデルは
                 転送方式を知らない。HTTP に関わる処理は internal/httpapi に置くこと
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: database/sql
-              desc: >-
-                internal/domain から database/sql を import してはならない。ドメインモデルは
-                永続化の手段を知らない。SQL は internal/store に置くこと
                 （ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: os$
               desc: >-
@@ -81,325 +115,177 @@ linters:
                 internal/domain から os/exec を import してはならない。外部コマンドの実行は
                 internal/media（ffmpeg／ffprobe）と internal/opener（OS の既定アプリ）に
                 閉じ込めること（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: modernc.org/sqlite
+            # One prefix covers every internal package, including later ones. depguard compares an import with the nearest sorted entry only, so no rule lists a deny entry that extends another.
+            - pkg: github.com/syudead/vv/internal/
               desc: >-
-                internal/domain から SQLite ドライバを import してはならない。特定の
-                データベースへの依存は internal/store に閉じ込めること
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/httpapi
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/store
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/media
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/artifacts
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/opener
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/mediafs
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/scanner
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/jobs
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/app
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/eventbus
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/password
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/desktop
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/watcher
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/ollama
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/comfyui
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/wasmplugin
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/faceruntime
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
-            - pkg: github.com/syudead/vv/internal/peer
-              desc: >-
-                internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime,peer} →
-                internal/domain の一方向だけである（ARCHITECTURE.md）。
+                internal/domain imports no other package under internal/: every other layer depends on it,
+                and it depends on nothing in the repository (ARCHITECTURE.md "Intended dependency direction").
 
         # Application use cases depend on declared interfaces, not I/O adapters, so tests need no SQLite, FFmpeg or HTTP server.
         app-uses-adapters-only-through-interfaces:
           files:
             - "**/internal/app/*.go"
+            - "**/internal/app/**/*.go"
+          # Lax mode lets a longer allow entry override the internal/ prefix.
+          list-mode: lax
+          allow:
+            - github.com/syudead/vv/internal/domain$
+            - github.com/syudead/vv/internal/faceproto$
           deny:
             - pkg: net/http
               desc: >-
                 internal/app から net/http を import してはならない。要求の解釈と
                 応答の形は internal/httpapi が持ち、アプリケーション層は転送方式を
                 知らない（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: database/sql
-              desc: >-
-                internal/app から database/sql を import してはならない。保存は
-                internal/app が宣言した interface 越しに行い、SQL は internal/store に
-                置くこと（ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: os/exec
               desc: >-
                 internal/app から os/exec を import してはならない。外部コマンドは
                 internal/media と internal/opener に閉じ込め、internal/app が宣言した
                 interface 越しに使うこと（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: modernc.org/sqlite
+            - pkg: github.com/syudead/vv/internal/
               desc: >-
-                internal/app から SQLite ドライバを import してはならない。特定の
-                データベースへの依存は internal/store に閉じ込めること
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/httpapi
-              desc: >-
-                internal/app から internal/httpapi を import してはならない。HTTP との変換はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/store
-              desc: >-
-                internal/app から internal/store を import してはならない。保存の手段はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/media
-              desc: >-
-                internal/app から internal/media を import してはならない。ffmpeg・ffprobe と生成物の置き場はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/artifacts
-              desc: >-
-                internal/app から internal/artifacts を import してはならない。生成物の置き場の並べ方はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/opener
-              desc: >-
-                internal/app から internal/opener を import してはならない。OS の既定アプリの起動はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/mediafs
-              desc: >-
-                internal/app から internal/mediafs を import してはならない。ファイルシステムでの確かめはアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/scanner
-              desc: >-
-                internal/app から internal/scanner を import してはならない。ファイルシステムの走査はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/jobs
-              desc: >-
-                internal/app から internal/jobs を import してはならない。待ち行列の進め方はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/eventbus
-              desc: >-
-                internal/app から internal/eventbus を import してはならない。変化を発行する側は
-                配り先も購読者も知らず、自身の Publisher の interface 越しに発行する。
-                配り先を渡し、購読者を登録するのは cmd/mdm である（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/password
-              desc: >-
-                internal/app から internal/password を import してはならない。Argon2id の計算はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/desktop
-              desc: >-
-                internal/app から internal/desktop を import してはならない。Windows のウィンドウと WebView2 は
-                デスクトップ版の組み立て（cmd/mdm の desktop タグのファイル）だけが扱う
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/watcher
-              desc: >-
-                internal/app から internal/watcher を import してはならない。OS の変更通知はアダプタの仕事で、
-                アプリケーション層は必要な操作を自身の interface として宣言し、
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/ollama
-              desc: >-
-                internal/app から internal/ollama を import してはならない。判定モデル（AI）の提供元は
-                差し替えられるアダプタで、機能は app.Classifier の口だけを使い、どの提供元かを知らない。
-                実装は cmd/mdm が渡す（docs/design-docs/ai-layer.md）。
-            - pkg: github.com/syudead/vv/internal/comfyui
-              desc: >-
-                internal/app から internal/comfyui を import してはならない。画像編集の提供元は
-                差し替えられるアダプタで、機能は internal/app が宣言した口だけを使い、どの提供元かを知らない。
-                実装は cmd/mdm が渡す（docs/design-docs/ai-layer.md）。
-            - pkg: github.com/syudead/vv/internal/wasmplugin
-              desc: >-
-                internal/app から internal/wasmplugin を import してはならない。作品情報プラグインの
-                検査と実行（wazero）はアダプタの仕事で、機能は app.WorkInfoPluginRuntime の口だけを使う。
-                実装は cmd/mdm が渡す（docs/design-docs/work-info-plugins.md）。
-            - pkg: github.com/syudead/vv/internal/faceruntime
-              desc: >-
-                internal/app から internal/faceruntime を import してはならない。顔のランタイムの取得と
-                補助プロセスの起動はアダプタの仕事で、機能は app.FaceRuntime の口だけを使う。
-                実装は cmd/mdm が渡す（docs/design-docs/face-recognition.md）。
-            - pkg: github.com/syudead/vv/internal/peer
-              desc: >-
-                internal/app から internal/peer を import してはならない。ペアリングした台への HTTP は
-                アダプタの仕事で、機能は app.PeerLink の口だけを使う。
-                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+                internal/app imports only internal/domain and internal/faceproto. It declares what it
+                needs from an adapter, internal/eventbus or internal/desktop as its own interface, and
+                cmd/mdm passes the implementation (ARCHITECTURE.md "Intended dependency direction").
 
-        # Sibling packages communicate through consumer-owned interfaces wired in cmd/mdm. Exclude external test packages; trailing $ permits child packages such as httpapi/gen.
+        # Siblings talk through consumer-owned interfaces wired in cmd/mdm. Tests are exempt because an external test package imports its own package. A package with a documented subpackage import has its own rule below.
         internal-siblings-do-not-import-each-other:
           files:
-            - "**/internal/httpapi/*.go"
-            - "**/internal/store/*.go"
-            - "**/internal/media/*.go"
-            - "**/internal/mediafs/*.go"
-            - "**/internal/artifacts/*.go"
-            - "**/internal/opener/*.go"
-            - "**/internal/scanner/*.go"
-            - "**/internal/jobs/*.go"
-            - "**/internal/eventbus/*.go"
-            - "**/internal/password/*.go"
-            - "**/internal/desktop/*.go"
-            - "**/internal/watcher/*.go"
-            - "**/internal/ollama/*.go"
-            - "**/internal/comfyui/*.go"
-            - "**/internal/wasmplugin/*.go"
-            - "**/internal/faceruntime/*.go"
-            - "**/internal/peer/*.go"
+            - "**/internal/**/*.go"
             - "!$test"
+            - "!**/internal/domain/**"
+            - "!**/internal/app/**"
+            - "!**/internal/faceinfer/**"
+            - "!**/internal/faceproto/**"
+            - "!**/internal/httpapi/**"
+            - "!**/internal/peer/**"
+            - "!**/internal/media/**"
+          list-mode: lax
+          allow:
+            - github.com/syudead/vv/internal/domain$
+            - github.com/syudead/vv/internal/faceproto$
           deny:
-            - pkg: github.com/syudead/vv/internal/app$
+            - pkg: github.com/syudead/vv/internal/
+              desc: &siblings-desc >-
+                Packages under internal/ do not import each other: the consumer declares what it needs
+                as an interface, and cmd/mdm decides which implementation to pass. Only internal/domain,
+                internal/faceproto and the subpackages ARCHITECTURE.md names are importable
+                (ARCHITECTURE.md "Intended dependency direction").
+        httpapi-imports-only-its-generated-code:
+          files:
+            - "**/internal/httpapi/*.go"
+            - "**/internal/httpapi/**/*.go"
+            - "!$test"
+          list-mode: lax
+          allow:
+            - github.com/syudead/vv/internal/domain$
+            - github.com/syudead/vv/internal/faceproto$
+            - github.com/syudead/vv/internal/httpapi/extgen$
+            - github.com/syudead/vv/internal/httpapi/gen$
+          deny:
+            - pkg: github.com/syudead/vv/internal/
+              desc: *siblings-desc
+        peer-imports-only-the-screen-api-types:
+          files:
+            - "**/internal/peer/*.go"
+            - "**/internal/peer/**/*.go"
+            - "!$test"
+          list-mode: lax
+          allow:
+            - github.com/syudead/vv/internal/domain$
+            - github.com/syudead/vv/internal/faceproto$
+            - github.com/syudead/vv/internal/httpapi/gen$
+          deny:
+            - pkg: github.com/syudead/vv/internal/
+              desc: *siblings-desc
+        media-imports-only-its-arib-decoder:
+          files:
+            - "**/internal/media/*.go"
+            - "**/internal/media/**/*.go"
+            - "!$test"
+          list-mode: lax
+          allow:
+            - github.com/syudead/vv/internal/domain$
+            - github.com/syudead/vv/internal/faceproto$
+            - github.com/syudead/vv/internal/media/arib$
+          deny:
+            - pkg: github.com/syudead/vv/internal/
+              desc: *siblings-desc
+
+        # The face helper ships alone in the face runtime archive and shares only the protocol with mdm.
+        the-face-helper-imports-only-its-own-packages:
+          files:
+            - "**/cmd/mdm-face/*.go"
+            - "**/cmd/mdm-face/**/*.go"
+            - "**/internal/faceinfer/*.go"
+            - "**/internal/faceinfer/**/*.go"
+          list-mode: lax
+          allow:
+            - github.com/syudead/vv/internal/faceinfer$
+            - github.com/syudead/vv/internal/faceproto$
+          deny:
+            - pkg: github.com/syudead/vv/
               desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/httpapi$
+                cmd/mdm-face and internal/faceinfer import no package of this repository except
+                internal/faceinfer and internal/faceproto: the helper is a separate binary in the face
+                runtime archive (docs/design-docs/face-recognition.md "The helper protocol").
+        # Both binaries import the protocol, so it must not carry either side's dependencies into the other.
+        faceproto-imports-only-the-standard-library:
+          files:
+            - "**/internal/faceproto/*.go"
+            - "**/internal/faceproto/**/*.go"
+          allow:
+            - $gostd
+          deny:
+            - pkg: github.com/syudead/vv/
               desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/store$
+                internal/faceproto imports only the standard library, because both mdm and mdm-face
+                import it (docs/design-docs/face-recognition.md "The helper protocol").
+
+        # Tests are covered too, except the composition tests in cmd/mdm, which open the real store.
+        sql-stays-in-the-store:
+          files:
+            - $all
+            - "!**/internal/store/**"
+            - "!**/cmd/mdm/*_test.go"
+          deny:
+            - pkg: database/sql
               desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/media$
+                Only internal/store imports database/sql; other packages reach the database through
+                its role types or through interfaces they declare (ARCHITECTURE.md "Store roles").
+            - pkg: modernc.org/sqlite
               desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/mediafs$
+                Only internal/store imports the SQLite driver, so the choice of database stays in one
+                package (ARCHITECTURE.md "Store roles").
+
+        password-hashing-stays-in-internal-password:
+          files:
+            - $all
+            - "!**/internal/password/**"
+          deny:
+            - pkg: golang.org/x/crypto/argon2
+              desc: &password-desc >-
+                Only internal/password hashes passwords; other packages reach it through an interface
+                (docs/design-docs/authentication.md "Account and credentials").
+            - pkg: golang.org/x/crypto/bcrypt
+              desc: *password-desc
+            - pkg: golang.org/x/crypto/pbkdf2
+              desc: *password-desc
+            - pkg: golang.org/x/crypto/scrypt
+              desc: *password-desc
+
+        # Scripts are developer tools, and a test may hand a *log.Logger to the standard library.
+        services-log-through-slog:
+          files:
+            - $all
+            - "!$test"
+            - "!**/cmd/mdm-face/**"
+            - "!**/scripts/**"
+          deny:
+            - pkg: log$
               desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/artifacts$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/opener$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/scanner$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/jobs$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/eventbus$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。変化を発行する側は
-                配り先も購読者も知らず、自身の Publisher の interface 越しに発行する。
-                配り先を渡し、購読者を登録するのは cmd/mdm である（ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/password$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/desktop$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/watcher$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/ollama$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/comfyui$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/wasmplugin$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/faceruntime$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
-            - pkg: github.com/syudead/vv/internal/peer$
-              desc: >-
-                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
-                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
-                （ARCHITECTURE.md "Intended dependency direction"）。
+                Log through log/slog (docs/design-docs/tech-stack-selection.md). Only cmd/mdm-face, a
+                separate helper binary that reports a fatal error on standard error, uses the log package.
 
   exclusions:
     generated: lax
@@ -412,6 +298,34 @@ linters:
       - path: ^scripts/
         linters:
           - gosmopolitan
+      # forbidigo guards product code: tests and developer scripts may run tools, read their environment and subscribe directly.
+      - path: (_test\.go$|^scripts/)
+        linters:
+          - forbidigo
+      # plugintest builds the test plugins with the Go toolchain and is imported only by tests.
+      - path: ^internal/wasmplugin/plugintest/
+        linters:
+          - forbidigo
+      - path: ^internal/(media/command|opener/opener)\.go$
+        text: start external commands
+        linters:
+          - forbidigo
+      - path: ^(cmd/mdm/main_server|cmd/mdm/desktop_windows|internal/opener/opener)\.go$
+        text: read environment variables
+        linters:
+          - forbidigo
+      - path: ^internal/faceruntime/manager\.go$
+        text: clones the default one
+        linters:
+          - forbidigo
+      - path: ^(cmd/mdm/events\.go$|internal/eventbus/)
+        text: registers event subscribers
+        linters:
+          - forbidigo
+      - path-except: ^internal/app/
+        text: internal/app writes no files
+        linters:
+          - forbidigo
       # Exclude generated files, which must not be hand-edited.
       - path: internal/httpapi/(ext)?gen/
         linters:
@@ -425,6 +339,7 @@ linters:
           - sqlclosecheck
           - errorlint
           - contextcheck
+          - forbidigo
 
 formatters:
   enable:
