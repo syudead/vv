@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -660,9 +661,7 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	}
 	mode := os.Args[len(os.Args)-1]
 	if mode == "probe-hang" {
-		for {
-			time.Sleep(time.Second)
-		}
+		hangUntilKilled()
 	}
 	if mode == "probe" {
 		_, _ = io.WriteString(os.Stdout, `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":640,"height":360,"level":31,"avg_frame_rate":"30/1","r_frame_rate":"30/1"}],"format":{"duration":"10.0"}}`)
@@ -680,27 +679,30 @@ func TestTranscodeHelperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	if mode == "ffmpeg-silent" {
-		for {
-			time.Sleep(time.Second)
-		}
+		hangUntilKilled()
 	}
 	if delay, ok := strings.CutPrefix(mode, "ffmpeg-mp4:"); ok {
 		// Simulate a copy seek with audio starting three milliseconds after video.
 		delayMs, _ := strconv.ParseUint(delay, 10, 32)
 		_, _ = os.Stdout.Write(testInitSegment(1000, []uint32{uint32(delayMs), uint32(delayMs) + 3}))
 		_, _ = io.WriteString(os.Stdout, "fragment")
-		for {
-			time.Sleep(time.Second)
-		}
+		hangUntilKilled()
 	}
 	if mode != "ffmpeg" {
 		_, _ = fmt.Fprintln(os.Stderr, "unknown helper mode")
 		os.Exit(2)
 	}
 	_, _ = io.WriteString(os.Stdout, "fragment")
-	for {
-		time.Sleep(time.Second)
-	}
+	hangUntilKilled()
+}
+
+// hangUntilKilled stands for an ffmpeg that stops producing output; the parent kills the helper. Waiting for a
+// signal, rather than on a timer or an empty select, keeps the runtime from reporting a deadlock.
+func hangUntilKilled() {
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+	<-interrupt
+	os.Exit(1)
 }
 
 func TestIngestAndRequestProbeShareTranscodeProbe(t *testing.T) {

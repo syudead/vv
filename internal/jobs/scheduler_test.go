@@ -44,8 +44,9 @@ type fakeQueue struct {
 	observe     func(string)
 	// runAfter holds a kind's jobs back until that time, as a retry delay does.
 	runAfter time.Time
-	// claimDelay passes after each claim answers, so time moves on between a turn's claims and its lookup.
-	claimDelay time.Duration
+	// afterClaim runs after each claim answers; a test sleeps in it so time moves on between a turn's claims and its
+	// lookup.
+	afterClaim func()
 }
 
 func newFakeQueue(jobs ...domain.Job) *fakeQueue {
@@ -67,8 +68,10 @@ func (q *fakeQueue) add(jobs ...domain.Job) {
 
 func (q *fakeQueue) ClaimJobOn(_ context.Context, claim domain.JobClaim) (domain.Job, error) {
 	q.mu.Lock()
-	// Deferred first, so the delay runs after the unlock.
-	defer time.Sleep(q.claimDelay)
+	// Deferred first, so it runs after the unlock.
+	if q.afterClaim != nil {
+		defer q.afterClaim()
+	}
 	defer q.mu.Unlock()
 	q.claims = append(q.claims, claim.Kind)
 	q.claimRecords = append(q.claimRecords, claim)
@@ -629,7 +632,7 @@ func TestSchedulerRunsAJobThatCameDueDuringItsClaims(t *testing.T) {
 		queue := newFakeQueue(domain.Job{ID: 7, Kind: domain.JobProbe})
 		// The probe claim misses the job by a second, and it is due before the turn's lookup.
 		queue.runAfter = time.Now().Add(time.Second)
-		queue.claimDelay = 2 * time.Second
+		queue.afterClaim = func() { time.Sleep(2 * time.Second) }
 		_, stop := startScheduler(Options{
 			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
@@ -1173,10 +1176,11 @@ func TestSchedulerIgnoresAForegroundReadOutsideTheFolders(t *testing.T) {
 
 func TestSchedulerParksAnUnreadableFolderUntilARecheck(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
+		name string
+		// A nil recheck waits for the periodic one.
 		recheck func(*Scheduler)
 	}{
-		{name: "every minute", recheck: func(*Scheduler) { time.Sleep(time.Second) }},
+		{name: "every minute"},
 		{name: "on an event", recheck: func(s *Scheduler) { s.RecheckRoots() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1215,7 +1219,11 @@ func TestSchedulerParksAnUnreadableFolderUntilARecheck(t *testing.T) {
 				if got := queue.completedIDs(); len(got) != 0 {
 					t.Fatalf("completed before the recheck = %v", got)
 				}
-				tc.recheck(scheduler)
+				if tc.recheck == nil {
+					time.Sleep(time.Second)
+				} else {
+					tc.recheck(scheduler)
+				}
 				synctest.Wait()
 				if got, want := queue.completedIDs(), []int64{1}; !slices.Equal(got, want) {
 					t.Fatalf("completed after the recheck = %v, want %v", got, want)
